@@ -1,71 +1,232 @@
-<html>
+<!doctype html>
+<html lang="en">
 <head>
-	<title>Settings</title>
-	<link rel="stylesheet" href="http://netdna.bootstrapcdn.com/bootstrap/3.0.0/css/bootstrap.min.css">
+	<title>Wrist HomeAssistant Config</title>
+	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx" crossorigin="anonymous">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<style>
+		button .test-btn-loading {
+			display: none;
+		}
+		button[disabled] .test-btn-loading {
+			display: inline-block;
+		}
+
+		button .btn-text {
+			display: inline-block;
+		}
+		button[disabled] .btn-text {
+			display: none;
+		}
+	</style>
 </head>
 <body>
-        <h1>Wrist HomeAssistant Config</h1>	
-	<!-- HEADER -->
+<div class="container">
+	<form id="watch-config-form">
+		<div class="row">
+			<div class="col-12 text-center">
+				<h3 class="font-weight-bold mt-3">Wrist HomeAssistant Config</h3>
 
-	<h4 style="margin-left:25px; padding-bottom:10px">Choose your settings:</h4>
-	
-	<!-- TABLE -->
-	<table>
-		<tr>
-			<td><p style="padding-top:0px; padding-left:25px; vertical-align:middle; display:table-cell;">Enter Home-Assistant URL: </p></td>
-                        <td><input type="url" class="form-control" id="haurl"></td>
-			<td><p style="padding-top:0px; padding-left:25px; vertical-align:middle; display:table-cell;">Enter API password: </p></td>
-                        <td><input type="password" class="form-control" id="pwd"></td>
-                       
-		</tr>
-	</table>
-	
-	<p style="text-align:center;">
-		<button type='button' class="submit btn btn-success" style="width:100px; margin-top:20px;">Submit</button>
-	</p>
-		
-	<!-- FOOTER -->
-	<br>
-	<div stlye="width:200px;">
-		<p style="text-align:center;">Made by Patrick Balestra, <a href="http://www.twitter.com/BalestraPatrick" target="_blank">@BalestraPatrick</a></p>
-	</div>
-	
-	<!-- SCRIPTS -->
-	<script src="http://ajax.googleapis.com/ajax/libs/jquery/1.10.2/jquery.min.js"></script>
-	<script type="text/javascript">
-		$().ready(function() {
+				<p style="text-align:center;">Updated by <a href="https://skylar.tech" target="_blank">Skylar Sadlier</a></p>
+			</div>
+
+			<div id="alert-container"></div>
+		</div>
+
+		<div class="row">
+			<div class="col-12">
+				<div class="card">
+					<div class="card-header">
+						Connection Settings
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="form-group col-12">
+								<label for="ha-url">Enter Home-Assistant URL</label>
+								<input type="url" class="form-control" id="ha-url" aria-describedby="Home Assistant URL" placeholder="">
+								<div id="ha-url-invalid" class="invalid-feedback" style="display:none;">
+									URL must begin with either http:// or https://
+								</div>
+								<small class="form-text text-muted">Example: https://ha.example.com</small>
+							</div>
+							<div class="form-group col-12 mt-2">
+								<label for="ha-token">Access Token</label>
+								<input type="password" class="form-control" id="ha-token" placeholder="">
+								<small class="form-text text-muted">You can obtain a token ("Long-Lived Access Token") by logging into the frontend using a web browser, and going to your profile.</small>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="row">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
+						Entity Settings
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="form-group col-12">
+								<label for="ha-filter">Entity Filter</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-filter">
+									<option value="all">Display all</option>
+									<option value="specify">Specify entities</option>
+								</select>
+								<small class="form-text text-muted">Change what entities display</small>
+							</div>
+
+							<div class="form-group col-6 mt-2">
+								<label for="ha-order-by">Order By</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-order-by">
+									<option value="name">Name</option>
+									<option value="entity_id">Entity ID</option>
+									<option value="updated">Last Updated</option>
+								</select>
+								<small class="form-text text-muted">Change how entities are sorted</small>
+							</div>
+
+							<div class="form-group col-6 mt-2">
+								<label for="ha-order-dir">Order Direction</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-order-dir">
+									<option value="desc">Descending</option>
+									<option value="asc">Ascending</option>
+								</select>
+								<small class="form-text text-muted">Change direction entities are sorted</small>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+		<!--        <div class="form-check col-12">-->
+		<!--            <input type="checkbox" class="form-check-input" id="exampleCheck1">-->
+		<!--            <label class="form-check-label" for="exampleCheck1">Check me out</label>-->
+		<!--        </div>-->
+		<div class="col-12 mt-3">
+			<button type="button" class="btn btn-primary" id="save-btn">Save</button>
+		</div>
+	</form>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.5/dist/umd/popper.min.js" integrity="sha384-Xe+8cL9oJa6tN/veChSP7q+mnSPaj5Bcu9mPX5F5xIGE0DVittaqT5lorf0EI7Vk" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.min.js" integrity="sha384-ODmDIVzN+pFdexxHEHFBQH3/9/vQ9uori45z4JjnFsRydbmQbmL5t1tQ0culUzyK" crossorigin="anonymous"></script>
+<script type="text/javascript">
+	$(function() {
+		let urlInput = $("#ha-url"),
+				tokenInput = $('#ha-token'),
+				filterInput = $('#ha-filter'),
+				orderByInput = $('#ha-order-by'),
+				orderDirInput = $('#ha-order-dir');
+
+		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
 
 			function onUpdateReady() {
 				if(window.applicationCache.status === window.applicationCache.UPDATEREADY) {
-  					window.location.reload();
-  				}
+					window.location.reload();
+				}
 			}
-			
-			var dictionary;
-			try {
-				
-				dictionary = JSON.parse(localStorage["dictionary"]);
-                                console.log(dictionary);
-                                document.getElementById('haurl').value = dictionary['haurl'];
-                                document.getElementById('pwd').value = dictionary['pwd'];
+		}
+
+		function getFormValues() {
+			return {
+				'ha_url': urlInput.val().replace(/\/+$/, ''),
+				'token': tokenInput.val(),
+				'filter': filterInput.val(),
+				'order_by': orderByInput.val(),
+				'order_dir': orderDirInput.val(),
+			};
+		}
+
+		function restoreFormValues() {
+			watch_config = JSON.parse(localStorage.getItem("watch_config"));
+			console.log("watch_config", watch_config);
+			if(watch_config['ha_url']) {
+				urlInput.val(watch_config['ha_url']);
 			}
-			catch(e) {
-				dictionary = {};
+			if(watch_config['token']) {
+				tokenInput.val(watch_config['token']);
+			}
+			if(watch_config['filter']) {
+				filterInput.val(watch_config['filter']);
+			}
+			if(watch_config['order_by']) {
+				orderByInput.val(watch_config['order_by']);
+			}
+			if(watch_config['order_dir']) {
+				orderDirInput.val(watch_config['order_dir']);
+			}
+		}
+
+		function display_alert(type, content) {
+			let container = $("#alert-container");
+
+			if(!type && !content) {
+				container.hide();
+				return;
 			}
 
-		    $('.submit').click(function() {
-                        dictionary['haurl'] = document.getElementById('haurl').value;
-                        dictionary['pwd'] = document.getElementById('pwd').value;
-		    	console.log(JSON.stringify(dictionary));
-		    	var location = "pebblejs://close#" + encodeURIComponent(JSON.stringify(dictionary));
-                        localStorage["dictionary"] = JSON.stringify(dictionary);
-                        console.log(location);
-			window.location.href = location;
-		    });
+			container
+					.html(
+							`<div class="alert alert-${type}" role="alert">
+                        ${content}
+                    </div>`)
+					.show();
+		}
+
+		let watch_config;
+		try {
+			restoreFormValues();
+		} catch(e) {
+			watch_config = {};
+		}
+
+		filterInput.change(function(e){
+			if($(this).val() == 'all') {
+
+			} else {
+
+			}
 		});
-	</script>
+
+		urlInput.keyup(function(e){
+			let value = $(this).val();
+			if(value && !value.startsWith('https://') && !value.startsWith('http://')) {
+				$("#ha-url-invalid").show();
+				urlInput.addClass('is-invalid');
+			} else {
+				$("#ha-url-invalid:visible").hide();
+				urlInput.removeClass('is-invalid');
+			}
+		}).keyup();
+
+		$('#save-btn').click(function(e) {
+			e.preventDefault();
+			display_alert();
+			watch_config = getFormValues();
+
+			if(!watch_config['ha_url']) {
+				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant URL`);
+				return;
+			}
+
+			if(!watch_config['token']) {
+				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token`);
+				return''
+			}
+
+			console.log(JSON.stringify(watch_config));
+			let location = "pebblejs://close#" + encodeURIComponent(JSON.stringify(watch_config));
+			localStorage.setItem("watch_config", JSON.stringify(watch_config));
+			console.log(location);
+			window.location.href = location;
+		});
+	});
+</script>
 </body>
 </html>
+
