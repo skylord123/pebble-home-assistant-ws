@@ -9,6 +9,7 @@ class HAWS {
         this._last_cmd_id = 0;
         this._commands = new Map();
         this._queuedMessages = undefined;
+        this._subscriptions = [];
     }
 
     connect() {
@@ -46,19 +47,29 @@ class HAWS {
                     that.close();
                     break;
 
+                case 'event':
+                    if(typeof data.id !== 'undefined' && that._commands.has(data.id)) {
+                        let callback = that._commands.get(data.id);
+                        callback[0](data);
+                    }
+
+                    that.trigger("event", {detail: data});
+                    break;
+
                 case 'result':
                     if(typeof data.id !== 'undefined' && that._commands.has(data.id)) {
                         let callback = that._commands.get(data.id);
 
                         if (data.success) {
-                            callback[0](data);
-                            // Don't remove subscriptions.
-                            if (!("subscribe" in data)) {
+                            // ignore subscription success messages
+                            if(that._subscriptions.indexOf(data.id) === -1) {
+                                callback[0](data);
                                 that._commands.delete(data.id);
                             }
-                        }
-                        else {
-                            callback[1](data);
+                        } else {
+                            if(typeof callback[1] !== 'undefined') {
+                                callback[1](data);
+                            }
                             that._commands.delete(data.id);
                         }
                     }
@@ -77,17 +88,117 @@ class HAWS {
 
     send(msg, successCallback, errorCallback) {
         if(this.connected) {
-            msg.id = this._genCmdId();
+            if(!msg.id) {
+                msg.id = this._genCmdId();
+            }
             this.ws.send(JSON.stringify(msg));
             this._commands.set(msg.id, [ successCallback, errorCallback ]);
-            return true;
+            return msg.id;
         }
 
         return false;
     }
 
-    call(msg, callback) {
+    unsubscribe(msg_id) {
+        let subscriptionIndex = this._subscriptions ? this._subscriptions.indexOf(msg_id) : -1;
+        if(subscriptionIndex > -1) {
+            this._subscriptions.splice(msg_id, 1);
+        }
+        if(this._commands.has(msg_id)) {
+            this._commands.delete(msg_id);
+        }
 
+        this.send({
+            "type": "unsubscribe_events",
+            "subscription": msg_id
+        });
+    }
+
+    // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-trigger
+    // trigger options: https://www.home-assistant.io/docs/automation/trigger/#state-trigger
+    subscribe(data, successCallback, errorCallback ) {
+        // {
+        //     "id": 2,
+        //     "type": "subscribe_trigger",
+        //     "trigger": {
+        //         "platform": "state",
+        //         "entity_id": "binary_sensor.motion_occupancy", // can be array or single string
+        //         "from": "off",
+        //         "to":"on"
+        //     },
+        // }
+        let msg_id = this.send(data, successCallback, errorCallback);
+        this._subscriptions.push(msg_id);
+        return msg_id;
+    }
+
+    // https://developers.home-assistant.io/docs/api/websocket#calling-a-service
+    callService(domain, service, service_data, target, successCallback, errorCallback) {
+        // let data = {
+        //     "id": 24,
+        //     "type": "call_service",
+        //     "domain": "light",
+        //     "service": "turn_on",
+        //     // Optional
+        //     "service_data": {
+        //         "color_name": "beige",
+        //         "brightness": "101"
+        //     }
+        //     // Optional
+        //     "target": {
+        //         "entity_id": "light.kitchen"
+        //     }
+        // };
+
+        let data = {
+            "type": "call_service",
+            "domain": domain,
+            "service": service
+        };
+
+        if(service_data) {
+            data['service_data'] = service_data;
+        }
+
+        if(target) {
+            data['target'] = target;
+        }
+
+        console.log("CALLING SERVICE: " + JSON.stringify(data));
+
+        return this.send(data, successCallback, errorCallback);
+    }
+
+    // https://developers.home-assistant.io/docs/api/websocket#fetching-services
+    getStates(successCallback, errorCallback) {
+        return this.send({ type: 'get_states' }, successCallback, errorCallback);
+    }
+
+    // https://developers.home-assistant.io/docs/api/websocket#fetching-services
+    getConfig(successCallback, errorCallback) {
+        return this.send({ type: 'get_config' }, successCallback, errorCallback);
+    }
+
+    // https://developers.home-assistant.io/docs/api/websocket#fetching-services
+    getServices(successCallback, errorCallback) {
+        return this.send({ type: 'get_services' }, successCallback, errorCallback);
+    }
+
+    // https://developers.home-assistant.io/docs/api/websocket#fetching-panels
+    getPanels(successCallback, errorCallback) {
+        return this.send({ type: 'get_panels' }, successCallback, errorCallback);
+    }
+
+    getConfigAreas(successCallback, errorCallback) {
+        return this.send({ type: 'config/area_registry/list'}, successCallback, errorCallback);
+    }
+
+    getConfigDevices(successCallback, errorCallback) {
+        return this.send({ type: 'config/device_registry/list'}, successCallback, errorCallback);
+    }
+
+    getConfigEntities(successCallback, errorCallback) {
+        return this.send({ type: 'config/entity_registry/list'}, successCallback, errorCallback);
     }
 
     on(event, callback) {
@@ -102,6 +213,10 @@ class HAWS {
         if(this.connected) {
             this.ws.close();
             this.connected = false;
+            this._last_cmd_id = 0;
+            this._commands = new Map();
+            this._queuedMessages = undefined;
+            this._subscriptions = [];
         }
     }
 
