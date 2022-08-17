@@ -65,6 +65,30 @@
 			<div class="col-12 mt-3">
 				<div class="card">
 					<div class="card-header">
+						Voice Assistant Settings
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="col-12">
+								<div class="form-check form-switch">
+									<input class="form-check-input" type="checkbox" id="ha-voice-enabled">
+									<label class="form-check-label" for="ha-voice-enabled">Enabled</label>
+								</div>
+								<div class="form-check form-switch">
+									<input class="form-check-input" type="checkbox" id="ha-voice-confirm">
+									<label class="form-check-label" for="ha-voice-confirm">Confirm dictation before sending</label>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="row">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
 						Entity Settings
 					</div>
 					<div class="card-body">
@@ -81,9 +105,9 @@
 							<div class="form-group col-6 mt-2">
 								<label for="ha-order-by">Order By</label>
 								<select class="form-select" aria-label="Entity Filter" id="ha-order-by">
-									<option value="name">Name</option>
+									<option value="attributes.friendly_name">Name</option>
 									<option value="entity_id">Entity ID</option>
-									<option value="updated">Last Updated</option>
+									<option value="attributes.last_updated">Last Updated</option>
 								</select>
 								<small class="form-text text-muted">Change how entities are sorted</small>
 							</div>
@@ -105,7 +129,7 @@
 		<!--            <input type="checkbox" class="form-check-input" id="exampleCheck1">-->
 		<!--            <label class="form-check-label" for="exampleCheck1">Check me out</label>-->
 		<!--        </div>-->
-		<div class="col-12 mt-3">
+		<div class="col-12 mt-3 mb-3">
 			<button type="button" class="btn btn-primary" id="save-btn">Save</button>
 		</div>
 	</form>
@@ -120,7 +144,9 @@
 				tokenInput = $('#ha-token'),
 				filterInput = $('#ha-filter'),
 				orderByInput = $('#ha-order-by'),
-				orderDirInput = $('#ha-order-dir');
+				orderDirInput = $('#ha-order-dir'),
+				voiceEnabled = $('#ha-voice-enabled'),
+				voiceConfirm = $('#ha-voice-confirm');
 
 		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
@@ -139,6 +165,8 @@
 				'filter': filterInput.val(),
 				'order_by': orderByInput.val(),
 				'order_dir': orderDirInput.val(),
+				'voice_enabled': voiceEnabled.is(':checked'),
+				'voice_confirm': voiceConfirm.is(':checked'),
 			};
 		}
 
@@ -160,6 +188,9 @@
 			if(watch_config['order_dir']) {
 				orderDirInput.val(watch_config['order_dir']);
 			}
+
+			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
+			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
 		}
 
 		function display_alert(type, content) {
@@ -216,7 +247,7 @@
 
 			if(!watch_config['token']) {
 				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token`);
-				return''
+				return;
 			}
 
 			console.log(JSON.stringify(watch_config));
@@ -229,4 +260,3 @@
 </script>
 </body>
 </html>
-

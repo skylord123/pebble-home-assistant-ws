@@ -8,6 +8,9 @@ class FavoriteEntityStore {
 
     load() {
         this.favoriteEntities = Settings.data('favorite_entities');
+        if(!this.favoriteEntities) {
+            this.favoriteEntities = [];
+        }
     }
 
     save() {

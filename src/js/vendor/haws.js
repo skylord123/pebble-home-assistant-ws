@@ -12,6 +12,10 @@ class HAWS {
         this._subscriptions = [];
     }
 
+    isConnected() {
+        return this.connected;
+    }
+
     connect() {
         if(this.connected) {
             return false;
@@ -102,7 +106,7 @@ class HAWS {
     unsubscribe(msg_id) {
         let subscriptionIndex = this._subscriptions ? this._subscriptions.indexOf(msg_id) : -1;
         if(subscriptionIndex > -1) {
-            this._subscriptions.splice(msg_id, 1);
+            this._subscriptions.splice(subscriptionIndex, 1);
         }
         if(this._commands.has(msg_id)) {
             this._commands.delete(msg_id);
