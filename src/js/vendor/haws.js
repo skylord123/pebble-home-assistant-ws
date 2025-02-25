@@ -1,15 +1,22 @@
+/**
+ * Home Assistant Web Sockets
+ * @author https://github.com/skylord123
+ * @description Simple library to use the Home Assistant's WebSocket API
+ */
 class HAWS {
-    constructor(ha_url, token) {
+    constructor(ha_url, token, debug) {
         this.events = new EventTarget();
         this.connected = false;
+        this.reconnectTimeout = null;
+        this.selfDisconnect = false;
         this.ha_url = ha_url;
         this.token = token;
         this.ws = null;
-        this.call_ids = {};
         this._last_cmd_id = 0;
         this._commands = new Map();
-        this._queuedMessages = undefined;
         this._subscriptions = [];
+        this.reconnectInterval = 2500;
+        this.debug = debug || false;
     }
 
     isConnected() {
@@ -24,14 +31,29 @@ class HAWS {
         let that = this,
             ws_url = this.ha_url.replace('http','ws').replace(/\/+$/, '') + '/api/websocket';
         this.ws = new WebSocket(ws_url);
+        this.ws.onclose = (evt) => {
+            that.events.dispatchEvent(new CustomEvent("close", {detail: evt.detail}));
+            this.connected = false;
+            if (!this.selfDisconnect) {
+                console.log(`[HAWS] WebSocket closed: ${JSON.stringify(evt.detail, null, 4)}`);
+                this.startAttemptingToEstablishConnection();
+            }
+        }
 
         this.ws.onopen = function(evt){
             that.connected = true;
             that.events.dispatchEvent(new CustomEvent("open", {detail: evt.detail}));
+            if(that.debug) {
+                console.log(`[HAWS] WebSocket connected: ${JSON.stringify(evt.detail, null, 4)}`);
+            }
         };
 
         this.ws.onmessage = function(evt) {
             let data = JSON.parse(evt.data);
+            if(that.debug) {
+                // objects that are too big cause console.log to stop responding
+                console.log(`[HAWS] WebSocket msg: ${evt.data.length <= 2048 ? JSON.stringify(data, null, 4) : '<truncated>'}`);
+            }
             switch(data.type) {
                 case 'auth_required':
                     that.ws.send(
@@ -54,7 +76,9 @@ class HAWS {
                 case 'event':
                     if(typeof data.id !== 'undefined' && that._commands.has(data.id)) {
                         let callback = that._commands.get(data.id);
-                        callback[0](data);
+                        if(typeof callback[0] == "function") {
+                            callback[0](data);
+                        }
                     }
 
                     that.trigger("event", {detail: data});
@@ -67,7 +91,9 @@ class HAWS {
                         if (data.success) {
                             // ignore subscription success messages
                             if(that._subscriptions.indexOf(data.id) === -1) {
-                                callback[0](data);
+                                if(typeof callback[0] == "function") {
+                                    callback[0](data);
+                                }
                                 that._commands.delete(data.id);
                             }
                         } else {
@@ -84,10 +110,40 @@ class HAWS {
         };
 
         this.ws.onerror = function(evt) {
+            if(that.debug) {
+                console.log(`[HAWS] WebSocket error: ${JSON.stringify(evt.detail, null, 4)}`);
+            }
             that.ws.close();
             that.trigger("error", {detail: evt.detail});
             this.connected = false;
         };
+    }
+
+    startAttemptingToEstablishConnection() {
+        let that = this;
+        if(this.debug) {
+            console.log(`[HAWS] Reconnection attempt in ${this.reconnectInterval/1000}s`);
+        }
+
+        this.reconnectTimeout = setTimeout(function(){
+            if(that.debug) {
+                console.log(`[HAWS] Attempting connection`);
+            }
+            that.connect();
+        }, this.reconnectInterval);
+    }
+
+    disconnect() {
+        if(this.debug) {
+            console.log(`[HAWS] Disconnecting..`);
+        }
+        this.selfDisconnect = true;
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+        this.ws.close();
+
     }
 
     send(msg, successCallback, errorCallback) {
@@ -112,10 +168,15 @@ class HAWS {
             this._commands.delete(msg_id);
         }
 
-        this.send({
+        let data = {
             "type": "unsubscribe_events",
             "subscription": msg_id
-        });
+        };
+        this.send(data);
+
+        if(this.debug) {
+            console.log(`[HAWS] unsubscribe: ${JSON.stringify(data, null, 4)}`);
+        }
     }
 
     // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-trigger
@@ -133,6 +194,11 @@ class HAWS {
         // }
         let msg_id = this.send(data, successCallback, errorCallback);
         this._subscriptions.push(msg_id);
+
+        if(this.debug) {
+            console.log(`[HAWS] subscribe: ${JSON.stringify(data, null, 4)}`);
+        }
+
         return msg_id;
     }
 
@@ -168,9 +234,109 @@ class HAWS {
             data['target'] = target;
         }
 
-        console.log("CALLING SERVICE: " + JSON.stringify(data));
+        if(this.debug) {
+            console.log(`[HAWS] call_service: ${JSON.stringify(data, null, 4)}`);
+        }
 
         return this.send(data, successCallback, errorCallback);
+    }
+
+    /**
+     * Generic turn on service
+     * @param entity_id single entity_id or array of multiple
+     * @param successCallback
+     * @param errorCallback
+     */
+    turnOn(entity_id, successCallback, errorCallback) {
+        this.callService('homeassistant', 'turn_on', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    /**
+     * Generic turn off service
+     * @param entity_id single entity_id or array of multiple
+     * @param successCallback
+     * @param errorCallback
+     */
+    turnOff(entity_id, successCallback, errorCallback) {
+        this.callService('homeassistant', 'turn_off', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    /**
+     * Generic toggle service
+     * @param entity_id single entity_id or array of multiple
+     * @param successCallback
+     * @param errorCallback
+     */
+    toggle(entity_id, successCallback, errorCallback) {
+        this.callService('homeassistant', 'toggle', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerPlayPause(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'media_play_pause', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerPlay(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'media_play', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerPause(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'media_pause', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerNextTrack(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'media_next_track', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerPreviousTrack(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'media_previous_track', {}, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerSeek(entity_id, seek_position, successCallback, errorCallback) {
+        this.callService('media_player', 'media_seek', { seek_position: seek_position }, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerVolumeSet(entity_id, volume_level, successCallback, errorCallback) {
+        this.callService('media_player', 'volume_set', { volume_level: volume_level }, {entity_id: entity_id}, successCallback, errorCallback);
+    }
+
+    mediaPlayerVolumeUp(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'volume_up', {}, { entity_id: entity_id }, successCallback, errorCallback);
+    }
+
+    mediaPlayerVolumeDown(entity_id, successCallback, errorCallback) {
+        this.callService('media_player', 'volume_down', {}, { entity_id: entity_id }, successCallback, errorCallback);
+    }
+
+    mediaPlayerMute(entity_id, is_volume_muted, successCallback, errorCallback) {
+        this.callService('media_player', 'volume_mute', { is_volume_muted: is_volume_muted }, { entity_id: entity_id }, successCallback, errorCallback);
+    }
+
+    /**
+     *
+     * @docs https://www.home-assistant.io/integrations/climate/#service-climateset_temperature
+     * @param entity_id
+     * @param data - object with keys temperature, target_temp_high, target_temp_low, and hvac mode
+     * @param successCallback
+     * @param errorCallback
+     */
+    climateSetTemp(entity_id, data, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_temperature',
+            typeof data == 'object' ? data : {temperature: data},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetFanMode(entity_id, fan_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_temperature',
+            {fan_mode: fan_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
     }
 
     // https://developers.home-assistant.io/docs/api/websocket#fetching-services
@@ -219,7 +385,6 @@ class HAWS {
             this.connected = false;
             this._last_cmd_id = 0;
             this._commands = new Map();
-            this._queuedMessages = undefined;
             this._subscriptions = [];
         }
     }

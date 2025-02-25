@@ -3,12 +3,12 @@
   "capabilities": [
     "configurable"
   ],
-  "companyName": "texnofobix",
-  "longName": "Wrist Home-Assistant",
+  "companyName": "skylar.tech",
+  "longName": "Home Assistant WS",
   "resources": {
     "media": [
       {
-        "file": "images/WHA.png",
+        "file": "images/appicon.png",
         "menuIcon": true,
         "name": "IMAGE_MENU_ICON",
         "type": "bitmap"
@@ -27,6 +27,136 @@
         "file": "fonts/UbuntuMono-Regular.ttf",
         "name": "MONO_FONT_14",
         "type": "font"
+      },
+      {
+        "file": "images/icon_bulb.png",
+        "name": "IMAGE_ICON_BULB",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_bulb_on.png",
+        "name": "IMAGE_ICON_BULB_ON",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_sensor.png",
+        "name": "IMAGE_ICON_SENSOR",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_switch_on.png",
+        "name": "IMAGE_ICON_SWITCH_ON",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_switch_off.png",
+        "name": "IMAGE_ICON_SWITCH_OFF",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_temp.png",
+        "name": "IMAGE_ICON_TEMP",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_door_open.png",
+        "name": "IMAGE_ICON_DOOR_OPEN",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_door_closed.png",
+        "name": "IMAGE_ICON_DOOR_CLOSED",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_auto_on.png",
+        "name": "IMAGE_ICON_AUTO_ON",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_auto_off.png",
+        "name": "IMAGE_ICON_AUTO_OFF",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_blinds_open.png",
+        "name": "IMAGE_ICON_BLIND_OPEN",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_blinds_closed.png",
+        "name": "IMAGE_ICON_BLIND_CLOSED",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_unavailable.png",
+        "name": "IMAGE_ICON_UNAVAILABLE",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/micro_tick_active.png",
+        "name": "IMAGE_MICRO_TICK_ACTIVE",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/micro_tick.png",
+        "name": "IMAGE_MICRO_TICK",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/micro_brightness.png",
+        "name": "IMAGE_MICRO_BRIGHTNESS",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/micro_temp.png",
+        "name": "IMAGE_MICRO_TEMP",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/micro_tick_chalk.png",
+        "name": "IMAGE_MICRO_TICK_CHALK",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_media.png",
+        "name": "IMAGE_ICON_MEDIA",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_play.png",
+        "name": "IMAGE_ICON_PLAY",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_playpause.png",
+        "name": "IMAGE_ICON_PLAYPAUSE",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_volume_down.png",
+        "name": "IMAGE_ICON_VOLUME_DOWN",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_volume_up.png",
+        "name": "IMAGE_ICON_VOLUME_UP",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_unknown.png",
+        "name": "IMAGE_ICON_UNKNOWN",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_unmuted.png",
+        "name": "IMAGE_ICON_UNMUTED",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_muted.png",
+        "name": "IMAGE_ICON_MUTED",
+        "type": "bitmap"
       }
     ]
   },

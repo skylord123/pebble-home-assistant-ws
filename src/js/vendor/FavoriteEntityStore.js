@@ -1,4 +1,4 @@
-let Settings = require('settings');
+const Settings = require('settings');
 
 class FavoriteEntityStore {
     constructor() {
@@ -7,14 +7,14 @@ class FavoriteEntityStore {
     }
 
     load() {
-        this.favoriteEntities = Settings.data('favorite_entities');
+        this.favoriteEntities = Settings.option('favorite_entities');
         if(!this.favoriteEntities) {
             this.favoriteEntities = [];
         }
     }
 
     save() {
-        Settings.data('favorite_entities', this.favoriteEntities);
+        Settings.option('favorite_entities', this.favoriteEntities);
     }
 
     add(id) {

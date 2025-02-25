@@ -12,7 +12,6 @@ util2.copy(Emitter.prototype, WindowStack.prototype);
 WindowStack.prototype.init = function() {
   this.off();
   this._items = [];
-
 };
 
 WindowStack.prototype.top = function() {

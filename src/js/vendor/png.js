@@ -191,7 +191,7 @@ if (typeof require !== 'undefined') {
         }
         this.pos += 4;
         if (this.pos > this.data.length) {
-          throw new Error("Incomplete or corrupt PNG file");
+          throw new Error(`Incomplete or corrupt PNG file (${this.pos} > ${this.data.length})`);
         }
       }
       return;
