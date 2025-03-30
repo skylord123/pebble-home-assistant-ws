@@ -21,9 +21,13 @@ const appVersion = '0.6.3',
     sortJSON = require('vendor/sortjson'),
     Light = require('ui/light'),
     enableIcons = true,
-    sortObjectByKeys = (object) => Object.fromEntries(
-        Object.entries(object).sort(([k1], [k2]) => k1 < k2 ? -1 : 1)
-    ),
+    sortObjectByKeys = function(object) {
+        return Object.fromEntries(
+            Object.entries(object).sort(function(a, b) {
+                return a[0] < b[0] ? -1 : 1;
+            })
+        );
+    },
     cloneObject = function(obj) {
         if (null == obj || "object" != typeof obj) return obj;
         var copy = obj.constructor();
@@ -33,10 +37,10 @@ const appVersion = '0.6.3',
         return copy;
     },
     ucword = function( str ){
-        return str.replace(/^\w/, (s) => s.toUpperCase() );
+        return str.replace(/^\w/, function(s) { return s.toUpperCase() });
     },
     ucwords = function( str ){
-        return str.replace(/(\b\w)/g, (s) => s.toUpperCase() );
+        return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
     }
     colour = {
         highlight: Feature.color("#00AAFF", "#000000")
@@ -94,6 +98,7 @@ let ha_url = null,
     ha_order_dir = null,
     voice_enabled = null,
     voice_confirm = null,
+    voice_agent = null,
     domain_menu_enabled = null;
 
 function load_settings() {
@@ -106,6 +111,7 @@ function load_settings() {
     ha_order_dir = Settings.option('order_dir');
     voice_enabled = Settings.option('voice_enabled');
     voice_confirm = Settings.option('voice_confirm');
+    voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     domain_menu_enabled = true;
 }
 
@@ -210,100 +216,292 @@ function showMainMenu() {
     }
 }
 
-let conversation_id = null;
-function showDictationMenu() {
-    function uuidv4() { // https://stackoverflow.com/a/2117523/2434325
-        return ([1e7]+-1e3+-4e3+-8e3+-1e11).replace(/[018]/g, c =>
-            (c ^ crypto.getRandomValues(new Uint8Array(1))[0] & 15 >> c / 4).toString(16)
-        );
-    }
-
-    var dictationMenu = new UI.Card({
-        title: 'Voice Assistant:',
-        // titleColor: '',
-        // subtitle: 'How can I help you?',
-        // subtitleColor: '',
-        body: '...',
-        // bodyColor: 'white',
-        style: 'small', // small, large, or mono
-        scrollable: true,
-        // backgroundColor: '#5294e2'
-        backgroundColor: 'white'
+function showVoiceAgentMenu() {
+    // Create a menu for selecting voice agents
+    let voiceAgentMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Voice Agent'
+        }]
     });
 
-    function render_reply(data) {
-        // {"id":5,"type":"result","success":true,"result":{"response":{"speech":{"plain":{"speech":"Hello from Home Assistant.","extra_data":null}},"card":{},"language":"en","response_type":"action_done","data":{"targets":[],"success":[],"failed":[]}},"conversation_id":null}}
-        if(data.success) {
-            log_message("test1");
-            dictationMenu.title('Voice Assistant:');
-            log_message("test2");
-            dictationMenu.body(data.result.response.speech.plain.speech);
-            log_message("test3");
-        } else {
-            // error usually happens from almond not running
-            // {
-            //     "id": 5,
-            //     "type": "result",
-            //     "success": false,
-            //     "error": {
-            //         "code": "unknown_error",
-            //         "message": "Unknown error"
-            //     }
-            // }
-            // dictationMenu.title('Conversation Error');
-            // dictationMenu.body("Unknown error");
+    voiceAgentMenu.on('show', function() {
+        // Clear the menu
+        voiceAgentMenu.items(0, []);
+
+        // Get available agents from entity_registry_cache
+        const agents = [];
+
+        // Iterate through entity_registry_cache to find conversation entities
+        for (const entity_id in entity_registry_cache) {
+            if (entity_id.startsWith('conversation.')) {
+                // Extract the agent ID (part after "conversation.")
+                const agent_id = entity_id.split('.')[1];
+
+                // Create a friendly display name (capitalize and replace underscores)
+                const name = agent_id
+                    .split('_')
+                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                    .join(' ');
+
+                log_message("Found conversation agent " + entity_id);
+                agents.push({
+                    id: entity_id, // Store the FULL entity_id, not just the part after the dot
+                    name: name,
+                    entity_id: entity_id
+                });
+            }
         }
+
+        // Sort agents alphabetically by name
+        agents.sort((a, b) => a.name.localeCompare(b.name));
+
+        // If no agents found, add a default
+        if (agents.length === 0) {
+            agents.push({
+                id: 'conversation.home_assistant',
+                name: 'Home Assistant',
+                entity_id: 'conversation.home_assistant'
+            });
+        }
+
+        // Add each agent to the menu
+        for (let i = 0; i < agents.length; i++) {
+            const agent = agents[i];
+            voiceAgentMenu.item(0, i, {
+                title: agent.name,
+                subtitle: (voice_agent === agent.id) ? 'Current' : '',
+                agent_id: agent.id
+            });
+        }
+    });
+
+    voiceAgentMenu.on('select', function(e) {
+        // Save the selected agent
+        voice_agent = e.item.agent_id;
+
+        // Save to settings
+        Settings.option('voice_agent', voice_agent);
+
+        // Update the menu to show the currently selected agent
+        for (let i = 0; i < voiceAgentMenu.items(0).length; i++) {
+            const item = voiceAgentMenu.item(0, i);
+            voiceAgentMenu.item(0, i, {
+                title: item.title,
+                subtitle: (voice_agent === item.agent_id) ? 'Current' : '',
+                agent_id: item.agent_id
+            });
+        }
+
+        // Close the menu after a brief delay to show the selection
+        setTimeout(function() {
+            voiceAgentMenu.hide();
+        }, 500);
+    });
+
+    voiceAgentMenu.show();
+}
+
+let conversation_id = null;
+function showDictationMenu() {
+    // Create a window with a clean layout
+    var dictationWindow = new UI.Window({
+        backgroundColor: Feature.color('white', 'black')
+    });
+
+    // Combined conversation display - add this FIRST so it's behind other elements
+    var conversationText = new UI.Text({
+        position: new Vector(5, 25), // Start position below title bar
+        size: new Vector(Feature.resolution().x - 10, 300), // Make this much taller for scrolling
+        text: 'Tap to speak',
+        font: 'gothic-18',
+        color: Feature.color('black', 'white'),
+        textAlign: 'left'
+    });
+    dictationWindow.add(conversationText);
+
+    // Add a title bar AFTER the conversation text so it stays on top
+    var titleBar = new UI.Text({
+        position: new Vector(0, 0),
+        size: new Vector(Feature.resolution().x, 24),
+        text: 'Voice Assistant',
+        font: 'gothic-18-bold',
+        color: Feature.color('black', 'white'),
+        textAlign: 'center',
+        backgroundColor: colour.highlight
+    });
+    dictationWindow.add(titleBar);
+
+    // Status indicator (shows listening/processing state)
+    var statusIndicator = new UI.Circle({
+        position: new Vector(Feature.resolution().x / 2, Feature.resolution().y / 2),
+        radius: 8,
+        backgroundColor: Feature.color('#FF0000', 'white')
+    });
+
+    // Scrolling variables
+    var scrollPosition = 0;
+    var scrollStep = 25; // Roughly one line height
+    var maxScroll = 0;
+    var titleHeight = 24; // Height of the title bar
+
+    // Function to update scroll position while keeping text below title bar
+    function updateScroll() {
+        // Start at titleHeight when scrollPosition is 0
+        conversationText.position(new Vector(5, titleHeight - scrollPosition));
     }
 
-    function start_dictation() {
-        log_message('Starting dictation');
-        // Start a diction session and skip confirmation
-        dictationMenu.body('...');
+    // Animation for the status indicator
+    var animationTimer = null;
+    function startAnimation(color) {
+        var radius = 8;
+        var growing = true;
+
+        // Clear any existing animation
+        stopAnimation();
+
+        // Set the indicator color
+        statusIndicator.backgroundColor(color);
+        dictationWindow.add(statusIndicator);
+
+        // Start pulsing animation
+        animationTimer = setInterval(function() {
+            if (growing) {
+                radius += 1;
+                if (radius >= 12) growing = false;
+            } else {
+                radius -= 1;
+                if (radius <= 8) growing = true;
+            }
+            statusIndicator.radius(radius);
+        }, 300);
+    }
+
+    function stopAnimation() {
+        if (animationTimer) {
+            clearInterval(animationTimer);
+            animationTimer = null;
+        }
+        dictationWindow.remove(statusIndicator);
+    }
+
+    // Function to start a new dictation session
+    function startDictation() {
+        // Clear previous conversation
+        conversationText.text('Listening...');
+        scrollPosition = 0;
+        updateScroll();
+
+        // Start animation
+        startAnimation(Feature.color('#FF0000', 'white')); // Red for listening
+
+        // Start voice recognition
         Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
                 log_message('Transcription error: ' + e.err);
+                conversationText.text('Transcription error - Tap to retry');
+                stopAnimation();
                 return;
             }
 
-            log_message(`Conversation send: ${e.transcription}`);
+            // Display the user's query
+            log_message('User said: ' + e.transcription);
+            conversationText.text('Me: ' + e.transcription);
 
-            let body = {
+            // Update animation for processing
+            startAnimation(Feature.color('#0000FF', '#6666FF')); // Blue for processing
+
+            // Send request to Home Assistant
+            var body = {
                 "type": "conversation/process",
                 "text": e.transcription,
+                "agent_id": voice_agent  // Use the full entity_id directly
             };
-            if(conversation_id) {
+            if (conversation_id) {
                 body.conversation_id = conversation_id;
             }
+
+            log_message('Sending: ' + JSON.stringify(body));
             haws.send(body, function(data) {
-                if(!data.success) {
-                    log_message(`Conversation error: ${JSON.stringify(data, null, 4)}`);
+                if (!data.success) {
+                    log_message('Conversation error: ' + JSON.stringify(data));
+                    conversationText.text('Me: ' + e.transcription + '\nHA: Sorry, could not process your request.');
+                    // Calculate max scroll based on text length
+                    var lines = 2; // Basic count: 1 for user text, 1 for response
+                    maxScroll = Math.max(0, (lines * scrollStep) - 100); // 100 is approximate visible height
+                    stopAnimation();
                     return;
                 }
-                log_message(`Conversation receive: ${JSON.stringify(data, null, 4)}`);
 
-                render_reply(data);
-            }, function(data) {
-                render_reply(data);
+                // Display response
+                log_message('Received: ' + JSON.stringify(data));
+
+                // save the conversation_id so we can continue it
+                if(data.result.conversation_id) {
+                    conversation_id = data.result.conversation_id;
+                }
+
+                var reply = data.result.response.speech.plain.speech;
+                conversationText.text('Me: ' + e.transcription + '\nHA: ' + reply);
+
+                // Estimate number of lines based on text length and display width
+                var totalText = ('Me: ' + e.transcription + '\nHA: ' + reply);
+                var estCharsPerLine = 30; // Approximate
+                var estLines = Math.ceil(totalText.length / estCharsPerLine);
+
+                // Calculate max scroll
+                maxScroll = Math.max(0, (estLines * scrollStep) - 100); // 100 is approximate visible height
+
+                stopAnimation();
+            }, function(error) {
+                conversationText.text('Me: ' + e.transcription + '\nHA: Sorry, could not process your request.');
+                // Calculate max scroll based on text length
+                var lines = 2; // Basic count: 1 for user text, 1 for response
+                maxScroll = Math.max(0, (lines * scrollStep) - 100); // 100 is approximate visible height
+                stopAnimation();
             });
         });
     }
 
-    // start dictation when first opened
-    dictationMenu.on('show', function(e) {
-        log_message("fired dictationMenu show");
+    // When the window is shown, start dictation
+    dictationWindow.on('show', function() {
         Light.on('long');
-        start_dictation();
+        startDictation();
     });
 
-    // start dictation if button pressed
-    dictationMenu.on('click', function(e) {
-        log_message("fired dictationMenu click");
+    // If the window is hidden, clean up
+    dictationWindow.on('hide', function() {
         Light.on('auto');
-        start_dictation();
+        stopAnimation();
     });
 
-    dictationMenu.show();
+    // Handle button clicks
+    dictationWindow.on('click', 'select', function() {
+        startDictation();
+    });
+
+    // Add long-press handler for agent selection
+    dictationWindow.on('longClick', 'select', function() {
+        showVoiceAgentMenu();
+    });
+
+    // Implement scrolling
+    dictationWindow.on('click', 'up', function() {
+        scrollPosition = Math.max(0, scrollPosition - scrollStep);
+        updateScroll();
+    });
+
+    dictationWindow.on('click', 'down', function() {
+        scrollPosition = Math.min(maxScroll, scrollPosition + scrollStep);
+        updateScroll();
+    });
+
+    dictationWindow.show();
 }
+
 
 let areaMenu = null;
 function showAreaMenu() {
@@ -382,7 +580,7 @@ function showAreaMenu() {
 function showMediaPlayerEntity(entity_id) {
     let mediaPlayer = ha_state_dict[entity_id],
         subscription_msg_id = null;
-    if(!mediaPlayer){
+    if (!mediaPlayer) {
         throw new Error(`Media player entity ${entity_id} not found in ha_state_dict`);
     }
 
@@ -405,10 +603,8 @@ function showMediaPlayerEntity(entity_id) {
         BROWSE_MEDIA = "Browse Media",
         REPEAT_SET = "Repeat Set",
         GROUPING = "Grouping";
-    // get array of supported features
-    // Supported features: Pause,Seek,Volume Set,Volume Mute,Turn On,Turn Off,Play Media,Stop,Play,Browse Media
+    // Supported features helper remains the same.
     function supported_features(entity) {
-        // taken from https://github.com/home-assistant/core/blob/master/homeassistant/components/media_player/const.py
         let features = {
             1: PAUSE,
             2: SEEK,
@@ -430,11 +626,9 @@ function showMediaPlayerEntity(entity_id) {
             262144: REPEAT_SET,
             524288: GROUPING,
         };
-
         let supported = [];
-        for(let key in features) {
-            // console.log(features[key], !!(supported_features & key));
-            if(!!(entity.attributes.supported_features & key)) {
+        for (let key in features) {
+            if (!!(entity.attributes.supported_features & key)) {
                 supported.push(features[key]);
             }
         }
@@ -459,19 +653,21 @@ function showMediaPlayerEntity(entity_id) {
         }
     });
 
-    var titleFont = "gothic_24_bold"
-    var titleY = 3
+    // Calculate available width so the media name doesn't get hidden by the action bar.
+    var availableWidth = Feature.resolution().x - Feature.actionBarWidth() - 10;
+    var titleFont = "gothic_24_bold";
+    var titleY = 3;
     if (mediaPlayer.attributes.friendly_name.length > 17) {
-        titleFont = "gothic_14_bold"
-        titleY = 6
+        titleFont = "gothic_14_bold";
+        titleY = 6;
     }
     var mediaName = new UI.Text({
         text: mediaPlayer.attributes.friendly_name,
         color: Feature.color(colour.highlight, "black"),
         font: titleFont,
         position: Feature.round(new Vector(10, titleY), new Vector(5, titleY)),
-        size: Feature.round(new Vector(160, 30), new Vector(129, 30)),
-        textAlign: Feature.round("center", "left")
+        size: new Vector(availableWidth, 30),
+        textAlign: "left"  // left-align to avoid overlapping the action bar
     });
 
     var mediaIcon = new UI.Image({
@@ -483,7 +679,7 @@ function showMediaPlayerEntity(entity_id) {
     });
 
     let position_y = 30;
-    if(enableIcons) {
+    if (enableIcons) {
         var muteIcon = new UI.Image({
             position: new Vector(9, 82 + position_y),
             size: new Vector(20, 13),
@@ -500,8 +696,8 @@ function showMediaPlayerEntity(entity_id) {
         color: "black",
         font: "gothic_14",
         position: new Vector(Feature.resolution().x - Feature.actionBarWidth() - 30, 80 + position_y),
-        size: new Vector(30,30),
-        textAlign: Feature.round("center", "left")
+        size: new Vector(30, 30),
+        textAlign: "center"
     });
     var volume_progress_bg = new UI.Line({
         position: new Vector(10, 105 + position_y),
@@ -521,7 +717,7 @@ function showMediaPlayerEntity(entity_id) {
         strokeColor: 'black',
         strokeWidth: 3,
     });
-    volume_progress_fg.maxWidth = volume_progress_bg_inner.position2().x - volume_progress_bg_inner.position().x
+    volume_progress_fg.maxWidth = volume_progress_bg_inner.position2().x - volume_progress_bg_inner.position().x;
 
     position_y = -10;
     var position_label = new UI.Text({
@@ -529,8 +725,8 @@ function showMediaPlayerEntity(entity_id) {
         color: "black",
         font: "gothic_14",
         position: new Vector(Feature.resolution().x - Feature.actionBarWidth() - 80, 80 + position_y),
-        size: new Vector(80,30),
-        textAlign: Feature.round("center", "left")
+        size: new Vector(80, 30),
+        textAlign: "center"
     });
     var position_progress_bg = new UI.Line({
         position: new Vector(10, 105 + position_y),
@@ -550,16 +746,9 @@ function showMediaPlayerEntity(entity_id) {
         strokeColor: 'black',
         strokeWidth: 3,
     });
-    position_progress_fg.maxWidth = position_progress_bg_inner.position2().x - position_progress_bg_inner.position().x
+    position_progress_fg.maxWidth = position_progress_bg_inner.position2().x - position_progress_bg_inner.position().x;
 
     mediaControlWindow.on('show', function(){
-        // hide everything but the main menu and the mediaControlWindow
-        // for(let window of WindowStack._items) {
-        //     if(window._id() !== mediaControlWindow._id() && window._id() !== mainMenu._id()) {
-        //         window.hide();
-        //     }
-        // }
-
         Light.on('long');
         subscription_msg_id = haws.subscribe({
             "type": "subscribe_trigger",
@@ -568,8 +757,7 @@ function showMediaPlayerEntity(entity_id) {
                 "entity_id": entity_id,
             },
         }, function(data) {
-            // log_message(`Entity update for ${entity_id}`);
-            updateMediaWindow(data.event.variables.trigger.from_state);
+            updateMediaWindow(data.event.variables.trigger.to_state);
         }, function(error) {
             log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
         });
@@ -584,10 +772,10 @@ function showMediaPlayerEntity(entity_id) {
 
         mediaControlWindow.on('click', 'up', function(e) {
             haws.mediaPlayerVolumeUp(mediaPlayer.entity_id, function(d) {
-                if (d[0] != null) {
-                    updateMediaWindow(d[0]);
-                }
-            })
+                // if (d[0] != null) {
+                //     updateMediaWindow(d[0]);
+                // }
+            });
         });
 
         mediaControlWindow.on('longClick', 'up', function(e) {
@@ -596,35 +784,28 @@ function showMediaPlayerEntity(entity_id) {
 
         mediaControlWindow.on('click', 'down', function(e) {
             haws.mediaPlayerVolumeDown(mediaPlayer.entity_id, function(d) {
-                if (d[0] != null) {
-                    updateMediaWindow(d[0]);
-                }
-            })
+                // if (d[0] != null) {
+                //     updateMediaWindow(d[0]);
+                // }
+            });
         });
 
-        // mediaControlWindow.on('longClick', 'down', function(e) {
-        //     haws.mediaPlayerPreviousTrack(entity_id);
-        // });
-
         mediaControlWindow.on('longClick', 'down', function(e) {
-            console.log("Is muted: " + mediaPlayer.attributes.is_volume_muted)
             if (is_muted) {
-                haws.mediaPlayerMute(mediaPlayer.entity_id, false,function(d) {
-                    if (d[0] != null) {
-                        updateMediaWindow(d[0]);
-                    }
-                    is_muted = false
-
-                })
+                haws.mediaPlayerMute(mediaPlayer.entity_id, false, function(d) {
+                    // if (d[0] != null) {
+                    //     updateMediaWindow(d[0]);
+                    // }
+                    is_muted = false;
+                });
             } else {
-                haws.mediaPlayerMute(mediaPlayer.entity_id, true,function(d) {
-                    if (d[0] != null) {
-                        updateMediaWindow(d[0]);
-                    }
-                    is_muted = true
-                })
+                haws.mediaPlayerMute(mediaPlayer.entity_id, true, function(d) {
+                    // if (d[0] != null) {
+                    //     updateMediaWindow(d[0]);
+                    // }
+                    is_muted = true;
+                });
             }
-
         });
 
         updateMediaWindow(mediaPlayer);
@@ -632,7 +813,7 @@ function showMediaPlayerEntity(entity_id) {
 
     mediaControlWindow.on('close', function(){
         Light.on('auto');
-        if(subscription_msg_id) {
+        if (subscription_msg_id) {
             haws.unsubscribe(subscription_msg_id);
         }
     });
@@ -643,147 +824,63 @@ function showMediaPlayerEntity(entity_id) {
             parseInt(seconds / 60 % 60),
             parseInt(seconds % 60)
         ].join(separator ? separator : ':')
-            .replace(/\b(\d)\b/g, "0$1").replace(/^00\:/,'')
+            .replace(/\b(\d)\b/g, "0$1").replace(/^00\:/, '');
     }
 
     function updateMediaWindow(mediaPlayer) {
-        if (!mediaPlayer) { return }
-        log_message(`MEDIA PLAYER WINDOW UPDATE ${mediaPlayer.entity_id}: ${JSON.stringify(mediaPlayer, null, 4)}`)
+        if (!mediaPlayer) { return; }
+        log_message(`MEDIA PLAYER WINDOW UPDATE ${mediaPlayer.entity_id}: ${JSON.stringify(mediaPlayer, null, 4)}`);
 
-        let supported = supported_features(mediaPlayer);
-        // Pause,Seek,Volume Set,Volume Mute,Turn On,Turn Off,Play Media,Stop,Play,Browse Media
-        // {
-        //     "id": 10,
-        //     "type": "event",
-        //     "event": {
-        //         "variables": {
-        //             "trigger": {
-        //                 "id": "0",
-        //                 "idx": "0",
-        //                 "platform": "state",
-        //                 "entity_id": "media_player.chromecast1079",
-        //                 "from_state": {
-        //                     "entity_id": "media_player.chromecast1079",
-        //                     "state": "playing",
-        //                     "attributes": {
-        //                         "volume_level": 0.6799649000167847,
-        //                         "is_volume_muted": false,
-        //                         "media_content_id": "/library/metadata/23936",
-        //                         "media_content_type": "movie",
-        //                         "media_duration": 1713,
-        //                         "media_position": 1342,
-        //                         "media_position_updated_at": "2022-09-07T04:21:27.285808+00:00",
-        //                         "media_series_title": "Curb Your Enthusiasm",
-        //                         "media_season": 5,
-        //                         "media_episode": 3,
-        //                         "app_id": "9AC194DC",
-        //                         "app_name": "Plex",
-        //                         "entity_picture_local": null,
-        //                         "friendly_name": "Living Room TV",
-        //                         "supported_features": 152463
-        //                     },
-        //                     "last_changed": "2022-09-07T03:59:01.175838+00:00",
-        //                     "last_updated": "2022-09-07T04:21:27.286257+00:00",
-        //                     "context": {
-        //                         "id": "01GCB2WXKPPY49C08A1PDQPBS2",
-        //                         "parent_id": null,
-        //                         "user_id": null
-        //                     }
-        //                 },
-        //                 "to_state": {
-        //                     "entity_id": "media_player.chromecast1079",
-        //                     "state": "playing",
-        //                     "attributes": {
-        //                         "volume_level": 0.6799649000167847,
-        //                         "is_volume_muted": false,
-        //                         "media_content_id": "/library/metadata/23936",
-        //                         "media_content_type": "movie",
-        //                         "media_duration": 1713,
-        //                         "media_position": 1343,
-        //                         "media_position_updated_at": "2022-09-07T04:21:27.686309+00:00",
-        //                         "media_series_title": "Curb Your Enthusiasm",
-        //                         "media_season": 5,
-        //                         "media_episode": 3,
-        //                         "app_id": "9AC194DC",
-        //                         "app_name": "Plex",
-        //                         "entity_picture_local": null,
-        //                         "friendly_name": "Living Room TV",
-        //                         "supported_features": 152463
-        //                     },
-        //                     "last_changed": "2022-09-07T03:59:01.175838+00:00",
-        //                     "last_updated": "2022-09-07T04:21:27.686864+00:00",
-        //                     "context": {
-        //                         "id": "01GCB2WY06Y70YTYF4XBXFHG06",
-        //                         "parent_id": null,
-        //                         "user_id": null
-        //                     }
-        //                 },
-        //                 "for": null,
-        //                 "attribute": null,
-        //                 "description": "state of media_player.chromecast1079"
-        //             }
-        //         },
-        //         "context": {
-        //             "id": "01GCB2WY06Y70YTYF4XBXFHG06",
-        //             "parent_id": null,
-        //             "user_id": null
-        //         }
-        //     }
-        // }
+        // Update volume progress: use Math.round for smoother transition.
+        let newVolumeWidth = volume_progress_fg.maxWidth * mediaPlayer.attributes.volume_level;
+        let volume_x2 = volume_progress_fg.position().x + Math.round(newVolumeWidth);
+        volume_progress_fg.position2(new Vector(volume_x2, volume_progress_fg.position2().y));
 
-        if (enableIcons && Feature.rectangle()) {
-            //  mediaControlWindow.add(mediaIcon);
-            mediaControlWindow.add(muteIcon);
+        // Update volume label.
+        if (mediaPlayer.attributes.is_volume_muted) {
+            if (enableIcons) {
+                muteIcon.image("IMAGE_ICON_MUTED");
+            }
+            volume_label.text("");
+        } else {
+            if (enableIcons) {
+                muteIcon.image("IMAGE_ICON_UNMUTED");
+            }
+            if (mediaPlayer.attributes.volume_level) {
+                let percentage = Math.round(mediaPlayer.attributes.volume_level * 100);
+                volume_label.text(percentage === 100 ? 'MAX' : percentage + "%");
+            } else {
+                volume_label.text("0%");
+            }
         }
-        // if (extraData != null && extraData != "") {  mediaControlWindow.add(mediaExtraDeets); }
-        //  mediaControlWindow.add(sensorValue);
 
-        // volume stuff
-        mediaControlWindow.add(volume_progress_bg);
-        mediaControlWindow.add(volume_progress_bg_inner);
-        mediaControlWindow.add(volume_progress_fg);
-        mediaControlWindow.add(volume_label);
-        // progress stuff
-        mediaControlWindow.add(position_progress_bg);
-        mediaControlWindow.add(position_progress_bg_inner);
-        mediaControlWindow.add(position_progress_fg);
-        mediaControlWindow.add(position_label);
-        // media name
-        mediaControlWindow.add(mediaName);
+        // Update media position progress.
+        let positionRatio = (mediaPlayer.attributes.media_position && mediaPlayer.attributes.media_duration)
+            ? mediaPlayer.attributes.media_position / mediaPlayer.attributes.media_duration
+            : 0;
+        let newPositionWidth = position_progress_fg.maxWidth * positionRatio;
+        let position_x2 = position_progress_fg.position().x + Math.round(newPositionWidth);
+        position_progress_fg.position2(new Vector(position_x2, position_progress_fg.position2().y));
 
-        log_message(`POSITION DATA: ${volume_progress_fg.position().x} - ${parseInt(volume_progress_fg.maxWidth * mediaPlayer.attributes.volume_level)}`)
-        let volume_x2 = volume_progress_fg.position().x + parseInt(volume_progress_fg.maxWidth * mediaPlayer.attributes.volume_level)
-        // volume_progress_fg.animate('position2', new Vector(volume_x2, volume_progress_fg.position2().y), 500)
-        volume_progress_fg.position2(new Vector(volume_x2, volume_progress_fg.position2().y))
-
-        let position_x2 = position_progress_fg.position().x + parseInt(position_progress_fg.maxWidth * (mediaPlayer.attributes.media_position ? (mediaPlayer.attributes.media_position / mediaPlayer.attributes.media_duration) : 0))
-        // position_progress_fg.animate('position2', new Vector(position_x2, position_progress_fg.position2().y), 500)
-        position_progress_fg.position2(new Vector(position_x2, position_progress_fg.position2().y))
-
-        if(mediaPlayer.attributes.media_position && mediaPlayer.attributes.media_duration) {
+        // Update position label.
+        if (mediaPlayer.attributes.media_position && mediaPlayer.attributes.media_duration) {
             position_label.text(`${secToTime(mediaPlayer.attributes.media_position)} / ${secToTime(mediaPlayer.attributes.media_duration)}`);
         } else {
             position_label.text("-:-- / -:--");
         }
 
-        if (mediaPlayer.attributes.is_volume_muted) {
-            if(enableIcons) {
-                muteIcon.image("IMAGE_ICON_MUTED");
-            }
-            volume_label.text("");
-        } else {
-            if(enableIcons) {
-                muteIcon.image("IMAGE_ICON_UNMUTED");
-            }
-            if(mediaPlayer.attributes.volume_level) {
-                volume_label.text(
-                    mediaPlayer.attributes.volume_level === 1
-                    ? 'MAX'
-                    : mediaPlayer.attributes.volume_level.toFixed(2).toString().split(".")[1] + "%"
-                );
-            } else {
-                volume_label.text("0%");
-            }
+        // Add UI elements to the window.
+        mediaControlWindow.add(volume_progress_bg);
+        mediaControlWindow.add(volume_progress_bg_inner);
+        mediaControlWindow.add(volume_progress_fg);
+        mediaControlWindow.add(volume_label);
+        mediaControlWindow.add(position_progress_bg);
+        mediaControlWindow.add(position_progress_bg_inner);
+        mediaControlWindow.add(position_progress_fg);
+        mediaControlWindow.add(position_label);
+        mediaControlWindow.add(mediaName);
+        if (enableIcons && Feature.rectangle()) {
+            mediaControlWindow.add(muteIcon);
         }
     }
 
@@ -1336,7 +1433,7 @@ function showEntityList(entity_id_list = false, ignoreEntityCache = true, sortIt
                 let data_length = data.length;
                 device_status = data;
                 let menuIndex = 0;
-                const paginate = (array, pageSize, pageNumber) => {
+                function paginate(array, pageSize, pageNumber) {
                     return array.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
                 }
                 if(data.length > maxPageItems) {
