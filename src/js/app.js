@@ -147,7 +147,7 @@ function showMainMenu() {
             highlightBackgroundColor: 'white',
             highlightTextColor: 'black',
             sections: [{
-                title: 'Main Menu'
+                title: 'Home Assistant'
             }]
         });
 
@@ -159,7 +159,7 @@ function showMainMenu() {
             let i = 0;
             if(voice_enabled) {
                 mainMenu.item(0, i++, {
-                    title: "Voice Assistant",
+                    title: "Assistant",
                     // subtitle: thisDevice.attributes[arr[i]],
                     on_click: function(e) {
                         showDictationMenu();
@@ -175,9 +175,9 @@ function showMainMenu() {
                         // showEntityList();
                         if(domain_menu_enabled && favoriteEntities > 10) {
                             // only show domain list in favorites if there are more than 10 entities
-                            showEntityDomainsFromList(favoriteEntities);
+                            showEntityDomainsFromList(favoriteEntities, "Favorites");
                         } else {
-                            showEntityList(favoriteEntities, true, false);
+                            showEntityList("Favorites", favoriteEntities, true, false);
                         }
                     }
                 });
@@ -194,10 +194,18 @@ function showMainMenu() {
                 // subtitle: thisDevice.attributes[arr[i]],
                 on_click: function(e) {
                     if(domain_menu_enabled) {
-                        showEntityDomainsFromList(Object.keys(ha_state_dict));
+                        showEntityDomainsFromList(Object.keys(ha_state_dict), "All Entities");
                     } else {
-                        showEntityList();
+                        showEntityList("All Entities");
                     }
+                }
+            });
+
+            // Add Settings menu item at the bottom
+            mainMenu.item(0, i++, {
+                title: "Settings",
+                on_click: function(e) {
+                    showSettingsMenu();
                 }
             });
         });
@@ -216,6 +224,242 @@ function showMainMenu() {
     }
 }
 
+function showSettingsMenu() {
+    // Create a menu for settings
+    let settingsMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Settings'
+        }]
+    });
+
+    settingsMenu.on('show', function() {
+        // Clear the menu
+        settingsMenu.items(0, []);
+
+        settingsMenu.item(0, 0, {
+            title: "Assistant",
+            on_click: function(e) {
+                showVoiceAssistantSettings();
+            }
+        });
+
+        settingsMenu.item(0, 1, {
+            title: "Entity Settings",
+            on_click: function(e) {
+                showEntitySettings();
+            }
+        });
+    });
+
+    settingsMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    settingsMenu.show();
+}
+
+function showVoiceAssistantSettings() {
+    // Create a menu for assistant settings
+    let voiceSettingsMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Assistant Settings'
+        }]
+    });
+
+    function updateMenuItems() {
+        // Clear the menu
+        voiceSettingsMenu.items(0, []);
+
+        // Enabled setting
+        voiceSettingsMenu.item(0, 0, {
+            title: "Enabled",
+            subtitle: voice_enabled ? "True" : "False",
+            on_click: function(e) {
+                // Toggle voice_enabled setting
+                voice_enabled = !voice_enabled;
+                // Save to settings
+                Settings.option('voice_enabled', voice_enabled);
+                // Update menu
+                updateMenuItems();
+            }
+        });
+
+        // Agent setting
+        let agentName = "Home Assistant"; // Default
+        if (voice_agent) {
+            // Extract the agent name from voice_agent (which is an entity_id)
+            const agent_id = voice_agent.split('.')[1];
+            agentName = agent_id
+                .split('_')
+                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+                .join(' ');
+        }
+
+        voiceSettingsMenu.item(0, 1, {
+            title: "Agent",
+            subtitle: agentName,
+            on_click: function(e) {
+                showVoiceAgentMenu();
+            }
+        });
+
+        // Confirm Dictation setting
+        voiceSettingsMenu.item(0, 2, {
+            title: "Confirm Dictation",
+            subtitle: voice_confirm ? "True" : "False",
+            on_click: function(e) {
+                // Toggle voice_confirm setting
+                voice_confirm = !voice_confirm;
+                // Save to settings
+                Settings.option('voice_confirm', voice_confirm);
+                // Update menu
+                updateMenuItems();
+            }
+        });
+    }
+
+    voiceSettingsMenu.on('show', function() {
+        updateMenuItems();
+    });
+
+    voiceSettingsMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    voiceSettingsMenu.show();
+}
+
+function showEntitySettings() {
+    // Entity Settings Menu
+    function createEntitySettingsMenu() {
+        let entitySettingsMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Entity Settings'
+            }]
+        });
+
+        entitySettingsMenu.on('show', function() {
+            // Clear the menu
+            entitySettingsMenu.items(0, []);
+
+            // Add Order By setting
+            let orderByText = "Name";
+            if (ha_order_by === "entity_id") {
+                orderByText = "Entity ID";
+            } else if (ha_order_by === "attributes.last_updated") {
+                orderByText = "Last Updated";
+            }
+
+            entitySettingsMenu.item(0, 0, {
+                title: "Order By",
+                subtitle: orderByText,
+                on_click: function(e) {
+                    showOrderByMenu();
+                }
+            });
+
+            // Add Order Direction setting
+            entitySettingsMenu.item(0, 1, {
+                title: "Order Direction",
+                subtitle: ha_order_dir === "desc" ? "Descending" : "Ascending",
+                on_click: function(e) {
+                    // Toggle order direction
+                    ha_order_dir = ha_order_dir === "desc" ? "asc" : "desc";
+                    // Save to settings
+                    Settings.option('order_dir', ha_order_dir);
+
+                    // Update menu item
+                    entitySettingsMenu.item(0, 1, {
+                        title: "Order Direction",
+                        subtitle: ha_order_dir === "desc" ? "Descending" : "Ascending",
+                        on_click: e.item.on_click
+                    });
+                }
+            });
+        });
+
+        entitySettingsMenu.on('select', function(e) {
+            if(typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
+            }
+        });
+
+        return entitySettingsMenu;
+    }
+
+    // Order By Menu
+    function showOrderByMenu() {
+        let orderByMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Order By'
+            }]
+        });
+
+        orderByMenu.on('show', function() {
+            // Clear the menu
+            orderByMenu.items(0, []);
+
+            // Add options
+            orderByMenu.item(0, 0, {
+                title: "Name",
+                subtitle: ha_order_by === "attributes.friendly_name" ? "Current" : "",
+                value: "attributes.friendly_name"
+            });
+
+            orderByMenu.item(0, 1, {
+                title: "Entity ID",
+                subtitle: ha_order_by === "entity_id" ? "Current" : "",
+                value: "entity_id"
+            });
+
+            orderByMenu.item(0, 2, {
+                title: "Last Updated",
+                subtitle: ha_order_by === "attributes.last_updated" ? "Current" : "",
+                value: "attributes.last_updated"
+            });
+        });
+
+        orderByMenu.on('select', function(e) {
+            // Set the order by value
+            ha_order_by = e.item.value;
+
+            // Save to settings
+            Settings.option('order_by', ha_order_by);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                orderByMenu.hide();
+            }, 500);
+        });
+
+        orderByMenu.show();
+    }
+
+    // Create and show the entity settings menu
+    let entitySettingsMenu = createEntitySettingsMenu();
+    entitySettingsMenu.show();
+}
+
 function showVoiceAgentMenu() {
     // Create a menu for selecting voice agents
     let voiceAgentMenu = new UI.Menu({
@@ -232,11 +476,11 @@ function showVoiceAgentMenu() {
         // Clear the menu
         voiceAgentMenu.items(0, []);
 
-        // Get available agents from entity_registry_cache
+        // Get available agents from ha_state_dict
         const agents = [];
 
-        // Iterate through entity_registry_cache to find conversation entities
-        for (const entity_id in entity_registry_cache) {
+        // Iterate through ha_state_dict to find conversation entities
+        for (const entity_id in ha_state_dict) {
             if (entity_id.startsWith('conversation.')) {
                 // Extract the agent ID (part after "conversation.")
                 const agent_id = entity_id.split('.')[1];
@@ -327,7 +571,7 @@ function showDictationMenu() {
     var titleBar = new UI.Text({
         position: new Vector(0, 0),
         size: new Vector(Feature.resolution().x, 24),
-        text: 'Voice Assistant',
+        text: 'Assistant',
         font: 'gothic-18-bold',
         color: Feature.color('black', 'white'),
         textAlign: 'center',
@@ -391,19 +635,23 @@ function showDictationMenu() {
     // Function to start a new dictation session
     function startDictation() {
         // Clear previous conversation
-        conversationText.text('Listening...');
         scrollPosition = 0;
         updateScroll();
-
-        // Start animation
-        startAnimation(Feature.color('#FF0000', 'white')); // Red for listening
 
         // Start voice recognition
         Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
                 log_message('Transcription error: ' + e.err);
-                conversationText.text('Transcription error - Tap to retry');
+
                 stopAnimation();
+
+                // Check if the user aborted the dictation
+                if (e.err === "systemAborted") {
+                    return;
+                }
+
+                // Handle other errors
+                conversationText.text('Transcription error - Tap to retry');
                 return;
             }
 
@@ -424,7 +672,6 @@ function showDictationMenu() {
                 body.conversation_id = conversation_id;
             }
 
-            log_message('Sending: ' + JSON.stringify(body));
             haws.send(body, function(data) {
                 if (!data.success) {
                     log_message('Conversation error: ' + JSON.stringify(data));
@@ -439,12 +686,42 @@ function showDictationMenu() {
                 // Display response
                 log_message('Received: ' + JSON.stringify(data));
 
-                // save the conversation_id so we can continue it
-                if(data.result.conversation_id) {
+                // Store the conversation ID for future responses
+                if (data.result.conversation_id) {
                     conversation_id = data.result.conversation_id;
                 }
 
-                var reply = data.result.response.speech.plain.speech;
+                // Get the response type
+                var responseType = data.result.response.response_type;
+                var reply = "";
+
+                // Get the speech reply if available
+                if (data.result.response.speech &&
+                    (data.result.response.speech.plain || data.result.response.speech.ssml)) {
+                    reply = data.result.response.speech.plain ?
+                        data.result.response.speech.plain.speech :
+                        data.result.response.speech.ssml.speech;
+                }
+
+                // Check for errors and add error information
+                if (responseType === "error" && data.result.response.data && data.result.response.data.code) {
+                    var errorCode = data.result.response.data.code;
+                    var errorDesc = getErrorDescription(errorCode);
+
+                    // Add error description in parentheses if we have both a reply and error info
+                    if (reply) {
+                        reply += " (" + errorDesc + ")";
+                    } else {
+                        reply = "Error: " + errorDesc;
+                    }
+                }
+
+                // Default message if no reply is available
+                if (!reply) {
+                    reply = "Request processed, but no response was provided.";
+                }
+
+                // Set the conversation text
                 conversationText.text('Me: ' + e.transcription + '\nHA: ' + reply);
 
                 // Estimate number of lines based on text length and display width
@@ -457,13 +734,30 @@ function showDictationMenu() {
 
                 stopAnimation();
             }, function(error) {
-                conversationText.text('Me: ' + e.transcription + '\nHA: Sorry, could not process your request.');
+                // Network or other error
+                conversationText.text('Me: ' + e.transcription + '\nHA: Sorry, could not process your request (connection error).');
                 // Calculate max scroll based on text length
                 var lines = 2; // Basic count: 1 for user text, 1 for response
                 maxScroll = Math.max(0, (lines * scrollStep) - 100); // 100 is approximate visible height
                 stopAnimation();
             });
         });
+    }
+
+    // Helper function to get a user-friendly description for error codes
+    function getErrorDescription(errorCode) {
+        switch(errorCode) {
+            case "no_intent_match":
+                return "The input text did not match any intents";
+            case "no_valid_targets":
+                return "The targeted area, device, or entity does not exist";
+            case "failed_to_handle":
+                return "An unexpected error occurred while handling the intent";
+            case "unknown":
+                return "An error occurred outside the scope of intent processing";
+            default:
+                return "Unknown error: " + errorCode;
+        }
     }
 
     // When the window is shown, start dictation
@@ -523,15 +817,16 @@ function showAreaMenu() {
                 let area_name = area_registry_cache[area_id];
                 let areaObjects = getEntitiesForArea(area_name ? area_id : null);
                 let areaObjectCount = Object.keys(areaObjects).length;
+                let display_name = area_name ? area_name : 'Unassigned'
                 areaMenu.item(0, i++, {
-                    title: area_name ? area_name : 'Unassigned',
+                    title: display_name,
                     subtitle: `${areaObjectCount} ${areaObjectCount > 1 ? 'entities' : 'entity'}`,
                     on_click: function(e) {
                         // log_message(JSON.stringify(getEntitiesForArea(area_id)));
                         if(domain_menu_enabled) {
-                            showEntityDomainsFromList(Object.keys(areaObjects));
+                            showEntityDomainsFromList(Object.keys(areaObjects), display_name);
                         } else {
-                            showEntityList(Object.keys(areaObjects));
+                            showEntityList(display_name, Object.keys(areaObjects));
                         }
                     }
                 });
@@ -1267,7 +1562,7 @@ function showEntityMenu(entity_id) {
     showEntityMenu.show();
 }
 
-function showEntityDomainsFromList(entity_id_list) {
+function showEntityDomainsFromList(entity_id_list, title) {
     // setup entityListMenu if it hasn't been
     let domainListMenu = new UI.Menu({
         backgroundColor: 'black',
@@ -1275,7 +1570,7 @@ function showEntityDomainsFromList(entity_id_list) {
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'WHA'
+            title: title ? title : "Home Assistant"
         }]
     });
 
@@ -1304,13 +1599,14 @@ function showEntityDomainsFromList(entity_id_list) {
         // add domain entries into menu
         let i = 0;
         for(let domain in domainEntities) {
-            let entities = domainEntities[domain];
+            let entities = domainEntities[domain],
+                display_name = ucwords(domain.replace('_', ' '));
 
             domainListMenu.item(0, i++, {
-                title: ucwords(domain.replace('_', ' ')),
+                title: display_name,
                 subtitle: `${entities.length} ${entities.length > 1 ? 'entities' : 'entity'}`,
                 on_click: function(e) {
-                    showEntityList(entities);
+                    showEntityList(display_name, entities);
                 }
             });
         }
@@ -1329,7 +1625,7 @@ function showEntityDomainsFromList(entity_id_list) {
 }
 
 let entityListMenu = null;
-function showEntityList(entity_id_list = false, ignoreEntityCache = true, sortItems = true) {
+function showEntityList(title, entity_id_list = false, ignoreEntityCache = true, sortItems = true) {
     // setup entityListMenu if it hasn't been
     entityListMenu = new UI.Menu({
         backgroundColor: 'black',
@@ -1337,7 +1633,7 @@ function showEntityList(entity_id_list = false, ignoreEntityCache = true, sortIt
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'WHA'
+            title: title ? title : "Home Assistant"
         }]
     });
 
@@ -1409,10 +1705,11 @@ function showEntityList(entity_id_list = false, ignoreEntityCache = true, sortIt
             pageNumber = 1;
         }
 
-        entityListMenu.section(0).title = 'WHA - updating ...';
+        let prev_title = entityListMenu.section(0).title;
+        entityListMenu.section(0).title = 'updating ...';
         getStates(
             function(data) {
-                entityListMenu.section(0).title = 'WHA';
+                entityListMenu.section(0).title = prev_title;
                 entityListMenu.items(0, []); // clear items
                 // data = sortJSON(data, 'last_changed', 'desc');
                 if(entity_id_list) {
@@ -1516,7 +1813,7 @@ function showEntityList(entity_id_list = false, ignoreEntityCache = true, sortIt
                 //Vibe.vibrate('short');
             },
             function() {
-                entityListMenu.section(0).title = 'WHA - failed updating';
+                entityListMenu.section(0).title = 'HAWS - failed updating';
             },
             true
         );
