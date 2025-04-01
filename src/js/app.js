@@ -1181,6 +1181,492 @@ function showMediaPlayerEntity(entity_id) {
     mediaControlWindow.show();
 }
 
+function showLightEntity(entity_id) {
+    let light = ha_state_dict[entity_id],
+        subscription_msg_id = null;
+    if (!light) {
+        throw new Error(`Light entity ${entity_id} not found in ha_state_dict`);
+    }
+
+    // Handle unavailable state and determine supported features
+    let supportsRGB = light.attributes.hasOwnProperty("rgb_color");
+    let supportsTemperature = (light.state == "on" && light.attributes.hasOwnProperty("max_mireds"));
+    let is_on = light.state === "on";
+
+    // Set default brightness to 0 if not available
+    if (!light.attributes.hasOwnProperty("brightness")) {
+        light.attributes.brightness = 0;
+    }
+
+    // Calculate brightness percentage
+    let brightnessPerc = Math.ceil((100 / 255) * parseInt(light.attributes.brightness));
+
+    // Calculate mired step sizes for temperature if supported
+    let miredJumpSmall = 0;
+    let miredJumpLarge = 0;
+    if (supportsTemperature) {
+        let miredRange = light.attributes.max_mireds - light.attributes.min_mireds;
+        miredJumpSmall = Math.floor((miredRange / 100) * 10);
+        miredJumpLarge = Math.floor((miredRange / 100) * 30);
+    }
+
+    // Set initial active mode (0 = brightness, 1 = temperature)
+    let activeMode = 0;
+
+    // Create the light control window
+    let lightControlWindow = new UI.Window({
+        status: {
+            color: 'black',
+            backgroundColor: 'white',
+            seperator: "dotted"
+        },
+        backgroundColor: "white"
+    });
+
+    // Calculate available width, accounting for icon space
+    let iconWidth = 30; // Width for the icon including margin
+    let availableWidth = Feature.resolution().x - 10;
+    let nameWidth = enableIcons ? availableWidth - iconWidth : availableWidth;
+
+    let titleFont = "gothic_24_bold";
+    let titleY = 3;
+    if (light.attributes.friendly_name && light.attributes.friendly_name.length > 17) {
+        titleFont = "gothic_14_bold";
+        titleY = 6;
+    }
+
+    // Create UI elements
+    let lightName = new UI.Text({
+        text: light.attributes.friendly_name || light.entity_id,
+        color: Feature.color(colour.highlight, "black"),
+        font: titleFont,
+        position: Feature.round(new Vector(10, titleY), new Vector(5, titleY)),
+        size: new Vector(nameWidth, 30),
+        textAlign: "left"
+    });
+
+    let lightIcon;
+    if (enableIcons) {
+        lightIcon = new UI.Image({
+            position: Feature.round(new Vector(nameWidth + 5, titleY + 5), new Vector(nameWidth + 5, titleY + 5)),
+            size: new Vector(25, 25),
+            compositing: "set",
+            backgroundColor: 'transparent',
+            image: "IMAGE_ICON_BULB"
+        });
+    }
+
+    let stateLabel = new UI.Text({
+        text: is_on ? "On" : "Off",
+        color: "black",
+        font: "gothic_24_bold",
+        position: Feature.round(new Vector(10, 40), new Vector(5, 40)),
+        size: new Vector(availableWidth, 30),
+        textAlign: "left"
+    });
+
+    // Position values for controls
+    let brightY = 65;
+    let tempY = 110;
+    let indicatorOffset = 15; // Move labels to the right to avoid overlap with indicators
+
+    // Brightness control elements
+    let brightnessLabel = new UI.Text({
+        text: "Brightness:",
+        color: "black",
+        font: "gothic_18",
+        position: Feature.round(new Vector(10 + indicatorOffset, brightY), new Vector(5 + indicatorOffset, brightY)),
+        size: new Vector(availableWidth - indicatorOffset, 25),
+        textAlign: "left"
+    });
+
+    let brightnessValue = new UI.Text({
+        text: is_on ? `${brightnessPerc}%` : "Off",
+        color: "black",
+        font: "gothic_18",
+        position: Feature.round(new Vector(100, brightY), new Vector(95, brightY)),
+        size: new Vector(40, 25),
+        textAlign: "right"
+    });
+
+    // Brightness indicator triangle (initially shown since activeMode = 0)
+    let activeIndicator = {
+        line1: new UI.Line({
+            position: new Vector(5, brightY + 8),
+            position2: new Vector(12, brightY + 12),
+            strokeColor: colour.highlight,
+            strokeWidth: 2
+        }),
+        line2: new UI.Line({
+            position: new Vector(12, brightY + 12),
+            position2: new Vector(5, brightY + 16),
+            strokeColor: colour.highlight,
+            strokeWidth: 2
+        }),
+        line3: new UI.Line({
+            position: new Vector(5, brightY + 8),
+            position2: new Vector(5, brightY + 16),
+            strokeColor: colour.highlight,
+            strokeWidth: 2
+        }),
+        y: brightY // Store current y position
+    };
+
+    // Brightness progress bar - positioned right below the text
+    let brightness_bg = new UI.Line({
+        position: new Vector(10, brightY + 25),
+        position2: new Vector(134, brightY + 25),
+        strokeColor: 'black',
+        strokeWidth: 5,
+    });
+
+    let brightness_bg_inner = new UI.Line({
+        position: new Vector(10, brightY + 25),
+        position2: new Vector(134, brightY + 25),
+        strokeColor: 'white',
+        strokeWidth: 3,
+    });
+
+    let brightness_fg = new UI.Line({
+        position: new Vector(10, brightY + 25),
+        position2: new Vector(10, brightY + 25),
+        strokeColor: colour.highlight,
+        strokeWidth: 3,
+    });
+
+    // Calculate brightness bar fill
+    let brightness_max_width = 124; // 134 - 10
+    let brightness_fill_width = brightness_max_width * (brightnessPerc / 100);
+    brightness_fg.position2(new Vector(10 + brightness_fill_width, brightY + 25));
+
+    // Temperature control elements
+    let temperatureLabel = null;
+    let temperatureValue = null;
+    let temp_bg = null;
+    let temp_bg_inner = null;
+    let temp_fg = null;
+
+    if (supportsTemperature) {
+        temperatureLabel = new UI.Text({
+            text: "Color Temp:",
+            color: "black",
+            font: "gothic_18",
+            position: Feature.round(new Vector(10 + indicatorOffset, tempY), new Vector(5 + indicatorOffset, tempY)),
+            size: new Vector(availableWidth - indicatorOffset - 10, 25), // Leave more room for Kelvin values
+            textAlign: "left"
+        });
+
+        // Calculate Kelvin from mireds
+        let kelvinTemp = Math.round(1000000 / light.attributes.color_temp);
+
+        temperatureValue = new UI.Text({
+            text: is_on ? (light.attributes.color_temp ? `${kelvinTemp}K` : "NA") : "Off",
+            color: "black",
+            font: "gothic_18",
+            position: Feature.round(new Vector(100, tempY), new Vector(95, tempY)),
+            size: new Vector(40, 25),
+            textAlign: "right"
+        });
+
+        // Temperature progress bar - positioned right below the text
+        temp_bg = new UI.Line({
+            position: new Vector(10, tempY + 25),
+            position2: new Vector(134, tempY + 25),
+            strokeColor: 'black',
+            strokeWidth: 5,
+        });
+
+        temp_bg_inner = new UI.Line({
+            position: new Vector(10, tempY + 25),
+            position2: new Vector(134, tempY + 25),
+            strokeColor: 'white',
+            strokeWidth: 3,
+        });
+
+        temp_fg = new UI.Line({
+            position: new Vector(10, tempY + 25),
+            position2: new Vector(10, tempY + 25),
+            strokeColor: 'black', // Start with black, will change if activeMode = 1
+            strokeWidth: 3,
+        });
+
+        // Calculate temperature bar fill based on current value
+        if (light.attributes.color_temp) {
+            let temp_range = light.attributes.max_mireds - light.attributes.min_mireds;
+            let current_temp_pos = light.attributes.color_temp - light.attributes.min_mireds;
+            let temp_percentage = current_temp_pos / temp_range;
+            let temp_fill_width = brightness_max_width * temp_percentage;
+            temp_fg.position2(new Vector(10 + temp_fill_width, tempY + 25));
+        }
+    }
+
+    // Instructions at the bottom
+    let instructionsText = new UI.Text({
+        text: supportsTemperature ? "SELECT: Switch Mode | HOLD: Toggle" : "HOLD SELECT: Toggle",
+        color: "black",
+        font: "gothic_14",
+        position: new Vector(0, 150),
+        size: new Vector(Feature.resolution().x, 20),
+        textAlign: "center"
+    });
+
+    // Add elements to window
+    lightControlWindow.add(lightName);
+    if (enableIcons) {
+        lightControlWindow.add(lightIcon);
+    }
+    lightControlWindow.add(stateLabel);
+
+    // Add brightness elements
+    lightControlWindow.add(brightnessLabel);
+    lightControlWindow.add(brightnessValue);
+    lightControlWindow.add(activeIndicator.line1);
+    lightControlWindow.add(activeIndicator.line2);
+    lightControlWindow.add(activeIndicator.line3);
+    lightControlWindow.add(brightness_bg);
+    lightControlWindow.add(brightness_bg_inner);
+    lightControlWindow.add(brightness_fg);
+
+    // Add temperature elements if supported
+    if (supportsTemperature) {
+        lightControlWindow.add(temperatureLabel);
+        lightControlWindow.add(temperatureValue);
+        lightControlWindow.add(temp_bg);
+        lightControlWindow.add(temp_bg_inner);
+        lightControlWindow.add(temp_fg);
+    }
+
+    lightControlWindow.add(instructionsText);
+
+    // Function to update the UI with new entity state
+    function updateLightUI(newState) {
+        if (!newState) return;
+
+        log_message(`LIGHT WINDOW UPDATE ${newState.entity_id}: ${JSON.stringify(newState, null, 4)}`);
+        light = newState;
+        is_on = light.state === "on";
+
+        // Update brightness if available
+        if (is_on && light.attributes.hasOwnProperty("brightness")) {
+            brightnessPerc = Math.ceil((100 / 255) * parseInt(light.attributes.brightness));
+            brightness_fill_width = brightness_max_width * (brightnessPerc / 100);
+            brightness_fg.position2(new Vector(10 + brightness_fill_width, brightY + 25));
+            brightnessValue.text(`${brightnessPerc}%`);
+        } else {
+            brightnessValue.text(is_on ? "0%" : "Off");
+            brightness_fg.position2(new Vector(10, brightY + 25));
+        }
+
+        // Update temperature if supported
+        if (is_on && supportsTemperature && light.attributes.color_temp) {
+            let temp_range = light.attributes.max_mireds - light.attributes.min_mireds;
+            let current_temp_pos = light.attributes.color_temp - light.attributes.min_mireds;
+            let temp_percentage = current_temp_pos / temp_range;
+            let temp_fill_width = brightness_max_width * temp_percentage;
+            temp_fg.position2(new Vector(10 + temp_fill_width, tempY + 25));
+
+            // Calculate and display temperature in Kelvin
+            let kelvinTemp = Math.round(1000000 / light.attributes.color_temp);
+            temperatureValue.text(`${kelvinTemp}K`);
+        } else if (supportsTemperature) {
+            temperatureValue.text(is_on ? "NA" : "Off");
+            temp_fg.position2(new Vector(10, tempY + 25));
+        }
+
+        // Update state label
+        stateLabel.text(is_on ? "On" : "Off");
+    }
+
+    // Function to update active mode indicators
+    function updateModeIndicators() {
+        // Remove current indicator
+        lightControlWindow.remove(activeIndicator.line1);
+        lightControlWindow.remove(activeIndicator.line2);
+        lightControlWindow.remove(activeIndicator.line3);
+
+        // Update the Y position based on active mode
+        let newY = activeMode === 0 ? brightY : tempY;
+
+        // Create new indicator at the correct position
+        activeIndicator = {
+            line1: new UI.Line({
+                position: new Vector(5, newY + 8),
+                position2: new Vector(12, newY + 12),
+                strokeColor: colour.highlight,
+                strokeWidth: 2
+            }),
+            line2: new UI.Line({
+                position: new Vector(12, newY + 12),
+                position2: new Vector(5, newY + 16),
+                strokeColor: colour.highlight,
+                strokeWidth: 2
+            }),
+            line3: new UI.Line({
+                position: new Vector(5, newY + 8),
+                position2: new Vector(5, newY + 16),
+                strokeColor: colour.highlight,
+                strokeWidth: 2
+            }),
+            y: newY
+        };
+
+        // Add new indicator to window
+        lightControlWindow.add(activeIndicator.line1);
+        lightControlWindow.add(activeIndicator.line2);
+        lightControlWindow.add(activeIndicator.line3);
+
+        // Update progress bar colors
+        brightness_fg.strokeColor(activeMode === 0 ? colour.highlight : 'black');
+        if (supportsTemperature) {
+            temp_fg.strokeColor(activeMode === 1 ? colour.highlight : 'black');
+        }
+    }
+
+    // Function to update brightness
+    function updateBrightness(brightness) {
+        if (brightness < 0) brightness = 0;
+        if (brightness > 100) brightness = 100;
+
+        // Convert percentage to 0-255 value
+        let brightnessValue = Math.round((brightness / 100) * 255);
+
+        haws.callService(
+            "light",
+            "turn_on",
+            { brightness: brightnessValue },
+            { entity_id: light.entity_id },
+            function(data) {
+                log_message(`Updated brightness: ${brightness}%`);
+                // Not updating UI here since the subscription will handle it
+            },
+            function(error) {
+                log_message(`Error updating brightness: ${error}`);
+            }
+        );
+    }
+
+    // Function to update color temperature
+    function updateTemperature(temp) {
+        if (!supportsTemperature) return;
+
+        if (temp < light.attributes.min_mireds) temp = light.attributes.min_mireds;
+        if (temp > light.attributes.max_mireds) temp = light.attributes.max_mireds;
+
+        haws.callService(
+            "light",
+            "turn_on",
+            { color_temp: temp },
+            { entity_id: light.entity_id },
+            function(data) {
+                log_message(`Updated color temp: ${temp} mireds (${Math.round(1000000/temp)}K)`);
+                // Not updating UI here since the subscription will handle it
+            },
+            function(error) {
+                log_message(`Error updating color temp: ${error}`);
+            }
+        );
+    }
+
+    // Set up button handlers
+    lightControlWindow.on('show', function() {
+        Light.on('long');
+        subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            updateLightUI(data.event.variables.trigger.to_state);
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+    });
+
+    lightControlWindow.on('hide', function() {
+        Light.on('auto');
+        if (subscription_msg_id) {
+            haws.unsubscribe(subscription_msg_id);
+        }
+    });
+
+    // Handle button clicks
+    lightControlWindow.on('click', 'select', function() {
+        if (supportsTemperature) {
+            // Toggle between brightness and temperature modes
+            activeMode = activeMode === 0 ? 1 : 0;
+            updateModeIndicators();
+        }
+    });
+
+    lightControlWindow.on('longClick', 'select', function() {
+        // Toggle light on/off
+        haws.callService(
+            "light",
+            "toggle",
+            {},
+            { entity_id: light.entity_id },
+            function(data) {
+                log_message(`Toggled light: ${light.entity_id}`);
+                // Not updating UI here since the subscription will handle it
+            },
+            function(error) {
+                log_message(`Error toggling light: ${error}`);
+            }
+        );
+    });
+
+    lightControlWindow.on('click', 'up', function() {
+        if (!is_on) return;
+
+        if (activeMode === 0) {
+            // Increase brightness by 10%
+            updateBrightness(brightnessPerc + 10);
+        } else if (activeMode === 1 && supportsTemperature) {
+            // Increase color temperature by small increment
+            updateTemperature(light.attributes.color_temp + miredJumpSmall);
+        }
+    });
+
+    lightControlWindow.on('longClick', 'up', function() {
+        if (!is_on) return;
+
+        if (activeMode === 0) {
+            // Increase brightness by 25%
+            updateBrightness(brightnessPerc + 25);
+        } else if (activeMode === 1 && supportsTemperature) {
+            // Increase color temperature by large increment
+            updateTemperature(light.attributes.color_temp + miredJumpLarge);
+        }
+    });
+
+    lightControlWindow.on('click', 'down', function() {
+        if (!is_on) return;
+
+        if (activeMode === 0) {
+            // Decrease brightness by 10%
+            updateBrightness(brightnessPerc - 10);
+        } else if (activeMode === 1 && supportsTemperature) {
+            // Decrease color temperature by small increment
+            updateTemperature(light.attributes.color_temp - miredJumpSmall);
+        }
+    });
+
+    lightControlWindow.on('longClick', 'down', function() {
+        if (!is_on) return;
+
+        if (activeMode === 0) {
+            // Decrease brightness by 25%
+            updateBrightness(brightnessPerc - 25);
+        } else if (activeMode === 1 && supportsTemperature) {
+            // Decrease color temperature by large increment
+            updateTemperature(light.attributes.color_temp - miredJumpLarge);
+        }
+    });
+
+    lightControlWindow.show();
+}
+
 function showEntityMenu(entity_id) {
     let entity = ha_state_dict[entity_id];
     if(!entity){
@@ -1683,6 +2169,9 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         switch(entity_domain) {
             case 'media_player':
                 showMediaPlayerEntity(entity_id);
+                break;
+            case 'light':
+                showLightEntity(entity_id);
                 break;
             default:
                 showEntityMenu(entity_id);
