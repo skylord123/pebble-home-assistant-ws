@@ -1210,8 +1210,8 @@ function showLightEntity(entity_id) {
         miredJumpLarge = Math.floor((miredRange / 100) * 30);
     }
 
-    // Set initial active mode (0 = brightness, 1 = temperature)
-    let activeMode = 0;
+    // UI State variables
+    let mode = "select"; // "select" or "edit"
 
     // Create the light control window
     let lightControlWindow = new UI.Window({
@@ -1235,7 +1235,7 @@ function showLightEntity(entity_id) {
         titleY = 6;
     }
 
-    // Create UI elements
+    // Create UI elements for the header
     let lightName = new UI.Text({
         text: light.attributes.friendly_name || light.entity_id,
         color: Feature.color(colour.highlight, "black"),
@@ -1247,162 +1247,253 @@ function showLightEntity(entity_id) {
 
     let lightIcon;
     if (enableIcons) {
+        // Use different icons based on light state
         lightIcon = new UI.Image({
             position: Feature.round(new Vector(nameWidth + 5, titleY + 5), new Vector(nameWidth + 5, titleY + 5)),
             size: new Vector(25, 25),
             compositing: "set",
             backgroundColor: 'transparent',
-            image: "IMAGE_ICON_BULB"
+            image: is_on ? "IMAGE_ICON_BULB_ON" : "IMAGE_ICON_BULB"
         });
     }
 
-    let stateLabel = new UI.Text({
-        text: is_on ? "On" : "Off",
-        color: "black",
-        font: "gothic_24_bold",
-        position: Feature.round(new Vector(10, 40), new Vector(5, 40)),
-        size: new Vector(availableWidth, 30),
-        textAlign: "left"
+    // Build menu options dynamically
+    let menuItems = [];
+    let itemSpacing = 30; // Vertical spacing between items
+    let startY = 40; // Starting Y position for the first menu item
+
+    // Add Toggle option
+    menuItems.push({
+        id: "toggle",
+        title: "Toggle",
+        subtitle: is_on ? "On" : "Off",
+        y: startY,
+        action: function() {
+            // Toggle light on/off
+            haws.callService(
+                "light",
+                "toggle",
+                {},
+                { entity_id: light.entity_id },
+                function(data) {
+                    log_message(`Toggled light: ${light.entity_id}`);
+                },
+                function(error) {
+                    log_message(`Error toggling light: ${error}`);
+                }
+            );
+        }
     });
 
-    // Position values for controls
-    let brightY = 65;
-    let tempY = 110;
-    let indicatorOffset = 15; // Move labels to the right to avoid overlap with indicators
+    // Add Brightness option if light is on
+    menuItems.push({
+        id: "brightness",
+        title: "Brightness",
+        subtitle: is_on ? `${brightnessPerc}%` : "NA",
+        y: startY + itemSpacing,
+        value: brightnessPerc,
+        min: 0,
+        max: 100,
+        showBar: true,
+        action: function(direction) {
+            if (!is_on) return;
 
-    // Brightness control elements
-    let brightnessLabel = new UI.Text({
-        text: "Brightness:",
-        color: "black",
-        font: "gothic_18",
-        position: Feature.round(new Vector(10 + indicatorOffset, brightY), new Vector(5 + indicatorOffset, brightY)),
-        size: new Vector(availableWidth - indicatorOffset, 25),
-        textAlign: "left"
+            let change = direction === "up" ? 10 : -10;
+            if (mode === "edit" && Pebble.getActiveWatchInfo().platform !== "aplite") {
+                // Higher precision adjustments when in edit mode
+                change = direction === "up" ? 5 : -5;
+            }
+
+            let newValue = menuItems[selectedIndex].value + change;
+            if (newValue < 0) newValue = 0;
+            if (newValue > 100) newValue = 100;
+
+            // Don't update UI immediately, wait for server update
+
+            // Send command to Home Assistant
+            let brightnessValue = Math.round((newValue / 100) * 255);
+            haws.callService(
+                "light",
+                "turn_on",
+                { brightness: brightnessValue },
+                { entity_id: light.entity_id },
+                function(data) {
+                    log_message(`Updated brightness: ${newValue}%`);
+                },
+                function(error) {
+                    log_message(`Error updating brightness: ${error}`);
+                }
+            );
+        }
     });
 
-    let brightnessValue = new UI.Text({
-        text: is_on ? `${brightnessPerc}%` : "Off",
-        color: "black",
-        font: "gothic_18",
-        position: Feature.round(new Vector(100, brightY), new Vector(95, brightY)),
-        size: new Vector(40, 25),
-        textAlign: "right"
+    // Add Color Temperature option if supported
+    if (supportsTemperature) {
+        let tempValue = 0;
+        let kelvinTemp = 0;
+
+        if (light.attributes.color_temp) {
+            let temp_range = light.attributes.max_mireds - light.attributes.min_mireds;
+            let current_temp_pos = light.attributes.color_temp - light.attributes.min_mireds;
+            tempValue = Math.round((current_temp_pos / temp_range) * 100);
+            kelvinTemp = Math.round(1000000 / light.attributes.color_temp);
+        }
+
+        menuItems.push({
+            id: "temperature",
+            title: "Temp",
+            subtitle: is_on ? `${kelvinTemp}K` : "NA",
+            y: startY + (itemSpacing * 2),
+            value: light.attributes.color_temp,
+            min: light.attributes.min_mireds,
+            max: light.attributes.max_mireds,
+            kelvin: kelvinTemp,
+            showBar: true,
+            action: function(direction) {
+                if (!is_on) return;
+
+                let change = direction === "up" ? -miredJumpSmall : miredJumpSmall;
+                // Note: decreasing mireds = increasing Kelvin temperature
+
+                if (mode === "edit" && Pebble.getActiveWatchInfo().platform !== "aplite") {
+                    // Higher precision adjustments when in edit mode
+                    change = direction === "up" ? -Math.floor(miredJumpSmall/2) : Math.floor(miredJumpSmall/2);
+                }
+
+                let newValue = menuItems[selectedIndex].value + change;
+                if (newValue < menuItems[selectedIndex].min) newValue = menuItems[selectedIndex].min;
+                if (newValue > menuItems[selectedIndex].max) newValue = menuItems[selectedIndex].max;
+
+                // Don't update UI immediately, wait for server update
+
+                // Send command to Home Assistant
+                haws.callService(
+                    "light",
+                    "turn_on",
+                    { color_temp: newValue },
+                    { entity_id: light.entity_id },
+                    function(data) {
+                        log_message(`Updated color temp: ${newValue} mireds (${Math.round(1000000/newValue)}K)`);
+                    },
+                    function(error) {
+                        log_message(`Error updating color temp: ${error}`);
+                    }
+                );
+            }
+        });
+    }
+
+    // Add More option
+    menuItems.push({
+        id: "more",
+        title: "More Options",
+        subtitle: "",
+        y: startY + (itemSpacing * (supportsTemperature ? 3 : 2)),
+        action: function() {
+            showEntityMenu(entity_id);
+        }
     });
 
-    // Brightness indicator triangle (initially shown since activeMode = 0)
-    let activeIndicator = {
+    // Create UI elements for menu items
+    let menuTexts = [];
+    let menuSubtexts = [];
+    let menuBars = [];
+    let menuBarsFg = [];
+    let menuBoxes = [];
+
+    // Margins for selection box
+    let boxLeftMargin = 5;
+
+    // Create triangle pointer for selection - moved right by boxLeftMargin
+    let pointer = {
         line1: new UI.Line({
-            position: new Vector(5, brightY + 8),
-            position2: new Vector(12, brightY + 12),
+            position: new Vector(5 + boxLeftMargin, menuItems[0].y + 8),
+            position2: new Vector(12 + boxLeftMargin, menuItems[0].y + 12),
             strokeColor: colour.highlight,
             strokeWidth: 2
         }),
         line2: new UI.Line({
-            position: new Vector(12, brightY + 12),
-            position2: new Vector(5, brightY + 16),
+            position: new Vector(12 + boxLeftMargin, menuItems[0].y + 12),
+            position2: new Vector(5 + boxLeftMargin, menuItems[0].y + 16),
             strokeColor: colour.highlight,
             strokeWidth: 2
         }),
         line3: new UI.Line({
-            position: new Vector(5, brightY + 8),
-            position2: new Vector(5, brightY + 16),
+            position: new Vector(5 + boxLeftMargin, menuItems[0].y + 8),
+            position2: new Vector(5 + boxLeftMargin, menuItems[0].y + 16),
             strokeColor: colour.highlight,
             strokeWidth: 2
-        }),
-        y: brightY // Store current y position
+        })
     };
 
-    // Brightness progress bar - positioned right below the text
-    let brightness_bg = new UI.Line({
-        position: new Vector(10, brightY + 25),
-        position2: new Vector(134, brightY + 25),
-        strokeColor: 'black',
-        strokeWidth: 5,
-    });
+    // Create UI elements for each menu item
+    for (let i = 0; i < menuItems.length; i++) {
+        let item = menuItems[i];
 
-    let brightness_bg_inner = new UI.Line({
-        position: new Vector(10, brightY + 25),
-        position2: new Vector(134, brightY + 25),
-        strokeColor: 'white',
-        strokeWidth: 3,
-    });
-
-    let brightness_fg = new UI.Line({
-        position: new Vector(10, brightY + 25),
-        position2: new Vector(10, brightY + 25),
-        strokeColor: colour.highlight,
-        strokeWidth: 3,
-    });
-
-    // Calculate brightness bar fill
-    let brightness_max_width = 124; // 134 - 10
-    let brightness_fill_width = brightness_max_width * (brightnessPerc / 100);
-    brightness_fg.position2(new Vector(10 + brightness_fill_width, brightY + 25));
-
-    // Temperature control elements
-    let temperatureLabel = null;
-    let temperatureValue = null;
-    let temp_bg = null;
-    let temp_bg_inner = null;
-    let temp_fg = null;
-
-    if (supportsTemperature) {
-        temperatureLabel = new UI.Text({
-            text: "Color Temp:",
+        // Menu item text - moved right by boxLeftMargin
+        menuTexts[i] = new UI.Text({
+            text: item.title,
             color: "black",
-            font: "gothic_18",
-            position: Feature.round(new Vector(10 + indicatorOffset, tempY), new Vector(5 + indicatorOffset, tempY)),
-            size: new Vector(availableWidth - indicatorOffset - 10, 25), // Leave more room for Kelvin values
+            font: "gothic_18_bold",
+            position: new Vector(20 + boxLeftMargin, item.y),
+            size: new Vector(availableWidth - 50 - boxLeftMargin, 22),
             textAlign: "left"
         });
 
-        // Calculate Kelvin from mireds
-        let kelvinTemp = Math.round(1000000 / light.attributes.color_temp);
-
-        temperatureValue = new UI.Text({
-            text: is_on ? (light.attributes.color_temp ? `${kelvinTemp}K` : "NA") : "Off",
+        // Menu item subtext (value/status)
+        menuSubtexts[i] = new UI.Text({
+            text: item.subtitle,
             color: "black",
             font: "gothic_18",
-            position: Feature.round(new Vector(100, tempY), new Vector(95, tempY)),
-            size: new Vector(40, 25),
+            position: new Vector(availableWidth - 40, item.y),
+            size: new Vector(40, 22),
             textAlign: "right"
         });
 
-        // Temperature progress bar - positioned right below the text
-        temp_bg = new UI.Line({
-            position: new Vector(10, tempY + 25),
-            position2: new Vector(134, tempY + 25),
-            strokeColor: 'black',
-            strokeWidth: 5,
-        });
+        // Create progress bars for items that need them
+        if (item.showBar) {
+            // Background bar - moved right by boxLeftMargin
+            menuBars[i] = new UI.Line({
+                position: new Vector(20 + boxLeftMargin, item.y + 22),
+                position2: new Vector(134, item.y + 22),
+                strokeColor: 'black',
+                strokeWidth: 3,
+            });
 
-        temp_bg_inner = new UI.Line({
-            position: new Vector(10, tempY + 25),
-            position2: new Vector(134, tempY + 25),
-            strokeColor: 'white',
-            strokeWidth: 3,
-        });
+            // Foreground bar (filled portion) - moved right by boxLeftMargin
+            let barWidth = 0;
 
-        temp_fg = new UI.Line({
-            position: new Vector(10, tempY + 25),
-            position2: new Vector(10, tempY + 25),
-            strokeColor: 'black', // Start with black, will change if activeMode = 1
-            strokeWidth: 3,
-        });
+            if (item.id === "brightness") {
+                barWidth = (114 - boxLeftMargin) * (item.value / 100);
+            } else if (item.id === "temperature") {
+                let range = item.max - item.min;
+                let position = item.value - item.min;
+                barWidth = (114 - boxLeftMargin) * (position / range);
+            }
 
-        // Calculate temperature bar fill based on current value
-        if (light.attributes.color_temp) {
-            let temp_range = light.attributes.max_mireds - light.attributes.min_mireds;
-            let current_temp_pos = light.attributes.color_temp - light.attributes.min_mireds;
-            let temp_percentage = current_temp_pos / temp_range;
-            let temp_fill_width = brightness_max_width * temp_percentage;
-            temp_fg.position2(new Vector(10 + temp_fill_width, tempY + 25));
+            // Always use highlight color for progress bars
+            menuBarsFg[i] = new UI.Line({
+                position: new Vector(20 + boxLeftMargin, item.y + 22),
+                position2: new Vector(20 + boxLeftMargin + barWidth, item.y + 22),
+                strokeColor: colour.highlight,
+                strokeWidth: 3,
+            });
         }
+
+        // Create selection box (hidden initially)
+        // Adjusted with more equal margins on left and right
+        menuBoxes[i] = new UI.Rect({
+            position: new Vector(boxLeftMargin, item.y - 2),  // Left margin matches arrow position
+            size: new Vector(Feature.resolution().x - (boxLeftMargin * 2), 32),  // Equal margins on both sides
+            borderColor: 'black',
+            backgroundColor: 'transparent',
+            borderWidth: 3
+        });
     }
 
     // Instructions at the bottom
     let instructionsText = new UI.Text({
-        text: supportsTemperature ? "SELECT: Switch Mode | HOLD: Toggle" : "HOLD SELECT: Toggle",
+        text: "SELECT: Choose | BACK: Return",
         color: "black",
         font: "gothic_14",
         position: new Vector(0, 150),
@@ -1410,161 +1501,188 @@ function showLightEntity(entity_id) {
         textAlign: "center"
     });
 
+    // Track selected menu item
+    let selectedIndex = 0;
+
     // Add elements to window
     lightControlWindow.add(lightName);
     if (enableIcons) {
         lightControlWindow.add(lightIcon);
     }
-    lightControlWindow.add(stateLabel);
 
-    // Add brightness elements
-    lightControlWindow.add(brightnessLabel);
-    lightControlWindow.add(brightnessValue);
-    lightControlWindow.add(activeIndicator.line1);
-    lightControlWindow.add(activeIndicator.line2);
-    lightControlWindow.add(activeIndicator.line3);
-    lightControlWindow.add(brightness_bg);
-    lightControlWindow.add(brightness_bg_inner);
-    lightControlWindow.add(brightness_fg);
+    // Add menu item elements
+    for (let i = 0; i < menuItems.length; i++) {
+        lightControlWindow.add(menuTexts[i]);
+        lightControlWindow.add(menuSubtexts[i]);
 
-    // Add temperature elements if supported
-    if (supportsTemperature) {
-        lightControlWindow.add(temperatureLabel);
-        lightControlWindow.add(temperatureValue);
-        lightControlWindow.add(temp_bg);
-        lightControlWindow.add(temp_bg_inner);
-        lightControlWindow.add(temp_fg);
+        if (menuItems[i].showBar) {
+            lightControlWindow.add(menuBars[i]);
+            lightControlWindow.add(menuBarsFg[i]);
+        }
+
+        // Don't add boxes initially - they're only shown in edit mode
     }
 
+    // Add pointer
+    lightControlWindow.add(pointer.line1);
+    lightControlWindow.add(pointer.line2);
+    lightControlWindow.add(pointer.line3);
+
+    // Add instructions
     lightControlWindow.add(instructionsText);
 
-    // Function to update the UI with new entity state
-    function updateLightUI(newState) {
+    // Function to update pointer position and color
+    function updatePointerPosition() {
+        // Remove current pointer
+        lightControlWindow.remove(pointer.line1);
+        lightControlWindow.remove(pointer.line2);
+        lightControlWindow.remove(pointer.line3);
+
+        // Set pointer color based on mode
+        let pointerColor = mode === "select" ? colour.highlight : 'black';
+
+        // Create new pointer at the position of the selected item
+        pointer = {
+            line1: new UI.Line({
+                position: new Vector(5 + boxLeftMargin, menuItems[selectedIndex].y + 8),
+                position2: new Vector(12 + boxLeftMargin, menuItems[selectedIndex].y + 12),
+                strokeColor: pointerColor,
+                strokeWidth: 2
+            }),
+            line2: new UI.Line({
+                position: new Vector(12 + boxLeftMargin, menuItems[selectedIndex].y + 12),
+                position2: new Vector(5 + boxLeftMargin, menuItems[selectedIndex].y + 16),
+                strokeColor: pointerColor,
+                strokeWidth: 2
+            }),
+            line3: new UI.Line({
+                position: new Vector(5 + boxLeftMargin, menuItems[selectedIndex].y + 8),
+                position2: new Vector(5 + boxLeftMargin, menuItems[selectedIndex].y + 16),
+                strokeColor: pointerColor,
+                strokeWidth: 2
+            })
+        };
+
+        // Add new pointer to window
+        lightControlWindow.add(pointer.line1);
+        lightControlWindow.add(pointer.line2);
+        lightControlWindow.add(pointer.line3);
+    }
+
+    // Function to update UI based on entity state
+    function updateUI() {
+        // Update menu item subtexts and progress bars
+        for (let i = 0; i < menuItems.length; i++) {
+            let item = menuItems[i];
+
+            if (item.id === "toggle") {
+                menuSubtexts[i].text(is_on ? "On" : "Off");
+            } else if (item.id === "brightness") {
+                menuSubtexts[i].text(is_on ? `${item.value}%` : "NA");
+
+                if (item.showBar && menuBarsFg[i]) {
+                    // Update progress bar
+                    let barWidth = (114 - boxLeftMargin) * (item.value / 100);
+                    menuBarsFg[i].position2(new Vector(20 + boxLeftMargin + barWidth, item.y + 22));
+
+                    // Always use highlight color for progress bars
+                    menuBarsFg[i].strokeColor(colour.highlight);
+                }
+            } else if (item.id === "temperature") {
+                menuSubtexts[i].text(is_on ? `${item.kelvin}K` : "NA");
+
+                if (item.showBar && menuBarsFg[i]) {
+                    // Update progress bar
+                    let range = item.max - item.min;
+                    let position = item.value - item.min;
+                    let barWidth = (114 - boxLeftMargin) * (position / range);
+                    menuBarsFg[i].position2(new Vector(20 + boxLeftMargin + barWidth, item.y + 22));
+
+                    // Always use highlight color for progress bars
+                    menuBarsFg[i].strokeColor(colour.highlight);
+                }
+            }
+        }
+
+        // Update instructions based on mode
+        if (mode === "select") {
+            instructionsText.text("SELECT: Choose | BACK: Return");
+
+            // Hide all boxes
+            for (let i = 0; i < menuBoxes.length; i++) {
+                lightControlWindow.remove(menuBoxes[i]);
+            }
+        } else { // edit mode
+            instructionsText.text("UP/DOWN: Adjust | SELECT: Done");
+
+            // Show box for selected item only
+            lightControlWindow.add(menuBoxes[selectedIndex]);
+        }
+
+        // Update pointer color
+        updatePointerPosition();
+
+        // Update light icon based on current state
+        if (enableIcons && lightIcon) {
+            // Remove the current icon
+            lightControlWindow.remove(lightIcon);
+
+            // Create and add a new icon with the appropriate image
+            lightIcon = new UI.Image({
+                position: Feature.round(new Vector(nameWidth + 5, titleY + 5), new Vector(nameWidth + 5, titleY + 5)),
+                size: new Vector(25, 25),
+                compositing: "set",
+                backgroundColor: 'transparent',
+                image: is_on ? "IMAGE_ICON_BULB_ON" : "IMAGE_ICON_BULB"
+            });
+
+            lightControlWindow.add(lightIcon);
+        }
+    }
+
+    // Function to update with entity state from HA
+    function updateEntityState(newState) {
         if (!newState) return;
 
         log_message(`LIGHT WINDOW UPDATE ${newState.entity_id}: ${JSON.stringify(newState, null, 4)}`);
         light = newState;
         is_on = light.state === "on";
 
-        // Update brightness if available
+        // Update brightness
         if (is_on && light.attributes.hasOwnProperty("brightness")) {
             brightnessPerc = Math.ceil((100 / 255) * parseInt(light.attributes.brightness));
-            brightness_fill_width = brightness_max_width * (brightnessPerc / 100);
-            brightness_fg.position2(new Vector(10 + brightness_fill_width, brightY + 25));
-            brightnessValue.text(`${brightnessPerc}%`);
-        } else {
-            brightnessValue.text(is_on ? "0%" : "Off");
-            brightness_fg.position2(new Vector(10, brightY + 25));
+
+            // Find brightness menu item and update its value
+            for (let i = 0; i < menuItems.length; i++) {
+                if (menuItems[i].id === "brightness") {
+                    menuItems[i].value = brightnessPerc;
+                    break;
+                }
+            }
         }
 
-        // Update temperature if supported
+        // Update temperature
         if (is_on && supportsTemperature && light.attributes.color_temp) {
-            let temp_range = light.attributes.max_mireds - light.attributes.min_mireds;
-            let current_temp_pos = light.attributes.color_temp - light.attributes.min_mireds;
-            let temp_percentage = current_temp_pos / temp_range;
-            let temp_fill_width = brightness_max_width * temp_percentage;
-            temp_fg.position2(new Vector(10 + temp_fill_width, tempY + 25));
-
-            // Calculate and display temperature in Kelvin
-            let kelvinTemp = Math.round(1000000 / light.attributes.color_temp);
-            temperatureValue.text(`${kelvinTemp}K`);
-        } else if (supportsTemperature) {
-            temperatureValue.text(is_on ? "NA" : "Off");
-            temp_fg.position2(new Vector(10, tempY + 25));
+            // Find temperature menu item and update its value
+            for (let i = 0; i < menuItems.length; i++) {
+                if (menuItems[i].id === "temperature") {
+                    menuItems[i].value = light.attributes.color_temp;
+                    menuItems[i].kelvin = Math.round(1000000 / light.attributes.color_temp);
+                    break;
+                }
+            }
         }
 
-        // Update state label
-        stateLabel.text(is_on ? "On" : "Off");
-    }
-
-    // Function to update active mode indicators
-    function updateModeIndicators() {
-        // Remove current indicator
-        lightControlWindow.remove(activeIndicator.line1);
-        lightControlWindow.remove(activeIndicator.line2);
-        lightControlWindow.remove(activeIndicator.line3);
-
-        // Update the Y position based on active mode
-        let newY = activeMode === 0 ? brightY : tempY;
-
-        // Create new indicator at the correct position
-        activeIndicator = {
-            line1: new UI.Line({
-                position: new Vector(5, newY + 8),
-                position2: new Vector(12, newY + 12),
-                strokeColor: colour.highlight,
-                strokeWidth: 2
-            }),
-            line2: new UI.Line({
-                position: new Vector(12, newY + 12),
-                position2: new Vector(5, newY + 16),
-                strokeColor: colour.highlight,
-                strokeWidth: 2
-            }),
-            line3: new UI.Line({
-                position: new Vector(5, newY + 8),
-                position2: new Vector(5, newY + 16),
-                strokeColor: colour.highlight,
-                strokeWidth: 2
-            }),
-            y: newY
-        };
-
-        // Add new indicator to window
-        lightControlWindow.add(activeIndicator.line1);
-        lightControlWindow.add(activeIndicator.line2);
-        lightControlWindow.add(activeIndicator.line3);
-
-        // Update progress bar colors
-        brightness_fg.strokeColor(activeMode === 0 ? colour.highlight : 'black');
-        if (supportsTemperature) {
-            temp_fg.strokeColor(activeMode === 1 ? colour.highlight : 'black');
+        // Update menu item for toggle
+        for (let i = 0; i < menuItems.length; i++) {
+            if (menuItems[i].id === "toggle") {
+                menuItems[i].subtitle = is_on ? "On" : "Off";
+                break;
+            }
         }
-    }
 
-    // Function to update brightness
-    function updateBrightness(brightness) {
-        if (brightness < 0) brightness = 0;
-        if (brightness > 100) brightness = 100;
-
-        // Convert percentage to 0-255 value
-        let brightnessValue = Math.round((brightness / 100) * 255);
-
-        haws.callService(
-            "light",
-            "turn_on",
-            { brightness: brightnessValue },
-            { entity_id: light.entity_id },
-            function(data) {
-                log_message(`Updated brightness: ${brightness}%`);
-                // Not updating UI here since the subscription will handle it
-            },
-            function(error) {
-                log_message(`Error updating brightness: ${error}`);
-            }
-        );
-    }
-
-    // Function to update color temperature
-    function updateTemperature(temp) {
-        if (!supportsTemperature) return;
-
-        if (temp < light.attributes.min_mireds) temp = light.attributes.min_mireds;
-        if (temp > light.attributes.max_mireds) temp = light.attributes.max_mireds;
-
-        haws.callService(
-            "light",
-            "turn_on",
-            { color_temp: temp },
-            { entity_id: light.entity_id },
-            function(data) {
-                log_message(`Updated color temp: ${temp} mireds (${Math.round(1000000/temp)}K)`);
-                // Not updating UI here since the subscription will handle it
-            },
-            function(error) {
-                log_message(`Error updating color temp: ${error}`);
-            }
-        );
+        // Update UI
+        updateUI();
     }
 
     // Set up button handlers
@@ -1577,10 +1695,13 @@ function showLightEntity(entity_id) {
                 "entity_id": entity_id,
             },
         }, function(data) {
-            updateLightUI(data.event.variables.trigger.to_state);
+            updateEntityState(data.event.variables.trigger.to_state);
         }, function(error) {
             log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
+
+        // Initial UI update
+        updateUI();
     });
 
     lightControlWindow.on('hide', function() {
@@ -1592,75 +1713,59 @@ function showLightEntity(entity_id) {
 
     // Handle button clicks
     lightControlWindow.on('click', 'select', function() {
-        if (supportsTemperature) {
-            // Toggle between brightness and temperature modes
-            activeMode = activeMode === 0 ? 1 : 0;
-            updateModeIndicators();
-        }
-    });
-
-    lightControlWindow.on('longClick', 'select', function() {
-        // Toggle light on/off
-        haws.callService(
-            "light",
-            "toggle",
-            {},
-            { entity_id: light.entity_id },
-            function(data) {
-                log_message(`Toggled light: ${light.entity_id}`);
-                // Not updating UI here since the subscription will handle it
-            },
-            function(error) {
-                log_message(`Error toggling light: ${error}`);
+        if (mode === "select") {
+            // If on the "More" option, go to entity menu
+            if (menuItems[selectedIndex].id === "more") {
+                menuItems[selectedIndex].action();
+                return;
             }
-        );
+
+            // If on the "Toggle" option, toggle the light
+            if (menuItems[selectedIndex].id === "toggle") {
+                menuItems[selectedIndex].action();
+                return;
+            }
+
+            // For other options, enter edit mode
+            mode = "edit";
+            updateUI();
+        } else {
+            // Exit edit mode
+            mode = "select";
+            updateUI();
+        }
     });
 
     lightControlWindow.on('click', 'up', function() {
-        if (!is_on) return;
-
-        if (activeMode === 0) {
-            // Increase brightness by 10%
-            updateBrightness(brightnessPerc + 10);
-        } else if (activeMode === 1 && supportsTemperature) {
-            // Increase color temperature by small increment
-            updateTemperature(light.attributes.color_temp + miredJumpSmall);
-        }
-    });
-
-    lightControlWindow.on('longClick', 'up', function() {
-        if (!is_on) return;
-
-        if (activeMode === 0) {
-            // Increase brightness by 25%
-            updateBrightness(brightnessPerc + 25);
-        } else if (activeMode === 1 && supportsTemperature) {
-            // Increase color temperature by large increment
-            updateTemperature(light.attributes.color_temp + miredJumpLarge);
+        if (mode === "select") {
+            // Move selection up
+            if (selectedIndex > 0) {
+                selectedIndex--;
+                updatePointerPosition();
+            }
+        } else {
+            // Edit the value (up)
+            menuItems[selectedIndex].action("up");
         }
     });
 
     lightControlWindow.on('click', 'down', function() {
-        if (!is_on) return;
-
-        if (activeMode === 0) {
-            // Decrease brightness by 10%
-            updateBrightness(brightnessPerc - 10);
-        } else if (activeMode === 1 && supportsTemperature) {
-            // Decrease color temperature by small increment
-            updateTemperature(light.attributes.color_temp - miredJumpSmall);
+        if (mode === "select") {
+            // Move selection down
+            if (selectedIndex < menuItems.length - 1) {
+                selectedIndex++;
+                updatePointerPosition();
+            }
+        } else {
+            // Edit the value (down)
+            menuItems[selectedIndex].action("down");
         }
     });
 
-    lightControlWindow.on('longClick', 'down', function() {
-        if (!is_on) return;
-
-        if (activeMode === 0) {
-            // Decrease brightness by 25%
-            updateBrightness(brightnessPerc - 25);
-        } else if (activeMode === 1 && supportsTemperature) {
-            // Decrease color temperature by large increment
-            updateTemperature(light.attributes.color_temp - miredJumpLarge);
+    lightControlWindow.on('longClick', 'select', function() {
+        // Alternative toggle method (always available)
+        if (menuItems[0].id === "toggle") {
+            menuItems[0].action();
         }
     });
 
