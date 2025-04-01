@@ -9,12 +9,13 @@ const appVersion = '0.6.3',
     confVersion = '0.3.0',
     debugMode = true,
     debugHAWS = true,
+    hawsFaker = false,
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
     ajax = require('ajax'),
     Settings = require('settings'),
     Voice = require('ui/voice'),
-    HAWS = require('vendor/haws'),
+    HAWS = hawsFaker ? require('vendor/haws_faker') : require('vendor/haws'),
     FavoriteEntityStore = require('vendor/FavoriteEntityStore'),
     Feature = require('platform/feature'),
     Vector = require('vector2'),
@@ -1051,6 +1052,7 @@ function showMediaPlayerEntity(entity_id) {
                 "entity_id": entity_id,
             },
         }, function(data) {
+            console.log("TEST", JSON.stringify(data) );
             updateMediaWindow(data.event.variables.trigger.to_state);
         }, function(error) {
             log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
@@ -2656,7 +2658,7 @@ function main() {
     load_settings();
 
     // if config not complete display message
-    if(!ha_url || !ha_password) {
+    if( !hawsFaker && ( !ha_url || !ha_password ) ) {
         loadingCard.subtitle('Setup required');
         loadingCard.body("Configure from the Pebble app");
         return;
