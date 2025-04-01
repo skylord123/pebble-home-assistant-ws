@@ -45,7 +45,6 @@ const appVersion = '0.6.3',
     colour = {
         highlight: Feature.color("#00AAFF", "#000000")
     };
-const {_getDataKey} = require("./settings");
 
 // only call console.log if debug is enabled
 function log_message(msg, extra) {
@@ -820,7 +819,7 @@ function showAreaMenu() {
                 let display_name = area_name ? area_name : 'Unassigned'
                 areaMenu.item(0, i++, {
                     title: display_name,
-                    subtitle: `${areaObjectCount} ${areaObjectCount > 1 ? 'entities' : 'entity'}`,
+                    subtitle: `${areaObjectCount} ${(areaObjectCount > 1 || areaObjectCount === 0) ? 'entities' : 'entity'}`,
                     on_click: function(e) {
                         // log_message(JSON.stringify(getEntitiesForArea(area_id)));
                         if(domain_menu_enabled) {
