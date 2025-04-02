@@ -10,6 +10,7 @@ const appVersion = '0.6.3',
     debugMode = true,
     debugHAWS = false,
     hawsFaker = false,
+    DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
     ajax = require('ajax'),
@@ -101,7 +102,8 @@ let ha_url = null,
     voice_confirm = null,
     voice_agent = null,
     domain_menu_enabled = null,
-    timeline_token = null;
+    timeline_token = null,
+    ignore_domains = null;
 
 function load_settings() {
     // Set some variables for quicker access
@@ -115,6 +117,23 @@ function load_settings() {
     voice_confirm = Settings.option('voice_confirm');
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     domain_menu_enabled = true;
+
+    // Handle ignore_domains
+    ignore_domains = Settings.option('ignore_domains');
+    if (ignore_domains === undefined || ignore_domains === null) {
+        // Use defaults if not set
+        ignore_domains = DEFAULT_IGNORE_DOMAINS;
+    } else if (!Array.isArray(ignore_domains)) {
+        // Handle case where it might be a string or other type
+        try {
+            ignore_domains = JSON.parse(ignore_domains);
+        } catch(e) {
+            log_message('Error parsing ignore_domains, using defaults: ' + e);
+            ignore_domains = DEFAULT_IGNORE_DOMAINS;
+        }
+    }
+    // If ignore_domains is an empty array, respect user's choice to show all domains
+    log_message('Ignore domains: ' + JSON.stringify(ignore_domains));
 
     Pebble.getTimelineToken(function(token) {
         log_message('Timeline token: ' + token);
@@ -266,6 +285,13 @@ function showSettingsMenu() {
                 showEntitySettings();
             }
         });
+
+        settingsMenu.item(0, 2, {
+            title: "Domain Filters",
+            on_click: function(e) {
+                showDomainFilterSettings();
+            }
+        });
     });
 
     settingsMenu.on('select', function(e) {
@@ -275,6 +301,82 @@ function showSettingsMenu() {
     });
 
     settingsMenu.show();
+}
+
+function showDomainFilterSettings() {
+    // Create a menu for domain filter settings
+    let domainFilterMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Ignored Domains'
+        }]
+    });
+
+    domainFilterMenu.on('show', function() {
+        // Clear the menu
+        domainFilterMenu.items(0, []);
+
+        // Add heading with instruction
+        domainFilterMenu.item(0, 0, {
+            title: "Long press to remove",
+            subtitle: "Settings > Configure"
+        });
+
+        // Add each ignored domain to the menu
+        let index = 1;
+        if (ignore_domains && ignore_domains.length > 0) {
+            for (let i = 0; i < ignore_domains.length; i++) {
+                domainFilterMenu.item(0, index++, {
+                    title: ignore_domains[i],
+                    domain: ignore_domains[i],
+                    is_domain: true
+                });
+            }
+        } else {
+            domainFilterMenu.item(0, index++, {
+                title: "No domains ignored",
+                subtitle: "Using all domains"
+            });
+        }
+
+        // Add reset option
+        domainFilterMenu.item(0, index, {
+            title: "Reset to defaults",
+            on_click: function(e) {
+                // Reset to defaults
+                ignore_domains = DEFAULT_IGNORE_DOMAINS; // create a copy
+                Settings.option('ignore_domains', ignore_domains);
+                domainFilterMenu.hide(); // Close menu and reopen to refresh
+                showDomainFilterSettings();
+            }
+        });
+    });
+
+    // Handle long press to remove a domain
+    domainFilterMenu.on('longSelect', function(e) {
+        if (e.item.is_domain) {
+            const domain = e.item.domain;
+            const index = ignore_domains.indexOf(domain);
+            if (index !== -1) {
+                ignore_domains.splice(index, 1);
+                Settings.option('ignore_domains', ignore_domains);
+                // Refresh the menu
+                domainFilterMenu.hide();
+                showDomainFilterSettings();
+            }
+        }
+    });
+
+    domainFilterMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    domainFilterMenu.show();
 }
 
 function showVoiceAssistantSettings() {
@@ -562,8 +664,67 @@ function showVoiceAgentMenu() {
     voiceAgentMenu.show();
 }
 
+
+// Add this new function to check for conversation agents
+function checkConversationAgents() {
+    // Get available agents from ha_state_dict
+    const agents = [];
+    let foundCurrentAgent = false;
+
+    // Iterate through ha_state_dict to find conversation entities
+    for (const entity_id in ha_state_dict) {
+        if (entity_id.startsWith('conversation.')) {
+            // Add to agents list
+            agents.push(entity_id);
+
+            // Check if the currently set agent is available
+            if (entity_id === voice_agent) {
+                foundCurrentAgent = true;
+            }
+        }
+    }
+
+    // If no agents found or current agent not available, reset to default or first available
+    if (agents.length === 0) {
+        // No conversation entities at all - disable voice functionality
+        voice_agent = null;
+        Settings.option('voice_agent', null);
+        log_message("No conversation entities found - voice assistant disabled");
+    } else if (!foundCurrentAgent || !voice_agent) {
+        // Try to use home_assistant as default
+        if (agents.includes('conversation.home_assistant')) {
+            voice_agent = 'conversation.home_assistant';
+        } else {
+            // Use the first available agent
+            voice_agent = agents[0];
+        }
+
+        // Save the selected agent
+        Settings.option('voice_agent', voice_agent);
+        log_message("Set default voice agent to: " + voice_agent);
+    }
+
+    return agents.length > 0;
+}
+
 let conversation_id = null;
 function showDictationMenu() {
+    if (!checkConversationAgents()) {
+        // No conversation entities available - show error
+        let errorCard = new UI.Card({
+            title: 'Assistant Error',
+            body: 'No conversation entities found on this Home Assistant instance.',
+            scrollable: true
+        });
+
+        errorCard.on('click', 'back', function() {
+            errorCard.hide();
+        });
+
+        errorCard.show();
+        return;
+    }
+
     // Create a window with a clean layout
     var dictationWindow = new UI.Window({
         backgroundColor: Feature.color('white', 'black')
@@ -775,13 +936,11 @@ function showDictationMenu() {
 
     // When the window is shown, start dictation
     dictationWindow.on('show', function() {
-        Light.on('long');
         startDictation();
     });
 
     // If the window is hidden, clean up
     dictationWindow.on('hide', function() {
-        Light.on('auto');
         stopAnimation();
     });
 
@@ -1083,7 +1242,6 @@ function showMediaPlayerEntity(entity_id) {
     position_progress_fg.maxWidth = position_progress_bg_inner.position2().x - position_progress_bg_inner.position().x;
 
     mediaControlWindow.on('show', function(){
-        Light.on('long');
         subscription_msg_id = haws.subscribe({
             "type": "subscribe_trigger",
             "trigger": {
@@ -1147,7 +1305,6 @@ function showMediaPlayerEntity(entity_id) {
     });
 
     mediaControlWindow.on('close', function(){
-        Light.on('auto');
         if (subscription_msg_id) {
             haws.unsubscribe(subscription_msg_id);
         }
@@ -1728,7 +1885,6 @@ function showLightEntity(entity_id) {
 
     // Set up button handlers
     lightControlWindow.on('show', function() {
-        Light.on('long');
         subscription_msg_id = haws.subscribe({
             "type": "subscribe_trigger",
             "trigger": {
@@ -1746,7 +1902,6 @@ function showLightEntity(entity_id) {
     });
 
     lightControlWindow.on('hide', function() {
-        Light.on('auto');
         if (subscription_msg_id) {
             haws.unsubscribe(subscription_msg_id);
         }
@@ -2217,6 +2372,12 @@ function showEntityDomainsFromList(entity_id_list, title) {
             }
 
             let [domain] = entity_id.split('.');
+
+            // Skip domains that should be ignored
+            if (ignore_domains && ignore_domains.indexOf(domain) !== -1) {
+                continue;
+            }
+
             if(domain in domainEntities) {
                 domainEntities[domain].push(entity_id);
             } else {
@@ -2251,8 +2412,6 @@ function showEntityDomainsFromList(entity_id_list, title) {
     });
 
     domainListMenu.show();
-
-    // @todo update main function to use this instead of showEntityList (but make it configurable)
 }
 
 let entityListMenu = null;
@@ -2345,11 +2504,19 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
             function(data) {
                 entityListMenu.section(0).title = prev_title;
                 entityListMenu.items(0, []); // clear items
-                // data = sortJSON(data, 'last_changed', 'desc');
+
+                // Filter out ignored domains
+                if (ignore_domains && ignore_domains.length > 0) {
+                    data = data.filter(function(element) {
+                        const [domain] = element.entity_id.split('.');
+                        return ignore_domains.indexOf(domain) === -1;
+                    });
+                }
+
                 if(entity_id_list) {
                     data = data.filter(function(element, index) {
                         return entity_id_list.indexOf(element.entity_id) > -1;
-                    })
+                    });
                 }
 
                 if(sortItems) {
@@ -2420,7 +2587,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         let entity = entity_registry_cache[data.event.variables.trigger.to_state.entity_id];
                         log_message("ENTITY GETTING UPDATE:" + JSON.stringify(entity));
                         if(!entity) {
-                            log_message('FALED TO FIND ENTITY ' + data.event.variables.trigger.to_state.entity_id);
+                            log_message('FAILED TO FIND ENTITY ' + data.event.variables.trigger.to_state.entity_id);
                             return;
                         }
                         entityListMenu.item(0, renderedEntityIds[entity.entity_id], {

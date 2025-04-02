@@ -149,6 +149,36 @@
 			</div>
 		</div>
 
+		<div class="row">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
+						Domain Filters
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="col-12">
+								<p>Domains listed here will be hidden from the interface</p>
+							</div>
+							<div class="col-8">
+								<input type="text" class="form-control" id="domain-input" placeholder="Enter domain to ignore">
+							</div>
+							<div class="col-4">
+								<button type="button" class="btn btn-primary" id="add-domain-btn">Add</button>
+							</div>
+						</div>
+						<div class="row mt-3">
+							<div class="col-12">
+								<ul id="ignore-domains-list" class="list-group">
+									<!-- Domains will be added here -->
+								</ul>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<div class="row" id="favorites-container" style="display:none;">
 			<div class="col-12 mt-3">
 				<div class="card">
@@ -403,7 +433,10 @@
 				voiceEnabled = $('#ha-voice-enabled'),
 				voiceConfirm = $('#ha-voice-confirm'),
 				timelineSection = $('#timeline-section'),
-				timelineTokenDisplay = $('#timeline-token-display');
+				timelineTokenDisplay = $('#timeline-token-display'),
+				domainInput = $('#domain-input'),
+				addDomainBtn = $('#add-domain-btn'),
+				ignoreDomainsDiv = $('#ignore-domains-list');
 
 		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
@@ -426,6 +459,9 @@
 				'voice_confirm': voiceConfirm.is(':checked'),
 				'favorite_entities': $("#favorites-sortable li").map(function(a,b){
 					return $(b).data('entity-id');
+				}).toArray(),
+				'ignore_domains': $("#ignore-domains-list li").map(function(a,b){
+					return $(b).data('domain');
 				}).toArray()
 			};
 
@@ -506,6 +542,46 @@
 				favorites_container.show();
 			}
 
+			if(watch_config['ignore_domains'] && Array.isArray(watch_config['ignore_domains'])) {
+				let html = '';
+				for(let domain of watch_config['ignore_domains']) {
+					html += `
+            <li class="list-group-item" data-domain="${domain}">
+                ${domain}
+                <a href="javascript:void(0)" class="text-danger float-end remove-domain"><i class="fa fa-trash"></i></a>
+            </li>`;
+				}
+				ignoreDomainsDiv.html(html);
+
+				$(".remove-domain").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					if(confirm(`Are you sure you want to remove ${parent.data('domain')} from your ignore list?`)) {
+						parent.remove();
+					}
+				});
+			} else {
+				// Display default domains if no custom ones are set
+				let defaultDomains = ["assist_satellite", "tts"];
+				let html = '';
+				for(let domain of defaultDomains) {
+					html += `
+            <li class="list-group-item" data-domain="${domain}">
+                ${domain}
+                <a href="javascript:void(0)" class="text-danger float-end remove-domain"><i class="fa fa-trash"></i></a>
+            </li>`;
+				}
+				ignoreDomainsDiv.html(html);
+
+				$(".remove-domain").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					if(confirm(`Are you sure you want to remove ${parent.data('domain')} from your ignore list?`)) {
+						parent.remove();
+					}
+				});
+			}
+
 			// Set up the timeline token section if it exists
 			if(watch_config['timeline_token'] && typeof watch_config['timeline_token'] === 'string') {
 				timelineTokenDisplay.text(watch_config['timeline_token']);
@@ -536,6 +612,46 @@
 			console.error("Error in restoreFormValues", e);
 			watch_config = {};
 		}
+
+		addDomainBtn.click(function(e) {
+			e.preventDefault();
+			let domain = domainInput.val().trim().toLowerCase();
+
+			if(!domain) {
+				return;
+			}
+
+			// Check if domain already exists
+			let exists = false;
+			$("#ignore-domains-list li").each(function() {
+				if($(this).data('domain') === domain) {
+					exists = true;
+					return false;
+				}
+			});
+
+			if(exists) {
+				alert(`Domain "${domain}" is already in the ignore list.`);
+				return;
+			}
+
+			// Add the domain to the list
+			let newItem = $(`
+        <li class="list-group-item" data-domain="${domain}">
+            ${domain}
+            <a href="javascript:void(0)" class="text-danger float-end remove-domain"><i class="fa fa-trash"></i></a>
+        </li>`);
+
+			newItem.find('.remove-domain').on('click', function(e) {
+				e.preventDefault();
+				if(confirm(`Are you sure you want to remove ${domain} from your ignore list?`)) {
+					newItem.remove();
+				}
+			});
+
+			ignoreDomainsDiv.append(newItem);
+			domainInput.val('').focus();
+		});
 
 		filterInput.change(function(e){
 			if($(this).val() == 'all') {
