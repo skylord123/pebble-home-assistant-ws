@@ -8,7 +8,7 @@
 const appVersion = '0.6.3',
     confVersion = '0.3.0',
     debugMode = true,
-    debugHAWS = true,
+    debugHAWS = false,
     hawsFaker = false,
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
@@ -1227,7 +1227,7 @@ function showLightEntity(entity_id) {
     }
 
     // Calculate brightness percentage
-    let brightnessPerc = Math.ceil((100 / 255) * parseInt(light.attributes.brightness));
+    let brightnessPerc = Math.round((100 / 255) * parseInt(light.attributes.brightness));
 
     // Calculate mired step sizes for temperature if supported
     let miredJumpSmall = 0;
@@ -1496,7 +1496,7 @@ function showLightEntity(entity_id) {
             } else if (item.id === "temperature") {
                 let range = item.max - item.min;
                 let position = item.value - item.min;
-                barWidth = (114 - boxLeftMargin) * (position / range);
+                barWidth = (114 - boxLeftMargin) * (1 - (position / range));
             }
 
             // Always use highlight color for progress bars
@@ -1678,7 +1678,7 @@ function showLightEntity(entity_id) {
 
         // Update brightness
         if (is_on && light.attributes.hasOwnProperty("brightness")) {
-            brightnessPerc = Math.ceil((100 / 255) * parseInt(light.attributes.brightness));
+            brightnessPerc = Math.round((100 / 255) * parseInt(light.attributes.brightness));
 
             // Find brightness menu item and update its value
             for (let i = 0; i < menuItems.length; i++) {
