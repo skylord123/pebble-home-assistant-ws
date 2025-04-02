@@ -44,7 +44,8 @@ const appVersion = '0.6.3',
         return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
     }
     colour = {
-        highlight: Feature.color("#00AAFF", "#000000")
+        highlight: Feature.color("#00AAFF", "#000000"),
+        highlight_text: Feature.color("black", "white")
     };
 
 // only call console.log if debug is enabled
@@ -99,7 +100,8 @@ let ha_url = null,
     voice_enabled = null,
     voice_confirm = null,
     voice_agent = null,
-    domain_menu_enabled = null;
+    domain_menu_enabled = null,
+    timeline_token = null;
 
 function load_settings() {
     // Set some variables for quicker access
@@ -113,6 +115,14 @@ function load_settings() {
     voice_confirm = Settings.option('voice_confirm');
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     domain_menu_enabled = true;
+
+    Pebble.getTimelineToken(function(token) {
+        log_message('Timeline token: ' + token);
+        timeline_token = token;
+        Settings.option("timeline_token", token);
+    }, function(error) {
+        console.log('Error getting timeline token: ' + error);
+    });
 }
 
 let haws = null,
@@ -147,10 +157,11 @@ function showMainMenu() {
             highlightBackgroundColor: 'white',
             highlightTextColor: 'black',
             sections: [{
-                title: 'Home Assistant'
+                title: 'Home Assistant',
+                backgroundColor: colour.highlight,
+                textColor: colour.highlight_text
             }]
         });
-
 
         mainMenu.on('show', function(){
             mainMenu.items(0, []);
@@ -232,7 +243,9 @@ function showSettingsMenu() {
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'Settings'
+            title: 'Settings',
+            backgroundColor: colour.highlight,
+            textColor: colour.highlight_text
         }]
     });
 

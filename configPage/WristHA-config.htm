@@ -1,10 +1,23 @@
 <!doctype html>
 <html lang="en">
 <head>
-	<title>Wrist HomeAssistant Config</title>
+	<title>Home Assistant WS Config</title>
+	<script src="https://use.fontawesome.com/3a291b24ff.js"></script>
+	<link rel="stylesheet" href="//code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
 	<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-gH2yIJqKdNHPEq0n4Mqa/HGKIhSkIHeL5AyhkYV8i59U5AR6csBvApHHNl/vI1Bx" crossorigin="anonymous">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+		<symbol id="check-circle-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+		</symbol>
+		<symbol id="info-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+		</symbol>
+		<symbol id="exclamation-triangle-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+		</symbol>
+	</svg>
 	<style>
 		button .test-btn-loading {
 			display: none;
@@ -19,6 +32,16 @@
 		button[disabled] .btn-text {
 			display: none;
 		}
+
+		.timeline-token {
+			word-break: break-all;
+			background-color: #f8f9fa;
+			padding: 10px;
+			border-radius: 4px;
+			border: 1px solid #ced4da;
+			margin-bottom: 10px;
+			cursor: text;
+		}
 	</style>
 </head>
 <body>
@@ -26,7 +49,7 @@
 	<form id="watch-config-form">
 		<div class="row">
 			<div class="col-12 text-center">
-				<h3 class="font-weight-bold mt-3">Wrist HomeAssistant Config</h3>
+				<h3 class="font-weight-bold mt-3">Home Assistant WS Config</h3>
 
 				<p style="text-align:center;">Updated by <a href="https://skylar.tech" target="_blank">Skylar Sadlier</a></p>
 			</div>
@@ -125,10 +148,48 @@
 				</div>
 			</div>
 		</div>
-		<!--        <div class="form-check col-12">-->
-		<!--            <input type="checkbox" class="form-check-input" id="exampleCheck1">-->
-		<!--            <label class="form-check-label" for="exampleCheck1">Check me out</label>-->
-		<!--        </div>-->
+
+		<div class="row" id="favorites-container" style="display:none;">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
+						Favorite Entities
+					</div>
+					<div class="card-body">
+						<div class="alert alert-info" role="alert">
+							<svg class="bi flex-shrink-0 me-2" width="24" height="24" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+							Drag and drop items to reorder them
+						</div>
+
+						<ul id="favorites-sortable" class="list-group">
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- New Timeline Section -->
+		<div class="row" id="timeline-section" style="display:none;">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
+						Timeline
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="col-12">
+								<label for="timeline-token-display">Timeline Token</label>
+								<div class="timeline-token" id="timeline-token-display" onclick="selectTimelineToken()"></div>
+								<button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyTimelineToken()">
+									<i class="fa fa-clipboard"></i> Copy to Clipboard
+								</button>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<div class="col-12 mt-3 mb-3">
 			<button type="button" class="btn btn-primary" id="save-btn">Save</button>
 		</div>
@@ -138,7 +199,201 @@
 <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/@popperjs/core@2.11.5/dist/umd/popper.min.js" integrity="sha384-Xe+8cL9oJa6tN/veChSP7q+mnSPaj5Bcu9mPX5F5xIGE0DVittaqT5lorf0EI7Vk" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.2.0/dist/js/bootstrap.min.js" integrity="sha384-ODmDIVzN+pFdexxHEHFBQH3/9/vQ9uori45z4JjnFsRydbmQbmL5t1tQ0culUzyK" crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
 <script type="text/javascript">
+	// Functions for Timeline Token
+	function selectTimelineToken() {
+		const tokenElement = document.getElementById('timeline-token-display');
+		const selection = window.getSelection();
+		const range = document.createRange();
+		range.selectNodeContents(tokenElement);
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+
+	function copyTimelineToken() {
+		selectTimelineToken();
+		document.execCommand('copy');
+		// Show a temporary message
+		const copyBtn = document.querySelector('#timeline-section button');
+		const originalHTML = copyBtn.innerHTML;
+		copyBtn.innerHTML = '<i class="fa fa-check"></i> Copied!';
+		setTimeout(() => {
+			copyBtn.innerHTML = originalHTML;
+		}, 2000);
+	}
+
+	(function ($) {
+
+		// Detect touch support
+		$.support.touch = 'ontouchend' in document;
+
+		// Ignore browsers without touch support
+		if (!$.support.touch) {
+			return;
+		}
+
+		var mouseProto = $.ui.mouse.prototype,
+				_mouseInit = mouseProto._mouseInit,
+				_mouseDestroy = mouseProto._mouseDestroy,
+				touchHandled;
+
+		/**
+		 * Simulate a mouse event based on a corresponding touch event
+		 * @param {Object} event A touch event
+		 * @param {String} simulatedType The corresponding mouse event
+		 */
+		function simulateMouseEvent (event, simulatedType) {
+
+			// Ignore multi-touch events
+			if (event.originalEvent.touches.length > 1) {
+				return;
+			}
+
+			event.preventDefault();
+
+			var touch = event.originalEvent.changedTouches[0],
+					simulatedEvent = document.createEvent('MouseEvents');
+
+			// Initialize the simulated mouse event using the touch event's coordinates
+			simulatedEvent.initMouseEvent(
+					simulatedType,    // type
+					true,             // bubbles
+					true,             // cancelable
+					window,           // view
+					1,                // detail
+					touch.screenX,    // screenX
+					touch.screenY,    // screenY
+					touch.clientX,    // clientX
+					touch.clientY,    // clientY
+					false,            // ctrlKey
+					false,            // altKey
+					false,            // shiftKey
+					false,            // metaKey
+					0,                // button
+					null              // relatedTarget
+			);
+
+			// Dispatch the simulated event to the target element
+			event.target.dispatchEvent(simulatedEvent);
+		}
+
+		/**
+		 * Handle the jQuery UI widget's touchstart events
+		 * @param {Object} event The widget element's touchstart event
+		 */
+		mouseProto._touchStart = function (event) {
+
+			var self = this;
+
+			// Ignore the event if another widget is already being handled
+			if (touchHandled || !self._mouseCapture(event.originalEvent.changedTouches[0])) {
+				return;
+			}
+
+			// Set the flag to prevent other widgets from inheriting the touch event
+			touchHandled = true;
+
+			// Track movement to determine if interaction was a click
+			self._touchMoved = false;
+
+			// Simulate the mouseover event
+			simulateMouseEvent(event, 'mouseover');
+
+			// Simulate the mousemove event
+			simulateMouseEvent(event, 'mousemove');
+
+			// Simulate the mousedown event
+			simulateMouseEvent(event, 'mousedown');
+		};
+
+		/**
+		 * Handle the jQuery UI widget's touchmove events
+		 * @param {Object} event The document's touchmove event
+		 */
+		mouseProto._touchMove = function (event) {
+
+			// Ignore event if not handled
+			if (!touchHandled) {
+				return;
+			}
+
+			// Interaction was not a click
+			this._touchMoved = true;
+
+			// Simulate the mousemove event
+			simulateMouseEvent(event, 'mousemove');
+		};
+
+		/**
+		 * Handle the jQuery UI widget's touchend events
+		 * @param {Object} event The document's touchend event
+		 */
+		mouseProto._touchEnd = function (event) {
+
+			// Ignore event if not handled
+			if (!touchHandled) {
+				return;
+			}
+
+			// Simulate the mouseup event
+			simulateMouseEvent(event, 'mouseup');
+
+			// Simulate the mouseout event
+			simulateMouseEvent(event, 'mouseout');
+
+			// If the touch interaction did not move, it should trigger a click
+			if (!this._touchMoved) {
+
+				// Simulate the click event
+				simulateMouseEvent(event, 'click');
+			}
+
+			// Unset the flag to allow other widgets to inherit the touch event
+			touchHandled = false;
+		};
+
+		/**
+		 * A duck punch of the $.ui.mouse _mouseInit method to support touch events.
+		 * This method extends the widget with bound touch event handlers that
+		 * translate touch events to mouse events and pass them to the widget's
+		 * original mouse event handling methods.
+		 */
+		mouseProto._mouseInit = function () {
+
+			var self = this;
+
+			// Delegate the touch handlers to the widget's element
+			self.element.bind({
+				touchstart: $.proxy(self, '_touchStart'),
+				touchmove: $.proxy(self, '_touchMove'),
+				touchend: $.proxy(self, '_touchEnd')
+			});
+
+			// Call the original $.ui.mouse init method
+			_mouseInit.call(self);
+		};
+
+		/**
+		 * Remove the touch event handlers
+		 */
+		mouseProto._mouseDestroy = function () {
+
+			var self = this;
+
+			// Delegate the touch handlers to the widget's element
+			self.element.unbind({
+				touchstart: $.proxy(self, '_touchStart'),
+				touchmove: $.proxy(self, '_touchMove'),
+				touchend: $.proxy(self, '_touchEnd')
+			});
+
+			// Call the original $.ui.mouse destroy method
+			_mouseDestroy.call(self);
+		};
+
+	})(jQuery);
+
 	$(function() {
 		let urlInput = $("#ha-url"),
 				tokenInput = $('#ha-token'),
@@ -146,7 +401,9 @@
 				orderByInput = $('#ha-order-by'),
 				orderDirInput = $('#ha-order-dir'),
 				voiceEnabled = $('#ha-voice-enabled'),
-				voiceConfirm = $('#ha-voice-confirm');
+				voiceConfirm = $('#ha-voice-confirm'),
+				timelineSection = $('#timeline-section'),
+				timelineTokenDisplay = $('#timeline-token-display');
 
 		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
@@ -159,7 +416,7 @@
 		}
 
 		function getFormValues() {
-			return {
+			let values = {
 				'ha_url': urlInput.val().replace(/\/+$/, ''),
 				'token': tokenInput.val(),
 				'filter': filterInput.val(),
@@ -167,12 +424,42 @@
 				'order_dir': orderDirInput.val(),
 				'voice_enabled': voiceEnabled.is(':checked'),
 				'voice_confirm': voiceConfirm.is(':checked'),
+				'favorite_entities': $("#favorites-sortable li").map(function(a,b){
+					return $(b).data('entity-id');
+				}).toArray()
 			};
+
+			// Preserve timeline_token if it exists
+			if (watch_config && watch_config.timeline_token) {
+				values.timeline_token = watch_config.timeline_token;
+			}
+
+			return values;
 		}
 
 		function restoreFormValues() {
-			watch_config = JSON.parse(localStorage.getItem("watch_config"));
-			console.log("watch_config", watch_config);
+			let hash = window.location.hash.substring(1),
+					favorites_container = $("#favorites-container"),
+					favorites_sortable = $("#favorites-sortable");
+
+			// Try to get config from hash first (for initial setup)
+			if(hash) {
+				try {
+					watch_config = JSON.parse(decodeURIComponent(hash));
+				} catch(e) {
+					console.error("Error parsing hash config", e);
+					watch_config = {};
+				}
+			} else {
+				// Otherwise try localStorage (for returning visits)
+				try {
+					watch_config = JSON.parse(localStorage.getItem("watch_config")) || {};
+				} catch(e) {
+					console.error("Error parsing localStorage config", e);
+					watch_config = {};
+				}
+			}
+
 			if(watch_config['ha_url']) {
 				urlInput.val(watch_config['ha_url']);
 			}
@@ -191,6 +478,39 @@
 
 			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
 			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
+
+			if(watch_config['favorite_entities']) {
+				let html = '';
+				for(let entity_id of watch_config['favorite_entities']) {
+					html += `
+                        <li class="list-group-item" data-entity-id="${entity_id}">
+                            <i class="fa fa-bars"></i>
+                            <a href="javascript:void(0)" class="text-danger float-end remove-favorite"><i class="fa fa-trash"></i></a>
+                            ${entity_id}
+                        </li>`;
+				}
+				favorites_sortable
+						.html(html)
+						.sortable();
+
+				favorites_sortable.disableSelection();
+
+				$(".remove-favorite").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					if(confirm(`Are you sure you want to remove ${parent.data('entity-id')} from your favorites?`)) {
+						parent.remove();
+					}
+				});
+
+				favorites_container.show();
+			}
+
+			// Set up the timeline token section if it exists
+			if(watch_config['timeline_token'] && typeof watch_config['timeline_token'] === 'string') {
+				timelineTokenDisplay.text(watch_config['timeline_token']);
+				timelineSection.show();
+			}
 		}
 
 		function display_alert(type, content) {
@@ -213,6 +533,7 @@
 		try {
 			restoreFormValues();
 		} catch(e) {
+			console.error("Error in restoreFormValues", e);
 			watch_config = {};
 		}
 
