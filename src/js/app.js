@@ -811,22 +811,48 @@ function showAreaMenu() {
         });
 
         areaMenu.on('show', function(e){
-            // add items to menu
-            let i = 0;
+            // Create an array of area entries to sort
+            let areaEntries = [];
             for(let area_id in area_registry_cache) {
                 let area_name = area_registry_cache[area_id];
+                let display_name = area_name ? area_name : 'Unassigned';
                 let areaObjects = getEntitiesForArea(area_name ? area_id : null);
                 let areaObjectCount = Object.keys(areaObjects).length;
-                let display_name = area_name ? area_name : 'Unassigned'
-                areaMenu.item(0, i++, {
-                    title: display_name,
-                    subtitle: `${areaObjectCount} ${(areaObjectCount > 1 || areaObjectCount === 0) ? 'entities' : 'entity'}`,
+
+                areaEntries.push({
+                    area_id: area_id,
+                    display_name: display_name,
+                    areaObjectCount: areaObjectCount,
+                    isUnassigned: !area_name
+                });
+            }
+
+            // Sort areas by display_name, with Unassigned at the bottom
+            areaEntries.sort(function(a, b) {
+                // If one is Unassigned, it goes at the bottom
+                if (a.isUnassigned && !b.isUnassigned) return 1;
+                if (!a.isUnassigned && b.isUnassigned) return -1;
+
+                // Otherwise, sort alphabetically by display_name
+                return a.display_name.localeCompare(b.display_name);
+            });
+
+            // Add items to menu
+            for(let i = 0; i < areaEntries.length; i++) {
+                let entry = areaEntries[i];
+
+                areaMenu.item(0, i, {
+                    title: entry.display_name,
+                    subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
                     on_click: function(e) {
-                        // log_message(JSON.stringify(getEntitiesForArea(area_id)));
+                        // Get area_id, considering special case for Unassigned
+                        let targetAreaId = entry.isUnassigned ? null : entry.area_id;
+                        let areaObjects = getEntitiesForArea(targetAreaId);
+
                         if(domain_menu_enabled) {
-                            showEntityDomainsFromList(Object.keys(areaObjects), display_name);
+                            showEntityDomainsFromList(Object.keys(areaObjects), entry.display_name);
                         } else {
-                            showEntityList(display_name, Object.keys(areaObjects));
+                            showEntityList(entry.display_name, Object.keys(areaObjects));
                         }
                     }
                 });
