@@ -195,6 +195,49 @@ static bool simply_base_handle_packet(Simply *simply, Packet *packet) {
   return false;
 }
 
+static void handle_scroll_message(Simply *simply, DictionaryIterator *iter) {
+  Tuple *scroll_y_tuple = dict_find(iter, MESSAGE_KEY_SCROLL_Y);
+  Tuple *animated_tuple = dict_find(iter, MESSAGE_KEY_ANIMATED);
+
+  if (!scroll_y_tuple) {
+    return;
+  }
+
+  int scroll_y = scroll_y_tuple->value->int32;
+  bool animated = animated_tuple && animated_tuple->value->int32;
+
+  // We don't need to get the window since we'll use the SimplyWindow directly
+
+  // Get the top window using the helper function
+  SimplyWindow *simply_window = simply_window_stack_get_top_window(simply);
+  if (!simply_window) {
+    return;
+  }
+
+  // Check if the window has a scroll layer
+  if (!simply_window->scroll_layer) {
+    return;
+  }
+
+  // Check if the window is still valid
+  if (!simply_window->window) {
+    return;
+  }
+
+  // Get the scroll layer from the SimplyWindow
+  ScrollLayer *scroll_layer = simply_window->scroll_layer;
+
+  // Extra safety check
+  if (!scroll_layer) {
+    return;
+  }
+
+  // Set the content offset with a try/catch equivalent
+  if (scroll_layer && simply_window->is_scrollable) {
+    scroll_layer_set_content_offset(scroll_layer, GPoint(0, scroll_y), animated);
+  }
+}
+
 static void handle_packet(Simply *simply, Packet *packet) {
   if (simply_base_handle_packet(simply, packet)) { return; }
   if (simply_wakeup_handle_packet(simply, packet)) { return; }
@@ -208,6 +251,14 @@ static void handle_packet(Simply *simply, Packet *packet) {
 }
 
 static void received_callback(DictionaryIterator *iter, void *context) {
+  // Check if this is a scroll message
+  Tuple *scroll_y_tuple = dict_find(iter, MESSAGE_KEY_SCROLL_Y);
+  if (scroll_y_tuple) {
+    Simply *simply = context;
+    handle_scroll_message(simply, iter);
+    return;
+  }
+
   Tuple *tuple = dict_find(iter, 0);
   if (!tuple) {
     return;

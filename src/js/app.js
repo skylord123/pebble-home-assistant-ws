@@ -729,6 +729,37 @@ function showDictationMenu() {
         scrollable: true
     });
 
+    // Configuration for message spacing
+    const MESSAGE_PADDING = 0; // Padding between messages
+    const SCROLL_PADDING = 0; // Padding at the bottom when scrolling
+
+    // Message keys for scrolling
+    const MESSAGE_KEY_SCROLL_Y = 1000;
+    const MESSAGE_KEY_ANIMATED = 1001;
+
+    // Custom scrolling function for the window
+    function scrollWindowTo(window, y, animated = false) {
+        if (!window || !window.state || !window.state.scrollable) {
+            log_message('Cannot scroll a non-scrollable window');
+            return;
+        }
+
+        // Negative values scroll down (content moves up)
+        const scrollY = -y;
+
+        // Create message payload
+        var payload = {};
+        payload[MESSAGE_KEY_SCROLL_Y] = scrollY;
+        payload[MESSAGE_KEY_ANIMATED] = animated ? 1 : 0;
+
+        // Send a message to the watch to scroll the window
+        Pebble.sendAppMessage(payload, function() {
+            log_message('Scroll message sent successfully to ' + scrollY);
+        }, function(e) {
+            log_message('Error sending scroll message: ' + e.error);
+        });
+    }
+
     let currentY = 24; // Start position below title bar
     let conversationElements = []; // Track all elements for cleanup
     let currentErrorMessage = null; // Track current error message element
@@ -767,7 +798,7 @@ function showDictationMenu() {
             color: Feature.color('red', 'white'),
             textAlign: 'left'
         });
-        
+
         // Add error message
         let errorMessage = new UI.Text({
             position: new Vector(5, currentY + 20),
@@ -778,24 +809,73 @@ function showDictationMenu() {
             textAlign: 'left',
             textOverflow: 'wrap'
         });
-        
+
         dictationWindow.add(errorTitle);
-        dictationWindow.add(errorMessage);
         conversationElements.push(errorTitle);
-        conversationElements.push(errorMessage);
-        
-        currentErrorMessage = {
-            title: errorTitle,
-            message: errorMessage
-        };
-        
-        // Update Y position with fixed height
-        currentY += 45; // Same as regular messages for consistency
-        
-        // Use scrollTop instead of scroll
-        if (dictationWindow.scrollTop) {
-            dictationWindow.scrollTop(currentY - Feature.resolution().y + 30);
-        }
+
+        // Get the actual height of the error message
+        errorMessage.getHeight(function(height) {
+            // Ensure we have a reasonable height (minimum 20px)
+            height = Math.max(height, 20);
+
+            // Log the calculated height for debugging
+            log_message("Text height calculation for error: " + height + "px for text: " + message.substring(0, 30) + "...");
+
+            // Update the error message element size with the actual height
+            // Add extra padding to ensure text isn't cut off
+            errorMessage.size(new Vector(Feature.resolution().x - 10, height + 10));
+
+            // Add the error message to the window
+            dictationWindow.add(errorMessage);
+            conversationElements.push(errorMessage);
+
+            currentErrorMessage = {
+                title: errorTitle,
+                message: errorMessage
+            };
+
+            // Update position for next message with configurable padding
+            currentY += 20 + height + MESSAGE_PADDING; // title (20) + message height + padding
+            log_message("New currentY position for error: " + currentY);
+
+            // Update the window's content size to ensure proper scrolling
+            // Add more padding at the bottom to ensure content isn't cut off
+            const contentHeight = currentY + 20; // Add 20px padding at the bottom
+            dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
+            log_message("Updated error window size to: " + contentHeight + " for currentY: " + currentY);
+
+            // Store positions for scrolling reference
+            const messageBottom = currentY;
+            const messageHeight = height + 20; // Text height + error title
+            const messageTop = messageBottom - messageHeight;
+            const screenHeight = Feature.resolution().y;
+
+            // Determine how to scroll based on message size
+            let scrollTarget;
+
+            // If the message is taller than the display, scroll to show the title at the top
+            if (messageHeight > screenHeight * 0.8) { // If message takes up more than 80% of screen
+                // Scroll to the title position (error title)
+                scrollTarget = messageTop - 5; // 5px padding above title
+                log_message("Long error message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
+            } else {
+                // For shorter messages, scroll to show the bottom with padding
+                scrollTarget = messageBottom - screenHeight + 5; // 5px padding
+                log_message("Normal error message, scrolling to bottom: " + scrollTarget);
+            }
+
+            // Only scroll if needed
+            if (scrollTarget > 0) {
+                // Add a small delay before scrolling to ensure the UI is updated
+                setTimeout(function() {
+                    // Use our custom scrolling function
+                    scrollWindowTo(dictationWindow, scrollTarget, true);
+                    log_message("Scrolling error to target: " + scrollTarget);
+                }, 100);
+            }
+
+            log_message("Error message added, content height: " + currentY);
+        });
     }
 
     function addMessage(speaker, message, callback) {
@@ -830,7 +910,7 @@ function showDictationMenu() {
             let messageText = new UI.Text({
                 id: messageId,
                 position: new Vector(5, currentY + 20),
-                size: new Vector(Feature.resolution().x - 10, 1000),
+                size: new Vector(Feature.resolution().x - 10, 2000),
                 text: message,
                 font: 'gothic-18',
                 color: Feature.color('black', 'white'),
@@ -842,18 +922,63 @@ function showDictationMenu() {
             // Get the actual height of the message text
             messageText.getHeight(function(height) {
                 log_message("Text height callback received with height: " + height);
-                // Update position for next message
-                currentY += 20 + height + 10; // speaker label (20) + message height + padding (10)
 
+                // Ensure we have a reasonable height (minimum 20px)
+                height = Math.max(height, 20);
+
+                // Log the calculated height for debugging
+                log_message("Text height calculation for message: " + height + "px for text: " + message.substring(0, 30) + "...");
+
+                // Update the message text element size with the actual height
+                // Add extra padding to ensure text isn't cut off
+                messageText.size(new Vector(Feature.resolution().x - 10, height + 10));
+
+                // Add the message text to the window
                 dictationWindow.add(messageText);
                 conversationElements.push(messageText);
 
-                // Scroll to the bottom of the new content
-                if (dictationWindow.scrollTop) {
-                    dictationWindow.scrollTop(currentY - Feature.resolution().y + 30);
+                // Update position for next message with configurable padding
+                // Similar to Bobby's approach: speaker label + message height + padding
+                currentY += 20 + height + MESSAGE_PADDING;
+                log_message("New currentY position: " + currentY);
+
+                // Update the window's content size to ensure proper scrolling
+                // Add more padding at the bottom to ensure content isn't cut off
+                const contentHeight = currentY + 20; // Add 20px padding at the bottom
+                dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
+                log_message("Updated window size to: " + contentHeight + " for currentY: " + currentY);
+
+                // Store positions for scrolling reference
+                const messageBottom = currentY;
+                const messageHeight = height + 20; // Text height + speaker label
+                const messageTop = messageBottom - messageHeight;
+                const screenHeight = Feature.resolution().y;
+
+                // Determine how to scroll based on message size
+                let scrollTarget;
+
+                // If the message is taller than the display, scroll to show the title at the top
+                if (messageHeight > screenHeight * 0.8) { // If message takes up more than 80% of screen
+                    // Scroll to the title position (speaker label)
+                    scrollTarget = messageTop - 5; // 5px padding above title
+                    log_message("Long message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
+                } else {
+                    // For shorter messages, scroll to show the bottom with padding
+                    scrollTarget = messageBottom - screenHeight + 5; // 5px padding
+                    log_message("Normal message, scrolling to bottom: " + scrollTarget);
                 }
 
-                log_message("Message added successfully");
+                // Only scroll if needed
+                if (scrollTarget > 0) {
+                    // Add a small delay before scrolling to ensure the UI is updated
+                    setTimeout(function() {
+                        // Use our custom scrolling function
+                        scrollWindowTo(dictationWindow, scrollTarget, true);
+                        log_message("Scrolling to target: " + scrollTarget);
+                    }, 100);
+                }
+
+                log_message("Message added successfully, content height: " + currentY);
 
                 if (callback) {
                     log_message("Executing callback");
@@ -870,6 +995,24 @@ function showDictationMenu() {
         // Position loading circle below the last message
         loadingCircle.position(new Vector(Feature.resolution().x / 2, currentY + 10));
         dictationWindow.add(loadingCircle);
+
+        // Update the window's content size to ensure the loading indicator is visible
+        const loadingBottom = currentY + 30; // Circle position + diameter + padding
+        dictationWindow.size(new Vector(Feature.resolution().x, loadingBottom + 20)); // 20px extra padding
+
+        // Calculate scroll target - similar to Bobby's approach
+        const screenHeight = Feature.resolution().y;
+        const scrollTarget = loadingBottom - screenHeight + 5; // 5px padding
+
+        // Only scroll if needed
+        if (scrollTarget > 0) {
+            // Add a small delay before scrolling to ensure the UI is updated
+            setTimeout(function() {
+                // Use our custom scrolling function
+                scrollWindowTo(dictationWindow, scrollTarget, true);
+                log_message("Scrolling loading indicator to target: " + scrollTarget);
+            }, 100);
+        }
 
         let growing = true;
         let radius = 8;

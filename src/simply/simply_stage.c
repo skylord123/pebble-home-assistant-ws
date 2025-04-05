@@ -795,8 +795,9 @@ static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
     default: font = fonts_get_system_font(FONT_KEY_GOTHIC_14); break;
   }
 
-  // Create a frame with the specified width
-  GRect frame = GRect(0, 0, packet->width, 2000); // Height is set large enough
+  // Create a frame with the specified width and a very large height
+  // As Katharine Berry suggests, use a very large number for the height
+  GRect frame = GRect(0, 0, packet->width, 10000); // Height is set very large
 
   // Get the text overflow mode
   GTextOverflowMode overflow_mode = packet->overflow_mode;
@@ -805,6 +806,7 @@ static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
   GTextAlignment alignment = packet->alignment;
 
   // Calculate the text height
+  // Using a very large frame height ensures we get the true content size
   GSize text_size = graphics_text_layout_get_content_size(
     packet->text,
     font,
@@ -812,6 +814,9 @@ static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
     overflow_mode,
     alignment
   );
+
+  // Add a small buffer to ensure text isn't cut off
+  text_size.h += 5; // Add 5px padding
 
   // Send the height back to JavaScript
   CalculateTextHeightResponsePacket packet_response = {
