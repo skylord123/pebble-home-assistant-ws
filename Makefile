@@ -55,9 +55,9 @@ wipe:
 	pebble wipe
 
 docker-build:
-	docker run --rm --name rebble-build -v $(shell pwd):/pebble/ --workdir /pebble/ -e OPENWEATHERMAP_API_KEY rebble/pebble-sdk make
+	docker run --rm --name rebble-build -v $(shell pwd):/pebble/ --workdir /pebble/ rebble/pebble-sdk make
 
 docker:
-	docker run --rm -it --name rebble-build -v $(shell pwd):/pebble/ --workdir /pebble/ -e OPENWEATHERMAP_API_KEY -e PEBBLE_PHONE rebble/pebble-sdk
+	docker run --rm -it --name rebble-build -v $(shell pwd):/pebble/ --workdir /pebble/ -e PEBBLE_PHONE rebble/pebble-sdk
 
 .PHONY: all build config log install clean size logs screenshot deploy timeline-on timeline-off wipe phone-logs weather-api
