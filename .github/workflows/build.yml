@@ -23,7 +23,7 @@ jobs:
         run: make docker-build
 
       - name: Upload PBW Artifact
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: pebble-home-assistant-ws
           path: ${{ github.workspace }}/build/*.pbw
