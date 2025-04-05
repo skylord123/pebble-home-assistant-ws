@@ -776,12 +776,20 @@ function showDictationMenu() {
     });
     dictationWindow.add(titleBar);
 
-    // Loading animation circle
-    let loadingCircle = new UI.Circle({
-        position: new Vector(Feature.resolution().x / 2, 0),
-        radius: 8,
-        backgroundColor: Feature.color('#0000FF', '#FFFFFF')
-    });
+    // Loading animation dots
+    let loadingDots = [];
+    const DOT_SIZE = 8; // Size of each dot
+    const DOT_SPACING = 12; // Space between dots
+    const DOT_COLOR = Feature.color('#0000FF', '#FFFFFF');
+
+    // Create three dots for the animation
+    for (let i = 0; i < 3; i++) {
+        loadingDots.push(new UI.Circle({
+            position: new Vector(0, 0), // Will be positioned when shown
+            radius: DOT_SIZE / 2,
+            backgroundColor: DOT_COLOR
+        }));
+    }
 
     function showError(message) {
         if (currentErrorMessage) {
@@ -992,48 +1000,107 @@ function showDictationMenu() {
     }
 
     function startLoadingAnimation() {
-        // Position loading circle below the last message
-        loadingCircle.position(new Vector(Feature.resolution().x / 2, currentY + 10));
-        dictationWindow.add(loadingCircle);
+        // Configuration for message spacing
+        const MESSAGE_PADDING = 0; // Padding between messages
+        const SCROLL_PADDING = 0; // Padding at the bottom when scrolling
 
-        // Update the window's content size to ensure the loading indicator is visible
-        const loadingBottom = currentY + 30; // Circle position + diameter + padding
-        dictationWindow.size(new Vector(Feature.resolution().x, loadingBottom + 20)); // 20px extra padding
+        // Message keys for scrolling
+        const MESSAGE_KEY_SCROLL_Y = 1000;
+        const MESSAGE_KEY_ANIMATED = 1001;
 
-        // Calculate scroll target - similar to Bobby's approach
-        const screenHeight = Feature.resolution().y;
-        const scrollTarget = loadingBottom - screenHeight + 5; // 5px padding
+        // Position dots below the last message
+        const centerX = Feature.resolution().x / 2;
+        const startY = currentY;
 
-        // Only scroll if needed
-        if (scrollTarget > 0) {
-            // Add a small delay before scrolling to ensure the UI is updated
-            setTimeout(function() {
-                // Use our custom scrolling function
-                scrollWindowTo(dictationWindow, scrollTarget, true);
-                log_message("Scrolling loading indicator to target: " + scrollTarget);
-            }, 100);
+        // Calculate the starting X position for the first dot
+        // Center the three dots with spacing
+        const startX = centerX - DOT_SPACING - DOT_SIZE/2;
+
+        // Position and add each dot
+        for (let i = 0; i < loadingDots.length; i++) {
+            const dotX = startX + (i * DOT_SPACING);
+            loadingDots[i].position(new Vector(dotX, startY));
+            dictationWindow.add(loadingDots[i]);
         }
 
-        let growing = true;
-        let radius = 8;
+        // Calculate the bottom position of the animation
+        const loadingBottom = startY + DOT_SIZE + 10; // Dots position + size + padding
 
+        // Make sure the window is tall enough to show the full animation
+        // Add significant extra padding to ensure the animation is fully visible
+        dictationWindow.size(new Vector(Feature.resolution().x, loadingBottom + 50)); // 50px extra padding
+        log_message("Set window size for animation: " + (loadingBottom + 50));
+
+        // Calculate scroll target to ensure the dots are fully visible
+        const screenHeight = Feature.resolution().y;
+
+        // Make sure we scroll enough to show the full animation plus padding
+        // We want to show the animation with some context above it
+        const animationHeight = DOT_SIZE + 20; // Height of dots plus some padding
+
+        // Calculate how much we need to scroll to show the full animation
+        // We want the animation to be positioned in the lower part of the screen
+        const scrollTarget = loadingBottom - screenHeight + animationHeight;
+
+        // Always scroll to show the animation properly
+        // Add a small delay before scrolling to ensure the UI is updated
+        setTimeout(function() {
+            // Use our custom scrolling function
+            scrollWindowTo(dictationWindow, scrollTarget, true);
+            log_message("Scrolling loading indicator to target: " + scrollTarget);
+        }, 100);
+
+        // Animation states
+        // 0: first dot only
+        // 1: first and second dots
+        // 2: all three dots
+        // 3: second and third dots
+        // 4: third dot only
+        let animationState = 0;
+
+        // Start the animation
         return setInterval(function() {
-            if (growing) {
-                radius += 1;
-                if (radius >= 12) growing = false;
-            } else {
-                radius -= 1;
-                if (radius <= 8) growing = true;
+            // Hide all dots first
+            for (let i = 0; i < loadingDots.length; i++) {
+                loadingDots[i].radius(0);
             }
-            loadingCircle.radius(radius);
-        }, 300);
+
+            // Show dots based on current animation state
+            switch (animationState) {
+                case 0: // First dot only
+                    loadingDots[0].radius(DOT_SIZE / 2);
+                    break;
+                case 1: // First and second dots
+                    loadingDots[0].radius(DOT_SIZE / 2);
+                    loadingDots[1].radius(DOT_SIZE / 2);
+                    break;
+                case 2: // All three dots
+                    loadingDots[0].radius(DOT_SIZE / 2);
+                    loadingDots[1].radius(DOT_SIZE / 2);
+                    loadingDots[2].radius(DOT_SIZE / 2);
+                    break;
+                case 3: // Second and third dots
+                    loadingDots[1].radius(DOT_SIZE / 2);
+                    loadingDots[2].radius(DOT_SIZE / 2);
+                    break;
+                case 4: // Third dot only
+                    loadingDots[2].radius(DOT_SIZE / 2);
+                    break;
+            }
+
+            // Move to next animation state
+            animationState = (animationState + 1) % 5;
+        }, 300); // Change animation every 300ms
     }
 
     function stopLoadingAnimation(animationTimer) {
         if (animationTimer) {
             clearInterval(animationTimer);
         }
-        dictationWindow.remove(loadingCircle);
+        // Remove all dots from the window
+        for (let i = 0; i < loadingDots.length; i++) {
+            dictationWindow.remove(loadingDots[i]);
+        }
     }
 
     function startDictation() {
