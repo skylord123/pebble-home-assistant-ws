@@ -1,0 +1,37 @@
+name: CI
+
+# Controls when the workflow will run
+on:
+  # Triggers the workflow on push or pull request events for the specified branches and tags
+  push:
+    branches: [master, test, dev]
+    tags:
+      - 'v*.*.*'
+  pull_request:
+    branches: [master]
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Build the app
+        run: make docker-build
+
+      - name: Upload PBW Artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: pebble-home-assistant-ws
+          path: ${{ github.workspace }}/build/*.pbw
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ github.workspace }}/build/*.pbw
