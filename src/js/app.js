@@ -44,10 +44,10 @@ const appVersion = '0.6.3',
     ucwords = function( str ){
         return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
     }
-    colour = {
-        highlight: Feature.color("#00AAFF", "#000000"),
-        highlight_text: Feature.color("black", "white")
-    };
+colour = {
+    highlight: Feature.color("#00AAFF", "#000000"),
+    highlight_text: Feature.color("black", "white")
+};
 
 // only call console.log if debug is enabled
 function log_message(msg, extra) {
@@ -710,7 +710,6 @@ function checkConversationAgents() {
 let conversation_id = null;
 function showDictationMenu() {
     if (!checkConversationAgents()) {
-        // No conversation entities available - show error
         let errorCard = new UI.Card({
             title: 'Assistant Error',
             body: 'No conversation entities found on this Home Assistant instance.',
@@ -725,24 +724,48 @@ function showDictationMenu() {
         return;
     }
 
-    // Create a window with a clean layout
-    var dictationWindow = new UI.Window({
-        backgroundColor: Feature.color('white', 'black')
+    let dictationWindow = new UI.Window({
+        backgroundColor: Feature.color('white', 'black'),
+        scrollable: true
     });
 
-    // Combined conversation display - add this FIRST so it's behind other elements
-    var conversationText = new UI.Text({
-        position: new Vector(5, 25), // Start position below title bar
-        size: new Vector(Feature.resolution().x - 10, 300), // Make this much taller for scrolling
-        text: 'Tap to speak',
-        font: 'gothic-18',
-        color: Feature.color('black', 'white'),
-        textAlign: 'left'
-    });
-    dictationWindow.add(conversationText);
+    // Configuration for message spacing
+    const MESSAGE_PADDING = 0; // Padding between messages
+    const SCROLL_PADDING = 0; // Padding at the bottom when scrolling
 
-    // Add a title bar AFTER the conversation text so it stays on top
-    var titleBar = new UI.Text({
+    // Message keys for scrolling
+    const MESSAGE_KEY_SCROLL_Y = 1000;
+    const MESSAGE_KEY_ANIMATED = 1001;
+
+    // Custom scrolling function for the window
+    function scrollWindowTo(window, y, animated = false) {
+        if (!window || !window.state || !window.state.scrollable) {
+            log_message('Cannot scroll a non-scrollable window');
+            return;
+        }
+
+        // Negative values scroll down (content moves up)
+        const scrollY = -y;
+
+        // Create message payload
+        var payload = {};
+        payload[MESSAGE_KEY_SCROLL_Y] = scrollY;
+        payload[MESSAGE_KEY_ANIMATED] = animated ? 1 : 0;
+
+        // Send a message to the watch to scroll the window
+        Pebble.sendAppMessage(payload, function() {
+            log_message('Scroll message sent successfully to ' + scrollY);
+        }, function(e) {
+            log_message('Error sending scroll message: ' + e.error);
+        });
+    }
+
+    let currentY = 24; // Start position below title bar
+    let conversationElements = []; // Track all elements for cleanup
+    let currentErrorMessage = null; // Track current error message element
+
+    // Add a title bar
+    let titleBar = new UI.Text({
         position: new Vector(0, 0),
         size: new Vector(Feature.resolution().x, 24),
         text: 'Assistant',
@@ -753,216 +776,408 @@ function showDictationMenu() {
     });
     dictationWindow.add(titleBar);
 
-    // Status indicator (shows listening/processing state)
-    var statusIndicator = new UI.Circle({
-        position: new Vector(Feature.resolution().x / 2, Feature.resolution().y / 2),
-        radius: 8,
-        backgroundColor: Feature.color('#FF0000', 'white')
-    });
+    // Loading animation dots
+    let loadingDots = [];
+    const DOT_SIZE = 8; // Size of each dot
+    const DOT_SPACING = 12; // Space between dots
+    const DOT_COLOR = Feature.color('#0000FF', '#FFFFFF');
 
-    // Scrolling variables
-    var scrollPosition = 0;
-    var scrollStep = 25; // Roughly one line height
-    var maxScroll = 0;
-    var titleHeight = 24; // Height of the title bar
-
-    // Function to update scroll position while keeping text below title bar
-    function updateScroll() {
-        // Start at titleHeight when scrollPosition is 0
-        conversationText.position(new Vector(5, titleHeight - scrollPosition));
+    // Create three dots for the animation
+    for (let i = 0; i < 3; i++) {
+        loadingDots.push(new UI.Circle({
+            position: new Vector(0, 0), // Will be positioned when shown
+            radius: DOT_SIZE / 2,
+            backgroundColor: DOT_COLOR
+        }));
     }
 
-    // Animation for the status indicator
-    var animationTimer = null;
-    function startAnimation(color) {
-        var radius = 8;
-        var growing = true;
-
-        // Clear any existing animation
-        stopAnimation();
-
-        // Set the indicator color
-        statusIndicator.backgroundColor(color);
-        dictationWindow.add(statusIndicator);
-
-        // Start pulsing animation
-        animationTimer = setInterval(function() {
-            if (growing) {
-                radius += 1;
-                if (radius >= 12) growing = false;
-            } else {
-                radius -= 1;
-                if (radius <= 8) growing = true;
-            }
-            statusIndicator.radius(radius);
-        }, 300);
-    }
-
-    function stopAnimation() {
-        if (animationTimer) {
-            clearInterval(animationTimer);
-            animationTimer = null;
+    function showError(message) {
+        if (currentErrorMessage) {
+            dictationWindow.remove(currentErrorMessage.title);
+            dictationWindow.remove(currentErrorMessage.message);
         }
-        dictationWindow.remove(statusIndicator);
+
+        // Add error title
+        let errorTitle = new UI.Text({
+            position: new Vector(5, currentY),
+            size: new Vector(Feature.resolution().x - 10, 20),
+            text: 'Error:',
+            font: 'gothic-18-bold',
+            color: Feature.color('red', 'white'),
+            textAlign: 'left'
+        });
+
+        // Add error message
+        let errorMessage = new UI.Text({
+            position: new Vector(5, currentY + 20),
+            size: new Vector(Feature.resolution().x - 10, 1000),
+            text: message,
+            font: 'gothic-18',
+            color: Feature.color('red', 'white'),
+            textAlign: 'left',
+            textOverflow: 'wrap'
+        });
+
+        dictationWindow.add(errorTitle);
+        conversationElements.push(errorTitle);
+
+        // Get the actual height of the error message
+        errorMessage.getHeight(function(height) {
+            // Ensure we have a reasonable height (minimum 20px)
+            height = Math.max(height, 20);
+
+            // Log the calculated height for debugging
+            log_message("Text height calculation for error: " + height + "px for text: " + message.substring(0, 30) + "...");
+
+            // Update the error message element size with the actual height
+            // Add extra padding to ensure text isn't cut off
+            errorMessage.size(new Vector(Feature.resolution().x - 10, height + 10));
+
+            // Add the error message to the window
+            dictationWindow.add(errorMessage);
+            conversationElements.push(errorMessage);
+
+            currentErrorMessage = {
+                title: errorTitle,
+                message: errorMessage
+            };
+
+            // Update position for next message with configurable padding
+            currentY += 20 + height + MESSAGE_PADDING; // title (20) + message height + padding
+            log_message("New currentY position for error: " + currentY);
+
+            // Update the window's content size to ensure proper scrolling
+            // Add more padding at the bottom to ensure content isn't cut off
+            const contentHeight = currentY + 20; // Add 20px padding at the bottom
+            dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
+            log_message("Updated error window size to: " + contentHeight + " for currentY: " + currentY);
+
+            // Store positions for scrolling reference
+            const messageBottom = currentY;
+            const messageHeight = height + 20; // Text height + error title
+            const messageTop = messageBottom - messageHeight;
+            const screenHeight = Feature.resolution().y;
+
+            // Determine how to scroll based on message size
+            let scrollTarget;
+
+            // If the message is taller than the display, scroll to show the title at the top
+            if (messageHeight > screenHeight * 0.8) { // If message takes up more than 80% of screen
+                // Scroll to the title position (error title)
+                scrollTarget = messageTop - 5; // 5px padding above title
+                log_message("Long error message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
+            } else {
+                // For shorter messages, scroll to show the bottom with padding
+                scrollTarget = messageBottom - screenHeight + 5; // 5px padding
+                log_message("Normal error message, scrolling to bottom: " + scrollTarget);
+            }
+
+            // Only scroll if needed
+            if (scrollTarget > 0) {
+                // Add a small delay before scrolling to ensure the UI is updated
+                setTimeout(function() {
+                    // Use our custom scrolling function
+                    scrollWindowTo(dictationWindow, scrollTarget, true);
+                    log_message("Scrolling error to target: " + scrollTarget);
+                }, 100);
+            }
+
+            log_message("Error message added, content height: " + currentY);
+        });
     }
 
-    // Function to start a new dictation session
-    function startDictation() {
-        // Clear previous conversation
-        scrollPosition = 0;
-        updateScroll();
+    function addMessage(speaker, message, callback) {
+        log_message("Adding message from " + speaker + ": " + message);
 
-        // Start voice recognition
-        Voice.dictate('start', voice_confirm, function(e) {
-            if (e.err) {
-                log_message('Transcription error: ' + e.err);
+        // Remove error message if exists
+        if (currentErrorMessage) {
+            dictationWindow.remove(currentErrorMessage.title);
+            dictationWindow.remove(currentErrorMessage.message);
+            currentErrorMessage = null;
+        }
 
-                stopAnimation();
+        try {
+            // Generate unique IDs for our elements
+            const speakerId = Math.floor(Math.random() * 100000);
+            const messageId = Math.floor(Math.random() * 100000);
 
-                // Check if the user aborted the dictation
-                if (e.err === "systemAborted") {
-                    return;
+            // Add speaker label
+            let speakerLabel = new UI.Text({
+                id: speakerId,
+                position: new Vector(5, currentY),
+                size: new Vector(Feature.resolution().x - 10, 20),
+                text: speaker + ':',
+                font: 'gothic-18-bold',
+                color: Feature.color('black', 'white'),
+                textAlign: 'left'
+            });
+            dictationWindow.add(speakerLabel);
+            conversationElements.push(speakerLabel);
+
+            // Add message text
+            let messageText = new UI.Text({
+                id: messageId,
+                position: new Vector(5, currentY + 20),
+                size: new Vector(Feature.resolution().x - 10, 2000),
+                text: message,
+                font: 'gothic-18',
+                color: Feature.color('black', 'white'),
+                textAlign: 'left',
+                textOverflow: 'wrap'
+            });
+
+            log_message("Getting height of new text..");
+            // Get the actual height of the message text
+            messageText.getHeight(function(height) {
+                log_message("Text height callback received with height: " + height);
+
+                // Ensure we have a reasonable height (minimum 20px)
+                height = Math.max(height, 20);
+
+                // Log the calculated height for debugging
+                log_message("Text height calculation for message: " + height + "px for text: " + message.substring(0, 30) + "...");
+
+                // Update the message text element size with the actual height
+                // Add extra padding to ensure text isn't cut off
+                messageText.size(new Vector(Feature.resolution().x - 10, height + 10));
+
+                // Add the message text to the window
+                dictationWindow.add(messageText);
+                conversationElements.push(messageText);
+
+                // Update position for next message with configurable padding
+                // Similar to Bobby's approach: speaker label + message height + padding
+                currentY += 20 + height + MESSAGE_PADDING;
+                log_message("New currentY position: " + currentY);
+
+                // Update the window's content size to ensure proper scrolling
+                // Add more padding at the bottom to ensure content isn't cut off
+                const contentHeight = currentY + 20; // Add 20px padding at the bottom
+                dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
+                log_message("Updated window size to: " + contentHeight + " for currentY: " + currentY);
+
+                // Store positions for scrolling reference
+                const messageBottom = currentY;
+                const messageHeight = height + 20; // Text height + speaker label
+                const messageTop = messageBottom - messageHeight;
+                const screenHeight = Feature.resolution().y;
+
+                // Determine how to scroll based on message size
+                let scrollTarget;
+
+                // If the message is taller than the display, scroll to show the title at the top
+                if (messageHeight > screenHeight * 0.8) { // If message takes up more than 80% of screen
+                    // Scroll to the title position (speaker label)
+                    scrollTarget = messageTop - 5; // 5px padding above title
+                    log_message("Long message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
+                } else {
+                    // For shorter messages, scroll to show the bottom with padding
+                    scrollTarget = messageBottom - screenHeight + 5; // 5px padding
+                    log_message("Normal message, scrolling to bottom: " + scrollTarget);
                 }
 
-                // Handle other errors
-                conversationText.text('Transcription error - Tap to retry');
+                // Only scroll if needed
+                if (scrollTarget > 0) {
+                    // Add a small delay before scrolling to ensure the UI is updated
+                    setTimeout(function() {
+                        // Use our custom scrolling function
+                        scrollWindowTo(dictationWindow, scrollTarget, true);
+                        log_message("Scrolling to target: " + scrollTarget);
+                    }, 100);
+                }
+
+                log_message("Message added successfully, content height: " + currentY);
+
+                if (callback) {
+                    log_message("Executing callback");
+                    callback();
+                }
+            });
+        } catch (err) {
+            log_message("Error in addMessage: " + err.toString());
+            showError('Failed to add message');
+        }
+    }
+
+    function startLoadingAnimation() {
+        // Configuration for message spacing
+        const MESSAGE_PADDING = 0; // Padding between messages
+        const SCROLL_PADDING = 0; // Padding at the bottom when scrolling
+
+        // Message keys for scrolling
+        const MESSAGE_KEY_SCROLL_Y = 1000;
+        const MESSAGE_KEY_ANIMATED = 1001;
+
+        // Position dots below the last message
+        const centerX = Feature.resolution().x / 2;
+        const startY = currentY;
+
+        // Calculate the starting X position for the first dot
+        // Center the three dots with spacing
+        const startX = centerX - DOT_SPACING - DOT_SIZE/2;
+
+        // Position and add each dot
+        for (let i = 0; i < loadingDots.length; i++) {
+            const dotX = startX + (i * DOT_SPACING);
+            loadingDots[i].position(new Vector(dotX, startY));
+            dictationWindow.add(loadingDots[i]);
+        }
+
+        // Calculate the bottom position of the animation
+        const loadingBottom = startY + DOT_SIZE + 10; // Dots position + size + padding
+
+        // Make sure the window is tall enough to show the full animation
+        // Add significant extra padding to ensure the animation is fully visible
+        dictationWindow.size(new Vector(Feature.resolution().x, loadingBottom + 50)); // 50px extra padding
+        log_message("Set window size for animation: " + (loadingBottom + 50));
+
+        // Calculate scroll target to ensure the dots are fully visible
+        const screenHeight = Feature.resolution().y;
+
+        // Make sure we scroll enough to show the full animation plus padding
+        // We want to show the animation with some context above it
+        const animationHeight = DOT_SIZE + 20; // Height of dots plus some padding
+
+        // Calculate how much we need to scroll to show the full animation
+        // We want the animation to be positioned in the lower part of the screen
+        const scrollTarget = loadingBottom - screenHeight + animationHeight;
+
+        // Always scroll to show the animation properly
+        // Add a small delay before scrolling to ensure the UI is updated
+        setTimeout(function() {
+            // Use our custom scrolling function
+            scrollWindowTo(dictationWindow, scrollTarget, true);
+            log_message("Scrolling loading indicator to target: " + scrollTarget);
+        }, 100);
+
+        // Animation states
+        // 0: first dot only
+        // 1: first and second dots
+        // 2: all three dots
+        // 3: second and third dots
+        // 4: third dot only
+        let animationState = 0;
+
+        // Start the animation
+        return setInterval(function() {
+            // Hide all dots first
+            for (let i = 0; i < loadingDots.length; i++) {
+                loadingDots[i].radius(0);
+            }
+
+            // Show dots based on current animation state
+            switch (animationState) {
+                case 0: // First dot only
+                    loadingDots[0].radius(DOT_SIZE / 2);
+                    break;
+                case 1: // First and second dots
+                    loadingDots[0].radius(DOT_SIZE / 2);
+                    loadingDots[1].radius(DOT_SIZE / 2);
+                    break;
+                case 2: // All three dots
+                    loadingDots[0].radius(DOT_SIZE / 2);
+                    loadingDots[1].radius(DOT_SIZE / 2);
+                    loadingDots[2].radius(DOT_SIZE / 2);
+                    break;
+                case 3: // Second and third dots
+                    loadingDots[1].radius(DOT_SIZE / 2);
+                    loadingDots[2].radius(DOT_SIZE / 2);
+                    break;
+                case 4: // Third dot only
+                    loadingDots[2].radius(DOT_SIZE / 2);
+                    break;
+            }
+
+            // Move to next animation state
+            animationState = (animationState + 1) % 5;
+        }, 300); // Change animation every 300ms
+    }
+
+    function stopLoadingAnimation(animationTimer) {
+        if (animationTimer) {
+            clearInterval(animationTimer);
+        }
+        // Remove all dots from the window
+        for (let i = 0; i < loadingDots.length; i++) {
+            dictationWindow.remove(loadingDots[i]);
+        }
+    }
+
+    function startDictation() {
+        log_message("startDictation");
+        Voice.dictate('start', true, function(e) {
+            if (e.err) {
+                if (e.err === "systemAborted") {
+                    log_message("dictation cancelled by user");
+                    return;
+                }
+                log_message("Transcription error: " + e.err);
+                showError('Transcription error - ' + e.err);
                 return;
             }
 
-            // Display the user's query
-            log_message('User said: ' + e.transcription);
-            conversationText.text('Me: ' + e.transcription);
+            log_message("Transcription received: " + e.transcription);
 
-            // Update animation for processing
-            startAnimation(Feature.color('#0000FF', '#6666FF')); // Blue for processing
+            // Add user's message
+            addMessage('Me', e.transcription, function() {
+                log_message("Starting API call");
+                let animationTimer = startLoadingAnimation();
 
-            // Send request to Home Assistant
-            var body = {
-                "type": "conversation/process",
-                "text": e.transcription,
-                "agent_id": voice_agent  // Use the full entity_id directly
-            };
-            if (conversation_id) {
-                body.conversation_id = conversation_id;
-            }
-
-            haws.send(body, function(data) {
-                if (!data.success) {
-                    log_message('Conversation error: ' + JSON.stringify(data));
-                    conversationText.text('Me: ' + e.transcription + '\nHA: Sorry, could not process your request.');
-                    // Calculate max scroll based on text length
-                    var lines = 2; // Basic count: 1 for user text, 1 for response
-                    maxScroll = Math.max(0, (lines * scrollStep) - 100); // 100 is approximate visible height
-                    stopAnimation();
-                    return;
+                let body = {
+                    "type": "conversation/process",
+                    "text": e.transcription,
+                    "agent_id": voice_agent
+                };
+                if (conversation_id) {
+                    body.conversation_id = conversation_id;
                 }
 
-                // Display response
-                log_message('Received: ' + JSON.stringify(data));
+                log_message("Sending conversation/process request");
+                haws.send(body,
+                    function(data) {
+                        log_message("conversation/process response received: " + JSON.stringify(data));
+                        stopLoadingAnimation(animationTimer);
 
-                // Store the conversation ID for future responses
-                if (data.result.conversation_id) {
-                    conversation_id = data.result.conversation_id;
-                }
+                        if (!data.success) {
+                            showError('Request failed');
+                            return;
+                        }
 
-                // Get the response type
-                var responseType = data.result.response.response_type;
-                var reply = "";
-
-                // Get the speech reply if available
-                if (data.result.response.speech &&
-                    (data.result.response.speech.plain || data.result.response.speech.ssml)) {
-                    reply = data.result.response.speech.plain ?
-                        data.result.response.speech.plain.speech :
-                        data.result.response.speech.ssml.speech;
-                }
-
-                // Check for errors and add error information
-                if (responseType === "error" && data.result.response.data && data.result.response.data.code) {
-                    var errorCode = data.result.response.data.code;
-                    var errorDesc = getErrorDescription(errorCode);
-
-                    // Add error description in parentheses if we have both a reply and error info
-                    if (reply) {
-                        reply += " (" + errorDesc + ")";
-                    } else {
-                        reply = "Error: " + errorDesc;
+                        try {
+                            let reply = data.result?.response?.speech.plain.speech;
+                            if (!reply) {
+                                throw new Error('Invalid response format');
+                            }
+                            addMessage('Home Assistant', reply, null);
+                            conversation_id = data.conversation_id;
+                        } catch (err) {
+                            showError('Invalid response format from Home Assistant');
+                            log_message("Response format error: " + err.toString());
+                        }
+                    },
+                    function(error) {
+                        log_message("conversation/process error: " + error.toString());
+                        stopLoadingAnimation(animationTimer);
+                        showError('Connection error');
                     }
-                }
-
-                // Default message if no reply is available
-                if (!reply) {
-                    reply = "Request processed, but no response was provided.";
-                }
-
-                // Set the conversation text
-                conversationText.text('Me: ' + e.transcription + '\nHA: ' + reply);
-
-                // Estimate number of lines based on text length and display width
-                var totalText = ('Me: ' + e.transcription + '\nHA: ' + reply);
-                var estCharsPerLine = 30; // Approximate
-                var estLines = Math.ceil(totalText.length / estCharsPerLine);
-
-                // Calculate max scroll
-                maxScroll = Math.max(0, (estLines * scrollStep) - 100); // 100 is approximate visible height
-
-                stopAnimation();
-            }, function(error) {
-                // Network or other error
-                conversationText.text('Me: ' + e.transcription + '\nHA: Sorry, could not process your request (connection error).');
-                // Calculate max scroll based on text length
-                var lines = 2; // Basic count: 1 for user text, 1 for response
-                maxScroll = Math.max(0, (lines * scrollStep) - 100); // 100 is approximate visible height
-                stopAnimation();
+                );
             });
         });
     }
 
-    // Helper function to get a user-friendly description for error codes
-    function getErrorDescription(errorCode) {
-        switch(errorCode) {
-            case "no_intent_match":
-                return "The input text did not match any intents";
-            case "no_valid_targets":
-                return "The targeted area, device, or entity does not exist";
-            case "failed_to_handle":
-                return "An unexpected error occurred while handling the intent";
-            case "unknown":
-                return "An error occurred outside the scope of intent processing";
-            default:
-                return "Unknown error: " + errorCode;
-        }
-    }
+    dictationWindow.on('click', 'select', function(e) {
+        log_message("Dictation button pressed", e);
+        startDictation();
+    });
 
-    // When the window is shown, start dictation
+    dictationWindow.on('longClick', 'select', showVoiceAgentMenu);
+
     dictationWindow.on('show', function() {
         startDictation();
     });
 
-    // If the window is hidden, clean up
     dictationWindow.on('hide', function() {
-        stopAnimation();
-    });
-
-    // Handle button clicks
-    dictationWindow.on('click', 'select', function() {
-        startDictation();
-    });
-
-    // Add long-press handler for agent selection
-    dictationWindow.on('longClick', 'select', function() {
-        showVoiceAgentMenu();
-    });
-
-    // Implement scrolling
-    dictationWindow.on('click', 'up', function() {
-        scrollPosition = Math.max(0, scrollPosition - scrollStep);
-        updateScroll();
-    });
-
-    dictationWindow.on('click', 'down', function() {
-        scrollPosition = Math.min(maxScroll, scrollPosition + scrollStep);
-        updateScroll();
+        conversation_id = null;
     });
 
     dictationWindow.show();
@@ -1939,7 +2154,6 @@ function showLightEntity(entity_id) {
                 selectedIndex--;
                 updatePointerPosition();
             }
-        } else {
             // Edit the value (up)
             menuItems[selectedIndex].action("up");
         }
@@ -2023,7 +2237,6 @@ function showEntityMenu(entity_id) {
             title: 'State',
             subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '')
         });
-        var stateIndex = i - 1;
 
         //entity: {"attributes":{"friendly_name":"Family Room","icon":"mdi:lightbulb"},"entity_id":"switch.family_room","last_changed":"2016-10-12T02:03:26.849071+00:00","last_updated":"2016-10-12T02:03:26.849071+00:00","state":"off"}
         log_message("This Device entity_id: " + entity.entity_id);
@@ -2045,7 +2258,6 @@ function showEntityMenu(entity_id) {
                         {},
                         {entity_id: entity.entity_id},
                         function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                             // Success!
                             log_message(JSON.stringify(data));
                         },
@@ -2059,7 +2271,6 @@ function showEntityMenu(entity_id) {
 
         if (
             domain === "switch" ||
-            domain === "light" ||
             domain === "input_boolean" ||
             domain === "automation" ||
             domain === "script"
@@ -3010,3 +3221,10 @@ loadingCard.show();
 //getEvents();
 
 main();
+
+
+
+
+
+
+

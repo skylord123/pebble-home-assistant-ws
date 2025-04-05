@@ -94,6 +94,39 @@ struct __attribute__((__packed__)) ElementImagePacket {
   GCompOp compositing:8;
 };
 
+typedef struct ElementTextHeightPacket ElementTextHeightPacket;
+
+struct __attribute__((__packed__)) ElementTextHeightPacket {
+  Packet packet;
+  uint32_t id;
+};
+
+typedef struct ElementTextHeightResponsePacket ElementTextHeightResponsePacket;
+
+struct __attribute__((__packed__)) ElementTextHeightResponsePacket {
+  Packet packet;
+  uint32_t id;
+  uint16_t height;
+};
+
+typedef struct CalculateTextHeightPacket CalculateTextHeightPacket;
+
+struct __attribute__((__packed__)) CalculateTextHeightPacket {
+  Packet packet;
+  uint8_t font_key;
+  uint16_t width;
+  uint8_t overflow_mode;
+  uint8_t alignment;
+  char text[];
+};
+
+typedef struct CalculateTextHeightResponsePacket CalculateTextHeightResponsePacket;
+
+struct __attribute__((__packed__)) CalculateTextHeightResponsePacket {
+  Packet packet;
+  uint16_t height;
+};
+
 typedef struct ElementAnimatePacket ElementAnimatePacket;
 
 struct __attribute__((__packed__)) ElementAnimatePacket {
@@ -703,6 +736,100 @@ static void handle_element_animate_packet(Simply *simply, Packet *data) {
   simply_stage_animate_element(simply->stage, element, animation, packet->frame);
 }
 
+static void handle_element_text_height_packet(Simply *simply, Packet *data) {
+  ElementTextHeightPacket *packet = (ElementTextHeightPacket*) data;
+  SimplyElementText *element = (SimplyElementText*) simply_stage_get_element(simply->stage, packet->id);
+  if (!element) {
+    return;
+  }
+
+  char *text = element->text;
+  if (!is_string(text)) {
+    return;
+  }
+
+  // Calculate the text height
+  GFont font = element->font ? element->font : fonts_get_system_font(FONT_KEY_GOTHIC_14);
+  GSize text_size = graphics_text_layout_get_content_size(
+    text,
+    font,
+    element->rect.common.frame,
+    element->overflow_mode,
+    element->alignment
+  );
+
+  // Send the height back to JavaScript
+  ElementTextHeightResponsePacket packet_response = {
+    .packet = {
+      .type = CommandElementTextHeightResponse,
+      .length = sizeof(ElementTextHeightResponsePacket),
+    },
+    .id = packet->id,
+    .height = text_size.h,
+  };
+
+  simply_msg_send_packet((Packet*) &packet_response);
+}
+
+static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
+  CalculateTextHeightPacket *packet = (CalculateTextHeightPacket*) data;
+
+  // Get the font based on the font key
+  GFont font;
+  switch(packet->font_key) {
+    case 0: font = fonts_get_system_font(FONT_KEY_GOTHIC_14); break;
+    case 1: font = fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD); break;
+    case 2: font = fonts_get_system_font(FONT_KEY_GOTHIC_18); break;
+    case 3: font = fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD); break;
+    case 4: font = fonts_get_system_font(FONT_KEY_GOTHIC_24); break;
+    case 5: font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD); break;
+    case 6: font = fonts_get_system_font(FONT_KEY_GOTHIC_28); break;
+    case 7: font = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD); break;
+    case 8: font = fonts_get_system_font(FONT_KEY_BITHAM_30_BLACK); break;
+    case 9: font = fonts_get_system_font(FONT_KEY_BITHAM_42_BOLD); break;
+    case 10: font = fonts_get_system_font(FONT_KEY_BITHAM_42_LIGHT); break;
+    case 11: font = fonts_get_system_font(FONT_KEY_BITHAM_42_MEDIUM_NUMBERS); break;
+    case 12: font = fonts_get_system_font(FONT_KEY_ROBOTO_CONDENSED_21); break;
+    case 13: font = fonts_get_system_font(FONT_KEY_ROBOTO_BOLD_SUBSET_49); break;
+    case 14: font = fonts_get_system_font(FONT_KEY_DROID_SERIF_28_BOLD); break;
+    default: font = fonts_get_system_font(FONT_KEY_GOTHIC_14); break;
+  }
+
+  // Create a frame with the specified width and a very large height
+  // As Katharine Berry suggests, use a very large number for the height
+  GRect frame = GRect(0, 0, packet->width, 10000); // Height is set very large
+
+  // Get the text overflow mode
+  GTextOverflowMode overflow_mode = packet->overflow_mode;
+
+  // Get the text alignment
+  GTextAlignment alignment = packet->alignment;
+
+  // Calculate the text height
+  // Using a very large frame height ensures we get the true content size
+  GSize text_size = graphics_text_layout_get_content_size(
+    packet->text,
+    font,
+    frame,
+    overflow_mode,
+    alignment
+  );
+
+  // Add a small buffer to ensure text isn't cut off
+  text_size.h += 5; // Add 5px padding
+
+  // Send the height back to JavaScript
+  CalculateTextHeightResponsePacket packet_response = {
+    .packet = {
+      .type = CommandCalculateTextHeightResponse,
+      .length = sizeof(CalculateTextHeightResponsePacket),
+    },
+    .height = text_size.h,
+  };
+
+  simply_msg_send_packet((Packet*) &packet_response);
+}
+
 bool simply_stage_handle_packet(Simply *simply, Packet *packet) {
   switch (packet->type) {
     case CommandStageClear:
@@ -737,6 +864,12 @@ bool simply_stage_handle_packet(Simply *simply, Packet *packet) {
       return true;
     case CommandElementAnimate:
       handle_element_animate_packet(simply, packet);
+      return true;
+    case CommandElementTextHeight:
+      handle_element_text_height_packet(simply, packet);
+      return true;
+    case CommandCalculateTextHeight:
+      handle_calculate_text_height_packet(simply, packet);
       return true;
   }
   return false;
