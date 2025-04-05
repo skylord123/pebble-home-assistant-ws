@@ -799,7 +799,7 @@ function showDictationMenu() {
 
         // Add error title
         let errorTitle = new UI.Text({
-            position: new Vector(5, currentY),
+            position: new Vector(5, currentY + 5),
             size: new Vector(Feature.resolution().x - 10, 20),
             text: 'Error:',
             font: 'gothic-18-bold',
@@ -904,7 +904,7 @@ function showDictationMenu() {
             // Add speaker label
             let speakerLabel = new UI.Text({
                 id: speakerId,
-                position: new Vector(5, currentY),
+                position: new Vector(5, currentY + 5),
                 size: new Vector(Feature.resolution().x - 10, 20),
                 text: speaker + ':',
                 font: 'gothic-18-bold',
