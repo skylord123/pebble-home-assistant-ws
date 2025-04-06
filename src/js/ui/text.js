@@ -53,20 +53,18 @@ var fontMetrics = {
  * @param {function} callback - Function to call with the height value
  */
 Text.prototype.getHeight = function(callback) {
-  console.log('getHeight called for element with ID:', this.state.id);
 
   var simply = require('ui/simply');
+  var Feature = require('platform/feature');
   var text = this.state.text || '';
   var font = this.state.font || defaults.font;
-  var width = this.state.frame ? this.state.frame.size.w : 144; // Default to screen width
+  var width = this.state.size ? this.state.size.x : Feature.resolution().x;
   var overflow = this.state.textOverflow || 'ellipsis';
   var alignment = this.state.textAlign || 'left';
-
   // Use the direct text height calculation
   simply.impl.calculateTextHeight(text, font, width, overflow, alignment, function(height) {
     // Add a small buffer to ensure text isn't cut off (similar to Bobby's approach)
     var finalHeight = height + 5; // Add 5px padding like Bobby does
-    console.log('Text height calculation: original=' + height + ', final=' + finalHeight);
     callback(finalHeight);
   });
 };
