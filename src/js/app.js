@@ -804,7 +804,7 @@ function showDictationMenu() {
 
         // Add error title
         let errorTitle = new UI.Text({
-            position: new Vector(5, currentY + 5),
+            position: new Vector(5, currentY),
             size: new Vector(Feature.resolution().x - 10, 20),
             text: 'Error:',
             font: 'gothic-18-bold',
@@ -909,10 +909,10 @@ function showDictationMenu() {
             // Add speaker label
             let speakerLabel = new UI.Text({
                 id: speakerId,
-                position: new Vector(5, currentY + 5),
+                position: new Vector(5, currentY),
                 size: new Vector(Feature.resolution().x - 10, 20),
                 text: speaker + ':',
-                font: 'gothic-18-bold',
+                font: 'gothic-24-bold',
                 color: Feature.color('black', 'white'),
                 textAlign: 'left'
             });
@@ -925,7 +925,7 @@ function showDictationMenu() {
                 position: new Vector(5, currentY + 20),
                 size: new Vector(Feature.resolution().x - 10, 2000),
                 text: message,
-                font: 'gothic-18',
+                font: 'gothic-24',
                 color: Feature.color('black', 'white'),
                 textAlign: 'left',
                 textOverflow: 'wrap'
