@@ -386,7 +386,7 @@ function showDomainFilterSettings() {
 
 function showVoiceAssistantSettings() {
     // Create a menu for assistant settings
-    let voiceSettingsMenu = new UI.Menu({
+    const voiceSettingsMenu = new UI.Menu({
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -399,61 +399,76 @@ function showVoiceAssistantSettings() {
     function updateMenuItems() {
         // Clear the menu
         voiceSettingsMenu.items(0, []);
+        let menuIndex = 0;
 
         // Enabled setting
-        voiceSettingsMenu.item(0, 0, {
+        voiceSettingsMenu.item(0, menuIndex++, {
             title: "Enabled",
             subtitle: voice_enabled ? "True" : "False",
             on_click: function(e) {
-                // Toggle voice_enabled setting
                 voice_enabled = !voice_enabled;
-                // Save to settings
                 Settings.option('voice_enabled', voice_enabled);
-                // Update menu
                 updateMenuItems();
             }
         });
 
+        // Font Size setting
+        const initialFontSize = Settings.option('voice_font_size') || 18;
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Font Size",
+            subtitle: initialFontSize + "px",
+            on_click: function(e) {
+                // Get the current font size each time
+                const currentFontSize = Settings.option('voice_font_size') || 18;
+
+                // Cycle through available sizes: 14 -> 18 -> 24 -> 28
+                const availableSizes = [14, 18, 24, 28];
+                const currentIndex = availableSizes.indexOf(currentFontSize);
+                const nextSize = availableSizes[(currentIndex + 1) % availableSizes.length];
+                Settings.option('voice_font_size', nextSize);
+
+                // Update only this menu item instead of entire menu
+                voiceSettingsMenu.item(0, e.itemIndex, {
+                    title: "Font Size",
+                    subtitle: nextSize + "px",
+                    on_click: e.item.on_click
+                });
+            }
+        });
+
         // Agent setting
-        let agentName = "Home Assistant"; // Default
+        let currentAgentName = "Home Assistant";
         if (voice_agent) {
-            // Extract the agent name from voice_agent (which is an entity_id)
-            const agent_id = voice_agent.split('.')[1];
-            agentName = agent_id
+            const agentId = voice_agent.split('.')[1];
+            currentAgentName = agentId
                 .split('_')
                 .map(word => word.charAt(0).toUpperCase() + word.slice(1))
                 .join(' ');
         }
 
-        voiceSettingsMenu.item(0, 1, {
+        voiceSettingsMenu.item(0, menuIndex++, {
             title: "Agent",
-            subtitle: agentName,
+            subtitle: currentAgentName,
             on_click: function(e) {
                 showVoiceAgentMenu();
             }
         });
 
         // Confirm Dictation setting
-        voiceSettingsMenu.item(0, 2, {
+        voiceSettingsMenu.item(0, menuIndex++, {
             title: "Confirm Dictation",
             subtitle: voice_confirm ? "True" : "False",
             on_click: function(e) {
-                // Toggle voice_confirm setting
                 voice_confirm = !voice_confirm;
-                // Save to settings
                 Settings.option('voice_confirm', voice_confirm);
-                // Update menu
                 updateMenuItems();
             }
         });
     }
 
-    voiceSettingsMenu.on('show', function() {
-        updateMenuItems();
-    });
-
+    voiceSettingsMenu.on('show', updateMenuItems);
     voiceSettingsMenu.on('select', function(e) {
-        if(typeof e.item.on_click == 'function') {
+        if(typeof e.item.on_click === 'function') {
             e.item.on_click(e);
         }
     });
@@ -735,8 +750,8 @@ function showDictationMenu() {
     });
 
     // Configuration for message spacing
-    const MESSAGE_PADDING = 0; // Padding between messages
-    const SCROLL_PADDING = 0; // Padding at the bottom when scrolling
+    let MESSAGE_PADDING = 0; // Padding between messages
+    let SCROLL_PADDING = 0; // Padding at the bottom when scrolling
 
     // Message keys for scrolling
     const MESSAGE_KEY_SCROLL_Y = 1000;
@@ -848,7 +863,7 @@ function showDictationMenu() {
             };
 
             // Update position for next message with configurable padding
-            currentY += 20 + height + MESSAGE_PADDING; // title (20) + message height + padding
+            currentY += height + MESSAGE_PADDING; // title (20) + message height + padding
             log_message("New currentY position for error: " + currentY);
 
             // Update the window's content size to ensure proper scrolling
@@ -891,6 +906,25 @@ function showDictationMenu() {
         });
     }
 
+    // Get configured font size or default to 18
+    const FONT_SIZE = Settings.option('voice_font_size') || 18;
+
+    // Define fonts based on size
+    const SPEAKER_FONT = `gothic-${FONT_SIZE}-bold`;
+    const MESSAGE_FONT = `gothic-${FONT_SIZE}`;
+
+    // Update the existing MESSAGE_PADDING value based on font size
+    // MESSAGE_PADDING = Math.max(0, (FONT_SIZE - 18) * 2); // Increase padding with larger fonts
+    const SPEAKER_HEIGHT = FONT_SIZE + 2; // Base height for speaker label
+
+    function getDisplayName(speaker) {
+        // Use shorter name for Home Assistant when font size is large
+        if (speaker === "Home Assistant" && FONT_SIZE > 18) {
+            return "HA";
+        }
+        return speaker;
+    }
+
     function addMessage(speaker, message, callback) {
         log_message("Adding message from " + speaker + ": " + message);
 
@@ -902,17 +936,16 @@ function showDictationMenu() {
         }
 
         try {
-            // Generate unique IDs for our elements
             const speakerId = Math.floor(Math.random() * 100000);
             const messageId = Math.floor(Math.random() * 100000);
 
-            // Add speaker label
+            // Add speaker label with display name
             let speakerLabel = new UI.Text({
                 id: speakerId,
                 position: new Vector(5, currentY),
-                size: new Vector(Feature.resolution().x - 10, 20),
-                text: speaker + ':',
-                font: 'gothic-24-bold',
+                size: new Vector(Feature.resolution().x - 10, SPEAKER_HEIGHT),
+                text: getDisplayName(speaker) + ':',
+                font: SPEAKER_FONT,
                 color: Feature.color('black', 'white'),
                 textAlign: 'left'
             });
@@ -922,42 +955,26 @@ function showDictationMenu() {
             // Add message text
             let messageText = new UI.Text({
                 id: messageId,
-                position: new Vector(5, currentY + 20),
+                position: new Vector(5, currentY + SPEAKER_HEIGHT),
                 size: new Vector(Feature.resolution().x - 10, 2000),
                 text: message,
-                font: 'gothic-24',
+                font: MESSAGE_FONT,
                 color: Feature.color('black', 'white'),
                 textAlign: 'left',
                 textOverflow: 'wrap'
             });
 
-            log_message("Getting height of new text..");
-            // Get the actual height of the message text
             messageText.getHeight(function(height) {
-                log_message("Text height callback received with height: " + height);
-
-                // Ensure we have a reasonable height (minimum 20px)
-                height = Math.max(height, 20);
-
-                // Log the calculated height for debugging
-                log_message("Text height calculation for message: " + height + "px for text: " + message.substring(0, 30) + "...");
-
-                // Update the message text element size with the actual height
-                // Add extra padding to ensure text isn't cut off
+                height = Math.max(height, FONT_SIZE); // Changed from fontSize to FONT_SIZE
                 messageText.size(new Vector(Feature.resolution().x - 10, height + 10));
-
-                // Add the message text to the window
                 dictationWindow.add(messageText);
                 conversationElements.push(messageText);
 
-                // Update position for next message with configurable padding
-                // Similar to Bobby's approach: speaker label + message height + padding
-                currentY += 20 + height + MESSAGE_PADDING;
-                log_message("New currentY position: " + currentY);
+                // Update position with adjusted padding
+                currentY += SPEAKER_HEIGHT + height + MESSAGE_PADDING;
 
-                // Update the window's content size to ensure proper scrolling
-                // Add more padding at the bottom to ensure content isn't cut off
-                const contentHeight = currentY + 20; // Add 20px padding at the bottom
+                // Update window content size
+                const contentHeight = currentY + 20;
                 dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
                 log_message("Updated window size to: " + contentHeight + " for currentY: " + currentY);
 
@@ -1013,7 +1030,7 @@ function showDictationMenu() {
         const MESSAGE_KEY_SCROLL_Y = 1000;
         const MESSAGE_KEY_ANIMATED = 1001;
 
-        // Position dots below the last message
+        // Position dots below the last message, but 20px higher than before
         const centerX = Feature.resolution().x / 2;
         const startY = currentY;
 
@@ -1970,7 +1987,6 @@ function showLightEntity(entity_id) {
             line2: new UI.Line({
                 position: new Vector(12 + boxLeftMargin, menuItems[selectedIndex].y + 12),
                 position2: new Vector(5 + boxLeftMargin, menuItems[selectedIndex].y + 16),
-                strokeColor: pointerColor,
                 strokeWidth: 2
             }),
             line3: new UI.Line({
@@ -2001,13 +2017,11 @@ function showLightEntity(entity_id) {
                 if (item.showBar && menuBarsFg[i]) {
                     // Update progress bar
                     let barWidth = (114 - boxLeftMargin) * (item.value / 100);
-                    menuBarsFg[i].position2(new Vector(20 + boxLeftMargin + barWidth, item.y + 22));
 
                     // Always use highlight color for progress bars
                     menuBarsFg[i].strokeColor(colour.highlight);
                 }
             } else if (item.id === "temperature") {
-                menuSubtexts[i].text(is_on ? `${item.kelvin}K` : "NA");
 
                 if (item.showBar && menuBarsFg[i]) {
                     // Update progress bar
@@ -3226,6 +3240,9 @@ loadingCard.show();
 //getEvents();
 
 main();
+
+
+
 
 
 

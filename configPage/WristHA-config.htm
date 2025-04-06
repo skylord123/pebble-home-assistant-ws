@@ -101,6 +101,16 @@
 									<input class="form-check-input" type="checkbox" id="ha-voice-confirm">
 									<label class="form-check-label" for="ha-voice-confirm">Confirm dictation before sending</label>
 								</div>
+								<div class="form-group mt-3">
+									<label for="ha-voice-font-size">Font Size</label>
+									<select class="form-select" id="ha-voice-font-size">
+										<option value="14">14px</option>
+										<option value="18">18px</option>
+										<option value="24">24px</option>
+										<option value="28">28px</option>
+									</select>
+									<small class="form-text text-muted">Select the font size for the assistant conversation</small>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -432,6 +442,7 @@
 				orderDirInput = $('#ha-order-dir'),
 				voiceEnabled = $('#ha-voice-enabled'),
 				voiceConfirm = $('#ha-voice-confirm'),
+				voiceFontSize = $('#ha-voice-font-size'),
 				timelineSection = $('#timeline-section'),
 				timelineTokenDisplay = $('#timeline-token-display'),
 				domainInput = $('#domain-input'),
@@ -457,6 +468,7 @@
 				'order_dir': orderDirInput.val(),
 				'voice_enabled': voiceEnabled.is(':checked'),
 				'voice_confirm': voiceConfirm.is(':checked'),
+				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'favorite_entities': $("#favorites-sortable li").map(function(a,b){
 					return $(b).data('entity-id');
 				}).toArray(),
@@ -514,6 +526,11 @@
 
 			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
 			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
+			if (watch_config['voice_font_size']) {
+				voiceFontSize.val(watch_config['voice_font_size']);
+			} else {
+				voiceFontSize.val('18'); // Default to 18px
+			}
 
 			if(watch_config['favorite_entities']) {
 				let html = '';
