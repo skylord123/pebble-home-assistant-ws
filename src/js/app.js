@@ -113,7 +113,7 @@ function load_settings() {
     ha_filter = Settings.option('filter');
     ha_order_by = Settings.option('order_by');
     ha_order_dir = Settings.option('order_dir');
-    voice_enabled = Settings.option('voice_enabled');
+    voice_enabled = Feature.microphone(true, false) ? Settings.option('voice_enabled') : false;
     voice_confirm = Settings.option('voice_confirm');
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     domain_menu_enabled = true;
@@ -272,21 +272,26 @@ function showSettingsMenu() {
         // Clear the menu
         settingsMenu.items(0, []);
 
-        settingsMenu.item(0, 0, {
-            title: "Assistant",
-            on_click: function(e) {
-                showVoiceAssistantSettings();
-            }
-        });
+        let i = 0;
 
-        settingsMenu.item(0, 1, {
+        // Only show Assistant settings if we have microphone support
+        if ( Feature.microphone(true, false) ) {
+            settingsMenu.item(0, i++, {
+                title: "Assistant",
+                on_click: function(e) {
+                    showVoiceAssistantSettings();
+                }
+            });
+        }
+
+        settingsMenu.item(0, i++, {
             title: "Entity Settings",
             on_click: function(e) {
                 showEntitySettings();
             }
         });
 
-        settingsMenu.item(0, 2, {
+        settingsMenu.item(0, i++, {
             title: "Domain Filters",
             on_click: function(e) {
                 showDomainFilterSettings();
