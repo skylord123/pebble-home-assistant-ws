@@ -371,6 +371,10 @@ class HAWS {
         return this.send({ type: 'config/entity_registry/list'}, successCallback, errorCallback);
     }
 
+    getConfigLabels(successCallback, errorCallback) {
+        return this.send({ type: 'config/label_registry/list'}, successCallback, errorCallback);
+    }
+
     on(event, callback) {
         return this.events.addEventListener(event, callback);
     }

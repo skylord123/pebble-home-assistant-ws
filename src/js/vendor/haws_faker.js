@@ -192,6 +192,9 @@ class HAWS {
                 case 'conversation/process':
                     response = this._handleConversation(msg, successCallback);
                     break;
+                case 'config/label_registry/list':
+                    response = this._handleGetLabels(msg, successCallback);
+                    break;
                 default:
                     if(this.debug) {
                         console.log(`[HAWS Mock] Unhandled message type: ${msg.type}`);
@@ -816,6 +819,10 @@ class HAWS {
         return this.send({ type: 'config/entity_registry/list'}, successCallback, errorCallback);
     }
 
+    getConfigLabels(successCallback, errorCallback) {
+        return this.send({ type: 'config/label_registry/list'}, successCallback, errorCallback);
+    }
+
     on(event, callback) {
         return this.events.addEventListener(event, callback);
     }
@@ -945,6 +952,13 @@ class HAWS {
                 name: 'Kitchen Fan',
                 manufacturer: 'Mock Manufacturer',
                 model: 'Mock Fan',
+            },
+            'device_work_pc': {
+                id: 'device_work_pc',
+                area_id: 'office',
+                name: 'Work Computer',
+                manufacturer: 'Microsoft',
+                model: 'Windows PC',
             }
         };
 
@@ -1099,6 +1113,49 @@ class HAWS {
                 icon: null,
                 disabled_by: null,
                 hidden_by: null
+            },
+            'conversation.chatgpt': {
+                entity_id: 'conversation.chatgpt',
+                area_id: null,
+                device_id: null,
+                platform: 'mock',
+                name: 'ChatGPT',
+                icon: null,
+                disabled_by: null,
+                hidden_by: null
+            },
+            'binary_sensor.work_pc_active': {
+                entity_id: 'binary_sensor.work_pc_active',
+                area_id: 'office',
+                device_id: 'device_work_pc',
+                platform: 'mock',
+                name: 'Work PC Active',
+                icon: 'mdi:desktop-tower-monitor',
+                disabled_by: null,
+                hidden_by: null,
+                labels: ['work_pc']
+            },
+            'sensor.teams_status': {
+                entity_id: 'sensor.teams_status',
+                area_id: 'office',
+                device_id: 'device_work_pc',
+                platform: 'mock',
+                name: 'Teams Status',
+                icon: 'mdi:microsoft-teams',
+                disabled_by: null,
+                hidden_by: null,
+                labels: ['work_pc', 'communication']
+            },
+            'media_player.work_pc_spotify': {
+                entity_id: 'media_player.work_pc_spotify',
+                area_id: 'office',
+                device_id: 'device_work_pc',
+                platform: 'mock',
+                name: 'Work PC Spotify',
+                icon: 'mdi:spotify',
+                disabled_by: null,
+                hidden_by: null,
+                labels: ['work_pc', 'entertainment']
             }
         };
 
@@ -1351,7 +1408,7 @@ class HAWS {
                 }
             },
 
-            // CONVERSATION ENTITY
+            // CONVERSATION ENTITIES
             'conversation.home_assistant': {
                 entity_id: 'conversation.home_assistant',
                 state: 'unknown',
@@ -1366,8 +1423,128 @@ class HAWS {
                     parent_id: null,
                     user_id: null
                 }
+            },
+            'conversation.chatgpt': {
+                entity_id: 'conversation.chatgpt',
+                state: 'unknown',
+                attributes: {
+                    friendly_name: 'ChatGPT',
+                    supported_features: 0
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
+            'binary_sensor.work_pc_active': {
+                entity_id: 'binary_sensor.work_pc_active',
+                state: 'on',
+                attributes: {
+                    friendly_name: 'Work PC Active',
+                    device_class: 'power',
+                    labels: ['work_pc']
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
+            'sensor.teams_status': {
+                entity_id: 'sensor.teams_status',
+                state: 'Busy',
+                attributes: {
+                    friendly_name: 'Teams Status',
+                    icon: 'mdi:microsoft-teams',
+                    status_color: 'red',
+                    labels: ['work_pc', 'communication'],
+                    options: [
+                        'Available',
+                        'Busy',
+                        'Do not disturb',
+                        'Be right back',
+                        'Away',
+                        'Offline'
+                    ]
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
+            'media_player.work_pc_spotify': {
+                entity_id: 'media_player.work_pc_spotify',
+                state: 'playing',
+                attributes: {
+                    friendly_name: 'Work PC Spotify',
+                    media_title: 'Focus Music',
+                    media_artist: 'Various Artists',
+                    volume_level: 0.3,
+                    is_volume_muted: false,
+                    source: 'Spotify',
+                    labels: ['work_pc', 'entertainment'],
+                    supported_features: 4096
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
             }
         };
+    }
+
+    _handleGetLabels(msg, callback) {
+        const response = {
+            id: msg.id,
+            type: 'result',
+            success: true,
+            result: [
+                {
+                    color: "brown",
+                    created_at: 1743985196.985991,
+                    description: "Grouping of entities related to my work computer",
+                    icon: "mdi:briefcase",
+                    label_id: "work_pc",
+                    name: "Work PC",
+                    modified_at: 1743985196.985999
+                },
+                {
+                    color: "blue",
+                    created_at: 1743985196.986000,
+                    description: "Entertainment devices and media players",
+                    icon: "mdi:television",
+                    label_id: "entertainment",
+                    name: "Entertainment",
+                    modified_at: 1743985196.986000
+                },
+                {
+                    color: "purple",
+                    created_at: 1743985196.986001,
+                    description: "Communication and messaging services",
+                    icon: "mdi:message",
+                    label_id: "communication",
+                    name: "Communication",
+                    modified_at: 1743985196.986001
+                }
+            ]
+        };
+
+        if(callback) {
+            callback(response);
+        }
+
+        return response;
     }
 }
 

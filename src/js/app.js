@@ -7,7 +7,7 @@
 
 const appVersion = '0.6.3',
     confVersion = '0.3.0',
-    debugMode = true,
+    debugMode = false,
     debugHAWS = false,
     hawsFaker = false,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
@@ -150,8 +150,8 @@ let haws = null,
     area_registry_cache = null,
     device_registry_cache = null,
     entity_registry_cache = null,
-    favoriteEntityStore = new FavoriteEntityStore();
-
+    favoriteEntityStore = new FavoriteEntityStore(),
+    label_registry_cache = null;
 
 let device_status,
     ha_state_cache = null,
@@ -217,6 +217,13 @@ function showMainMenu() {
                 // subtitle: thisDevice.attributes[arr[i]],
                 on_click: function(e) {
                     showAreaMenu();
+                }
+            });
+            mainMenu.item(0, i++, {
+                title: "Labels",
+                // subtitle: thisDevice.attributes[arr[i]],
+                on_click: function(e) {
+                    showLabelMenu();
                 }
             });
             mainMenu.item(0, i++, {
@@ -1279,6 +1286,88 @@ function showAreaMenu() {
     }
 
     areaMenu.show();
+}
+
+function showLabelMenu() {
+    let labelMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Labels'
+        }]
+    });
+
+    labelMenu.on('show', function(e) {
+        // Sort labels by name
+        let sortedLabels = Object.values(label_registry_cache)
+            .filter(label => label && label.name) // Ensure valid labels
+            .sort((a, b) => a.name.localeCompare(b.name));
+
+        if (sortedLabels.length === 0) {
+            labelMenu.item(0, 0, {
+                title: 'No Labels Found',
+                subtitle: 'No labels are configured'
+            });
+        } else {
+            for(let i = 0; i < sortedLabels.length; i++) {
+                let label = sortedLabels[i];
+                let entities = getEntitiesForLabel(label.label_id);
+                let entityCount = Object.keys(entities).length;
+
+                labelMenu.item(0, i, {
+                    title: label.name,
+                    subtitle: `${entityCount} ${(entityCount > 1 || entityCount === 0) ? 'entities' : 'entity'}`,
+                    on_click: function(e) {
+                        showEntitiesForLabel(label.label_id);
+                    }
+                });
+            }
+        }
+    });
+
+    // menu item pressed, if it has an event fn call it
+    labelMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        } else {
+            log_message("No click function for label menu item " + e.title);
+        }
+    });
+
+    labelMenu.show();
+}
+
+function showEntitiesForLabel(label_id) {
+    let entities = getEntitiesForLabel(label_id);
+    let label = label_registry_cache[label_id];
+
+    if(!entities) {
+        return;
+    }
+
+    if(domain_menu_enabled) {
+        showEntityDomainsFromList(Object.keys(entities), label.name);
+    } else {
+        showEntityList(label.name, Object.keys(entities));
+    }
+}
+
+function getEntitiesForLabel(label_id) {
+    if(!entity_registry_cache) {
+        return false;
+    }
+
+    const results = {};
+    for (const entity_id in entity_registry_cache) {
+        let entity = entity_registry_cache[entity_id];
+        if (entity.labels && entity.labels.includes(label_id)) {
+            results[entity_id] = entity;
+        }
+    }
+
+    return results;
 }
 
 //{
@@ -2974,10 +3063,11 @@ function getEntitiesWithoutArea() {
  */
 function on_auth_ok(evt) {
     loadingCard.subtitle("Fetching states");
-    log_message("Fetching states, config areas, config devices, and config entities...");
+    log_message("Fetching states, config areas, config devices, config entities, and config labels...");
     let done_fetching = function(){
         // basically just a wrapper to check that all the things have finished fetching
-        if(area_registry_cache && device_registry_cache && entity_registry_cache && ha_state_cache) {
+        if(area_registry_cache && device_registry_cache && entity_registry_cache &&
+           ha_state_cache && label_registry_cache) {
             log_message("Finished fetching data, showing main menu");
 
             // try to resume previous WindowStack state if it's saved
@@ -3087,6 +3177,17 @@ function on_auth_ok(evt) {
         done_fetching();
     }, function(){
         loadingCard.subtitle("Fetching entities failed");
+    });
+
+    haws.getConfigLabels(function(data) {
+        label_registry_cache = {};
+        for(let result of data.result) {
+            label_registry_cache[result.label_id] = result;
+        }
+        log_message("Config labels loaded.");
+        done_fetching();
+    }, function(){
+        loadingCard.subtitle("Fetching labels failed");
     });
 }
 
