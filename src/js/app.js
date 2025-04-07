@@ -4,8 +4,8 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const appVersion = '0.6.3',
-    confVersion = '0.3.0',
+const appVersion = '0.7.0',
+    confVersion = '0.7.0',
     debugMode = false,
     debugHAWS = false,
     hawsFaker = false,
@@ -107,7 +107,8 @@ let ha_url = null,
     voice_agent = null,
     domain_menu_enabled = null,
     timeline_token = null,
-    ignore_domains = null;
+    ignore_domains = null,
+    ha_connected = false;
 
 function load_settings() {
     // Set some variables for quicker access
@@ -692,6 +693,14 @@ function loadAssistPipelines(callback) {
 
             ha_pipelines = data.result.pipelines;
             preferred_pipeline = data.result.preferred_pipeline;
+
+            // Save pipelines to settings for config page
+            const pipelineOptions = ha_pipelines.map(p => ({
+                id: p.id,
+                name: p.name,
+                preferred: p.id === preferred_pipeline
+            }));
+            Settings.option('available_pipelines', pipelineOptions);
 
             // If we have a previous voice_agent setting, try to match it to a pipeline
             if (voice_agent && !selected_pipeline) {
@@ -3116,6 +3125,11 @@ function on_auth_ok(evt) {
     loadingCard.subtitle("Fetching states");
     log_message("Fetching states, config areas, config devices, config entities, and config labels...");
     let pipelines_loaded = false;
+
+    // Set connection status to true
+    ha_connected = true;
+    Settings.option('ha_connected', ha_connected);
+
     let done_fetching = function(){
         // basically just a wrapper to check that all the things have finished fetching
         if(area_registry_cache && device_registry_cache && entity_registry_cache &&
