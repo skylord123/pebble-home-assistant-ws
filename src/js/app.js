@@ -113,7 +113,7 @@ function load_settings() {
     ha_filter = Settings.option('filter');
     ha_order_by = Settings.option('order_by');
     ha_order_dir = Settings.option('order_dir');
-    voice_enabled = Feature.microphone(true, false) ? Settings.option('voice_enabled') : false;
+    voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     domain_menu_enabled = true;
@@ -3240,13 +3240,3 @@ loadingCard.show();
 //getEvents();
 
 main();
-
-
-
-
-
-
-
-
-
-
