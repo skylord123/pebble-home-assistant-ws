@@ -400,6 +400,82 @@ class HAWS {
 
         return ++this._last_cmd_id;
     }
+
+    // Add new method for listing pipelines
+    getPipelines(successCallback, errorCallback) {
+        return this.send({ type: 'assist_pipeline/pipeline/list' }, successCallback, errorCallback);
+    }
+
+    // Add new method for running pipeline
+    runPipeline(data, successCallback, errorCallback) {
+        const msg = {
+            type: 'assist_pipeline/run',
+            ...data
+        };
+
+        msg.id = this._genCmdId();
+
+        // Store the subscription callback before sending
+        const subscriptionId = msg.id;
+        this._subscriptions.push(subscriptionId);
+
+        // Create a handler for the subscription responses
+        const handler = (response) => {
+            if (response.type === 'result') {
+                if (!response.success) {
+                    if (errorCallback) {
+                        errorCallback(response.error || 'Failed to start pipeline');
+                    }
+                    this.unsubscribe(subscriptionId);
+                    return;
+                }
+                return; // Just acknowledge receipt, don't call success callback yet
+            }
+
+            // Handle event responses
+            if (response.type === 'event') {
+                const event = response.event;
+
+                // Check for run-end event to clean up subscription
+                if (event.type === 'run-end') {
+                    this.unsubscribe(subscriptionId);
+                    return;
+                }
+
+                // Check for error event
+                if (event.type === 'error') {
+                    if (errorCallback) {
+                        const errorMessage = event.data && event.data.message ? event.data.message : 'Pipeline error';
+                        const errorCode = event.data && event.data.code ? event.data.code : 'unknown';
+                        errorCallback({
+                            error: errorMessage,
+                            code: errorCode
+                        });
+                    }
+                    this.unsubscribe(subscriptionId);
+                    return;
+                }
+
+                // Check for intent-end event to get the response
+                if (event.type === 'intent-end' && event.data && event.data.intent_output) {
+                    if (successCallback) {
+                        successCallback({
+                            success: true,
+                            response: event.data.intent_output.response,
+                            conversation_id: event.data.intent_output.conversation_id
+                        });
+                    }
+                }
+            }
+        };
+
+        // Store the command and handler
+        this._commands.set(subscriptionId, [handler, errorCallback]);
+
+        // Send the message
+        this.ws.send(JSON.stringify(msg));
+        return subscriptionId;
+    }
 }
 
 module.exports = HAWS;

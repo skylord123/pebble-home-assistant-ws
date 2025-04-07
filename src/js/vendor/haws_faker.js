@@ -1502,6 +1502,25 @@ class HAWS {
                 }
             }
         };
+
+        // Add mock pipelines
+        this.mockPipelines = {
+            pipelines: [
+                {
+                    id: "default_pipeline",
+                    name: "Home Assistant",
+                    conversation_engine: "conversation.home_assistant",
+                    language: "en",
+                    conversation_language: "en",
+                    stt_engine: "stt.whisper",
+                    stt_language: "en",
+                    tts_engine: "tts.cloud",
+                    tts_language: "en-US",
+                    tts_voice: "en-US-Neural2-F"
+                }
+            ],
+            preferred_pipeline: "default_pipeline"
+        };
     }
 
     _handleGetLabels(msg, callback) {
@@ -1545,6 +1564,124 @@ class HAWS {
         }
 
         return response;
+    }
+
+    getPipelines(successCallback, errorCallback) {
+        if (successCallback) {
+            successCallback({
+                success: true,
+                result: this.mockPipelines
+            });
+        }
+    }
+
+    runPipeline(data, successCallback, errorCallback) {
+        const cmdId = this._genCmdId();
+
+        // Store the subscription callback before sending
+        this._subscriptions.push(cmdId);
+
+        // Create a handler for the subscription responses
+        const handler = (response) => {
+            if (response.type === 'result') {
+                if (!response.success) {
+                    if (errorCallback) {
+                        errorCallback(response.error || 'Failed to start pipeline');
+                    }
+                    this.unsubscribe(cmdId);
+                    return;
+                }
+                return; // Just acknowledge receipt
+            }
+
+            // Handle event responses
+            if (response.type === 'event') {
+                const event = response.event;
+
+                // Check for run-end event to clean up subscription
+                if (event.type === 'run-end') {
+                    this.unsubscribe(cmdId);
+                    return;
+                }
+
+                // Check for intent-end event to get the response
+                if (event.type === 'intent-end' && event.data && event.data.intent_output) {
+                    if (successCallback) {
+                        successCallback({
+                            success: true,
+                            response: event.data.intent_output.response,
+                            conversation_id: event.data.intent_output.conversation_id || `mock-conversation-${this._generateRandomId()}`
+                        });
+                    }
+                }
+            }
+        };
+
+        // Store the command and handler
+        this._commands.set(cmdId, [handler, errorCallback]);
+
+        // Simulate the sequence of events
+        setTimeout(() => {
+            // Initial result response
+            handler({
+                type: 'result',
+                success: true
+            });
+
+            // Run start event
+            setTimeout(() => {
+                handler({
+                    type: 'event',
+                    event: {
+                        type: 'run-start',
+                        data: {
+                            pipeline: 'mock-pipeline',
+                            language: 'en'
+                        }
+                    }
+                });
+
+                // Intent end event with actual response
+                setTimeout(() => {
+                    handler({
+                        type: 'event',
+                        event: {
+                            type: 'intent-end',
+                            data: {
+                                intent_output: {
+                                    response: {
+                                        speech: {
+                                            plain: {
+                                                speech: "This is a mock response to: " + data.text
+                                            }
+                                        },
+                                        language: "en",
+                                        response_type: "action_done",
+                                        data: {}
+                                    },
+                                    conversation_id: `mock-conversation-${this._generateRandomId()}`
+                                }
+                            }
+                        }
+                    });
+
+                    // Run end event
+                    setTimeout(() => {
+                        handler({
+                            type: 'event',
+                            event: {
+                                type: 'run-end',
+                                data: {
+                                    pipeline: 'mock-pipeline'
+                                }
+                            }
+                        });
+                    }, 100);
+                }, 500);
+            }, 100);
+        }, 100);
+
+        return cmdId;
     }
 }
 

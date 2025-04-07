@@ -48,6 +48,11 @@ colour = {
     highlight_text: Feature.color("black", "white")
 };
 
+// Add to global variables
+let ha_pipelines = [],
+    preferred_pipeline = null,
+    selected_pipeline = null;
+
 // only call console.log if debug is enabled
 function log_message(msg, extra) {
     if(!debugMode) return;
@@ -133,6 +138,9 @@ function load_settings() {
     }
     // If ignore_domains is an empty array, respect user's choice to show all domains
     log_message('Ignore domains: ' + JSON.stringify(ignore_domains));
+
+    // Update Voice Pipeline handling
+    selected_pipeline = Settings.option('selected_pipeline');
 
     Pebble.getTimelineToken(function(token) {
         log_message('Timeline token: ' + token);
@@ -444,19 +452,18 @@ function showVoiceAssistantSettings() {
 
         // Agent setting
         let currentAgentName = "Home Assistant";
-        if (voice_agent) {
-            const agentId = voice_agent.split('.')[1];
-            currentAgentName = agentId
-                .split('_')
-                .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                .join(' ');
+        if (selected_pipeline && ha_pipelines) {
+            const pipeline = ha_pipelines.find(p => p.id === selected_pipeline);
+            if (pipeline) {
+                currentAgentName = pipeline.name;
+            }
         }
 
         voiceSettingsMenu.item(0, menuIndex++, {
-            title: "Agent",
+            title: "Pipeline",
             subtitle: currentAgentName,
             on_click: function(e) {
-                showVoiceAgentMenu();
+                showVoicePipelineMenu();
             }
         });
 
@@ -601,144 +608,126 @@ function showEntitySettings() {
     entitySettingsMenu.show();
 }
 
-function showVoiceAgentMenu() {
-    // Create a menu for selecting voice agents
-    let voiceAgentMenu = new UI.Menu({
+function showVoicePipelineMenu() {
+    // Create a menu for selecting Voice Pipelines
+    let voicePipelineMenu = new UI.Menu({
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'Voice Agent'
+            title: 'Assist Pipeline'
         }]
     });
 
-    voiceAgentMenu.on('show', function() {
+    voicePipelineMenu.on('show', function() {
         // Clear the menu
-        voiceAgentMenu.items(0, []);
+        voicePipelineMenu.items(0, []);
 
-        // Get available agents from ha_state_dict
-        const agents = [];
+        for (let i = 0; i < ha_pipelines.length; i++) {
+            const pipeline = ha_pipelines[i];
+            let subtitle = '';
 
-        // Iterate through ha_state_dict to find conversation entities
-        for (const entity_id in ha_state_dict) {
-            if (entity_id.startsWith('conversation.')) {
-                // Extract the agent ID (part after "conversation.")
-                const agent_id = entity_id.split('.')[1];
-
-                // Create a friendly display name (capitalize and replace underscores)
-                const name = agent_id
-                    .split('_')
-                    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-                    .join(' ');
-
-                log_message("Found conversation agent " + entity_id);
-                agents.push({
-                    id: entity_id, // Store the FULL entity_id, not just the part after the dot
-                    name: name,
-                    entity_id: entity_id
-                });
+            // Determine subtitle based on current and preferred status
+            if (selected_pipeline === pipeline.id && preferred_pipeline === pipeline.id) {
+                subtitle = 'Current - Preferred';
+            } else if (selected_pipeline === pipeline.id) {
+                subtitle = 'Current';
+            } else if (preferred_pipeline === pipeline.id) {
+                subtitle = 'Preferred';
             }
-        }
 
-        // Sort agents alphabetically by name
-        agents.sort((a, b) => a.name.localeCompare(b.name));
-
-        // If no agents found, add a default
-        if (agents.length === 0) {
-            agents.push({
-                id: 'conversation.home_assistant',
-                name: 'Home Assistant',
-                entity_id: 'conversation.home_assistant'
-            });
-        }
-
-        // Add each agent to the menu
-        for (let i = 0; i < agents.length; i++) {
-            const agent = agents[i];
-            voiceAgentMenu.item(0, i, {
-                title: agent.name,
-                subtitle: (voice_agent === agent.id) ? 'Current' : '',
-                agent_id: agent.id
+            voicePipelineMenu.item(0, i, {
+                title: pipeline.name,
+                subtitle: subtitle,
+                pipeline_id: pipeline.id
             });
         }
     });
 
-    voiceAgentMenu.on('select', function(e) {
-        // Save the selected agent
-        voice_agent = e.item.agent_id;
+    voicePipelineMenu.on('select', function(e) {
+        selected_pipeline = e.item.pipeline_id;
+        Settings.option('selected_pipeline', selected_pipeline);
 
-        // Save to settings
-        Settings.option('voice_agent', voice_agent);
+        // Update menu items
+        for (let i = 0; i < voicePipelineMenu.items(0).length; i++) {
+            const item = voicePipelineMenu.item(0, i);
+            let subtitle = '';
 
-        // Update the menu to show the currently selected agent
-        for (let i = 0; i < voiceAgentMenu.items(0).length; i++) {
-            const item = voiceAgentMenu.item(0, i);
-            voiceAgentMenu.item(0, i, {
+            // Determine subtitle based on current and preferred status
+            if (selected_pipeline === item.pipeline_id && preferred_pipeline === item.pipeline_id) {
+                subtitle = 'Current - Preferred';
+            } else if (selected_pipeline === item.pipeline_id) {
+                subtitle = 'Current';
+            } else if (preferred_pipeline === item.pipeline_id) {
+                subtitle = 'Preferred';
+            }
+
+            voicePipelineMenu.item(0, i, {
                 title: item.title,
-                subtitle: (voice_agent === item.agent_id) ? 'Current' : '',
-                agent_id: item.agent_id
+                subtitle: subtitle,
+                pipeline_id: item.pipeline_id
             });
         }
 
         // Close the menu after a brief delay to show the selection
         setTimeout(function() {
-            voiceAgentMenu.hide();
+            voicePipelineMenu.hide();
         }, 500);
     });
 
-    voiceAgentMenu.show();
+    voicePipelineMenu.show();
 }
 
 
 // Add this new function to check for conversation agents
-function checkConversationAgents() {
-    // Get available agents from ha_state_dict
-    const agents = [];
-    let foundCurrentAgent = false;
-
-    // Iterate through ha_state_dict to find conversation entities
-    for (const entity_id in ha_state_dict) {
-        if (entity_id.startsWith('conversation.')) {
-            // Add to agents list
-            agents.push(entity_id);
-
-            // Check if the currently set agent is available
-            if (entity_id === voice_agent) {
-                foundCurrentAgent = true;
+function loadAssistPipelines(callback) {
+    haws.getPipelines(
+        function(data) {
+            if (!data.success) {
+                log_message("Failed to get pipelines");
+                callback(false);
+                return;
             }
+
+            ha_pipelines = data.result.pipelines;
+            preferred_pipeline = data.result.preferred_pipeline;
+
+            // If we have a previous voice_agent setting, try to match it to a pipeline
+            if (voice_agent && !selected_pipeline) {
+                const matchingPipeline = ha_pipelines.find(p =>
+                    p.conversation_engine === voice_agent
+                );
+                if (matchingPipeline) {
+                    selected_pipeline = matchingPipeline.id;
+                }
+            }
+
+            // If no pipeline selected, use preferred
+            if (!selected_pipeline && preferred_pipeline) {
+                selected_pipeline = preferred_pipeline;
+            }
+
+            // Save selected pipeline
+            if (selected_pipeline) {
+                Settings.option('selected_pipeline', selected_pipeline);
+            }
+
+            callback(true);
+        },
+        function(error) {
+            log_message("Error getting pipelines: " + error);
+            callback(false);
         }
-    }
-
-    // If no agents found or current agent not available, reset to default or first available
-    if (agents.length === 0) {
-        // No conversation entities at all - disable voice functionality
-        voice_agent = null;
-        Settings.option('voice_agent', null);
-        log_message("No conversation entities found - voice assistant disabled");
-    } else if (!foundCurrentAgent || !voice_agent) {
-        // Try to use home_assistant as default
-        if (agents.includes('conversation.home_assistant')) {
-            voice_agent = 'conversation.home_assistant';
-        } else {
-            // Use the first available agent
-            voice_agent = agents[0];
-        }
-
-        // Save the selected agent
-        Settings.option('voice_agent', voice_agent);
-        log_message("Set default voice agent to: " + voice_agent);
-    }
-
-    return agents.length > 0;
+    );
 }
 
 let conversation_id = null;
 function showDictationMenu() {
-    if (!checkConversationAgents()) {
+    if (!selected_pipeline) {
         let errorCard = new UI.Card({
             title: 'Assistant Error',
-            body: 'No conversation entities found on this Home Assistant instance.',
+            body: 'No assist pipeline available. Please configure Home Assistant Assist.',
             scrollable: true
         });
 
@@ -789,6 +778,7 @@ function showDictationMenu() {
     let currentY = 24; // Start position below title bar
     let conversationElements = []; // Track all elements for cleanup
     let currentErrorMessage = null; // Track current error message element
+    let errorMessageHeight = 0; // Track the height of the error message
 
     // Add a title bar
     let titleBar = new UI.Text({
@@ -821,6 +811,8 @@ function showDictationMenu() {
         if (currentErrorMessage) {
             dictationWindow.remove(currentErrorMessage.title);
             dictationWindow.remove(currentErrorMessage.message);
+            // Reset error message height
+            errorMessageHeight = 0;
         }
 
         // Add error title
@@ -871,6 +863,10 @@ function showDictationMenu() {
             // Update position for next message with configurable padding
             currentY += height + MESSAGE_PADDING; // title (20) + message height + padding
             log_message("New currentY position for error: " + currentY);
+
+            // Store the total height of the error message for later adjustment
+            errorMessageHeight = height + 20; // Text height + error title
+            log_message("Stored error message height: " + errorMessageHeight);
 
             // Update the window's content size to ensure proper scrolling
             // Add more padding at the bottom to ensure content isn't cut off
@@ -938,6 +934,14 @@ function showDictationMenu() {
         if (currentErrorMessage) {
             dictationWindow.remove(currentErrorMessage.title);
             dictationWindow.remove(currentErrorMessage.message);
+
+            // Adjust currentY to remove the gap left by the error message
+            if (errorMessageHeight > 0) {
+                currentY -= errorMessageHeight;
+                log_message("Adjusted currentY after removing error: " + currentY);
+                errorMessageHeight = 0;
+            }
+
             currentErrorMessage = null;
         }
 
@@ -1151,19 +1155,21 @@ function showDictationMenu() {
                 log_message("Starting API call");
                 let animationTimer = startLoadingAnimation();
 
-                let body = {
-                    "type": "conversation/process",
-                    "text": e.transcription,
-                    "agent_id": voice_agent
+                const body = {
+                    start_stage: "intent",
+                    end_stage: "intent",
+                    input: {
+                        text: e.transcription
+                    },
+                    pipeline: selected_pipeline,
+                    conversation_id: conversation_id,
+                    timeout: 30 // Add a 30-second timeout to prevent hanging
                 };
-                if (conversation_id) {
-                    body.conversation_id = conversation_id;
-                }
 
-                log_message("Sending conversation/process request");
-                haws.send(body,
+                log_message("Sending assist_pipeline/run request");
+                haws.runPipeline(body,
                     function(data) {
-                        log_message("conversation/process response received: " + JSON.stringify(data));
+                        log_message("assist_pipeline/run response: " + JSON.stringify(data));
                         stopLoadingAnimation(animationTimer);
 
                         if (!data.success) {
@@ -1172,21 +1178,68 @@ function showDictationMenu() {
                         }
 
                         try {
-                            let reply = data.result?.response?.speech.plain.speech;
-                            if (!reply) {
-                                throw new Error('Invalid response format');
+                            // Get the response text and conversation ID
+                            const reply = data.response.speech.plain.speech;
+                            const conversationId = data.conversation_id;
+
+                            addMessage('Assistant', reply, null);
+                            if (conversationId) {
+                                conversation_id = conversationId;
                             }
-                            addMessage('Home Assistant', reply, null);
-                            conversation_id = data.conversation_id;
                         } catch (err) {
                             showError('Invalid response format from Home Assistant');
                             log_message("Response format error: " + err.toString());
                         }
                     },
                     function(error) {
-                        log_message("conversation/process error: " + error.toString());
+                        log_message("conversation/process error: " + JSON.stringify(error));
                         stopLoadingAnimation(animationTimer);
-                        showError('Connection error');
+
+                        // Handle specific error codes from the pipeline
+                        if (error && error.code) {
+                            switch(error.code) {
+                                case 'wake-engine-missing':
+                                    showError('No wake word engine installed');
+                                    break;
+                                case 'wake-provider-missing':
+                                    showError('Wake word provider not available');
+                                    break;
+                                case 'wake-stream-failed':
+                                    showError('Wake word detection failed');
+                                    break;
+                                case 'wake-word-timeout':
+                                    showError('Wake word detection timed out');
+                                    break;
+                                case 'stt-provider-missing':
+                                    showError('Speech-to-text provider not available');
+                                    break;
+                                case 'stt-provider-unsupported-metadata':
+                                    showError('Unsupported audio format');
+                                    break;
+                                case 'stt-stream-failed':
+                                    showError('Speech-to-text failed');
+                                    break;
+                                case 'stt-no-text-recognized':
+                                    showError('No speech detected');
+                                    break;
+                                case 'intent-not-supported':
+                                    showError('Conversation agent not available');
+                                    break;
+                                case 'intent-failed':
+                                    showError('Intent recognition failed');
+                                    break;
+                                case 'tts-not-supported':
+                                    showError('Text-to-speech not available');
+                                    break;
+                                case 'tts-failed':
+                                    showError('Text-to-speech failed');
+                                    break;
+                                default:
+                                    showError(error.error || 'Connection error');
+                            }
+                        } else {
+                            showError(error.error || 'Connection error');
+                        }
                     }
                 );
             });
@@ -1198,7 +1251,7 @@ function showDictationMenu() {
         startDictation();
     });
 
-    dictationWindow.on('longClick', 'select', showVoiceAgentMenu);
+    dictationWindow.on('longClick', 'select', showVoicePipelineMenu);
 
     dictationWindow.on('show', function() {
         startDictation();
@@ -3063,10 +3116,11 @@ function getEntitiesWithoutArea() {
 function on_auth_ok(evt) {
     loadingCard.subtitle("Fetching states");
     log_message("Fetching states, config areas, config devices, config entities, and config labels...");
+    let pipelines_loaded = false;
     let done_fetching = function(){
         // basically just a wrapper to check that all the things have finished fetching
         if(area_registry_cache && device_registry_cache && entity_registry_cache &&
-           ha_state_cache && label_registry_cache) {
+           ha_state_cache && label_registry_cache && pipelines_loaded) {
             log_message("Finished fetching data, showing main menu");
 
             // try to resume previous WindowStack state if it's saved
@@ -3187,6 +3241,11 @@ function on_auth_ok(evt) {
         done_fetching();
     }, function(){
         loadingCard.subtitle("Fetching labels failed");
+    });
+
+    loadAssistPipelines(function(){
+        pipelines_loaded = true;
+        done_fetching();
     });
 }
 
