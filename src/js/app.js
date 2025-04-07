@@ -1,8 +1,7 @@
 /**
- * Initial Home Assistant interface for Pebble.
+ * pebble-home-assistant-ws
  *
- * By texnofobix (Dustin S.)
- * Updated by Skylord123 (https://skylar.tech)
+ * Created by Skylord123 (https://skylar.tech)
  */
 
 const appVersion = '0.6.3',
