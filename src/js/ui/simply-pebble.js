@@ -732,18 +732,7 @@ var ElementAnimateDonePacket = new struct([
   ['uint32', 'id'],
 ]);
 
-var ElementTextHeightPacket = new struct([
-  [Packet, 'packet'],
-  ['uint32', 'id'],
-]);
-
-var ElementTextHeightResponsePacket = new struct([
-  [Packet, 'packet'],
-  ['uint32', 'id'],
-  ['uint16', 'height'],
-]);
-
-var CalculateTextHeightPacket = new struct([
+var CalculateTextSizePacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'font_key'],
   ['uint16', 'width'],
@@ -752,8 +741,9 @@ var CalculateTextHeightPacket = new struct([
   ['cstring', 'text', StringType],
 ]);
 
-var CalculateTextHeightResponsePacket = new struct([
+var CalculateTextSizeResponsePacket = new struct([
   [Packet, 'packet'],
+  ['uint16', 'width'],
   ['uint16', 'height'],
 ]);
 
@@ -829,10 +819,8 @@ var CommandPackets = [
   VoiceDictationStartPacket,
   VoiceDictationStopPacket,
   VoiceDictationDataPacket,
-  ElementTextHeightPacket,
-  ElementTextHeightResponsePacket,
-  CalculateTextHeightPacket,
-  CalculateTextHeightResponsePacket,
+  CalculateTextSizePacket,
+  CalculateTextSizeResponsePacket,
 ];
 
 var accelAxes = [
@@ -1311,32 +1299,8 @@ SimplyPebble.elementText = function(id, text, timeUnits) {
 };
 
 // Define command constants based on the C enum values
-var CommandElementTextHeight = 61;
-var CommandElementTextHeightResponse = 62;
-var CommandCalculateTextHeight = 63;
-var CommandCalculateTextHeightResponse = 64;
-
-SimplyPebble.elementTextHeight = function(id, callback) {
-  console.log('elementTextHeight called with id:', id, 'typeof id:', typeof id);
-  state.textHeightCallbacks = state.textHeightCallbacks || {};
-  state.textHeightCallbacks[id] = callback;
-
-  // Create a fixed-size packet for the text height request
-  var byteArray = new Uint8Array(8);
-  var dataView = new DataView(byteArray.buffer);
-
-  // Set the packet type (CommandElementTextHeight = 61)
-  dataView.setUint16(0, CommandElementTextHeight, true);
-
-  // Set the packet length (8 bytes total)
-  dataView.setUint16(2, 8, true);
-
-  // Set the element ID
-  dataView.setUint32(4, id, true);
-
-  // Send the message
-  state.messageQueue.send({ 0: Array.from(byteArray) });
-};
+var CommandCalculateTextSize = 61;
+var CommandCalculateTextSizeResponse = 62;
 
 // Font key mapping
 var fontKeyMap = {
@@ -1372,19 +1336,19 @@ var alignmentMap = {
 };
 
 /**
- * Calculate text height directly without needing an existing UI element
+ * Calculate text size (width and height) directly without needing an existing UI element
  * @param {string} text - The text to measure
  * @param {string} font - The font name
  * @param {number} width - The width constraint
  * @param {string} overflow - The overflow mode ('wrap', 'ellipsis', 'fill')
  * @param {string} alignment - The text alignment ('left', 'center', 'right')
- * @param {function} callback - Function to call with the height value
+ * @param {function} callback - Function to call with the size object {width, height}
  */
-SimplyPebble.calculateTextHeight = function(text, font, width, overflow, alignment, callback) {
-  console.log('calculateTextHeight called with text:', text.substring(0, 20) + '...');
+SimplyPebble.calculateTextSize = function(text, font, width, overflow, alignment, callback) {
+  console.log('calculateTextSize called with text:', text.substring(0, 20) + '...');
 
   // Store the callback for later use
-  state.calculateTextHeightCallback = callback;
+  state.calculateTextSizeCallback = callback;
 
   // Get font key from font name
   var fontKey = fontKeyMap[font] || 0;
@@ -1396,14 +1360,29 @@ SimplyPebble.calculateTextHeight = function(text, font, width, overflow, alignme
   var textAlignment = alignmentMap[alignment] || 0;
 
   // Send the packet
-  CalculateTextHeightPacket
+  CalculateTextSizePacket
     .font_key(fontKey)
     .width(width)
     .overflow_mode(overflowMode)
     .alignment(textAlignment)
     .text(text);
 
-  SimplyPebble.sendPacket(CalculateTextHeightPacket);
+  SimplyPebble.sendPacket(CalculateTextSizePacket);
+};
+
+/**
+ * Calculate text height directly without needing an existing UI element (for backwards compatibility)
+ * @param {string} text - The text to measure
+ * @param {string} font - The font name
+ * @param {number} width - The width constraint
+ * @param {string} overflow - The overflow mode ('wrap', 'ellipsis', 'fill')
+ * @param {string} alignment - The text alignment ('left', 'center', 'right')
+ * @param {function} callback - Function to call with the height value
+ */
+SimplyPebble.calculateTextHeight = function(text, font, width, overflow, alignment, callback) {
+  SimplyPebble.calculateTextSize(text, font, width, overflow, alignment, function(size) {
+    callback(size.height);
+  });
 };
 
 SimplyPebble.elementTextStyle = function(id, def) {
@@ -1602,18 +1581,14 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case VoiceDictationDataPacket:
       SimplyPebble.onVoiceData(packet);
       break;
-    case ElementTextHeightResponsePacket:
-      console.log('Received height response for element ' + packet.id() + ': ' + packet.height());
-      if (state.textHeightCallbacks && state.textHeightCallbacks[packet.id()]) {
-        state.textHeightCallbacks[packet.id()](packet.height());
-        delete state.textHeightCallbacks[packet.id()];
-      }
-      break;
-    case CalculateTextHeightResponsePacket:
-      console.log('Received direct text height calculation response: ' + packet.height());
-      if (state.calculateTextHeightCallback) {
-        state.calculateTextHeightCallback(packet.height());
-        delete state.calculateTextHeightCallback;
+    case CalculateTextSizeResponsePacket:
+      console.log('Received direct text size calculation response: width=' + packet.width() + ', height=' + packet.height());
+      if (state.calculateTextSizeCallback) {
+        state.calculateTextSizeCallback({
+          width: packet.width(),
+          height: packet.height()
+        });
+        delete state.calculateTextSizeCallback;
       }
       break;
   }

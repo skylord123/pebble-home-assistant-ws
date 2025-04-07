@@ -109,9 +109,9 @@ struct __attribute__((__packed__)) ElementTextHeightResponsePacket {
   uint16_t height;
 };
 
-typedef struct CalculateTextHeightPacket CalculateTextHeightPacket;
+typedef struct CalculateTextSizePacket CalculateTextSizePacket;
 
-struct __attribute__((__packed__)) CalculateTextHeightPacket {
+struct __attribute__((__packed__)) CalculateTextSizePacket {
   Packet packet;
   uint8_t font_key;
   uint16_t width;
@@ -120,10 +120,11 @@ struct __attribute__((__packed__)) CalculateTextHeightPacket {
   char text[];
 };
 
-typedef struct CalculateTextHeightResponsePacket CalculateTextHeightResponsePacket;
+typedef struct CalculateTextSizeResponsePacket CalculateTextSizeResponsePacket;
 
-struct __attribute__((__packed__)) CalculateTextHeightResponsePacket {
+struct __attribute__((__packed__)) CalculateTextSizeResponsePacket {
   Packet packet;
+  uint16_t width;
   uint16_t height;
 };
 
@@ -736,43 +737,8 @@ static void handle_element_animate_packet(Simply *simply, Packet *data) {
   simply_stage_animate_element(simply->stage, element, animation, packet->frame);
 }
 
-static void handle_element_text_height_packet(Simply *simply, Packet *data) {
-  ElementTextHeightPacket *packet = (ElementTextHeightPacket*) data;
-  SimplyElementText *element = (SimplyElementText*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
-    return;
-  }
-
-  char *text = element->text;
-  if (!is_string(text)) {
-    return;
-  }
-
-  // Calculate the text height
-  GFont font = element->font ? element->font : fonts_get_system_font(FONT_KEY_GOTHIC_14);
-  GSize text_size = graphics_text_layout_get_content_size(
-    text,
-    font,
-    element->rect.common.frame,
-    element->overflow_mode,
-    element->alignment
-  );
-
-  // Send the height back to JavaScript
-  ElementTextHeightResponsePacket packet_response = {
-    .packet = {
-      .type = CommandElementTextHeightResponse,
-      .length = sizeof(ElementTextHeightResponsePacket),
-    },
-    .id = packet->id,
-    .height = text_size.h,
-  };
-
-  simply_msg_send_packet((Packet*) &packet_response);
-}
-
-static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
-  CalculateTextHeightPacket *packet = (CalculateTextHeightPacket*) data;
+static void handle_calculate_text_size_packet(Simply *simply, Packet *data) {
+  CalculateTextSizePacket *packet = (CalculateTextSizePacket*) data;
 
   // Get the font based on the font key
   GFont font;
@@ -805,7 +771,7 @@ static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
   // Get the text alignment
   GTextAlignment alignment = packet->alignment;
 
-  // Calculate the text height
+  // Calculate the text size
   // Using a very large frame height ensures we get the true content size
   GSize text_size = graphics_text_layout_get_content_size(
     packet->text,
@@ -818,12 +784,13 @@ static void handle_calculate_text_height_packet(Simply *simply, Packet *data) {
   // Add a small buffer to ensure text isn't cut off
   text_size.h += 5; // Add 5px padding
 
-  // Send the height back to JavaScript
-  CalculateTextHeightResponsePacket packet_response = {
+  // Send the size (width and height) back to JavaScript
+  CalculateTextSizeResponsePacket packet_response = {
     .packet = {
-      .type = CommandCalculateTextHeightResponse,
-      .length = sizeof(CalculateTextHeightResponsePacket),
+      .type = CommandCalculateTextSizeResponse,
+      .length = sizeof(CalculateTextSizeResponsePacket),
     },
+    .width = text_size.w,
     .height = text_size.h,
   };
 
@@ -865,11 +832,8 @@ bool simply_stage_handle_packet(Simply *simply, Packet *packet) {
     case CommandElementAnimate:
       handle_element_animate_packet(simply, packet);
       return true;
-    case CommandElementTextHeight:
-      handle_element_text_height_packet(simply, packet);
-      return true;
-    case CommandCalculateTextHeight:
-      handle_calculate_text_height_packet(simply, packet);
+    case CommandCalculateTextSize:
+      handle_calculate_text_size_packet(simply, packet);
       return true;
   }
   return false;

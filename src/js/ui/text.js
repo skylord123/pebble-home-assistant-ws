@@ -49,10 +49,10 @@ var fontMetrics = {
 };
 
 /**
- * Gets the height of the text element
- * @param {function} callback - Function to call with the height value
+ * Gets the size (width and height) of the text element
+ * @param {function} callback - Function to call with the size object {width, height}
  */
-Text.prototype.getHeight = function(callback) {
+Text.prototype.getTextSize = function(callback) {
 
   var simply = require('ui/simply');
   var Feature = require('platform/feature');
@@ -61,11 +61,19 @@ Text.prototype.getHeight = function(callback) {
   var width = this.state.size ? this.state.size.x : Feature.resolution().x;
   var overflow = this.state.textOverflow || 'ellipsis';
   var alignment = this.state.textAlign || 'left';
-  // Use the direct text height calculation
-  simply.impl.calculateTextHeight(text, font, width, overflow, alignment, function(height) {
-    // Add a small buffer to ensure text isn't cut off (similar to Bobby's approach)
-    var finalHeight = height + 5; // Add 5px padding like Bobby does
-    callback(finalHeight);
+  // Use the direct text size calculation
+  simply.impl.calculateTextSize(text, font, width, overflow, alignment, function(size) {
+    callback(size);
+  });
+};
+
+/**
+ * Gets the height of the text element (for backwards compatibility)
+ * @param {function} callback - Function to call with the height value
+ */
+Text.prototype.getHeight = function(callback) {
+  this.getTextSize(function(size) {
+    callback(size.height);
   });
 };
 

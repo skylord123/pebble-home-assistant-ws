@@ -58,9 +58,7 @@ enum Command {
   CommandVoiceStart,
   CommandVoiceStop,
   CommandVoiceData,
-  CommandElementTextHeight,
-  CommandElementTextHeightResponse,
-  CommandCalculateTextHeight,
-  CommandCalculateTextHeightResponse,
+  CommandCalculateTextSize,
+  CommandCalculateTextSizeResponse,
   NumCommands,
 };
