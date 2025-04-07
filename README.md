@@ -2,6 +2,8 @@
 
 Control your Home Assistant smart home directly from your Pebble smartwatch! This app uses WebSockets for real-time updates and control of your Home Assistant devices and entities.
 
+[Discord Discussion](https://discord.com/channels/221364737269694464/1356054710439903232)
+
 ![pebble-ha-ws-logo.png](pebble-ha-ws-logo.png)
 
 ## Features
