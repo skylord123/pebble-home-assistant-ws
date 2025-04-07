@@ -199,7 +199,7 @@ function showMainMenu() {
                     title: "Assistant",
                     // subtitle: thisDevice.attributes[arr[i]],
                     on_click: function(e) {
-                        showDictationMenu();
+                        showAssistMenu();
                     }
                 });
             }
@@ -467,7 +467,7 @@ function showVoiceAssistantSettings() {
             }
         });
 
-        // Confirm Dictation setting
+        // Confirm Dictate setting
         voiceSettingsMenu.item(0, menuIndex++, {
             title: "Confirm Dictation",
             subtitle: voice_confirm ? "True" : "False",
@@ -723,7 +723,7 @@ function loadAssistPipelines(callback) {
 }
 
 let conversation_id = null;
-function showDictationMenu() {
+function showAssistMenu() {
     if (!selected_pipeline) {
         let errorCard = new UI.Card({
             title: 'Assistant Error',
@@ -739,7 +739,7 @@ function showDictationMenu() {
         return;
     }
 
-    let dictationWindow = new UI.Window({
+    let assistWindow = new UI.Window({
         backgroundColor: Feature.color('white', 'black'),
         scrollable: true
     });
@@ -790,7 +790,7 @@ function showDictationMenu() {
         textAlign: 'center',
         backgroundColor: colour.highlight
     });
-    dictationWindow.add(titleBar);
+    assistWindow.add(titleBar);
 
     // Loading animation dots
     let loadingDots = [];
@@ -809,8 +809,8 @@ function showDictationMenu() {
 
     function showError(message) {
         if (currentErrorMessage) {
-            dictationWindow.remove(currentErrorMessage.title);
-            dictationWindow.remove(currentErrorMessage.message);
+            assistWindow.remove(currentErrorMessage.title);
+            assistWindow.remove(currentErrorMessage.message);
             // Reset error message height
             errorMessageHeight = 0;
         }
@@ -836,7 +836,7 @@ function showDictationMenu() {
             textOverflow: 'wrap'
         });
 
-        dictationWindow.add(errorTitle);
+        assistWindow.add(errorTitle);
         conversationElements.push(errorTitle);
 
         // Get the actual height of the error message
@@ -852,7 +852,7 @@ function showDictationMenu() {
             errorMessage.size(new Vector(Feature.resolution().x - 10, height + 10));
 
             // Add the error message to the window
-            dictationWindow.add(errorMessage);
+            assistWindow.add(errorMessage);
             conversationElements.push(errorMessage);
 
             currentErrorMessage = {
@@ -871,7 +871,7 @@ function showDictationMenu() {
             // Update the window's content size to ensure proper scrolling
             // Add more padding at the bottom to ensure content isn't cut off
             const contentHeight = currentY + 20; // Add 20px padding at the bottom
-            dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
+            assistWindow.size(new Vector(Feature.resolution().x, contentHeight));
             log_message("Updated error window size to: " + contentHeight + " for currentY: " + currentY);
 
             // Store positions for scrolling reference
@@ -899,7 +899,7 @@ function showDictationMenu() {
                 // Add a small delay before scrolling to ensure the UI is updated
                 setTimeout(function() {
                     // Use our custom scrolling function
-                    scrollWindowTo(dictationWindow, scrollTarget, true);
+                    scrollWindowTo(assistWindow, scrollTarget, true);
                     log_message("Scrolling error to target: " + scrollTarget);
                 }, 100);
             }
@@ -932,8 +932,8 @@ function showDictationMenu() {
 
         // Remove error message if exists
         if (currentErrorMessage) {
-            dictationWindow.remove(currentErrorMessage.title);
-            dictationWindow.remove(currentErrorMessage.message);
+            assistWindow.remove(currentErrorMessage.title);
+            assistWindow.remove(currentErrorMessage.message);
 
             // Adjust currentY to remove the gap left by the error message
             if (errorMessageHeight > 0) {
@@ -959,7 +959,7 @@ function showDictationMenu() {
                 color: Feature.color('black', 'white'),
                 textAlign: 'left'
             });
-            dictationWindow.add(speakerLabel);
+            assistWindow.add(speakerLabel);
             conversationElements.push(speakerLabel);
 
             // Add message text
@@ -977,7 +977,7 @@ function showDictationMenu() {
             messageText.getHeight(function(height) {
                 height = Math.max(height, FONT_SIZE); // Changed from fontSize to FONT_SIZE
                 messageText.size(new Vector(Feature.resolution().x - 10, height + 10));
-                dictationWindow.add(messageText);
+                assistWindow.add(messageText);
                 conversationElements.push(messageText);
 
                 // Update position with adjusted padding
@@ -985,7 +985,7 @@ function showDictationMenu() {
 
                 // Update window content size
                 const contentHeight = currentY + 20;
-                dictationWindow.size(new Vector(Feature.resolution().x, contentHeight));
+                assistWindow.size(new Vector(Feature.resolution().x, contentHeight));
                 log_message("Updated window size to: " + contentHeight + " for currentY: " + currentY);
 
                 // Store positions for scrolling reference
@@ -1013,7 +1013,7 @@ function showDictationMenu() {
                     // Add a small delay before scrolling to ensure the UI is updated
                     setTimeout(function() {
                         // Use our custom scrolling function
-                        scrollWindowTo(dictationWindow, scrollTarget, true);
+                        scrollWindowTo(assistWindow, scrollTarget, true);
                         log_message("Scrolling to target: " + scrollTarget);
                     }, 100);
                 }
@@ -1052,7 +1052,7 @@ function showDictationMenu() {
         for (let i = 0; i < loadingDots.length; i++) {
             const dotX = startX + (i * DOT_SPACING);
             loadingDots[i].position(new Vector(dotX, startY));
-            dictationWindow.add(loadingDots[i]);
+            assistWindow.add(loadingDots[i]);
         }
 
         // Calculate the bottom position of the animation
@@ -1060,7 +1060,7 @@ function showDictationMenu() {
 
         // Make sure the window is tall enough to show the full animation
         // Add significant extra padding to ensure the animation is fully visible
-        dictationWindow.size(new Vector(Feature.resolution().x, loadingBottom + 50)); // 50px extra padding
+        assistWindow.size(new Vector(Feature.resolution().x, loadingBottom + 50)); // 50px extra padding
         log_message("Set window size for animation: " + (loadingBottom + 50));
 
         // Calculate scroll target to ensure the dots are fully visible
@@ -1078,7 +1078,7 @@ function showDictationMenu() {
         // Add a small delay before scrolling to ensure the UI is updated
         setTimeout(function() {
             // Use our custom scrolling function
-            scrollWindowTo(dictationWindow, scrollTarget, true);
+            scrollWindowTo(assistWindow, scrollTarget, true);
             log_message("Scrolling loading indicator to target: " + scrollTarget);
         }, 100);
 
@@ -1131,16 +1131,16 @@ function showDictationMenu() {
         }
         // Remove all dots from the window
         for (let i = 0; i < loadingDots.length; i++) {
-            dictationWindow.remove(loadingDots[i]);
+            assistWindow.remove(loadingDots[i]);
         }
     }
 
-    function startDictation() {
-        log_message("startDictation");
+    function startAssist() {
+        log_message("startAssist");
         Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
                 if (e.err === "systemAborted") {
-                    log_message("dictation cancelled by user");
+                    log_message("assist cancelled by user");
                     return;
                 }
                 log_message("Transcription error: " + e.err);
@@ -1246,24 +1246,23 @@ function showDictationMenu() {
         });
     }
 
-    dictationWindow.on('click', 'select', function(e) {
-        log_message("Dictation button pressed", e);
-        startDictation();
+    assistWindow.on('click', 'select', function(e) {
+        log_message("Assist button pressed", e);
+        startAssist();
     });
 
-    dictationWindow.on('longClick', 'select', showVoicePipelineMenu);
+    assistWindow.on('longClick', 'select', showVoicePipelineMenu);
 
-    dictationWindow.on('show', function() {
-        startDictation();
+    assistWindow.on('show', function() {
+        startAssist();
     });
 
-    dictationWindow.on('hide', function() {
+    assistWindow.on('hide', function() {
         conversation_id = null;
     });
 
-    dictationWindow.show();
+    assistWindow.show();
 }
-
 
 let areaMenu = null;
 function showAreaMenu() {
