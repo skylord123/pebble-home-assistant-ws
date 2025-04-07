@@ -146,6 +146,8 @@
 								<small class="form-text text-muted">Change what entities display</small>
 							</div>
 
+
+
 							<div class="form-group col-6 mt-2">
 								<label for="ha-order-by">Order By</label>
 								<select class="form-select" aria-label="Entity Filter" id="ha-order-by">
@@ -163,6 +165,75 @@
 									<option value="asc">Ascending</option>
 								</select>
 								<small class="form-text text-muted">Change direction entities are sorted</small>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="row">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
+						Entity Domain Grouping
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="col-12">
+								<p class="mb-2">Group entities by domain when viewing:</p>
+
+								<div class="mb-3">
+									<label for="domain-menu-all" class="form-label">All Entities</label>
+									<select class="form-select domain-menu-select" id="domain-menu-all">
+										<option value="yes">Always</option>
+										<option value="no">Never</option>
+										<option value="conditional">Conditional</option>
+									</select>
+								</div>
+
+								<div class="mb-3">
+									<label for="domain-menu-areas" class="form-label">Areas</label>
+									<select class="form-select domain-menu-select" id="domain-menu-areas">
+										<option value="yes">Always</option>
+										<option value="no">Never</option>
+										<option value="conditional">Conditional</option>
+									</select>
+								</div>
+
+								<div class="mb-3">
+									<label for="domain-menu-labels" class="form-label">Labels</label>
+									<select class="form-select domain-menu-select" id="domain-menu-labels">
+										<option value="yes">Always</option>
+										<option value="no">Never</option>
+										<option value="conditional">Conditional</option>
+									</select>
+								</div>
+
+								<div class="mb-3">
+									<label for="domain-menu-favorites" class="form-label">Favorites</label>
+									<select class="form-select domain-menu-select" id="domain-menu-favorites">
+										<option value="yes">Always</option>
+										<option value="no">Never</option>
+										<option value="conditional">Conditional</option>
+									</select>
+								</div>
+
+								<div id="conditional-settings" class="mt-3 p-3 bg-light rounded" style="display: none;">
+									<p class="mb-2">Conditionally show domain menu when:</p>
+									<div class="form-check mb-2">
+										<input class="form-check-input" type="checkbox" id="domain-menu-min-entities-check" checked>
+										<label class="form-check-label" for="domain-menu-min-entities-check">
+											More than <input type="number" class="form-control form-control-sm d-inline-block" style="width: 60px;" id="domain-menu-min-entities" value="10"> entities
+										</label>
+									</div>
+									<div class="form-check">
+										<input class="form-check-input" type="checkbox" id="domain-menu-min-domains-check" checked>
+										<label class="form-check-label" for="domain-menu-min-domains-check">
+											More than <input type="number" class="form-control form-control-sm d-inline-block" style="width: 60px;" id="domain-menu-min-domains" value="1"> domains
+										</label>
+									</div>
+								</div>
 							</div>
 						</div>
 					</div>
@@ -460,7 +531,16 @@
 				timelineTokenDisplay = $('#timeline-token-display'),
 				domainInput = $('#domain-input'),
 				addDomainBtn = $('#add-domain-btn'),
-				ignoreDomainsDiv = $('#ignore-domains-list');
+				ignoreDomainsDiv = $('#ignore-domains-list'),
+				domainMenuAll = $('#domain-menu-all'),
+				domainMenuAreas = $('#domain-menu-areas'),
+				domainMenuLabels = $('#domain-menu-labels'),
+				domainMenuFavorites = $('#domain-menu-favorites'),
+				domainMenuMinEntities = $('#domain-menu-min-entities'),
+				domainMenuMinDomainsCheck = $('#domain-menu-min-domains-check'),
+				domainMenuMinEntitiesCheck = $('#domain-menu-min-entities-check'),
+				domainMenuMinDomains = $('#domain-menu-min-domains'),
+				conditionalSettings = $('#conditional-settings');
 
 		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
@@ -483,6 +563,14 @@
 				'voice_confirm': voiceConfirm.is(':checked'),
 				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'selected_pipeline': pipelineSelect.val(),
+				// Domain menu settings
+				'domain_menu_enabled': 'conditional', // Default global setting
+				'domain_menu_all_entities': domainMenuAll.val(),
+				'domain_menu_areas': domainMenuAreas.val(),
+				'domain_menu_labels': domainMenuLabels.val(),
+				'domain_menu_favorites': domainMenuFavorites.val(),
+				'domain_menu_min_entities': domainMenuMinEntitiesCheck.is(':checked') ? parseInt(domainMenuMinEntities.val(), 10) : 0,
+				'domain_menu_min_domains': domainMenuMinDomainsCheck.is(':checked') ? parseInt(domainMenuMinDomains.val(), 10) : 0,
 				'favorite_entities': $("#favorites-sortable li").map(function(a,b){
 					return $(b).data('entity-id');
 				}).toArray(),
@@ -578,6 +666,51 @@
 				// Show warning
 				pipelineWarning.show();
 			}
+
+			// Handle domain menu settings
+			if (watch_config['domain_menu_all_entities']) {
+				domainMenuAll.val(watch_config['domain_menu_all_entities']);
+			} else {
+				domainMenuAll.val('conditional'); // Default
+			}
+
+			if (watch_config['domain_menu_areas']) {
+				domainMenuAreas.val(watch_config['domain_menu_areas']);
+			} else {
+				domainMenuAreas.val('conditional'); // Default
+			}
+
+			if (watch_config['domain_menu_labels']) {
+				domainMenuLabels.val(watch_config['domain_menu_labels']);
+			} else {
+				domainMenuLabels.val('conditional'); // Default
+			}
+
+			if (watch_config['domain_menu_favorites']) {
+				domainMenuFavorites.val(watch_config['domain_menu_favorites']);
+			} else {
+				domainMenuFavorites.val('conditional'); // Default
+			}
+
+			// Handle conditional settings
+			if (typeof watch_config['domain_menu_min_entities'] !== 'undefined') {
+				const minEntities = watch_config['domain_menu_min_entities'];
+				domainMenuMinEntitiesCheck.prop('checked', minEntities > 0);
+				domainMenuMinEntities.val(minEntities > 0 ? minEntities : 10);
+			}
+
+			if (typeof watch_config['domain_menu_min_domains'] !== 'undefined') {
+				const minDomains = watch_config['domain_menu_min_domains'];
+				domainMenuMinDomainsCheck.prop('checked', minDomains > 0);
+				domainMenuMinDomains.val(minDomains > 0 ? minDomains : 1);
+			}
+
+			// Show/hide conditional settings based on if any dropdown is set to conditional
+			const showConditional = domainMenuAll.val() === 'conditional' ||
+									domainMenuAreas.val() === 'conditional' ||
+									domainMenuLabels.val() === 'conditional' ||
+									domainMenuFavorites.val() === 'conditional';
+			conditionalSettings.toggle(showConditional);
 
 			if(watch_config['favorite_entities']) {
 				let html = '';
@@ -735,6 +868,16 @@
 				urlInput.removeClass('is-invalid');
 			}
 		}).keyup();
+
+		// Handle domain menu dropdowns
+		$('.domain-menu-select').on('change', function() {
+			// Show/hide conditional settings based on if any dropdown is set to conditional
+			const showConditional = domainMenuAll.val() === 'conditional' ||
+									domainMenuAreas.val() === 'conditional' ||
+									domainMenuLabels.val() === 'conditional' ||
+									domainMenuFavorites.val() === 'conditional';
+			conditionalSettings.toggle(showConditional);
+		});
 
 		$('#save-btn').click(function(e) {
 			e.preventDefault();

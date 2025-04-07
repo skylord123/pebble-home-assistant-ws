@@ -106,6 +106,12 @@ let ha_url = null,
     voice_confirm = null,
     voice_agent = null,
     domain_menu_enabled = null,
+    domain_menu_all_entities = null,
+    domain_menu_areas = null,
+    domain_menu_labels = null,
+    domain_menu_favorites = null,
+    domain_menu_min_entities = null,
+    domain_menu_min_domains = null,
     timeline_token = null,
     ignore_domains = null,
     ha_connected = false;
@@ -121,7 +127,32 @@ function load_settings() {
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
-    domain_menu_enabled = true;
+
+    // Domain menu settings
+    const domainMenuSetting = Settings.option('domain_menu_enabled');
+    domain_menu_enabled = domainMenuSetting !== undefined ? domainMenuSetting : 'conditional';
+
+    // Specific domain menu settings for different sections
+    domain_menu_all_entities = Settings.option('domain_menu_all_entities');
+    domain_menu_all_entities = domain_menu_all_entities !== undefined ? domain_menu_all_entities : domain_menu_enabled;
+
+    domain_menu_areas = Settings.option('domain_menu_areas');
+    domain_menu_areas = domain_menu_areas !== undefined ? domain_menu_areas : domain_menu_enabled;
+
+    domain_menu_labels = Settings.option('domain_menu_labels');
+    domain_menu_labels = domain_menu_labels !== undefined ? domain_menu_labels : domain_menu_enabled;
+
+    domain_menu_favorites = Settings.option('domain_menu_favorites');
+    domain_menu_favorites = domain_menu_favorites !== undefined ? domain_menu_favorites : domain_menu_enabled;
+
+    // Conditional settings
+    domain_menu_min_entities = Settings.option('domain_menu_min_entities');
+    domain_menu_min_entities = domain_menu_min_entities !== undefined ? domain_menu_min_entities : 10;
+
+    domain_menu_min_domains = Settings.option('domain_menu_min_domains');
+    domain_menu_min_domains = domain_menu_min_domains !== undefined ? domain_menu_min_domains : 2;
+
+    ha_connected = Settings.option('ha_connected') || false;
 
     // Handle ignore_domains
     ignore_domains = Settings.option('ignore_domains');
@@ -210,12 +241,13 @@ function showMainMenu() {
                     title: "Favorites",
                     // subtitle: thisDevice.attributes[arr[i]],
                     on_click: function(e) {
-                        // showEntityList();
-                        if(domain_menu_enabled && favoriteEntities > 10) {
-                            // only show domain list in favorites if there are more than 10 entities
+                        // Check if we should show domains based on settings for Favorites
+                        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+
+                        if(shouldShowDomains) {
                             showEntityDomainsFromList(favoriteEntities, "Favorites");
                         } else {
-                            showEntityList("Favorites", favoriteEntities, true, false);
+                            showEntityList("Favorites", favoriteEntities, true, false, true);
                         }
                     }
                 });
@@ -238,10 +270,14 @@ function showMainMenu() {
                 title: "All Entities",
                 // subtitle: thisDevice.attributes[arr[i]],
                 on_click: function(e) {
-                    if(domain_menu_enabled) {
-                        showEntityDomainsFromList(Object.keys(ha_state_dict), "All Entities");
+                    const entityKeys = Object.keys(ha_state_dict);
+                    // Use the specific setting for All Entities
+                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_all_entities);
+
+                    if(shouldShowDomains) {
+                        showEntityDomainsFromList(entityKeys, "All Entities");
                     } else {
-                        showEntityList("All Entities");
+                        showEntityList("All Entities", false, true, true, true);
                     }
                 }
             });
@@ -1324,11 +1360,15 @@ function showAreaMenu() {
                         // Get area_id, considering special case for Unassigned
                         let targetAreaId = entry.isUnassigned ? null : entry.area_id;
                         let areaObjects = getEntitiesForArea(targetAreaId);
+                        const entityKeys = Object.keys(areaObjects);
 
-                        if(domain_menu_enabled) {
-                            showEntityDomainsFromList(Object.keys(areaObjects), entry.display_name);
+                        // Use the specific setting for Areas
+                        const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
+
+                        if(shouldShowDomains) {
+                            showEntityDomainsFromList(entityKeys, entry.display_name);
                         } else {
-                            showEntityList(entry.display_name, Object.keys(areaObjects));
+                            showEntityList(entry.display_name, entityKeys, true, true, true);
                         }
                     }
                 });
@@ -1407,10 +1447,15 @@ function showEntitiesForLabel(label_id) {
         return;
     }
 
-    if(domain_menu_enabled) {
-        showEntityDomainsFromList(Object.keys(entities), label.name);
+    const entityKeys = Object.keys(entities);
+
+    // Use the specific setting for Labels
+    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_labels);
+
+    if(shouldShowDomains) {
+        showEntityDomainsFromList(entityKeys, label.name);
     } else {
-        showEntityList(label.name, Object.keys(entities));
+        showEntityList(label.name, entityKeys, true, true, true);
     }
 }
 
@@ -2794,7 +2839,7 @@ function showEntityDomainsFromList(entity_id_list, title) {
 }
 
 let entityListMenu = null;
-function showEntityList(title, entity_id_list = false, ignoreEntityCache = true, sortItems = true) {
+function showEntityList(title, entity_id_list = false, ignoreEntityCache = true, sortItems = true, skipIgnoredDomains = false) {
     // setup entityListMenu if it hasn't been
     entityListMenu = new UI.Menu({
         backgroundColor: 'black',
@@ -2884,8 +2929,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 entityListMenu.section(0).title = prev_title;
                 entityListMenu.items(0, []); // clear items
 
-                // Filter out ignored domains
-                if (ignore_domains && ignore_domains.length > 0) {
+                // Filter out ignored domains if skipIgnoredDomains is true
+                if (skipIgnoredDomains && ignore_domains && ignore_domains.length > 0) {
                     data = data.filter(function(element) {
                         const [domain] = element.entity_id.split('.');
                         return ignore_domains.indexOf(domain) === -1;
@@ -3358,6 +3403,41 @@ let timerID = setInterval(function() {
     }
 }, 60000 * ha_refresh_interval);
 
+
+/**
+ * Helper function to determine if we should show domain menu based on settings
+ * @param {Array} entities - Array of entity IDs
+ * @param {String} menuSetting - 'yes', 'no', or 'conditional'
+ * @returns {Boolean} - Whether to show domain menu
+ */
+function shouldShowDomainMenu(entities, menuSetting) {
+    // If setting is explicitly yes or no, respect that
+    if (menuSetting === 'yes') return true;
+    if (menuSetting === 'no') return false;
+
+    // For conditional, check the conditions
+    if (menuSetting === 'conditional') {
+        // Get unique domains from entities
+        const domains = {};
+        for (let entity_id of entities) {
+            const domain = entity_id.split('.')[0];
+            domains[domain] = true;
+        }
+        const domainCount = Object.keys(domains).length;
+
+        // Check if we meet the minimum entity count condition
+        const meetsEntityCountCondition = entities.length >= domain_menu_min_entities;
+
+        // Check if we meet the minimum domain count condition
+        const meetsDomainCountCondition = domainCount >= domain_menu_min_domains;
+
+        // Return true if both conditions are met
+        return meetsEntityCountCondition && meetsDomainCountCondition;
+    }
+
+    // Default to false for any other value
+    return false;
+}
 
 function humanDiff(newestDate, oldestDate) {
     let prettyDate = {
