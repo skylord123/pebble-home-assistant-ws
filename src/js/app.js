@@ -1133,7 +1133,7 @@ function showDictationMenu() {
 
     function startDictation() {
         log_message("startDictation");
-        Voice.dictate('start', true, function(e) {
+        Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
                 if (e.err === "systemAborted") {
                     log_message("dictation cancelled by user");
