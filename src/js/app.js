@@ -1087,17 +1087,20 @@ function showAssistMenu() {
 
         // Position dots below the last message, but 20px higher than before
         const centerX = Feature.resolution().x / 2;
-        const startY = currentY;
+        const startY = currentY + 5;
 
         // Calculate the starting X position for the first dot
         // Center the three dots with spacing
         const startX = centerX - DOT_SPACING - DOT_SIZE/2;
 
-        // Position and add each dot
+        // Store dot positions for reuse in the animation
+        const dotPositions = [];
         for (let i = 0; i < loadingDots.length; i++) {
             const dotX = startX + (i * DOT_SPACING);
-            loadingDots[i].position(new Vector(dotX, startY));
-            assistWindow.add(loadingDots[i]);
+            dotPositions.push(new Vector(dotX, startY));
+            // Set the position but don't add to window yet
+            loadingDots[i].position(dotPositions[i]);
+            loadingDots[i].radius(DOT_SIZE / 2); // Set the proper radius
         }
 
         // Calculate the bottom position of the animation
@@ -1137,31 +1140,31 @@ function showAssistMenu() {
 
         // Start the animation
         return setInterval(function() {
-            // Hide all dots first
+            // Remove all dots from the window first
             for (let i = 0; i < loadingDots.length; i++) {
-                loadingDots[i].radius(0);
+                assistWindow.remove(loadingDots[i]);
             }
 
-            // Show dots based on current animation state
+            // Add only the dots that should be visible based on current animation state
             switch (animationState) {
                 case 0: // First dot only
-                    loadingDots[0].radius(DOT_SIZE / 2);
+                    assistWindow.add(loadingDots[0]);
                     break;
                 case 1: // First and second dots
-                    loadingDots[0].radius(DOT_SIZE / 2);
-                    loadingDots[1].radius(DOT_SIZE / 2);
+                    assistWindow.add(loadingDots[0]);
+                    assistWindow.add(loadingDots[1]);
                     break;
                 case 2: // All three dots
-                    loadingDots[0].radius(DOT_SIZE / 2);
-                    loadingDots[1].radius(DOT_SIZE / 2);
-                    loadingDots[2].radius(DOT_SIZE / 2);
+                    assistWindow.add(loadingDots[0]);
+                    assistWindow.add(loadingDots[1]);
+                    assistWindow.add(loadingDots[2]);
                     break;
                 case 3: // Second and third dots
-                    loadingDots[1].radius(DOT_SIZE / 2);
-                    loadingDots[2].radius(DOT_SIZE / 2);
+                    assistWindow.add(loadingDots[1]);
+                    assistWindow.add(loadingDots[2]);
                     break;
                 case 4: // Third dot only
-                    loadingDots[2].radius(DOT_SIZE / 2);
+                    assistWindow.add(loadingDots[2]);
                     break;
             }
 
