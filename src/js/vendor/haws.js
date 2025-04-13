@@ -332,8 +332,38 @@ class HAWS {
     climateSetFanMode(entity_id, fan_mode, successCallback, errorCallback) {
         this.callService(
             'climate',
-            'set_temperature',
+            'set_fan_mode',
             {fan_mode: fan_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetHvacMode(entity_id, hvac_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_hvac_mode',
+            {hvac_mode: hvac_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetPresetMode(entity_id, preset_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_preset_mode',
+            {preset_mode: preset_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetSwingMode(entity_id, swing_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_swing_mode',
+            {swing_mode: swing_mode},
             {entity_id: entity_id},
             successCallback,
             errorCallback);

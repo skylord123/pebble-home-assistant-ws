@@ -1813,6 +1813,790 @@ function showMediaPlayerEntity(entity_id) {
     mediaControlWindow.show();
 }
 
+function showClimateEntity(entity_id) {
+    let climate = ha_state_dict[entity_id],
+        subscription_msg_id = null;
+    if (!climate) {
+        throw new Error(`Climate entity ${entity_id} not found in ha_state_dict`);
+    }
+
+    log_message(`Showing climate entity ${entity_id}: ${JSON.stringify(climate, null, 4)}`);
+
+    // Get current state and attributes
+    const is_on = climate.state !== "off";
+    const current_temp = climate.attributes.current_temperature;
+    const target_temp = climate.attributes.temperature;
+    const target_temp_low = climate.attributes.target_temp_low;
+    const target_temp_high = climate.attributes.target_temp_high;
+    const hvac_mode = climate.state;
+    const hvac_modes = climate.attributes.hvac_modes || [];
+    const fan_mode = climate.attributes.fan_mode;
+    const fan_modes = climate.attributes.fan_modes || [];
+    const preset_mode = climate.attributes.preset_mode;
+    const preset_modes = climate.attributes.preset_modes || [];
+    const swing_mode = climate.attributes.swing_mode;
+    const swing_modes = climate.attributes.swing_modes || [];
+    const min_temp = climate.attributes.min_temp || 7;
+    const max_temp = climate.attributes.max_temp || 35;
+    const temp_step = climate.attributes.target_temperature_step || 0.5;
+    const supported_features = climate.attributes.supported_features || 0;
+
+    // Determine supported features
+    const supports_target_temperature = !!(supported_features & 1); // TARGET_TEMPERATURE
+    const supports_target_temperature_range = !!(supported_features & 2); // TARGET_TEMPERATURE_RANGE
+    const supports_target_humidity = !!(supported_features & 4); // TARGET_HUMIDITY
+    const supports_fan_mode = !!(supported_features & 8); // FAN_MODE
+    const supports_preset_mode = !!(supported_features & 16); // PRESET_MODE
+    const supports_swing_mode = !!(supported_features & 32); // SWING_MODE
+    const supports_turn_on = !!(supported_features & 128); // TURN_ON
+    const supports_turn_off = !!(supported_features & 256); // TURN_OFF
+
+    // Create the climate menu
+    let climateMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: climate.attributes.friendly_name ? climate.attributes.friendly_name : entity_id
+        }]
+    });
+
+    climateMenu.on('show', function() {
+        // Clear the menu
+        climateMenu.items(0, []);
+        let menuIndex = 0;
+
+        // Add Temperature item
+        let tempSubtitle = '';
+        if (hvac_mode === 'heat_cool' && target_temp_low !== undefined && target_temp_high !== undefined) {
+            tempSubtitle = `Cur: ${current_temp}° - Set: ${target_temp_low}°-${target_temp_high}°`;
+        } else if (target_temp !== undefined) {
+            tempSubtitle = `Cur: ${current_temp}° - Set: ${target_temp}°`;
+        } else {
+            tempSubtitle = `Current: ${current_temp}°`;
+        }
+
+        climateMenu.item(0, menuIndex++, {
+            title: 'Temperature',
+            subtitle: tempSubtitle,
+            on_click: function() {
+                if (hvac_mode === 'heat_cool') {
+                    // Show menu to select high or low temp
+                    let tempRangeMenu = new UI.Menu({
+                        backgroundColor: 'black',
+                        textColor: 'white',
+                        highlightBackgroundColor: 'white',
+                        highlightTextColor: 'black',
+                        sections: [{
+                            title: 'Set Temperature Range'
+                        }]
+                    });
+
+                    tempRangeMenu.item(0, 0, {
+                        title: 'Low Temperature',
+                        subtitle: `${target_temp_low}°`,
+                        on_click: function() {
+                            showTemperatureMenu(entity_id, 'low', target_temp_low, min_temp, max_temp, temp_step);
+                        }
+                    });
+
+                    tempRangeMenu.item(0, 1, {
+                        title: 'High Temperature',
+                        subtitle: `${target_temp_high}°`,
+                        on_click: function() {
+                            showTemperatureMenu(entity_id, 'high', target_temp_high, min_temp, max_temp, temp_step);
+                        }
+                    });
+
+                    // Subscribe to entity updates
+                    let temp_range_subscription_msg_id = haws.subscribe({
+                        "type": "subscribe_trigger",
+                        "trigger": {
+                            "platform": "state",
+                            "entity_id": entity_id,
+                        },
+                    }, function(data) {
+                        log_message(`Climate entity update for temperature range menu ${entity_id}`);
+                        // Update the climate entity in the cache
+                        if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                            let updatedClimate = data.event.variables.trigger.to_state;
+                            ha_state_dict[entity_id] = updatedClimate;
+
+                            // Get updated temperature values
+                            let updatedTempLow = updatedClimate.attributes.target_temp_low;
+                            let updatedTempHigh = updatedClimate.attributes.target_temp_high;
+
+                            // Update menu items to reflect current state
+                            tempRangeMenu.item(0, 0, {
+                                title: 'Low Temperature',
+                                subtitle: `${updatedTempLow}°`,
+                                on_click: tempRangeMenu.items(0)[0].on_click
+                            });
+
+                            tempRangeMenu.item(0, 1, {
+                                title: 'High Temperature',
+                                subtitle: `${updatedTempHigh}°`,
+                                on_click: tempRangeMenu.items(0)[1].on_click
+                            });
+                        }
+                    }, function(error) {
+                        log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+                    });
+
+                    tempRangeMenu.on('select', function(e) {
+                        log_message(`Temperature range menu item ${e.item.title} was selected!`);
+                        if(typeof e.item.on_click === 'function') {
+                            e.item.on_click(e);
+                        }
+                    });
+
+                    tempRangeMenu.on('hide', function() {
+                        // Unsubscribe from entity updates
+                        if (temp_range_subscription_msg_id) {
+                            haws.unsubscribe(temp_range_subscription_msg_id);
+                        }
+                    });
+
+                    tempRangeMenu.show();
+                } else {
+                    // Show temperature selection menu directly
+                    showTemperatureMenu(entity_id, 'single', target_temp, min_temp, max_temp, temp_step);
+                }
+            }
+        });
+
+        // Add HVAC Mode item
+        climateMenu.item(0, menuIndex++, {
+            title: 'HVAC Mode',
+            subtitle: hvac_mode ? ucwords(hvac_mode.replace('_', ' ')) : 'Unknown',
+            on_click: function() {
+                showHvacModeMenu(entity_id, hvac_mode, hvac_modes);
+            }
+        });
+
+        // Add Fan Mode item if supported
+        if (supports_fan_mode && fan_modes && fan_modes.length > 0) {
+            climateMenu.item(0, menuIndex++, {
+                title: 'Fan Mode',
+                subtitle: fan_mode ? ucwords(fan_mode.replace('_', ' ')) : 'Unknown',
+                on_click: function() {
+                    showFanModeMenu(entity_id, fan_mode, fan_modes);
+                }
+            });
+        }
+
+        // Add Preset Mode item if supported
+        if (supports_preset_mode && preset_modes && preset_modes.length > 0) {
+            climateMenu.item(0, menuIndex++, {
+                title: 'Preset Mode',
+                subtitle: preset_mode ? ucwords(preset_mode.replace('_', ' ')) : 'None',
+                on_click: function() {
+                    showPresetModeMenu(entity_id, preset_mode, preset_modes);
+                }
+            });
+        }
+
+        // Add Swing Mode item if supported
+        if (supports_swing_mode && swing_modes && swing_modes.length > 0) {
+            climateMenu.item(0, menuIndex++, {
+                title: 'Swing Mode',
+                subtitle: swing_mode ? ucwords(swing_mode.replace('_', ' ')) : 'Unknown',
+                on_click: function() {
+                    showSwingModeMenu(entity_id, swing_mode, swing_modes);
+                }
+            });
+        }
+
+        // Add More option to go to full entity menu
+        climateMenu.item(0, menuIndex++, {
+            title: 'More',
+            on_click: function() {
+                showEntityMenu(entity_id);
+            }
+        });
+
+        // Subscribe to entity updates
+        subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            log_message(`Climate entity update for ${entity_id}`);
+            // Update the climate entity in the cache
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                ha_state_dict[entity_id] = data.event.variables.trigger.to_state;
+                // Hide and show the menu to refresh it
+                climateMenu.hide();
+                showClimateEntity(entity_id);
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+    });
+
+    climateMenu.on('select', function(e) {
+        log_message(`Climate menu item ${e.item.title} was selected!`);
+        if(typeof e.item.on_click === 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    climateMenu.on('hide', function() {
+        // Unsubscribe from entity updates
+        if (subscription_msg_id) {
+            haws.unsubscribe(subscription_msg_id);
+        }
+    });
+
+    // Helper function to show temperature selection menu
+    function showTemperatureMenu(entity_id, mode, current_temp, min_temp, max_temp, step) {
+        let tempMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Set Temperature'
+            }]
+        });
+
+        // Create temperature options
+        let temps = [];
+        for (let temp = min_temp; temp <= max_temp; temp += step) {
+            temps.push(temp);
+        }
+
+        // Find the index of the current temperature to scroll to
+        let currentIndex = 0;
+        let roundedCurrentTemp = Math.round(current_temp / step) * step;
+        for (let i = 0; i < temps.length; i++) {
+            if (Math.abs(temps[i] - roundedCurrentTemp) < 0.001) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        // Add each temperature as a menu item
+        for (let i = 0; i < temps.length; i++) {
+            let temp = temps[i];
+            let isCurrentTemp = false;
+
+            // Determine if this is the current temperature
+            if (mode === 'single' && Math.abs(temp - current_temp) < 0.001) {
+                isCurrentTemp = true;
+            } else if (mode === 'low' && Math.abs(temp - target_temp_low) < 0.001) {
+                isCurrentTemp = true;
+            } else if (mode === 'high' && Math.abs(temp - target_temp_high) < 0.001) {
+                isCurrentTemp = true;
+            }
+
+            tempMenu.item(0, i, {
+                title: `${temp}°`,
+                subtitle: isCurrentTemp ? 'Current' : '',
+                temp: temp,
+                on_click: function() {
+                    // Set the temperature based on mode
+                    let data = {};
+                    if (mode === 'single') {
+                        data.temperature = temp;
+                    } else if (mode === 'low') {
+                        data.target_temp_low = temp;
+                        data.target_temp_high = target_temp_high;
+                    } else if (mode === 'high') {
+                        data.target_temp_low = target_temp_low;
+                        data.target_temp_high = temp;
+                    }
+
+                    haws.climateSetTemp(
+                        entity_id,
+                        data,
+                        function(data) {
+                            log_message(`Set ${mode} temperature to ${temp}°`);
+                            // Don't hide the menu, let the user see the update
+                            // tempMenu.hide();
+                        },
+                        function(error) {
+                            log_message(`Error setting temperature: ${error}`);
+                        }
+                    );
+                }
+            });
+        }
+
+        // Scroll to the current temperature
+        tempMenu.selection(0, currentIndex);
+
+        // Subscribe to entity updates
+        let temp_subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            log_message(`Climate entity update for temperature menu ${entity_id}`);
+            // Update the climate entity in the cache
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedClimate = data.event.variables.trigger.to_state;
+                ha_state_dict[entity_id] = updatedClimate;
+
+                // Get updated temperature values
+                let updatedTemp = updatedClimate.attributes.temperature;
+                let updatedTempLow = updatedClimate.attributes.target_temp_low;
+                let updatedTempHigh = updatedClimate.attributes.target_temp_high;
+
+                // Update menu items to reflect current state
+                for (let i = 0; i < temps.length; i++) {
+                    let temp = temps[i];
+                    let isCurrentTemp = false;
+
+                    if (mode === 'single' && Math.abs(temp - updatedTemp) < 0.001) {
+                        isCurrentTemp = true;
+                    } else if (mode === 'low' && Math.abs(temp - updatedTempLow) < 0.001) {
+                        isCurrentTemp = true;
+                    } else if (mode === 'high' && Math.abs(temp - updatedTempHigh) < 0.001) {
+                        isCurrentTemp = true;
+                    }
+
+                    tempMenu.item(0, i, {
+                        title: `${temp}°`,
+                        subtitle: isCurrentTemp ? 'Current' : '',
+                        temp: temp,
+                        on_click: tempMenu.items(0)[i].on_click
+                    });
+                }
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+
+        tempMenu.on('select', function(e) {
+            log_message(`Temperature menu item ${e.item.title} was selected!`);
+            if(typeof e.item.on_click === 'function') {
+                e.item.on_click(e);
+            }
+        });
+
+        tempMenu.on('hide', function() {
+            // Unsubscribe from entity updates
+            if (temp_subscription_msg_id) {
+                haws.unsubscribe(temp_subscription_msg_id);
+            }
+        });
+
+        tempMenu.show();
+    }
+
+    // Helper function to show HVAC mode selection menu
+    function showHvacModeMenu(entity_id, current_mode, available_modes) {
+        let modeMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'HVAC Mode'
+            }]
+        });
+
+        // Find the index of the current mode to scroll to
+        let currentIndex = 0;
+        for (let i = 0; i < available_modes.length; i++) {
+            if (available_modes[i] === current_mode) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        // Add each mode as a menu item
+        for (let i = 0; i < available_modes.length; i++) {
+            let mode = available_modes[i];
+            let isCurrentMode = mode === current_mode;
+
+            modeMenu.item(0, i, {
+                title: ucwords(mode.replace('_', ' ')),
+                subtitle: isCurrentMode ? 'Current' : '',
+                mode: mode,
+                on_click: function() {
+                    haws.climateSetHvacMode(
+                        entity_id,
+                        mode,
+                        function(data) {
+                            log_message(`Set HVAC mode to ${mode}`);
+                            // Don't hide the menu, let the user see the update
+                            // modeMenu.hide();
+                        },
+                        function(error) {
+                            log_message(`Error setting HVAC mode: ${error}`);
+                        }
+                    );
+                }
+            });
+        }
+
+        // Scroll to the current mode
+        modeMenu.selection(0, currentIndex);
+
+        // Subscribe to entity updates
+        let hvac_subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            log_message(`Climate entity update for HVAC mode menu ${entity_id}`);
+            // Update the climate entity in the cache
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedClimate = data.event.variables.trigger.to_state;
+                ha_state_dict[entity_id] = updatedClimate;
+
+                // Get updated HVAC mode
+                let updatedMode = updatedClimate.state;
+
+                // Update menu items to reflect current state
+                for (let i = 0; i < available_modes.length; i++) {
+                    let mode = available_modes[i];
+                    let isCurrentMode = mode === updatedMode;
+
+                    modeMenu.item(0, i, {
+                        title: ucwords(mode.replace('_', ' ')),
+                        subtitle: isCurrentMode ? 'Current' : '',
+                        mode: mode,
+                        on_click: modeMenu.items(0)[i].on_click
+                    });
+                }
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+
+        modeMenu.on('select', function(e) {
+            log_message(`HVAC mode menu item ${e.item.title} was selected!`);
+            if(typeof e.item.on_click === 'function') {
+                e.item.on_click(e);
+            }
+        });
+
+        modeMenu.on('hide', function() {
+            // Unsubscribe from entity updates
+            if (hvac_subscription_msg_id) {
+                haws.unsubscribe(hvac_subscription_msg_id);
+            }
+        });
+
+        modeMenu.show();
+    }
+
+    // Helper function to show fan mode selection menu
+    function showFanModeMenu(entity_id, current_mode, available_modes) {
+        let modeMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Fan Mode'
+            }]
+        });
+
+        // Find the index of the current mode to scroll to
+        let currentIndex = 0;
+        for (let i = 0; i < available_modes.length; i++) {
+            if (available_modes[i] === current_mode) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        // Add each mode as a menu item
+        for (let i = 0; i < available_modes.length; i++) {
+            let mode = available_modes[i];
+            let isCurrentMode = mode === current_mode;
+
+            modeMenu.item(0, i, {
+                title: ucwords(mode.replace('_', ' ')),
+                subtitle: isCurrentMode ? 'Current' : '',
+                mode: mode,
+                on_click: function() {
+                    haws.climateSetFanMode(
+                        entity_id,
+                        mode,
+                        function(data) {
+                            log_message(`Set fan mode to ${mode}`);
+                            // Don't hide the menu, let the user see the update
+                            // modeMenu.hide();
+                        },
+                        function(error) {
+                            log_message(`Error setting fan mode: ${error}`);
+                        }
+                    );
+                }
+            });
+        }
+
+        // Scroll to the current mode
+        modeMenu.selection(0, currentIndex);
+
+        // Subscribe to entity updates
+        let fan_subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            log_message(`Climate entity update for fan mode menu ${entity_id}`);
+            // Update the climate entity in the cache
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedClimate = data.event.variables.trigger.to_state;
+                ha_state_dict[entity_id] = updatedClimate;
+
+                // Get updated fan mode
+                let updatedMode = updatedClimate.attributes.fan_mode;
+
+                // Update menu items to reflect current state
+                for (let i = 0; i < available_modes.length; i++) {
+                    let mode = available_modes[i];
+                    let isCurrentMode = mode === updatedMode;
+
+                    modeMenu.item(0, i, {
+                        title: ucwords(mode.replace('_', ' ')),
+                        subtitle: isCurrentMode ? 'Current' : '',
+                        mode: mode,
+                        on_click: modeMenu.items(0)[i].on_click
+                    });
+                }
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+
+        modeMenu.on('select', function(e) {
+            log_message(`Fan mode menu item ${e.item.title} was selected!`);
+            if(typeof e.item.on_click === 'function') {
+                e.item.on_click(e);
+            }
+        });
+
+        modeMenu.on('hide', function() {
+            // Unsubscribe from entity updates
+            if (fan_subscription_msg_id) {
+                haws.unsubscribe(fan_subscription_msg_id);
+            }
+        });
+
+        modeMenu.show();
+    }
+
+    // Helper function to show preset mode selection menu
+    function showPresetModeMenu(entity_id, current_mode, available_modes) {
+        let modeMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Preset Mode'
+            }]
+        });
+
+        // Find the index of the current mode to scroll to
+        let currentIndex = 0;
+        for (let i = 0; i < available_modes.length; i++) {
+            if (available_modes[i] === current_mode) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        // Add each mode as a menu item
+        for (let i = 0; i < available_modes.length; i++) {
+            let mode = available_modes[i];
+            let isCurrentMode = mode === current_mode;
+
+            modeMenu.item(0, i, {
+                title: ucwords(mode.replace('_', ' ')),
+                subtitle: isCurrentMode ? 'Current' : '',
+                mode: mode,
+                on_click: function() {
+                    haws.climateSetPresetMode(
+                        entity_id,
+                        mode,
+                        function(data) {
+                            log_message(`Set preset mode to ${mode}`);
+                            // Don't hide the menu, let the user see the update
+                            // modeMenu.hide();
+                        },
+                        function(error) {
+                            log_message(`Error setting preset mode: ${error}`);
+                        }
+                    );
+                }
+            });
+        }
+
+        // Scroll to the current mode
+        modeMenu.selection(0, currentIndex);
+
+        // Subscribe to entity updates
+        let preset_subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            log_message(`Climate entity update for preset mode menu ${entity_id}`);
+            // Update the climate entity in the cache
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedClimate = data.event.variables.trigger.to_state;
+                ha_state_dict[entity_id] = updatedClimate;
+
+                // Get updated preset mode
+                let updatedMode = updatedClimate.attributes.preset_mode;
+
+                // Update menu items to reflect current state
+                for (let i = 0; i < available_modes.length; i++) {
+                    let mode = available_modes[i];
+                    let isCurrentMode = mode === updatedMode;
+
+                    modeMenu.item(0, i, {
+                        title: ucwords(mode.replace('_', ' ')),
+                        subtitle: isCurrentMode ? 'Current' : '',
+                        mode: mode,
+                        on_click: modeMenu.items(0)[i].on_click
+                    });
+                }
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+
+        modeMenu.on('select', function(e) {
+            log_message(`Preset mode menu item ${e.item.title} was selected!`);
+            if(typeof e.item.on_click === 'function') {
+                e.item.on_click(e);
+            }
+        });
+
+        modeMenu.on('hide', function() {
+            // Unsubscribe from entity updates
+            if (preset_subscription_msg_id) {
+                haws.unsubscribe(preset_subscription_msg_id);
+            }
+        });
+
+        modeMenu.show();
+    }
+
+    // Helper function to show swing mode selection menu
+    function showSwingModeMenu(entity_id, current_mode, available_modes) {
+        let modeMenu = new UI.Menu({
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Swing Mode'
+            }]
+        });
+
+        // Find the index of the current mode to scroll to
+        let currentIndex = 0;
+        for (let i = 0; i < available_modes.length; i++) {
+            if (available_modes[i] === current_mode) {
+                currentIndex = i;
+                break;
+            }
+        }
+
+        // Add each mode as a menu item
+        for (let i = 0; i < available_modes.length; i++) {
+            let mode = available_modes[i];
+            let isCurrentMode = mode === current_mode;
+
+            modeMenu.item(0, i, {
+                title: ucwords(mode.replace('_', ' ')),
+                subtitle: isCurrentMode ? 'Current' : '',
+                mode: mode,
+                on_click: function() {
+                    haws.climateSetSwingMode(
+                        entity_id,
+                        mode,
+                        function(data) {
+                            log_message(`Set swing mode to ${mode}`);
+                            // Don't hide the menu, let the user see the update
+                            // modeMenu.hide();
+                        },
+                        function(error) {
+                            log_message(`Error setting swing mode: ${error}`);
+                        }
+                    );
+                }
+            });
+        }
+
+        // Scroll to the current mode
+        modeMenu.selection(0, currentIndex);
+
+        // Subscribe to entity updates
+        let swing_subscription_msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            log_message(`Climate entity update for swing mode menu ${entity_id}`);
+            // Update the climate entity in the cache
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedClimate = data.event.variables.trigger.to_state;
+                ha_state_dict[entity_id] = updatedClimate;
+
+                // Get updated swing mode
+                let updatedMode = updatedClimate.attributes.swing_mode;
+
+                // Update menu items to reflect current state
+                for (let i = 0; i < available_modes.length; i++) {
+                    let mode = available_modes[i];
+                    let isCurrentMode = mode === updatedMode;
+
+                    modeMenu.item(0, i, {
+                        title: ucwords(mode.replace('_', ' ')),
+                        subtitle: isCurrentMode ? 'Current' : '',
+                        mode: mode,
+                        on_click: modeMenu.items(0)[i].on_click
+                    });
+                }
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+
+        modeMenu.on('select', function(e) {
+            log_message(`Swing mode menu item ${e.item.title} was selected!`);
+            if(typeof e.item.on_click === 'function') {
+                e.item.on_click(e);
+            }
+        });
+
+        modeMenu.on('hide', function() {
+            // Unsubscribe from entity updates
+            if (swing_subscription_msg_id) {
+                haws.unsubscribe(swing_subscription_msg_id);
+            }
+        });
+
+        modeMenu.show();
+    }
+
+    climateMenu.show();
+}
+
 function showLightEntity(entity_id) {
     let light = ha_state_dict[entity_id],
         subscription_msg_id = null;
@@ -2904,6 +3688,9 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 break;
             case 'light':
                 showLightEntity(entity_id);
+                break;
+            case 'climate':
+                showClimateEntity(entity_id);
                 break;
             default:
                 showEntityMenu(entity_id);
