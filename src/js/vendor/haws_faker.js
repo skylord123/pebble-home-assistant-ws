@@ -278,7 +278,7 @@ class HAWS {
             type: 'result',
             success: true,
             result: {
-                components: ['light', 'media_player', 'cover', 'fan', 'switch'],
+                components: ['light', 'media_player', 'cover', 'fan', 'switch', 'climate'],
                 config_dir: '/config',
                 elevation: 0,
                 latitude: 40.7128,
@@ -337,6 +337,15 @@ class HAWS {
                     turn_on: { description: 'Turn on fan' },
                     turn_off: { description: 'Turn off fan' },
                     toggle: { description: 'Toggle fan' }
+                },
+                climate: {
+                    turn_on: { description: 'Turn on climate device' },
+                    turn_off: { description: 'Turn off climate device' },
+                    set_temperature: { description: 'Set target temperature' },
+                    set_hvac_mode: { description: 'Set HVAC mode' },
+                    set_fan_mode: { description: 'Set fan mode' },
+                    set_preset_mode: { description: 'Set preset mode' },
+                    set_swing_mode: { description: 'Set swing mode' }
                 }
             }
         };
@@ -640,6 +649,48 @@ class HAWS {
                 }
                 break;
 
+            case 'climate':
+                if(service === 'turn_on') {
+                    // Restore previous HVAC mode or default to 'heat'
+                    entity.state = entity.attributes.previous_hvac_mode || 'heat';
+                    updated = true;
+                } else if(service === 'turn_off') {
+                    // Store current HVAC mode before turning off
+                    if (entity.state !== 'off') {
+                        entity.attributes.previous_hvac_mode = entity.state;
+                    }
+                    entity.state = 'off';
+                    updated = true;
+                } else if(service === 'set_temperature') {
+                    // Handle single temperature
+                    if(data?.temperature !== undefined) {
+                        entity.attributes.temperature = data.temperature;
+                        updated = true;
+                    }
+                    // Handle temperature range for heat_cool mode
+                    if(data?.target_temp_low !== undefined) {
+                        entity.attributes.target_temp_low = data.target_temp_low;
+                        updated = true;
+                    }
+                    if(data?.target_temp_high !== undefined) {
+                        entity.attributes.target_temp_high = data.target_temp_high;
+                        updated = true;
+                    }
+                } else if(service === 'set_hvac_mode' && data?.hvac_mode !== undefined) {
+                    entity.state = data.hvac_mode;
+                    updated = true;
+                } else if(service === 'set_fan_mode' && data?.fan_mode !== undefined) {
+                    entity.attributes.fan_mode = data.fan_mode;
+                    updated = true;
+                } else if(service === 'set_preset_mode' && data?.preset_mode !== undefined) {
+                    entity.attributes.preset_mode = data.preset_mode;
+                    updated = true;
+                } else if(service === 'set_swing_mode' && data?.swing_mode !== undefined) {
+                    entity.attributes.swing_mode = data.swing_mode;
+                    updated = true;
+                }
+                break;
+
             // Handle homeassistant domain (generic services)
             case 'homeassistant':
                 if(service === 'turn_on' || service === 'turn_off' || service === 'toggle') {
@@ -791,6 +842,57 @@ class HAWS {
         this.callService('media_player', 'volume_mute', { is_volume_muted: is_volume_muted }, { entity_id: entity_id }, successCallback, errorCallback);
     }
 
+    // Climate helper methods
+    climateSetTemp(entity_id, data, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_temperature',
+            typeof data == 'object' ? data : {temperature: data},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetFanMode(entity_id, fan_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_fan_mode',
+            {fan_mode: fan_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetHvacMode(entity_id, hvac_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_hvac_mode',
+            {hvac_mode: hvac_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetPresetMode(entity_id, preset_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_preset_mode',
+            {preset_mode: preset_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
+    climateSetSwingMode(entity_id, swing_mode, successCallback, errorCallback) {
+        this.callService(
+            'climate',
+            'set_swing_mode',
+            {swing_mode: swing_mode},
+            {entity_id: entity_id},
+            successCallback,
+            errorCallback);
+    }
+
     getStates(successCallback, errorCallback) {
         return this.send({ type: 'get_states' }, successCallback, errorCallback);
     }
@@ -853,8 +955,29 @@ class HAWS {
     _initializeMockData() {
         const currentTime = new Date().toISOString();
 
-        // Create devices
+        // Create climate devices
         this.mockDevices = {
+            'device_house_thermostat': {
+                id: 'device_house_thermostat',
+                area_id: 'living_room',
+                name: 'House Thermostat',
+                manufacturer: 'Nest',
+                model: 'Learning Thermostat',
+            },
+            'device_bedroom_ac': {
+                id: 'device_bedroom_ac',
+                area_id: 'bedroom',
+                name: 'Bedroom AC',
+                manufacturer: 'LG',
+                model: 'Window AC Unit',
+            },
+            'device_living_room_ac': {
+                id: 'device_living_room_ac',
+                area_id: 'living_room',
+                name: 'Living Room AC',
+                manufacturer: 'Daikin',
+                model: 'Mini Split',
+            },
             'device_living_room_lights': {
                 id: 'device_living_room_lights',
                 area_id: 'living_room',
@@ -964,6 +1087,36 @@ class HAWS {
 
         // Create entity registry entries
         this.mockEntityRegistry = {
+            'climate.house_thermostat': {
+                entity_id: 'climate.house_thermostat',
+                area_id: 'living_room',
+                device_id: 'device_house_thermostat',
+                platform: 'mock',
+                name: 'House Thermostat',
+                icon: 'mdi:thermostat',
+                disabled_by: null,
+                hidden_by: null
+            },
+            'climate.bedroom_ac': {
+                entity_id: 'climate.bedroom_ac',
+                area_id: 'bedroom',
+                device_id: 'device_bedroom_ac',
+                platform: 'mock',
+                name: 'Bedroom AC',
+                icon: 'mdi:air-conditioner',
+                disabled_by: null,
+                hidden_by: null
+            },
+            'climate.living_room_ac': {
+                entity_id: 'climate.living_room_ac',
+                area_id: 'living_room',
+                device_id: 'device_living_room_ac',
+                platform: 'mock',
+                name: 'Living Room AC',
+                icon: 'mdi:air-conditioner',
+                disabled_by: null,
+                hidden_by: null
+            },
             'light.living_room': {
                 entity_id: 'light.living_room',
                 area_id: 'living_room',
@@ -1161,6 +1314,87 @@ class HAWS {
 
         // Create actual entities
         this.mockEntities = {
+            // CLIMATE ENTITIES
+            'climate.house_thermostat': {
+                entity_id: 'climate.house_thermostat',
+                state: 'heat',
+                attributes: {
+                    friendly_name: 'House Thermostat',
+                    hvac_modes: ['off', 'heat', 'cool', 'heat_cool', 'auto', 'dry', 'fan_only'],
+                    min_temp: 50,
+                    max_temp: 90,
+                    current_temperature: 72,
+                    temperature: 68,
+                    target_temp_low: 68,
+                    target_temp_high: 74,
+                    target_temperature_step: 1,
+                    fan_modes: ['auto', 'low', 'medium', 'high'],
+                    fan_mode: 'auto',
+                    preset_modes: ['eco', 'away', 'boost', 'comfort', 'home', 'sleep'],
+                    preset_mode: 'home',
+                    supported_features: 59, // TARGET_TEMPERATURE | TARGET_TEMPERATURE_RANGE | FAN_MODE | PRESET_MODE | TURN_ON | TURN_OFF
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
+            'climate.bedroom_ac': {
+                entity_id: 'climate.bedroom_ac',
+                state: 'cool',
+                attributes: {
+                    friendly_name: 'Bedroom AC',
+                    hvac_modes: ['off', 'cool', 'fan_only'],
+                    min_temp: 60,
+                    max_temp: 85,
+                    current_temperature: 76,
+                    temperature: 70,
+                    target_temperature_step: 1,
+                    fan_modes: ['auto', 'low', 'medium', 'high'],
+                    fan_mode: 'medium',
+                    swing_modes: ['off', 'horizontal', 'vertical'],
+                    swing_mode: 'horizontal',
+                    supported_features: 41, // TARGET_TEMPERATURE | FAN_MODE | SWING_MODE | TURN_ON | TURN_OFF
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
+            'climate.living_room_ac': {
+                entity_id: 'climate.living_room_ac',
+                state: 'off',
+                attributes: {
+                    friendly_name: 'Living Room AC',
+                    hvac_modes: ['off', 'cool', 'heat', 'dry', 'fan_only'],
+                    min_temp: 60,
+                    max_temp: 86,
+                    current_temperature: 74,
+                    temperature: 72,
+                    target_temperature_step: 1,
+                    fan_modes: ['auto', 'quiet', 'low', 'medium', 'high', 'turbo'],
+                    fan_mode: 'auto',
+                    swing_modes: ['off', 'horizontal', 'vertical', 'both'],
+                    swing_mode: 'off',
+                    preset_modes: ['none', 'eco', 'boost', 'sleep'],
+                    preset_mode: 'none',
+                    supported_features: 57, // TARGET_TEMPERATURE | FAN_MODE | PRESET_MODE | SWING_MODE | TURN_ON | TURN_OFF
+                    previous_hvac_mode: 'cool'
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
             // LIVING ROOM
             'light.living_room': {
                 entity_id: 'light.living_room',
