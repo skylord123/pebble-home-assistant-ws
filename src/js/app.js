@@ -852,6 +852,25 @@ function showAssistMenu() {
         }));
     }
 
+    // Get configured font size or default to 18
+    const FONT_SIZE = Settings.option('voice_font_size') || 18;
+
+    // Define fonts based on size
+    const SPEAKER_FONT = `gothic-${FONT_SIZE}-bold`;
+    const MESSAGE_FONT = `gothic-${FONT_SIZE}`;
+
+    // Update the existing MESSAGE_PADDING value based on font size
+    // MESSAGE_PADDING = Math.max(0, (FONT_SIZE - 18) * 2); // Increase padding with larger fonts
+    const SPEAKER_HEIGHT = FONT_SIZE + 2; // Base height for speaker label
+
+    function getDisplayName(speaker) {
+        // Use shorter name for Home Assistant when font size is large
+        if (speaker === "Home Assistant" && FONT_SIZE > 18) {
+            return "HA";
+        }
+        return speaker;
+    }
+
     function showError(message) {
         if (currentErrorMessage) {
             assistWindow.remove(currentErrorMessage.title);
@@ -860,22 +879,25 @@ function showAssistMenu() {
             errorMessageHeight = 0;
         }
 
-        // Add error title
+        // Calculate the error title height based on font size
+        const ERROR_TITLE_HEIGHT = FONT_SIZE + 2; // Similar to SPEAKER_HEIGHT
+
+        // Add error title using the user's font size preference
         let errorTitle = new UI.Text({
             position: new Vector(5, currentY),
-            size: new Vector(Feature.resolution().x - 10, 20),
+            size: new Vector(Feature.resolution().x - 10, ERROR_TITLE_HEIGHT),
             text: 'Error:',
-            font: 'gothic-18-bold',
+            font: SPEAKER_FONT, // Use the same font as speaker labels
             color: Feature.color('red', 'white'),
             textAlign: 'left'
         });
 
-        // Add error message
+        // Add error message using the user's font size preference
         let errorMessage = new UI.Text({
-            position: new Vector(5, currentY + 20),
+            position: new Vector(5, currentY + ERROR_TITLE_HEIGHT),
             size: new Vector(Feature.resolution().x - 10, 1000),
             text: message,
-            font: 'gothic-18',
+            font: MESSAGE_FONT, // Use the same font as messages
             color: Feature.color('red', 'white'),
             textAlign: 'left',
             textOverflow: 'wrap'
@@ -905,13 +927,17 @@ function showAssistMenu() {
                 message: errorMessage
             };
 
+            // Calculate the actual height added to currentY
+            // This should include only what we're adding to currentY
+            const heightAdded = height + MESSAGE_PADDING;
+
             // Update position for next message with configurable padding
-            currentY += height + MESSAGE_PADDING; // title (20) + message height + padding
+            currentY += heightAdded; // message height + padding
             log_message("New currentY position for error: " + currentY);
 
-            // Store the total height of the error message for later adjustment
-            errorMessageHeight = height + 20; // Text height + error title
-            log_message("Stored error message height: " + errorMessageHeight);
+            // Store the exact amount we added to currentY for later adjustment
+            errorMessageHeight = heightAdded;
+            log_message("Stored error message height: " + errorMessageHeight + " (actual height added to currentY)");
 
             // Update the window's content size to ensure proper scrolling
             // Add more padding at the bottom to ensure content isn't cut off
@@ -920,10 +946,16 @@ function showAssistMenu() {
             log_message("Updated error window size to: " + contentHeight + " for currentY: " + currentY);
 
             // Store positions for scrolling reference
-            const messageBottom = currentY;
-            const messageHeight = height + 20; // Text height + error title
-            const messageTop = messageBottom - messageHeight;
+            const messageHeight = height + ERROR_TITLE_HEIGHT; // Text height + error title height
+
+            // Calculate the actual top and bottom positions of the error message
+            // The error title starts at the position before we updated currentY
+            const errorTitleY = currentY - heightAdded;
+            const messageTop = errorTitleY;
+            const messageBottom = messageTop + messageHeight;
             const screenHeight = Feature.resolution().y;
+
+            log_message("Error message position: top=" + messageTop + ", bottom=" + messageBottom + ", height=" + messageHeight);
 
             // Determine how to scroll based on message size
             let scrollTarget;
@@ -934,9 +966,11 @@ function showAssistMenu() {
                 scrollTarget = messageTop - 5; // 5px padding above title
                 log_message("Long error message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
             } else {
-                // For shorter messages, scroll to show the bottom with padding
-                scrollTarget = messageBottom - screenHeight + 5; // 5px padding
-                log_message("Normal error message, scrolling to bottom: " + scrollTarget);
+                // For shorter messages, scroll to show the entire message
+                // Calculate how much we need to scroll to show the bottom of the message
+                // with some padding at the bottom
+                scrollTarget = Math.max(0, messageBottom - screenHeight + 10); // 10px padding
+                log_message("Normal error message, scrolling to position: " + scrollTarget + " to show bottom at: " + messageBottom);
             }
 
             // Only scroll if needed
@@ -953,25 +987,6 @@ function showAssistMenu() {
         });
     }
 
-    // Get configured font size or default to 18
-    const FONT_SIZE = Settings.option('voice_font_size') || 18;
-
-    // Define fonts based on size
-    const SPEAKER_FONT = `gothic-${FONT_SIZE}-bold`;
-    const MESSAGE_FONT = `gothic-${FONT_SIZE}`;
-
-    // Update the existing MESSAGE_PADDING value based on font size
-    // MESSAGE_PADDING = Math.max(0, (FONT_SIZE - 18) * 2); // Increase padding with larger fonts
-    const SPEAKER_HEIGHT = FONT_SIZE + 2; // Base height for speaker label
-
-    function getDisplayName(speaker) {
-        // Use shorter name for Home Assistant when font size is large
-        if (speaker === "Home Assistant" && FONT_SIZE > 18) {
-            return "HA";
-        }
-        return speaker;
-    }
-
     function addMessage(speaker, message, callback) {
         log_message("Adding message from " + speaker + ": " + message);
 
@@ -981,9 +996,10 @@ function showAssistMenu() {
             assistWindow.remove(currentErrorMessage.message);
 
             // Adjust currentY to remove the gap left by the error message
+            // errorMessageHeight now stores exactly how much was added to currentY
             if (errorMessageHeight > 0) {
                 currentY -= errorMessageHeight;
-                log_message("Adjusted currentY after removing error: " + currentY);
+                log_message("Adjusted currentY after removing error: " + currentY + " (subtracted " + errorMessageHeight + "px)");
                 errorMessageHeight = 0;
             }
 
@@ -1033,11 +1049,20 @@ function showAssistMenu() {
                 assistWindow.size(new Vector(Feature.resolution().x, contentHeight));
                 log_message("Updated window size to: " + contentHeight + " for currentY: " + currentY);
 
+                // Calculate the height added to currentY for this message
+                const heightAdded = SPEAKER_HEIGHT + height + MESSAGE_PADDING;
+
                 // Store positions for scrolling reference
-                const messageBottom = currentY;
-                const messageHeight = height + 20; // Text height + speaker label
-                const messageTop = messageBottom - messageHeight;
+                const messageHeight = SPEAKER_HEIGHT + height; // Speaker label + text height
+
+                // Calculate the actual top and bottom positions of the message
+                // The speaker label starts at the position before we updated currentY
+                const speakerLabelY = currentY - heightAdded;
+                const messageTop = speakerLabelY;
+                const messageBottom = messageTop + messageHeight;
                 const screenHeight = Feature.resolution().y;
+
+                log_message("Message position: top=" + messageTop + ", bottom=" + messageBottom + ", height=" + messageHeight);
 
                 // Determine how to scroll based on message size
                 let scrollTarget;
@@ -1048,9 +1073,11 @@ function showAssistMenu() {
                     scrollTarget = messageTop - 5; // 5px padding above title
                     log_message("Long message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
                 } else {
-                    // For shorter messages, scroll to show the bottom with padding
-                    scrollTarget = messageBottom - screenHeight + 5; // 5px padding
-                    log_message("Normal message, scrolling to bottom: " + scrollTarget);
+                    // For shorter messages, scroll to show the entire message
+                    // Calculate how much we need to scroll to show the bottom of the message
+                    // with some padding at the bottom
+                    scrollTarget = Math.max(0, messageBottom - screenHeight + 10); // 10px padding
+                    log_message("Normal message, scrolling to position: " + scrollTarget + " to show bottom at: " + messageBottom);
                 }
 
                 // Only scroll if needed
@@ -3134,7 +3161,13 @@ function showLightEntity(entity_id) {
 
                 if (item.showBar && menuBarsFg[i]) {
                     // Update progress bar
-                    let barWidth = (114 - boxLeftMargin) * (item.value / 100);
+                    // When light is off, show the bar at minimum position (0%)
+                    // When light is on, show the actual brightness value
+                    let barWidth = is_on ? (114 - boxLeftMargin) * (item.value / 100) : 0;
+
+                    // Update the position2 property to change the bar length
+                    // Ensure the bar starts at the correct position (20 + boxLeftMargin)
+                    menuBarsFg[i].position2(new Vector(20 + boxLeftMargin + barWidth, item.y + 22));
 
                     // Always use highlight color for progress bars
                     menuBarsFg[i].strokeColor(colour.highlight);
@@ -3199,13 +3232,21 @@ function showLightEntity(entity_id) {
         is_on = light.state === "on";
 
         // Update brightness
-        if (is_on && light.attributes.hasOwnProperty("brightness")) {
+        if (light.attributes.hasOwnProperty("brightness")) {
             brightnessPerc = Math.round((100 / 255) * parseInt(light.attributes.brightness));
 
             // Find brightness menu item and update its value
             for (let i = 0; i < menuItems.length; i++) {
                 if (menuItems[i].id === "brightness") {
                     menuItems[i].value = brightnessPerc;
+                    break;
+                }
+            }
+        } else {
+            // Set brightness to 0 if not available
+            for (let i = 0; i < menuItems.length; i++) {
+                if (menuItems[i].id === "brightness") {
+                    menuItems[i].value = 0;
                     break;
                 }
             }
@@ -3291,7 +3332,8 @@ function showLightEntity(entity_id) {
                 selectedIndex--;
                 updatePointerPosition();
             }
-            // Edit the value (up)
+        } else {
+            // Edit the value (up) only in edit mode
             menuItems[selectedIndex].action("up");
         }
     });
