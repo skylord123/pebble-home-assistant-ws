@@ -6,7 +6,7 @@
 
 const appVersion = '0.7.0',
     confVersion = '0.7.0',
-    debugMode = false,
+    debugMode = true,
     debugHAWS = false,
     hawsFaker = false,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
@@ -2762,16 +2762,104 @@ function showClimateEntity(entity_id) {
 }
 
 function showLightEntity(entity_id) {
+    function supported_features(entity) {
+        // Light feature bitfield values from Home Assistant
+        // Modern Home Assistant uses LightEntityFeature enum
+        const LightEntityFeature = {
+            EFFECT: 4,
+            FLASH: 8,
+            TRANSITION: 32
+        };
+
+        // Define features map for the bitfield
+        let features = {
+            [LightEntityFeature.EFFECT]: "effect",
+            [LightEntityFeature.FLASH]: "flash",
+            [LightEntityFeature.TRANSITION]: "transition"
+        };
+
+        // Get the supported_features value from the entity
+        const supported_features_value = entity.attributes.supported_features || 0;
+
+        // Get supported color modes
+        const supported_color_modes = entity.attributes.supported_color_modes || [];
+
+        // Create result object with all features set to false by default
+        let result = {
+            brightness: false,
+            color_temp: false,
+            effect: false,
+            flash: false,
+            color: false,
+            transition: false,
+            white_value: false
+        };
+
+        // Check each feature bit from the bitfield
+        for (let key in features) {
+            if (!!(supported_features_value & key)) {
+                result[features[key]] = true;
+            }
+        }
+
+        // Check color modes for additional features
+        if (supported_color_modes.length > 0) {
+            // Check if brightness is supported based on color modes
+            // All color modes except "onoff" support brightness
+            result.brightness = supported_color_modes.some(mode =>
+                mode !== "onoff"
+            );
+
+            // Check if color temperature is supported
+            result.color_temp = supported_color_modes.includes("color_temp");
+
+            // Check if color is supported (hs, xy, rgb, rgbw, rgbww)
+            result.color = supported_color_modes.some(mode =>
+                ["hs", "xy", "rgb", "rgbw", "rgbww"].includes(mode)
+            );
+        } else {
+            // Fallback for older Home Assistant versions that don't use color modes
+            // These use the deprecated SUPPORT_* constants
+            const SUPPORT_BRIGHTNESS = 1;
+            const SUPPORT_COLOR_TEMP = 2;
+            const SUPPORT_COLOR = 16;
+
+            result.brightness = !!(supported_features_value & SUPPORT_BRIGHTNESS);
+            result.color_temp = !!(supported_features_value & SUPPORT_COLOR_TEMP);
+            result.color = !!(supported_features_value & SUPPORT_COLOR);
+        }
+
+        log_message(`Light ${entity.entity_id} supported features: ${JSON.stringify(result)}`);
+        log_message(`Light supported_features value: ${supported_features_value}`);
+        log_message(`Light supported_color_modes: ${JSON.stringify(supported_color_modes)}`);
+
+        return result;
+    }
+
     let light = ha_state_dict[entity_id],
         subscription_msg_id = null;
     if (!light) {
         throw new Error(`Light entity ${entity_id} not found in ha_state_dict`);
     }
 
-    // Handle unavailable state and determine supported features
-    let supportsRGB = light.attributes.hasOwnProperty("rgb_color");
-    let supportsTemperature = (light.state == "on" && light.attributes.hasOwnProperty("max_mireds"));
+    log_message(`Showing light entity ${entity_id}`, JSON.stringify(light, null, 4));
+
+    // Determine supported features using the bitfield and color modes
+    const features = supported_features(light);
+    let supportsRGB = features.color;
+    let supportsTemperature = features.color_temp;
+    let supportsBrightness = features.brightness;
+    let supportsEffect = features.effect;
+    let supportsTransition = features.transition;
     let is_on = light.state === "on";
+
+    log_message(`Light ${entity_id} supports: RGB=${supportsRGB}, Temperature=${supportsTemperature}, Brightness=${supportsBrightness}, Effect=${supportsEffect}, Transition=${supportsTransition}`);
+    log_message(`Light state: ${light.state}`);
+
+    // Log color mode information if available
+    if (light.attributes.color_mode) {
+        log_message(`Light color mode: ${light.attributes.color_mode}`);
+    }
 
     // Set default brightness to 0 if not available
     if (!light.attributes.hasOwnProperty("brightness")) {
@@ -2865,17 +2953,18 @@ function showLightEntity(entity_id) {
         }
     });
 
-    // Add Brightness option if light is on
-    menuItems.push({
-        id: "brightness",
-        title: "Brightness",
-        subtitle: is_on ? `${brightnessPerc}%` : "NA",
-        y: startY + itemSpacing,
-        value: brightnessPerc,
-        min: 0,
-        max: 100,
-        showBar: true,
-        action: function(direction) {
+    // Add Brightness option if supported
+    if (supportsBrightness) {
+        menuItems.push({
+            id: "brightness",
+            title: "Brightness",
+            subtitle: is_on ? `${brightnessPerc}%` : "NA",
+            y: startY + itemSpacing,
+            value: brightnessPerc,
+            min: 0,
+            max: 100,
+            showBar: true,
+            action: function(direction) {
             if (!is_on) return;
 
             let change = direction === "up" ? 10 : -10;
@@ -2906,13 +2995,14 @@ function showLightEntity(entity_id) {
             );
         }
     });
+    }
 
     // Add Color Temperature option if supported
     if (supportsTemperature) {
         let tempValue = 0;
         let kelvinTemp = 0;
 
-        if (light.attributes.color_temp) {
+        if (is_on && light.attributes.color_temp) {
             let temp_range = light.attributes.max_mireds - light.attributes.min_mireds;
             let current_temp_pos = light.attributes.color_temp - light.attributes.min_mireds;
             tempValue = Math.round((current_temp_pos / temp_range) * 100);
@@ -2963,12 +3053,82 @@ function showLightEntity(entity_id) {
         });
     }
 
+    // Add Effect option if supported
+    let effectItemAdded = false;
+    if (supportsEffect && light.attributes.effect_list && light.attributes.effect_list.length > 0) {
+        effectItemAdded = true;
+        menuItems.push({
+            id: "effect",
+            title: "Effect",
+            subtitle: light.attributes.effect || "None",
+            y: startY + (itemSpacing * (supportsTemperature ? 3 : 2)),
+            action: function() {
+                if (!is_on) return;
+
+                // Show effect selection menu
+                let effectMenu = new UI.Menu({
+                    backgroundColor: 'white',
+                    textColor: 'black',
+                    highlightBackgroundColor: 'black',
+                    highlightTextColor: 'white',
+                    sections: [{
+                        title: 'Select Effect'
+                    }]
+                });
+
+                // Add effects to menu
+                effectMenu.item(0, 0, {
+                    title: "None",
+                    subtitle: light.attributes.effect ? "" : "Current",
+                    on_click: function() {
+                        haws.callService(
+                            "light",
+                            "turn_on",
+                            { effect: "none" },
+                            { entity_id: light.entity_id },
+                            function(data) {
+                                log_message(`Effect set to none`);
+                            },
+                            function(error) {
+                                log_message(`Error setting effect: ${error}`);
+                            }
+                        );
+                    }
+                });
+
+                for (let i = 0; i < light.attributes.effect_list.length; i++) {
+                    let effect = light.attributes.effect_list[i];
+                    effectMenu.item(0, i + 1, {
+                        title: effect,
+                        subtitle: effect === light.attributes.effect ? "Current" : "",
+                        on_click: function() {
+                            haws.callService(
+                                "light",
+                                "turn_on",
+                                { effect: effect },
+                                { entity_id: light.entity_id },
+                                function(data) {
+                                    log_message(`Effect set to ${effect}`);
+                                },
+                                function(error) {
+                                    log_message(`Error setting effect: ${error}`);
+                                }
+                            );
+                        }
+                    });
+                }
+
+                effectMenu.show();
+            }
+        });
+    }
+
     // Add More option
     menuItems.push({
         id: "more",
         title: "More Options",
         subtitle: "",
-        y: startY + (itemSpacing * (supportsTemperature ? 3 : 2)),
+        y: startY + (itemSpacing * (supportsTemperature ? (effectItemAdded ? 4 : 3) : (effectItemAdded ? 3 : 2))),
         action: function() {
             showEntityMenu(entity_id);
         }
@@ -3173,13 +3333,19 @@ function showLightEntity(entity_id) {
                     menuBarsFg[i].strokeColor(colour.highlight);
                 }
             } else if (item.id === "temperature") {
+                menuSubtexts[i].text(is_on ? `${item.kelvin}K` : "NA");
 
                 if (item.showBar && menuBarsFg[i]) {
                     // Update progress bar
-                    let range = item.max - item.min;
-                    let position = item.value - item.min;
-                    let barWidth = (114 - boxLeftMargin) * (position / range);
-                    menuBarsFg[i].position2(new Vector(20 + boxLeftMargin + barWidth, item.y + 22));
+                    // When light is off, show the bar at minimum position (0%)
+                    if (!is_on) {
+                        menuBarsFg[i].position2(new Vector(20 + boxLeftMargin, item.y + 22));
+                    } else {
+                        let range = item.max - item.min;
+                        let position = item.value - item.min;
+                        let barWidth = (114 - boxLeftMargin) * (position / range);
+                        menuBarsFg[i].position2(new Vector(20 + boxLeftMargin + barWidth, item.y + 22));
+                    }
 
                     // Always use highlight color for progress bars
                     menuBarsFg[i].strokeColor(colour.highlight);
@@ -3231,34 +3397,53 @@ function showLightEntity(entity_id) {
         light = newState;
         is_on = light.state === "on";
 
-        // Update brightness
-        if (light.attributes.hasOwnProperty("brightness")) {
-            brightnessPerc = Math.round((100 / 255) * parseInt(light.attributes.brightness));
+        // Update brightness if supported
+        if (supportsBrightness) {
+            if (light.attributes.hasOwnProperty("brightness")) {
+                brightnessPerc = Math.round((100 / 255) * parseInt(light.attributes.brightness));
+            } else {
+                brightnessPerc = 0;
+            }
 
             // Find brightness menu item and update its value
             for (let i = 0; i < menuItems.length; i++) {
                 if (menuItems[i].id === "brightness") {
                     menuItems[i].value = brightnessPerc;
-                    break;
-                }
-            }
-        } else {
-            // Set brightness to 0 if not available
-            for (let i = 0; i < menuItems.length; i++) {
-                if (menuItems[i].id === "brightness") {
-                    menuItems[i].value = 0;
+                    menuSubtexts[i].text(is_on ? `${brightnessPerc}%` : "NA");
                     break;
                 }
             }
         }
 
         // Update temperature
-        if (is_on && supportsTemperature && light.attributes.color_temp) {
-            // Find temperature menu item and update its value
+        if (supportsTemperature) {
+            if (is_on && light.attributes.color_temp) {
+                // Find temperature menu item and update its value
+                for (let i = 0; i < menuItems.length; i++) {
+                    if (menuItems[i].id === "temperature") {
+                        menuItems[i].value = light.attributes.color_temp;
+                        menuItems[i].kelvin = Math.round(1000000 / light.attributes.color_temp);
+                        menuSubtexts[i].text(`${menuItems[i].kelvin}K`);
+                        break;
+                    }
+                }
+            } else {
+                // If light is off, update the temperature display to show NA
+                for (let i = 0; i < menuItems.length; i++) {
+                    if (menuItems[i].id === "temperature") {
+                        menuSubtexts[i].text("NA");
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Update effect if supported
+        if (supportsEffect) {
+            // Find effect menu item and update its value
             for (let i = 0; i < menuItems.length; i++) {
-                if (menuItems[i].id === "temperature") {
-                    menuItems[i].value = light.attributes.color_temp;
-                    menuItems[i].kelvin = Math.round(1000000 / light.attributes.color_temp);
+                if (menuItems[i].id === "effect") {
+                    menuSubtexts[i].text(light.attributes.effect || "None");
                     break;
                 }
             }
