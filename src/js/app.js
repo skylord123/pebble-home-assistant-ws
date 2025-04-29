@@ -4,7 +4,7 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const appVersion = '0.8.0',
+const appVersion = '0.8.1',
     confVersion = '0.8.0',
     debugMode = false,
     debugHAWS = false,
@@ -4970,6 +4970,63 @@ function on_auth_ok(evt) {
             } else {
                 showMainMenu();
                 loadingCard.hide();
+
+                // Handle quick launch behavior after authentication is complete
+                // Use a function to handle the quick launch behavior so we can retry if needed
+                function handleQuickLaunch(retryCount) {
+                    retryCount = retryCount || 0;
+                    var retryDelay = 10; // Delay between retries in ms
+
+                    var launchReason = simply.impl.state.launchReason;
+                    log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+
+                    // If launch reason is undefined and we haven't exceeded max retries, try again
+                    if ( !launchReason ) {
+                        log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+                        setTimeout(function() {
+                            handleQuickLaunch(retryCount + 1);
+                        }, retryDelay);
+                        return;
+                    }
+
+                    // If we have a quickLaunch reason or we've exhausted retries, proceed
+                    if (launchReason === 'quickLaunch') {
+                        log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+
+                        // Handle the quick launch behavior based on settings
+                        switch (quick_launch_behavior) {
+                            case 'assistant':
+                                if (voice_enabled) {
+                                    showAssistMenu();
+                                }
+                                break;
+                            case 'favorites':
+                                let favoriteEntities = favoriteEntityStore.all();
+                                if(favoriteEntities && favoriteEntities.length) {
+                                    const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+                                    if(shouldShowDomains) {
+                                        showEntityDomainsFromList(favoriteEntities, "Favorites");
+                                    } else {
+                                        showEntityList("Favorites", favoriteEntities, true, false, true);
+                                    }
+                                }
+                                break;
+                            case 'areas':
+                                showAreaMenu();
+                                break;
+                            case 'labels':
+                                showLabelMenu();
+                                break;
+                            case 'main_menu':
+                            default:
+                                // Default behavior is to show the main menu, which is already handled
+                                break;
+                        }
+                    }
+                }
+
+                // Start the quick launch handling process
+                handleQuickLaunch();
             }
         }
     };
@@ -5148,71 +5205,6 @@ function main() {
     haws.on('auth_ok', function(evt){
         log_message("ws auth_ok: " + JSON.stringify(evt));
         on_auth_ok(evt);
-
-        // Handle quick launch behavior after authentication is complete
-        // Use a function to handle the quick launch behavior so we can retry if needed
-        function handleQuickLaunch(retryCount) {
-            retryCount = retryCount || 0;
-            var retryDelay = 10; // Delay between retries in ms
-
-            var launchReason = simply.impl.state.launchReason;
-            log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
-
-            // If launch reason is undefined and we haven't exceeded max retries, try again
-            if (typeof launchReason === 'undefined') {
-                log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                setTimeout(function() {
-                    handleQuickLaunch(retryCount + 1);
-                }, retryDelay);
-                return;
-            }
-
-            // If we have a quickLaunch reason or we've exhausted retries, proceed
-            if (launchReason === 'quickLaunch') {
-                log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
-
-                // Handle the quick launch behavior based on settings
-                switch (quick_launch_behavior) {
-                    case 'assistant':
-                        if (voice_enabled) {
-                            setTimeout(function() {
-                                showAssistMenu();
-                            }, 500);
-                        }
-                        break;
-                    case 'favorites':
-                        setTimeout(function() {
-                            let favoriteEntities = favoriteEntityStore.all();
-                            if(favoriteEntities && favoriteEntities.length) {
-                                const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                if(shouldShowDomains) {
-                                    showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                } else {
-                                    showEntityList("Favorites", favoriteEntities, true, false, true);
-                                }
-                            }
-                        }, 500);
-                        break;
-                    case 'areas':
-                        setTimeout(function() {
-                            showAreaMenu();
-                        }, 500);
-                        break;
-                    case 'labels':
-                        setTimeout(function() {
-                            showLabelMenu();
-                        }, 500);
-                        break;
-                    case 'main_menu':
-                    default:
-                        // Default behavior is to show the main menu, which is already handled
-                        break;
-                }
-            }
-        }
-
-        // Start the quick launch handling process
-        handleQuickLaunch();
     });
 
     haws.connect();

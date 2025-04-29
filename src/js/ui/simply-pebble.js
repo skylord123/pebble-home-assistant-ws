@@ -856,7 +856,7 @@ SimplyPebble.init = function() {
 
   // Initialize launch reason with a default value
   // This will be updated when we receive the actual launch reason
-  state.launchReason = 'user';
+  state.launchReason = null;
 
   // Initialize the app message queue
   state.messageQueue = new MessageQueue();
@@ -1496,8 +1496,7 @@ SimplyPebble.onLaunchReason = function(packet) {
 
   // Store the launch reason for later use
   // Make sure it's a valid value, defaulting to 'user' if undefined
-  state.launchReason = reason || 'user';
-  console.log('Launch reason set to: ' + state.launchReason);
+  state.launchReason = reason;
 };
 
 SimplyPebble.onWakeupSetResult = function(packet) {
