@@ -133,6 +133,33 @@
 			<div class="col-12 mt-3">
 				<div class="card">
 					<div class="card-header">
+						Quick Launch Settings
+					</div>
+					<div class="card-body">
+						<div class="row">
+							<div class="col-12">
+								<div class="form-group">
+									<label for="ha-quick-launch-behavior">Quick Launch Behavior</label>
+									<select class="form-select" id="ha-quick-launch-behavior">
+										<option value="main_menu">Main Menu</option>
+										<option value="assistant">Assistant</option>
+										<option value="favorites">Favorites</option>
+										<option value="areas">Areas</option>
+										<option value="labels">Labels</option>
+									</select>
+									<small class="form-text text-muted">Select what screen to show when app is launched via Quick Launch</small>
+								</div>
+							</div>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<div class="row">
+			<div class="col-12 mt-3">
+				<div class="card">
+					<div class="card-header">
 						Entity Settings
 					</div>
 					<div class="card-body">
@@ -540,7 +567,8 @@
 				domainMenuMinDomainsCheck = $('#domain-menu-min-domains-check'),
 				domainMenuMinEntitiesCheck = $('#domain-menu-min-entities-check'),
 				domainMenuMinDomains = $('#domain-menu-min-domains'),
-				conditionalSettings = $('#conditional-settings');
+				conditionalSettings = $('#conditional-settings'),
+				quickLaunchBehavior = $('#ha-quick-launch-behavior');
 
 		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
@@ -563,6 +591,7 @@
 				'voice_confirm': voiceConfirm.is(':checked'),
 				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'selected_pipeline': pipelineSelect.val(),
+				'quick_launch_behavior': quickLaunchBehavior.val(),
 				// Domain menu settings
 				'domain_menu_enabled': 'conditional', // Default global setting
 				'domain_menu_all_entities': domainMenuAll.val(),
@@ -665,6 +694,13 @@
 
 				// Show warning
 				pipelineWarning.show();
+			}
+
+			// Handle quick launch behavior
+			if (watch_config['quick_launch_behavior']) {
+				quickLaunchBehavior.val(watch_config['quick_launch_behavior']);
+			} else {
+				quickLaunchBehavior.val('main_menu'); // Default
 			}
 
 			// Handle domain menu settings

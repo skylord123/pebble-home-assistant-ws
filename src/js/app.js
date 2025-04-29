@@ -4,9 +4,9 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const appVersion = '0.7.0',
-    confVersion = '0.7.0',
-    debugMode = true,
+const appVersion = '0.8.0',
+    confVersion = '0.8.0',
+    debugMode = false,
     debugHAWS = false,
     hawsFaker = false,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
@@ -21,6 +21,7 @@ const appVersion = '0.7.0',
     Vector = require('vector2'),
     sortJSON = require('vendor/sortjson'),
     Light = require('ui/light'),
+    simply = require('ui/simply'),
     enableIcons = true,
     sortObjectByKeys = function(object) {
         return Object.fromEntries(
@@ -114,7 +115,8 @@ let ha_url = null,
     domain_menu_min_domains = null,
     timeline_token = null,
     ignore_domains = null,
-    ha_connected = false;
+    ha_connected = false,
+    quick_launch_behavior = null;
 
 
 
@@ -129,6 +131,7 @@ function load_settings() {
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
+    quick_launch_behavior = Settings.option('quick_launch_behavior') || 'main_menu';
 
     // Domain menu settings
     const domainMenuSetting = Settings.option('domain_menu_enabled');
@@ -361,6 +364,13 @@ function showSettingsMenu() {
             title: "Domain Filters",
             on_click: function(e) {
                 showDomainFilterSettings();
+            }
+        });
+
+        settingsMenu.item(0, i++, {
+            title: "Quick Launch",
+            on_click: function(e) {
+                showQuickLaunchSettings();
             }
         });
     });
@@ -658,6 +668,77 @@ function showEntitySettings() {
     // Create and show the entity settings menu
     let entitySettingsMenu = createEntitySettingsMenu();
     entitySettingsMenu.show();
+}
+
+function showQuickLaunchSettings() {
+    // Create a menu for quick launch settings
+    let quickLaunchMenu = new UI.Menu({
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Quick Launch'
+        }]
+    });
+
+    quickLaunchMenu.on('show', function() {
+        // Clear the menu
+        quickLaunchMenu.items(0, []);
+
+        // Add options
+        quickLaunchMenu.item(0, 0, {
+            title: "Main Menu",
+            subtitle: quick_launch_behavior === 'main_menu' ? "Current" : "",
+            value: 'main_menu'
+        });
+
+        if ( voice_enabled ) {
+            quickLaunchMenu.item(0, 1, {
+                title: "Assistant",
+                subtitle: quick_launch_behavior === 'assistant' ? "Current" : "",
+                value: 'assistant'
+            });
+        }
+
+        quickLaunchMenu.item(0, 2, {
+            title: "Favorites",
+            subtitle: quick_launch_behavior === 'favorites' ? "Current" : "",
+            value: 'favorites'
+        });
+
+        quickLaunchMenu.item(0, 3, {
+            title: "Areas",
+            subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
+            value: 'areas'
+        });
+
+        quickLaunchMenu.item(0, 4, {
+            title: "Labels",
+            subtitle: quick_launch_behavior === 'labels' ? "Current" : "",
+            value: 'labels'
+        });
+    });
+
+    quickLaunchMenu.on('select', function(e) {
+        // Set the quick launch behavior
+        quick_launch_behavior = e.item.value;
+
+        // Save to settings
+        Settings.option('quick_launch_behavior', quick_launch_behavior);
+
+        // Update menu items to show current selection
+        for (let i = 0; i < 5; i++) {
+            const item = quickLaunchMenu.item(0, i);
+            quickLaunchMenu.item(0, i, {
+                title: item.title,
+                subtitle: item.value === quick_launch_behavior ? "Current" : "",
+                value: item.value
+            });
+        }
+    });
+
+    quickLaunchMenu.show();
 }
 
 function showVoicePipelineMenu() {
@@ -5067,6 +5148,71 @@ function main() {
     haws.on('auth_ok', function(evt){
         log_message("ws auth_ok: " + JSON.stringify(evt));
         on_auth_ok(evt);
+
+        // Handle quick launch behavior after authentication is complete
+        // Use a function to handle the quick launch behavior so we can retry if needed
+        function handleQuickLaunch(retryCount) {
+            retryCount = retryCount || 0;
+            var retryDelay = 10; // Delay between retries in ms
+
+            var launchReason = simply.impl.state.launchReason;
+            log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+
+            // If launch reason is undefined and we haven't exceeded max retries, try again
+            if (typeof launchReason === 'undefined') {
+                log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+                setTimeout(function() {
+                    handleQuickLaunch(retryCount + 1);
+                }, retryDelay);
+                return;
+            }
+
+            // If we have a quickLaunch reason or we've exhausted retries, proceed
+            if (launchReason === 'quickLaunch') {
+                log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+
+                // Handle the quick launch behavior based on settings
+                switch (quick_launch_behavior) {
+                    case 'assistant':
+                        if (voice_enabled) {
+                            setTimeout(function() {
+                                showAssistMenu();
+                            }, 500);
+                        }
+                        break;
+                    case 'favorites':
+                        setTimeout(function() {
+                            let favoriteEntities = favoriteEntityStore.all();
+                            if(favoriteEntities && favoriteEntities.length) {
+                                const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+                                if(shouldShowDomains) {
+                                    showEntityDomainsFromList(favoriteEntities, "Favorites");
+                                } else {
+                                    showEntityList("Favorites", favoriteEntities, true, false, true);
+                                }
+                            }
+                        }, 500);
+                        break;
+                    case 'areas':
+                        setTimeout(function() {
+                            showAreaMenu();
+                        }, 500);
+                        break;
+                    case 'labels':
+                        setTimeout(function() {
+                            showLabelMenu();
+                        }, 500);
+                        break;
+                    case 'main_menu':
+                    default:
+                        // Default behavior is to show the main menu, which is already handled
+                        break;
+                }
+            }
+        }
+
+        // Start the quick launch handling process
+        handleQuickLaunch();
     });
 
     haws.connect();
