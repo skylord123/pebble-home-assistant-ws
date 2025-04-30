@@ -215,6 +215,7 @@ let mainMenu = null;
 function showMainMenu() {
     if(!mainMenu) {
         mainMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -326,6 +327,7 @@ function showMainMenu() {
 function showSettingsMenu() {
     // Create a menu for settings
     let settingsMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -387,6 +389,7 @@ function showSettingsMenu() {
 function showDomainFilterSettings() {
     // Create a menu for domain filter settings
     let domainFilterMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -463,6 +466,7 @@ function showDomainFilterSettings() {
 function showVoiceAssistantSettings() {
     // Create a menu for assistant settings
     const voiceSettingsMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -555,6 +559,7 @@ function showEntitySettings() {
     // Entity Settings Menu
     function createEntitySettingsMenu() {
         let entitySettingsMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -616,6 +621,7 @@ function showEntitySettings() {
     // Order By Menu
     function showOrderByMenu() {
         let orderByMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -673,6 +679,7 @@ function showEntitySettings() {
 function showQuickLaunchSettings() {
     // Create a menu for quick launch settings
     let quickLaunchMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -744,6 +751,7 @@ function showQuickLaunchSettings() {
 function showVoicePipelineMenu() {
     // Create a menu for selecting Voice Pipelines
     let voicePipelineMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -1443,6 +1451,7 @@ let areaMenu = null;
 function showAreaMenu() {
     if(!areaMenu) {
         areaMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
