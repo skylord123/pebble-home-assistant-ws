@@ -1312,6 +1312,10 @@ function showAssistMenu() {
             if (e.err) {
                 if (e.err === "systemAborted") {
                     log_message("assist cancelled by user");
+                    if(!conversationElements.length) {
+                        // if assist dictation is cancelled and there has been no conversation, hide the window
+                        assistWindow.hide();
+                    }
                     return;
                 }
                 log_message("Transcription error: " + e.err);
@@ -1516,6 +1520,7 @@ function showAreaMenu() {
 
 function showLabelMenu() {
     let labelMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -1991,6 +1996,7 @@ function showClimateEntity(entity_id) {
 
     // Create the climate menu
     let climateMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -2031,6 +2037,7 @@ function showClimateEntity(entity_id) {
                 if (latestData.hvac_mode === 'heat_cool') {
                     // Show menu to select high or low temp
                     let tempRangeMenu = new UI.Menu({
+                        status: false,
                         backgroundColor: 'black',
                         textColor: 'white',
                         highlightBackgroundColor: 'white',
@@ -2305,6 +2312,7 @@ function showClimateEntity(entity_id) {
         let returnToIndex = selectedIndex;
 
         let tempMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -2473,6 +2481,7 @@ function showClimateEntity(entity_id) {
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -2583,6 +2592,7 @@ function showClimateEntity(entity_id) {
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -2693,6 +2703,7 @@ function showClimateEntity(entity_id) {
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -2803,6 +2814,7 @@ function showClimateEntity(entity_id) {
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -3052,6 +3064,7 @@ function showLightEntity(entity_id) {
 
     // Create the light menu
     let lightMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -3530,6 +3543,7 @@ function showLightEntity(entity_id) {
 
         // Create a menu for color selection
         let colorMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -3844,6 +3858,7 @@ function showLightEntity(entity_id) {
 
         // Create effect selection menu
         let effectMenu = new UI.Menu({
+            status: false,
             backgroundColor: 'black',
             textColor: 'white',
             highlightBackgroundColor: 'white',
@@ -4022,8 +4037,6 @@ function showLightEntity(entity_id) {
         }, 100);
     });
 
-
-
     lightMenu.on('hide', function() {
         // Unsubscribe from entity updates
         if (subscription_msg_id) {
@@ -4033,42 +4046,9 @@ function showLightEntity(entity_id) {
 
     // Show the menu
     lightMenu.show();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    // Show the menu
-    lightMenu.show();
 }
 
 // Track menu selections globally
-let entityMenuSelections = {};
 let menuSelections = {
     mainMenu: 0,
     entityListMenu: 0,
@@ -4085,23 +4065,16 @@ function showEntityMenu(entity_id) {
         throw new Error(`Entity ${entity_id} not found in ha_state_dict`);
     }
 
-    // Initialize selection for this entity if not already set
-    if (!entityMenuSelections[entity_id]) {
-        entityMenuSelections[entity_id] = {
-            section: 0,
-            item: 0
-        };
-    }
-
     // Set Menu colors
     let showEntityMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'white',
         textColor: 'black',
         highlightBackgroundColor: 'black',
         highlightTextColor: 'white',
         sections: [
             {
-                title: 'Attributes'
+                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id
             },
             {
                 title: 'Services'
@@ -4116,317 +4089,308 @@ function showEntityMenu(entity_id) {
 
     // Store selection when navigating to a submenu
     showEntityMenu.on('select', function(e) {
-        // Store the current selection
-        entityMenuSelections[entity_id] = {
-            section: e.sectionIndex,
-            item: e.itemIndex
-        };
+        console.log(e);
+        // Handle on_click function if it exists
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+            return;
+        }
     });
 
-    showEntityMenu.on('show', function(){
-        //Object.getOwnPropertyNames(entity);
-        //Object.getOwnPropertyNames(entity.attributes);
-        var arr = Object.getOwnPropertyNames(entity.attributes);
-        //var arr = Object.getOwnPropertyNames(device_status.attributes);
-        var i = 0;
-        log_message(`Showing entity ${entity.entity_id}: ${JSON.stringify(entity, null, 4)}`)
-        for (i = 0; i < arr.length; i++) {
-            showEntityMenu.item(0, i, {
-                title: arr[i],
-                subtitle: entity.attributes[arr[i]]
-            });
+    //Object.getOwnPropertyNames(entity);
+    //Object.getOwnPropertyNames(entity.attributes);
+    var arr = Object.getOwnPropertyNames(entity.attributes);
+    //var arr = Object.getOwnPropertyNames(device_status.attributes);
+    var i = 0;
+    log_message(`Showing entity ${entity.entity_id}: ${JSON.stringify(entity, null, 4)}`)
+
+    showEntityMenu.item(0, i++, {
+        title: 'Entity ID',
+        subtitle: entity.entity_id
+    });
+    showEntityMenu.item(0, i++, {
+        title: 'State',
+        subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '')
+    });
+    let stateIndex = i;
+    showEntityMenu.item(0, i++, {
+        title: 'Last Changed',
+        subtitle: entity.last_changed
+    });
+    showEntityMenu.item(0, i++, {
+        title: 'Last Updated',
+        subtitle: entity.last_updated
+    });
+    showEntityMenu.item(0, i++, {
+        title: 'Attributes',
+        subtitle: `${arr.length} attributes`,
+        on_click: function() {
+            showEntityAttributesMenu(entity_id);
         }
-        showEntityMenu.item(0, i++, {
-            title: 'Entity ID',
-            subtitle: entity.entity_id
-        });
-        showEntityMenu.item(0, i++, {
-            title: 'Last Changed',
-            subtitle: entity.last_changed
-        });
-        showEntityMenu.item(0, i++, {
-            title: 'Last Updated',
-            subtitle: entity.last_updated
-        });
-        showEntityMenu.item(0, i++, {
-            title: 'State',
-            subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '')
-        });
+    });
 
-        //entity: {"attributes":{"friendly_name":"Family Room","icon":"mdi:lightbulb"},"entity_id":"switch.family_room","last_changed":"2016-10-12T02:03:26.849071+00:00","last_updated":"2016-10-12T02:03:26.849071+00:00","state":"off"}
-        log_message("This Device entity_id: " + entity.entity_id);
-        var device = entity.entity_id.split('.'),
-            domain = device[0];
+    //entity: {"attributes":{"friendly_name":"Family Room","icon":"mdi:lightbulb"},"entity_id":"switch.family_room","last_changed":"2016-10-12T02:03:26.849071+00:00","last_updated":"2016-10-12T02:03:26.849071+00:00","state":"off"}
+    log_message("This Device entity_id: " + entity.entity_id);
+    var device = entity.entity_id.split('.'),
+        domain = device[0];
 
-        let servicesCount = 0;
-
-        // Restore the previous selection after a short delay
-        setTimeout(function() {
-            const savedSelection = entityMenuSelections[entity_id];
-            if (savedSelection) {
-                // Make sure the section and item exist
-                if (savedSelection.section < showEntityMenu.sections() &&
-                    savedSelection.item < showEntityMenu.items(savedSelection.section).length) {
-                    showEntityMenu.selection(savedSelection.section, savedSelection.item);
-                }
+    let servicesCount = 0;
+    if(
+        domain === "button" ||
+        domain === "input_button"
+    ) {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Press',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'press',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
             }
-        }, 100);
+        });
+    }
 
-        if(
-            domain === "button" ||
-            domain === "input_button"
-        ) {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Press',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'press',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-        }
+    if (
+        domain === "switch" ||
+        domain === "input_boolean" ||
+        domain === "automation" ||
+        domain === "script"
+    )
+    {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Toggle',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'toggle',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Turn On',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'turn_on',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Turn Off',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'turn_off',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        log_message('no response');
+                    });
+            }
+        });
+    }
 
-        if (
-            domain === "switch" ||
-            domain === "input_boolean" ||
-            domain === "automation" ||
-            domain === "script"
-        )
-        {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Toggle',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'toggle',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Turn On',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'turn_on',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Turn Off',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'turn_off',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            log_message('no response');
-                        });
-                }
-            });
-        }
+    if(domain === "scene") {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Turn On',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'turn_on',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Apply',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'apply',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+    }
 
-        if(domain === "scene") {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Turn On',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'turn_on',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Apply',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'apply',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-        }
+    if(
+        domain === "input_number" ||
+        domain === "counter"
+    ) {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Increment',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'increment',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        log_message('no response');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Decrement',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'decrement',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+    }
 
-        if(
-            domain === "input_number" ||
-            domain === "counter"
-        ) {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Increment',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'increment',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            log_message('no response');
-                        });
-                }
-            });
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Decrement',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'decrement',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-        }
+    if(domain === "counter") {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Reset',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'reset',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+    }
 
-        if(domain === "counter") {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Reset',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'reset',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-        }
+    if(
+        domain === "automation"
+    ) {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Trigger',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'trigger',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+    }
 
-        if(
-            domain === "automation"
-        ) {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Trigger',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'trigger',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
-                }
-            });
-        }
+    if(
+        domain === "automation" ||
+        domain === "script" ||
+        domain === "button" ||
+        domain === "input_boolean"
+    ) {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Reload',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'reload',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+    }
 
-        if(
-            domain === "automation" ||
-            domain === "script" ||
-            domain === "button" ||
-            domain === "input_boolean"
-        ) {
-            showEntityMenu.item(1, servicesCount++, { //menuIndex
-                title: 'Reload',
-                on_click: function(){
-                    haws.callService(
-                        domain,
-                        'reload',
-                        {},
-                        {entity_id: entity.entity_id},
-                        function(data) {
-                            // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                            // Success!
-                            log_message(JSON.stringify(data));
-                        },
-                        function(error) {
-                            // Failure!
-                            log_message('no response');
-                        });
+    function _renderFavoriteBtn() {
+        showEntityMenu.item(2, 0, {
+            title: (favoriteEntityStore.has(entity.entity_id) ? 'Remove' : 'Add') + ' Favorite',
+            on_click: function(e) {
+                if(!favoriteEntityStore.has(entity.entity_id)) {
+                    log_message(`Adding ${entity.entity_id} to favorites`);
+                    favoriteEntityStore.add(entity.entity_id);
+                } else {
+                    log_message(`Removing ${entity.entity_id} from favorites`);
+                    favoriteEntityStore.remove(entity.entity_id);
                 }
-            });
-        }
+                _renderFavoriteBtn();
+            }
+        });
+    }
+    _renderFavoriteBtn();
 
-        function _renderFavoriteBtn() {
-            showEntityMenu.item(2, 0, {
-                title: (favoriteEntityStore.has(entity.entity_id) ? 'Remove' : 'Add') + ' Favorite',
-                on_click: function(e) {
-                    if(!favoriteEntityStore.has(entity.entity_id)) {
-                        log_message(`Adding ${entity.entity_id} to favorites`);
-                        favoriteEntityStore.add(entity.entity_id);
-                    } else {
-                        log_message(`Removing ${entity.entity_id} from favorites`);
-                        favoriteEntityStore.remove(entity.entity_id);
-                    }
-                    _renderFavoriteBtn();
-                }
-            });
-        }
-        _renderFavoriteBtn();
-
+    showEntityMenu.on('show', function(){
         msg_id = haws.subscribe({
             "type": "subscribe_trigger",
             "trigger": {
@@ -4443,39 +4407,6 @@ function showEntityMenu(entity_id) {
         }, function(error) {
             log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
         });
-
-        showEntityMenu.on('select', function(e) {
-            if(typeof e.item.on_click == 'function') {
-                e.item.on_click(e);
-                return;
-            }
-
-            // log_message(JSON.stringify(e.item));
-            if(e.sectionIndex !== 1) return; // only care about clicks on service stuff
-
-            // ajax(
-            //     {
-            //         url: baseurl + '/services/'+ domain +'/' + e.item.title,
-            //         method: 'post',
-            //         headers: baseheaders,
-            //         type: 'json',
-            //         data: requestData
-            //     },
-            //     function(data) {
-            //         let entity = data;
-            //         // Success!
-            //         showEntityMenu.item(0, stateIndex, {
-            //             title: 'State',
-            //             subtitle: entity.state
-            //         });
-            //         log_message(JSON.stringify(data));
-            //     },
-            //     function(error) {
-            //         // Failure!
-            //         log_message('no response');
-            //     }
-            // );
-        });
     });
     showEntityMenu.on('close', function(){
         if(msg_id) {
@@ -4486,9 +4417,90 @@ function showEntityMenu(entity_id) {
     showEntityMenu.show();
 }
 
+function showEntityAttributesMenu(entity_id) {
+    let entity = ha_state_dict[entity_id];
+    if(!entity){
+        throw new Error(`Entity ${entity_id} not found in ha_state_dict`);
+    }
+
+    // Create a menu for the attributes
+    let attributesMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'white',
+        textColor: 'black',
+        highlightBackgroundColor: 'black',
+        highlightTextColor: 'white',
+        sections: [{
+            title: 'Attributes'
+        }]
+    });
+
+    // Handle select events
+    attributesMenu.on('select', function(e) {
+        // Handle on_click function if it exists
+        if(e.item && typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    let msg_id = null;
+
+    attributesMenu.on('show', function() {
+        var arr = Object.getOwnPropertyNames(entity.attributes);
+        log_message(`Showing attributes for ${entity.entity_id}: ${arr.length} attributes`);
+
+        // Add each attribute to the menu
+        for (let i = 0; i < arr.length; i++) {
+            attributesMenu.item(0, i, {
+                title: arr[i],
+                subtitle: entity.attributes[arr[i]],
+                attribute_name: arr[i] // Store attribute name for updates
+            });
+        }
+
+        // Subscribe to entity updates
+        msg_id = haws.subscribe({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedEntity = data.event.variables.trigger.to_state;
+                ha_state_dict[entity_id] = updatedEntity;
+
+                // Update all attribute values
+                for (let i = 0; i < attributesMenu.items(0).length; i++) {
+                    const item = attributesMenu.item(0, i);
+                    if (item.attribute_name && updatedEntity.attributes[item.attribute_name] !== undefined) {
+                        attributesMenu.item(0, i, {
+                            title: item.attribute_name,
+                            subtitle: updatedEntity.attributes[item.attribute_name],
+                            attribute_name: item.attribute_name
+                        });
+                    }
+                }
+            }
+        }, function(error) {
+            log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+    });
+
+    attributesMenu.on('hide', function() {
+        // Unsubscribe from entity updates when menu is closed
+        if (msg_id) {
+            haws.unsubscribe(msg_id);
+        }
+    });
+
+    attributesMenu.show();
+}
+
 function showEntityDomainsFromList(entity_id_list, title) {
     // setup entityListMenu if it hasn't been
     let domainListMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
@@ -4557,6 +4569,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     log_message(`showEntityList (title=${title}): called`);
     // setup entityListMenu if it hasn't been
     entityListMenu = new UI.Menu({
+        status: false,
         backgroundColor: 'black',
         textColor: 'white',
         highlightBackgroundColor: 'white',
