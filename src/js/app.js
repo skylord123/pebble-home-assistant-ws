@@ -4573,6 +4573,64 @@ function showEntityDomainsFromList(entity_id_list, title) {
     domainListMenu.show();
 }
 
+function getEntityIcon(entity) {
+    if (!entity) return 'images/icon_unknown.png';
+
+    const domain = entity.entity_id.split('.')[0];
+    const state = entity.state;
+
+    // Handle different domains
+    switch (domain) {
+        case 'light':
+            return state === 'on' ? 'images/icon_bulb_on.png' : 'images/icon_bulb.png';
+
+        case 'switch':
+        case 'input_boolean':
+            return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
+
+        case 'cover':
+            return state === 'open' ? 'images/icon_blind_open.png' : 'images/icon_blind_closed.png';
+
+        case 'lock':
+            return state === 'locked' ? 'images/icon_locked.png' : 'images/icon_unlocked.png';
+
+        case 'sensor':
+            // Check for temperature sensors
+            if (entity.attributes.device_class === 'temperature') {
+                return 'images/icon_temp.png';
+            }
+            return 'images/icon_sensor.png';
+
+        case 'binary_sensor':
+            // Check for door/window sensors
+            if (entity.attributes.device_class === 'opening') {
+                return state === 'on' ? 'images/icon_door_open.png' : 'images/icon_door_closed.png';
+            }
+            return 'images/icon_sensor.png';
+
+        case 'automation':
+            return state === 'on' ? 'images/icon_auto_on.png' : 'images/icon_auto_off.png';
+
+        case 'media_player':
+            return 'images/icon_media.png';
+
+        case 'script':
+            return 'images/icon_script.png';
+
+        case 'scene':
+            return 'images/icon_scene.png';
+
+        case 'timer':
+            return 'images/icon_timer.png';
+
+        case 'vacuum':
+            return 'images/icon_vacuum.png';
+
+        default:
+            return 'images/icon_unknown.png';
+    }
+}
+
 let entityListMenu = null;
 function showEntityList(title, entity_id_list = false, ignoreEntityCache = true, sortItems = true, skipIgnoredDomains = false) {
     log_message(`showEntityList (title=${title}): called`);
@@ -4744,7 +4802,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         entityListMenu.item(0, menuId, {
                             title: data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id,
                             subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' ' + humanDiff(new Date(), new Date(data[i].last_changed)),
-                            entity_id: data[i].entity_id
+                            entity_id: data[i].entity_id,
+                            icon: getEntityIcon(data[i])
                         });
                         renderedEntityIds[data[i].entity_id] = menuId;
                     }
@@ -4786,7 +4845,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                             entityListMenu.item(0, i, {
                                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
                                 subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' ' + humanDiff(new Date(), new Date(entity.last_changed)),
-                                entity_id: entity.entity_id
+                                entity_id: entity.entity_id,
+                                icon: getEntityIcon(entity)
                             });
 
                             // Build the renderedEntityIds map for subscription
@@ -4820,7 +4880,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         entityListMenu.item(0, renderedEntityIds[entity.entity_id], {
                             title: data.event.variables.trigger.to_state.attributes.friendly_name ? data.event.variables.trigger.to_state.attributes.friendly_name : entity.entity_id,
                             subtitle: data.event.variables.trigger.to_state.state + (data.event.variables.trigger.to_state.attributes.unit_of_measurement ? ` ${data.event.variables.trigger.to_state.attributes.unit_of_measurement}` : '') + ' ' + humanDiff(new Date(), new Date(data.event.variables.trigger.to_state.last_changed)),
-                            entity_id: entity.entity_id
+                            entity_id: entity.entity_id,
+                            icon: getEntityIcon(data.event.variables.trigger.to_state)
                         });
                     }, function(error) {
                         log_message(`ENTITY UPDATE ERROR ${JSON.stringify(Object.keys(renderedEntityIds))}: ` + JSON.stringify(error));
