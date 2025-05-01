@@ -2939,11 +2939,7 @@ function showLightEntity(entity_id) {
 
     // Helper function to get light data
     function getLightData(light) {
-        // Calculate time since last changed
-        let lastChanged = new Date(light.last_changed);
-        let now = new Date();
-        let timeDiff = Math.floor((now - lastChanged) / 60000); // minutes
-        let timeStr = timeDiff < 60 ? `${timeDiff}m` : `${Math.floor(timeDiff / 60)}h ${timeDiff % 60}m`;
+        let timeStr = humanDiff(new Date(), new Date(light.last_changed));
 
         // Calculate brightness percentage if available
         let brightnessPerc = 0;
@@ -3092,7 +3088,7 @@ function showLightEntity(entity_id) {
         // Update main status item
         lightMenu.item(0, menuIndex++, {
             title: updatedData.friendly_name,
-            subtitle: `${updatedData.is_on ? 'On' : 'Off'} - ${updatedData.last_changed_time}`,
+            subtitle: `${updatedData.is_on ? 'on' : 'off'} > ${updatedData.last_changed_time}`,
             icon: updatedData.is_on ? 'images/icon_bulb_on.png' : 'images/icon_bulb.png',
             on_click: function() {
                 // Toggle light on/off
@@ -4801,7 +4797,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         let menuId = menuIndex++;
                         entityListMenu.item(0, menuId, {
                             title: data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id,
-                            subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' ' + humanDiff(new Date(), new Date(data[i].last_changed)),
+                            subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed)),
                             entity_id: data[i].entity_id,
                             icon: getEntityIcon(data[i])
                         });
@@ -4844,7 +4840,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                             let entity = entityMap[item.entity_id];
                             entityListMenu.item(0, i, {
                                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' ' + humanDiff(new Date(), new Date(entity.last_changed)),
+                                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
                                 entity_id: entity.entity_id,
                                 icon: getEntityIcon(entity)
                             });
@@ -4870,8 +4866,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                             "entity_id": Object.keys(renderedEntityIds),
                         },
                     }, function(data) {
-                        entity_registry_cache[data.event.variables.trigger.to_state.entity_id] = data.event.variables.trigger.to_state;
-                        let entity = entity_registry_cache[data.event.variables.trigger.to_state.entity_id];
+                        ha_state_dict[data.event.variables.trigger.to_state.entity_id] = data.event.variables.trigger.to_state;
+                        let entity = ha_state_dict[data.event.variables.trigger.to_state.entity_id];
                         log_message("ENTITY GETTING UPDATE:" + JSON.stringify(entity));
                         if(!entity) {
                             log_message('FAILED TO FIND ENTITY ' + data.event.variables.trigger.to_state.entity_id);
@@ -4879,7 +4875,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         }
                         entityListMenu.item(0, renderedEntityIds[entity.entity_id], {
                             title: data.event.variables.trigger.to_state.attributes.friendly_name ? data.event.variables.trigger.to_state.attributes.friendly_name : entity.entity_id,
-                            subtitle: data.event.variables.trigger.to_state.state + (data.event.variables.trigger.to_state.attributes.unit_of_measurement ? ` ${data.event.variables.trigger.to_state.attributes.unit_of_measurement}` : '') + ' ' + humanDiff(new Date(), new Date(data.event.variables.trigger.to_state.last_changed)),
+                            subtitle: data.event.variables.trigger.to_state.state + (data.event.variables.trigger.to_state.attributes.unit_of_measurement ? ` ${data.event.variables.trigger.to_state.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data.event.variables.trigger.to_state.last_changed)),
                             entity_id: entity.entity_id,
                             icon: getEntityIcon(data.event.variables.trigger.to_state)
                         });
@@ -5361,28 +5357,43 @@ function shouldShowDomainMenu(entities, menuSetting) {
 }
 
 function humanDiff(newestDate, oldestDate) {
+    // Check if dates are valid Date objects, if not convert them
+    newestDate = newestDate instanceof Date ? newestDate : new Date(newestDate);
+    oldestDate = oldestDate instanceof Date ? oldestDate : new Date(oldestDate);
+
+    // Reverse the check - if oldestDate is after newestDate, they're in wrong order
+    if(oldestDate > newestDate) {
+        return '> now';
+    }
+
     let prettyDate = {
         diffDate: newestDate - oldestDate,
         diffUnit: "ms"
     };
 
-    if(oldestDate > newestDate) {
-        return '> now';
-    }
-
     function reduceNumbers(inPrettyDate, interval, unit) {
-        if (inPrettyDate.diffDate > interval) {
-            inPrettyDate.diffDate = inPrettyDate.diffDate / interval;
+        // Only convert if the difference is greater than or equal to the interval
+        if (inPrettyDate.diffDate >= interval) {
+            // Use integer division to prevent accumulating floating point errors
+            inPrettyDate.diffDate = Math.floor(inPrettyDate.diffDate / interval);
             inPrettyDate.diffUnit = unit;
+            return true;
         }
-        return inPrettyDate;
+        return false;
     }
 
-    prettyDate = reduceNumbers(prettyDate, 1000, 's');
-    prettyDate = reduceNumbers(prettyDate, 60, 'm');
-    prettyDate = reduceNumbers(prettyDate, 60, 'h');
-    prettyDate = reduceNumbers(prettyDate, 24, 'd');
-    return '> ' + Math.round(prettyDate.diffDate, 0) + ' ' + prettyDate.diffUnit;
+    // Use a chain of if-statements rather than sequential operations to avoid
+    // continually dividing small values
+    if (reduceNumbers(prettyDate, 1000, 's')) {
+        if (reduceNumbers(prettyDate, 60, 'm')) {
+            if (reduceNumbers(prettyDate, 60, 'h')) {
+                reduceNumbers(prettyDate, 24, 'd');
+            }
+        }
+    }
+
+    // Round properly and return a formatted string
+    return '> ' + prettyDate.diffDate + ' ' + prettyDate.diffUnit;
 }
 
 // the below method is just here for reference on the REST API
