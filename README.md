@@ -95,7 +95,7 @@ After installation, you'll need to configure the app to connect to your Home Ass
 
 This app is built using Pebble.js and is open source. Contributions are welcome!
 
-- **GitHub Repository**: [github.com/yourusername/pebble-ha-ws](https://github.com/yourusername/pebble-ha-ws)
+- **GitHub Repository**: [github.com/skylord123/pebble-home-assistant-ws](https://github.com/skylord123/pebble-home-assistant-ws)
 - **Bug Reports**: Please use the GitHub issues page to report bugs
 - **Feature Requests**: Feel free to suggest new features through GitHub issues
 
