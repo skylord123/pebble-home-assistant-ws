@@ -2,7 +2,7 @@
 
 Control your Home Assistant smart home directly from your Pebble smartwatch! This app uses WebSockets for real-time updates and control of your Home Assistant devices and entities.
 
-[Discord Discussion](https://discord.com/channels/221364737269694464/1356054710439903232)
+Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Discord](http://rebble.io/discord)
 
 ![pebble-ha-ws-logo.png](pebble-ha-ws-logo.png)
 
@@ -90,6 +90,11 @@ After installation, you'll need to configure the app to connect to your Home Ass
 - **Voice Commands Not Working**: Ensure the conversation integration is enabled in Home Assistant
 - **App Crashes**: Try restarting your Pebble watch
 - **Entity Changes Not Updating**: Adjust the refresh interval in settings
+
+## Join the Discussion
+To participate in our Discord community:
+1. First join the [Rebble Discord server](http://rebble.io/discord)
+2. Then access the [pebble-home-assistant-ws channel](https://discord.com/channels/221364737269694464/1356054710439903232)
 
 ## Development
 
