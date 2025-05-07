@@ -685,7 +685,7 @@ function showQuickLaunchSettings() {
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'Quick Launch'
+            title: 'Quick Launch Action'
         }]
     });
 
@@ -5363,7 +5363,7 @@ function humanDiff(newestDate, oldestDate) {
 
     // Reverse the check - if oldestDate is after newestDate, they're in wrong order
     if(oldestDate > newestDate) {
-        return '> now';
+        return 'now';
     }
 
     let prettyDate = {
@@ -5393,7 +5393,7 @@ function humanDiff(newestDate, oldestDate) {
     }
 
     // Round properly and return a formatted string
-    return '> ' + prettyDate.diffDate + ' ' + prettyDate.diffUnit;
+    return prettyDate.diffDate + ' ' + prettyDate.diffUnit;
 }
 
 // the below method is just here for reference on the REST API
