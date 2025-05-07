@@ -50,7 +50,6 @@ After installation, you'll need to configure the app to connect to your Home Ass
 2. **Enter your Home Assistant details**:
    - **URL**: Your Home Assistant URL (e.g., `https://yourhomeassistant.duckdns.org`)
    - **Access Token**: A [Long-Lived Access Token](https://www.home-assistant.io/docs/authentication/) from Home Assistant
-   - **Refresh Interval**: How often to refresh entity states (in minutes)
    - **Voice Confirmation**: Enable/disable voice command confirmation
    - **Enable Voice**: Turn on/off voice assistant functionality
 
