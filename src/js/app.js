@@ -4652,7 +4652,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
             domain === "light" ||
             domain === "input_boolean" ||
             domain === "automation" ||
-            domain === "script"
+            domain === "script" ||
+            domain === "cover"
         ) {
             haws.callService(
                 domain,
