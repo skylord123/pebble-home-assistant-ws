@@ -890,8 +890,42 @@ function showAssistMenu() {
 
     let assistWindow = new UI.Window({
         backgroundColor: Feature.color('white', 'black'),
-        scrollable: true
+        scrollable: true,
+        paging: false // paging is by default enabled for round but we have our own custom scrolling
     });
+
+    // Calculate the maximum rectangle that can fit inside a round display
+    function getMaxRectInRound() {
+        const resolution = Feature.resolution();
+        const isRound = Feature.round(true, false);
+
+        if (!isRound) {
+            // For rectangular displays, use the full resolution
+            return {
+                width: resolution.x,
+                height: resolution.y,
+                left: 0,
+                top: 0
+            };
+        }
+
+        // For round displays, use the inscribed square
+        // The maximum square that fits in a circle has sides of length r*sqrt(2)
+        const radius = resolution.x / 2; // 90px for chalk
+        const squareSide = Math.floor(radius * Math.sqrt(2));
+
+        return {
+            width: squareSide,
+            height: squareSide,
+            left: Math.floor((resolution.x - squareSide) / 2),
+            top: Math.floor((resolution.y - squareSide) / 2)
+        };
+    }
+
+    // Get the maximum rectangle dimensions
+    const maxRect = getMaxRectInRound();
+    log_message("Max rect: " + JSON.stringify(maxRect));
+    log_message("Screen resolution: " + JSON.stringify(Feature.resolution()));
 
     // Configuration for message spacing
     let MESSAGE_PADDING = 0; // Padding between messages
@@ -986,24 +1020,29 @@ function showAssistMenu() {
         // Calculate the error title height based on font size
         const ERROR_TITLE_HEIGHT = FONT_SIZE + 2; // Similar to SPEAKER_HEIGHT
 
+        // Adjust position and size for round displays
+        const isRound = Feature.round(true, false);
+        const leftMargin = maxRect.left + Feature.round(0, 5);
+        const textWidth = maxRect.width - Feature.round(0, 10);
+
         // Add error title using the user's font size preference
         let errorTitle = new UI.Text({
-            position: new Vector(5, currentY),
-            size: new Vector(Feature.resolution().x - 10, ERROR_TITLE_HEIGHT),
+            position: new Vector(leftMargin, currentY),
+            size: new Vector(textWidth, ERROR_TITLE_HEIGHT),
             text: 'Error:',
             font: SPEAKER_FONT, // Use the same font as speaker labels
             color: Feature.color('red', 'white'),
-            textAlign: 'left'
+            textAlign: isRound ? 'center' : 'left'
         });
 
         // Add error message using the user's font size preference
         let errorMessage = new UI.Text({
-            position: new Vector(5, currentY + ERROR_TITLE_HEIGHT),
-            size: new Vector(Feature.resolution().x - 10, 1000),
+            position: new Vector(leftMargin, currentY + ERROR_TITLE_HEIGHT),
+            size: new Vector(textWidth, 1000),
             text: message,
             font: MESSAGE_FONT, // Use the same font as messages
             color: Feature.color('red', 'white'),
-            textAlign: 'left',
+            textAlign: isRound ? 'center' : 'left',
             textOverflow: 'wrap'
         });
 
@@ -1020,7 +1059,7 @@ function showAssistMenu() {
 
             // Update the error message element size with the actual height
             // Add extra padding to ensure text isn't cut off
-            errorMessage.size(new Vector(Feature.resolution().x - 10, height + 10));
+            errorMessage.size(new Vector(textWidth, height + ERROR_TITLE_HEIGHT));
 
             // Add the error message to the window
             assistWindow.add(errorMessage);
@@ -1114,15 +1153,20 @@ function showAssistMenu() {
             const speakerId = Math.floor(Math.random() * 100000);
             const messageId = Math.floor(Math.random() * 100000);
 
+            // Adjust position and size for round displays
+            const isRound = Feature.round(true, false);
+            const leftMargin = maxRect.left + Feature.round(0, 5);
+            const textWidth = maxRect.width - Feature.round(0, 10);
+
             // Add speaker label with display name
             let speakerLabel = new UI.Text({
                 id: speakerId,
-                position: new Vector(5, currentY),
-                size: new Vector(Feature.resolution().x - 10, SPEAKER_HEIGHT),
+                position: new Vector(leftMargin, currentY),
+                size: new Vector(textWidth, SPEAKER_HEIGHT),
                 text: getDisplayName(speaker) + ':',
                 font: SPEAKER_FONT,
                 color: Feature.color('black', 'white'),
-                textAlign: 'left'
+                textAlign: isRound ? 'center' : 'left'
             });
             assistWindow.add(speakerLabel);
             conversationElements.push(speakerLabel);
@@ -1130,18 +1174,20 @@ function showAssistMenu() {
             // Add message text
             let messageText = new UI.Text({
                 id: messageId,
-                position: new Vector(5, currentY + SPEAKER_HEIGHT),
-                size: new Vector(Feature.resolution().x - 10, 2000),
+                position: new Vector(leftMargin, currentY + SPEAKER_HEIGHT),
+                size: new Vector(textWidth, 2000),
                 text: message,
                 font: MESSAGE_FONT,
                 color: Feature.color('black', 'white'),
-                textAlign: 'left',
-                textOverflow: 'wrap'
+                textAlign: isRound ? 'center' : 'left',
+                // textOverflow: 'wrap'
             });
+            log_message(`Message position: ( ${leftMargin}, ${currentY + SPEAKER_HEIGHT} ) ` );
+            log_message(`Message size: ( ${textWidth}, 2000 ) ` );
 
             messageText.getHeight(function(height) {
                 height = Math.max(height, FONT_SIZE); // Changed from fontSize to FONT_SIZE
-                messageText.size(new Vector(Feature.resolution().x - 10, height + 10));
+                messageText.size(new Vector(textWidth, height + 10 + Feature.round(26, 0)));
                 assistWindow.add(messageText);
                 conversationElements.push(messageText);
 
@@ -1149,7 +1195,7 @@ function showAssistMenu() {
                 currentY += SPEAKER_HEIGHT + height + MESSAGE_PADDING;
 
                 // Update window content size
-                const contentHeight = currentY + 20;
+                const contentHeight = currentY + 20 + Feature.round(26, 0);
                 assistWindow.size(new Vector(Feature.resolution().x, contentHeight));
                 log_message("Updated window size to: " + contentHeight + " for currentY: " + currentY);
 
@@ -1174,13 +1220,13 @@ function showAssistMenu() {
                 // If the message is taller than the display, scroll to show the title at the top
                 if (messageHeight > screenHeight * 0.8) { // If message takes up more than 80% of screen
                     // Scroll to the title position (speaker label)
-                    scrollTarget = messageTop - 5; // 5px padding above title
+                    scrollTarget = (messageTop + Feature.round(26, 0)) - 5; // 5px padding above title
                     log_message("Long message detected (" + messageHeight + "px), scrolling to title at position: " + scrollTarget);
                 } else {
                     // For shorter messages, scroll to show the entire message
                     // Calculate how much we need to scroll to show the bottom of the message
                     // with some padding at the bottom
-                    scrollTarget = Math.max(0, messageBottom - screenHeight + 10); // 10px padding
+                    scrollTarget = Math.max(0, messageBottom - screenHeight + Feature.round(26, 10));
                     log_message("Normal message, scrolling to position: " + scrollTarget + " to show bottom at: " + messageBottom);
                 }
 
@@ -1315,6 +1361,31 @@ function showAssistMenu() {
     }
 
     function startAssist() {
+        if(hawsFaker) {
+            const testMessageDelay = 2000; // 2 seconds delay between messages, adjust as needed
+
+            addMessage('Me', "Hello!", function() {
+                setTimeout(function() {
+                    addMessage('HA', "Hi! How are you?", function() {
+                        setTimeout(function() {
+                            addMessage('Me', "I am actually doing really good. Yourself?", function() {
+                                setTimeout(function() {
+                                    addMessage('HA', "Yeah I guess things are going pretty alright. I can't complain too much.", function() {
+                                        setTimeout(function(){
+                                            addMessage('HA', "Test!\n - list test\n- list item two", function() {
+                                            });
+                                        }, testMessageDelay)
+                                    });
+                                }, testMessageDelay);
+                            });
+                        }, testMessageDelay);
+                    });
+                }, testMessageDelay);
+            });
+
+            return;
+        }
+
         log_message("startAssist");
         Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
