@@ -33,14 +33,18 @@ Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Disc
 - **Accessible Interface**: Optimized for the small Pebble screen
 
 ## Installation
+We do not have a Pebble app store listing yet (still working towards a good first release), but you can fetch the pbw file from our GitHub actions page via these steps:
 
 1. **Download the app**:
-   - Get the latest release from the [releases page](https://github.com/skylord123/pebble-home-assistant-ws/releases)
-   - Or install directly from the Pebble app store (search for "Home Assistant WS")
+   - Click the [Actions](https://github.com/skylord123/pebble-home-assistant-ws/actions) tab on the GitHub repository page
+   - Press the title of the latest build
+   - Scroll down to the Aritfact section for the build and download the `pebble-home-assistant-ws` artifact
+   - The downloaded zip will contain the pbw file you need to sideload on your phone.
 
 2. **Install on your Pebble**:
-   - Use the Pebble app on your phone to install the downloaded .pbw file
-   - Alternatively, install directly through the Pebble app store
+   - **Android:** Use [rebble-sideloader](https://github.com/pebble-dev/rebble-sideloader) to side load the pbw file to your watch
+
+If you need any assistance, feel free to join our [Discord Discussion](#join-the-discussion)
 
 ## Configuration
 
@@ -91,9 +95,10 @@ After installation, you'll need to configure the app to connect to your Home Ass
 - **Entity Changes Not Updating**: Adjust the refresh interval in settings
 
 ## Join the Discussion
+
 To participate in our Discord community:
 1. First join the [Rebble Discord server](http://rebble.io/discord)
-2. Then access the [pebble-home-assistant-ws channel](https://discord.com/channels/221364737269694464/1356054710439903232)
+2. Then access the [pebble-home-assistant-ws](https://discord.com/channels/221364737269694464/1356054710439903232) channel on that server
 
 ## Development
 
