@@ -4,6 +4,8 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
+var Vibe = require('ui/vibe'); //needed for vibration to work
+
 const appVersion = '0.8.1',
     confVersion = '0.8.0',
     debugMode = false,
@@ -4717,6 +4719,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     entityListMenu.current_page = null;
     entityListMenu.on('longSelect', function(e) {
         log_message(`Entity ${e.item.entity_id} was long pressed!`);
+        Vibe.vibrate('short'); //let the user know the long press has activated
         let [domain] = e.item.entity_id.split('.');
         if (
             domain === "switch" ||
