@@ -4782,6 +4782,23 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                     log_message('no response');
                 });
         }
+        else if (domain === "lock") {
+            let entity = ha_state_dict[e.item.entity_id];
+            haws.callService(
+                domain,
+                entity.state === "locked" ? "unlock" : "lock",
+                {},
+                {entity_id: e.item.entity_id},
+                function (data) {
+                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                    // Success!
+                    log_message(JSON.stringify(data));
+                },
+                function (error) {
+                    // Failure!
+                    log_message('no response');
+                });
+        }
     });
 
     entityListMenu.on('hide', function(e) {
