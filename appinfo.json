@@ -157,6 +157,16 @@
         "file": "images/icon_muted.png",
         "name": "IMAGE_ICON_MUTED",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_locked.png",
+        "name": "IMAGE_ICON_LOCKED",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_unlocked.png",
+        "name": "IMAGE_ICON_UNLOCKED",
+        "type": "bitmap"
       }
     ]
   },
