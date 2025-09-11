@@ -91,7 +91,7 @@ safe.translateStack = function(stack, level) {
   level = level || 0;
   if (Pebble.platform === 'pypkjs') {
     return safe.translateStackV8(stack, level);
-  } else if (stack.match('com.getpebble.android')) {
+  } else if (stack.match('com.getpebble.android') || stack.match('coredevices.coreapp')) {
     return safe.translateStackAndroid(stack, level);
   } else {
     return safe.translateStackIOS(stack, level);
