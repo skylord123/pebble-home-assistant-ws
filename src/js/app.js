@@ -4658,7 +4658,7 @@ function getEntityIcon(entity) {
             return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
         case 'cover':
-            return state === 'open' ? 'images/icon_blind_open.png' : 'images/icon_blind_closed.png';
+            return state === 'open' ? 'images/icon_blinds_open.png' : 'images/icon_blinds_closed.png';
 
         case 'lock':
             return state === 'locked' ? 'images/icon_locked.png' : 'images/icon_unlocked.png';
