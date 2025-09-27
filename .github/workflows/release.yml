@@ -1,0 +1,28 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Build the app
+        run: make docker-build
+
+      - name: Upload PBW Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pebble-home-assistant-ws
+          path: ${{ github.workspace }}/build/*.pbw
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          files: |
+            ${{ github.workspace }}/build/*.pbw
