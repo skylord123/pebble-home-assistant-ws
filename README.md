@@ -33,13 +33,12 @@ Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Disc
 - **Accessible Interface**: Optimized for the small Pebble screen
 
 ## Installation
-We do not have a Pebble app store listing yet (still working towards a good first release), but you can fetch the pbw file from our GitHub actions page via these steps:
+We do not have a Pebble app store listing yet (still working towards a good first release), but you can fetch the pbw file from our GitHub [Releases](https://github.com/skylord123/pebble-home-assistant-ws/releases) page via these steps:
 
 1. **Download the app**:
-   - Click the [Actions](https://github.com/skylord123/pebble-home-assistant-ws/actions) tab on the GitHub repository page
-   - Press the title of the latest build
-   - Scroll down to the Aritfact section for the build and download the `pebble-home-assistant-ws` artifact
-   - The downloaded zip will contain the pbw file you need to sideload on your phone.
+   - Click the [Releases](https://github.com/skylord123/pebble-home-assistant-ws/releases) tab on the GitHub repository page
+   - Press the `pebble.pbw` link under the release you want to start the download
+   - The downloaded .pbw file is ready to be installed on your Pebble watch
 
 2. **Install on your Pebble**:
    - **Android:** Use [rebble-sideloader](https://github.com/pebble-dev/rebble-sideloader) to side load the pbw file to your watch
