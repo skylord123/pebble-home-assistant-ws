@@ -4300,6 +4300,44 @@ function showEntityMenu(entity_id) {
         });
     }
 
+    if(domain === "lock") {
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Lock',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'lock',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                        // Success!
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        // Failure!
+                        log_message('no response');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, { //menuIndex
+            title: 'Unlock',
+            on_click: function(){
+                haws.callService(
+                    domain,
+                    'unlock',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message(JSON.stringify(data));
+                    },
+                    function(error) {
+                        log_message('no response');
+                    });
+            }
+        });
+    }
+
     if(domain === "scene") {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',
@@ -4732,6 +4770,23 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
             haws.callService(
                 domain,
                 'toggle',
+                {},
+                {entity_id: e.item.entity_id},
+                function (data) {
+                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                    // Success!
+                    log_message(JSON.stringify(data));
+                },
+                function (error) {
+                    // Failure!
+                    log_message('no response');
+                });
+        }
+        else if (domain === "lock") {
+            let entity = ha_state_dict[e.item.entity_id];
+            haws.callService(
+                domain,
+                entity.state === "locked" ? "unlock" : "lock",
                 {},
                 {entity_id: e.item.entity_id},
                 function (data) {
