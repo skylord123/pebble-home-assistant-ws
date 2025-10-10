@@ -4,13 +4,14 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-var Vibe = require('ui/vibe'); //needed for vibration to work
+const Vibe = require('ui/vibe'); //needed for vibration to work
+const isEmulator = Pebble.platform === 'pypkjs';
 
 const appVersion = '0.8.1',
     confVersion = '0.8.0',
     debugMode = false,
     debugHAWS = false,
-    hawsFaker = false,
+    hawsFaker = isEmulator,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
