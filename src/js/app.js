@@ -9,7 +9,7 @@ const isEmulator = Pebble.platform === 'pypkjs';
 
 const appVersion = '0.8.1',
     confVersion = '0.8.0',
-    debugMode = true,
+    debugMode = false,
     debugHAWS = false,
     hawsFaker = isEmulator,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
@@ -4800,17 +4800,6 @@ function showToDoLists() {
         });
     });
 
-    // We can only add new lists if we have microphone support
-    if ( Feature.microphone(true, false) ) {
-        toDoListsMenu.item(0, i++, {
-            title: "Add List",
-            on_click: function(e) {
-                // @todo
-                log_message("Add List");
-            }
-        });
-    }
-
     toDoListsMenu.show();
 }
 
@@ -4989,6 +4978,45 @@ function showToDoList(entity_id) {
             });
         }
 
+        // Add "Add Item" action if microphone is available
+        if (Feature.microphone(true, false)) {
+            todoListMenu.item(2, actionIndex++, {
+                title: 'Add Item',
+                on_click: function(e) {
+                    log_message('Starting voice dictation for new todo item');
+                    Voice.dictate('start', true, function(voiceEvent) {
+                        if (voiceEvent.err) {
+                            if (voiceEvent.err === "systemAborted") {
+                                log_message("Add item dictation cancelled by user");
+                                return;
+                            }
+                            log_message(`Add item dictation error: ${voiceEvent.err}`);
+                            return;
+                        }
+
+                        log_message(`Add item transcription received: ${voiceEvent.transcription}`);
+
+                        // Add the new item to the todo list
+                        haws.callService(
+                            'todo',
+                            'add_item',
+                            {
+                                item: voiceEvent.transcription
+                            },
+                            { entity_id: entity_id },
+                            function(data) {
+                                log_message(`Successfully added new item: ${JSON.stringify(data)}`);
+                                // The subscription will automatically update the list with the new item
+                            },
+                            function(error) {
+                                log_message(`Error adding new item: ${JSON.stringify(error)}`);
+                            }
+                        );
+                    });
+                }
+            });
+        }
+
         // Restore selection after updating items
         let newSectionIndex = 0;
         let newItemIndex = 0;
@@ -5056,7 +5084,11 @@ function showToDoList(entity_id) {
         hasRenderedOnce = true;
     }
 
-    // Handle item selection - update the tracked UID
+    // Configuration: Set to true to use long-press for details and tap for toggle
+    // Set to false to use tap for details and long-press for toggle
+    let useLongPressForDetails = true;
+
+    // Handle item selection
     todoListMenu.on('select', function(e) {
         // Update the currently selected item UID and section
         if (e.item && e.item.uid) {
@@ -5065,37 +5097,79 @@ function showToDoList(entity_id) {
             log_message(`Selected todo item: ${e.item.title} (UID: ${selectedItemUid}, Section: ${e.sectionIndex})`);
         }
 
-        // Call the on_click handler if it exists
-        if(typeof e.item.on_click == 'function') {
-            e.item.on_click(e);
+        // For action items (section 2), always call on_click
+        if (e.sectionIndex === 2) {
+            if(typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
+            }
+            return;
+        }
+
+        // For todo items (sections 0 and 1), behavior depends on configuration
+        if (e.item && e.item.uid) {
+            if (useLongPressForDetails) {
+                // Tap toggles completion status
+                let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
+                log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+
+                haws.callService(
+                    'todo',
+                    'update_item',
+                    {
+                        item: e.item.uid,
+                        status: newStatus
+                    },
+                    { entity_id: entity_id },
+                    function(data) {
+                        log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
+                    },
+                    function(error) {
+                        log_message(`Error updating item status: ${JSON.stringify(error)}`);
+                    }
+                );
+            } else {
+                // Tap opens item details
+                if(typeof e.item.on_click == 'function') {
+                    e.item.on_click(e);
+                }
+            }
         }
     });
 
-    // Handle long-press to toggle completion status
+    // Handle long-press
     todoListMenu.on('longSelect', function(e) {
         // Only handle long-press for actual todo items (sections 0 and 1), not actions
         if (e.sectionIndex === 2 || !e.item || !e.item.uid) {
             return;
         }
 
-        let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
-        log_message(`Long-press: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
-
-        haws.callService(
-            'todo',
-            'update_item',
-            {
-                item: e.item.uid,
-                status: newStatus
-            },
-            { entity_id: entity_id },
-            function(data) {
-                log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
-            },
-            function(error) {
-                log_message(`Error updating item status: ${JSON.stringify(error)}`);
+        if (useLongPressForDetails) {
+            // Long-press opens item details
+            log_message(`Long-press: Opening details for item ${e.item.title}`);
+            if(typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
             }
-        );
+        } else {
+            // Long-press toggles completion status
+            let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
+            log_message(`Long-press: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+
+            haws.callService(
+                'todo',
+                'update_item',
+                {
+                    item: e.item.uid,
+                    status: newStatus
+                },
+                { entity_id: entity_id },
+                function(data) {
+                    log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
+                },
+                function(error) {
+                    log_message(`Error updating item status: ${JSON.stringify(error)}`);
+                }
+            );
+        }
     });
 
     // Unsubscribe when menu is hidden
