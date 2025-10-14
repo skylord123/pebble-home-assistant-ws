@@ -4837,6 +4837,89 @@ function showToDoList(entity_id) {
     let subscription_msg_id = null;
     let hasRenderedOnce = false;
 
+    // Track the next item to select after toggling completion status
+    let nextItemUidAfterToggle = null;
+
+    /**
+     * Helper function to determine the next item to select after toggling completion status
+     * @param {Array} incompleteItems - Array of incomplete items
+     * @param {Array} completedItems - Array of completed items
+     * @param {string} currentUid - UID of the item being toggled
+     * @param {number} currentSection - Section index of the item being toggled (0 or 1)
+     * @param {string} currentStatus - Current status of the item ('needs_action' or 'completed')
+     * @returns {string|null} - UID of the next item to select, or null if no suitable item
+     */
+    function getNextItemAfterToggle(incompleteItems, completedItems, currentUid, currentSection, currentStatus) {
+        // Determine which section the item is currently in and where it will move to
+        let isMarkingComplete = (currentStatus === 'needs_action'); // Will move from section 0 to section 1
+
+        if (isMarkingComplete) {
+            // Item is moving from incomplete (section 0) to completed (section 1)
+            // Find the current item's index in the incomplete list
+            let currentIndex = -1;
+            for (let i = 0; i < incompleteItems.length; i++) {
+                if (incompleteItems[i].uid === currentUid) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex === -1) {
+                return null; // Item not found
+            }
+
+            // Try to select the next item in the incomplete section
+            if (currentIndex + 1 < incompleteItems.length) {
+                return incompleteItems[currentIndex + 1].uid;
+            }
+
+            // If there's no next incomplete item, try the item before the current one
+            if (currentIndex > 0) {
+                return incompleteItems[currentIndex - 1].uid;
+            }
+
+            // If no incomplete items remain, select the first completed item
+            if (completedItems.length > 0) {
+                return completedItems[0].uid;
+            }
+
+            // Otherwise, stay on the current item (it will be the only completed item)
+            return currentUid;
+        } else {
+            // Item is moving from completed (section 1) to incomplete (section 0)
+            // Find the current item's index in the completed list
+            let currentIndex = -1;
+            for (let i = 0; i < completedItems.length; i++) {
+                if (completedItems[i].uid === currentUid) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex === -1) {
+                return null; // Item not found
+            }
+
+            // Try to select the next item in the completed section
+            if (currentIndex + 1 < completedItems.length) {
+                return completedItems[currentIndex + 1].uid;
+            }
+
+            // If there's no next completed item, try the item before the current one
+            if (currentIndex > 0) {
+                return completedItems[currentIndex - 1].uid;
+            }
+
+            // If no completed items remain, select the first incomplete item
+            if (incompleteItems.length > 0) {
+                return incompleteItems[0].uid;
+            }
+
+            // Otherwise, stay on the current item (it will be the only incomplete item)
+            return currentUid;
+        }
+    }
+
     // Function to update menu items based on subscription data
     function updateToDoListItems(items) {
         log_message(`updateToDoListItems: Updating ${items.length} items`);
@@ -5022,15 +5105,26 @@ function showToDoList(entity_id) {
         let newItemIndex = 0;
         let foundSelection = false;
 
+        // Determine which UID to select
+        let targetUid = selectedItemUid;
+
+        // If we have a next item to select after toggling, use that instead
+        if (nextItemUidAfterToggle !== null) {
+            targetUid = nextItemUidAfterToggle;
+            selectedItemUid = nextItemUidAfterToggle;
+            nextItemUidAfterToggle = null; // Clear the flag
+            log_message(`Selecting next item after toggle: ${targetUid}`);
+        }
+
         // If we had a previously selected item, try to find it by UID across all sections
-        if (selectedItemUid !== null && hasRenderedOnce) {
+        if (targetUid !== null && hasRenderedOnce) {
             // Search in incomplete items (section 0)
             for (let i = 0; i < incompleteItems.length; i++) {
-                if (incompleteItems[i].uid === selectedItemUid) {
+                if (incompleteItems[i].uid === targetUid) {
                     newSectionIndex = 0;
                     newItemIndex = i;
                     foundSelection = true;
-                    log_message(`Restored selection to section 0, index ${i} (UID: ${selectedItemUid})`);
+                    log_message(`Restored selection to section 0, index ${i} (UID: ${targetUid})`);
                     break;
                 }
             }
@@ -5038,11 +5132,11 @@ function showToDoList(entity_id) {
             // If not found, search in completed items (section 1)
             if (!foundSelection) {
                 for (let i = 0; i < completedItems.length; i++) {
-                    if (completedItems[i].uid === selectedItemUid) {
+                    if (completedItems[i].uid === targetUid) {
                         newSectionIndex = 1;
                         newItemIndex = i;
                         foundSelection = true;
-                        log_message(`Restored selection to section 1, index ${i} (UID: ${selectedItemUid})`);
+                        log_message(`Restored selection to section 1, index ${i} (UID: ${targetUid})`);
                         break;
                     }
                 }
@@ -5050,7 +5144,7 @@ function showToDoList(entity_id) {
 
             // If we didn't find the previously selected item, it was deleted
             if (!foundSelection) {
-                log_message(`Previously selected item (UID: ${selectedItemUid}) no longer exists, selecting first item`);
+                log_message(`Previously selected item (UID: ${targetUid}) no longer exists, selecting first item`);
                 if (incompleteItems.length > 0) {
                     selectedItemUid = incompleteItems[0].uid;
                     newSectionIndex = 0;
@@ -5112,6 +5206,33 @@ function showToDoList(entity_id) {
                 let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
                 log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
 
+                // Get all items from the menu to calculate next selection
+                let incompleteItems = [];
+                let completedItems = [];
+
+                // Extract items from section 0 (incomplete)
+                let section0Items = todoListMenu.items(0);
+                for (let i = 0; i < section0Items.length; i++) {
+                    incompleteItems.push(section0Items[i]);
+                }
+
+                // Extract items from section 1 (completed)
+                let section1Items = todoListMenu.items(1);
+                for (let i = 0; i < section1Items.length; i++) {
+                    completedItems.push(section1Items[i]);
+                }
+
+                // Calculate the next item to select after toggling
+                nextItemUidAfterToggle = getNextItemAfterToggle(
+                    incompleteItems,
+                    completedItems,
+                    e.item.uid,
+                    e.sectionIndex,
+                    e.item.status
+                );
+
+                log_message(`Next item after toggle will be: ${nextItemUidAfterToggle}`);
+
                 haws.callService(
                     'todo',
                     'update_item',
@@ -5153,6 +5274,33 @@ function showToDoList(entity_id) {
             // Long-press toggles completion status
             let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
             log_message(`Long-press: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+
+            // Get all items from the menu to calculate next selection
+            let incompleteItems = [];
+            let completedItems = [];
+
+            // Extract items from section 0 (incomplete)
+            let section0Items = todoListMenu.items(0);
+            for (let i = 0; i < section0Items.length; i++) {
+                incompleteItems.push(section0Items[i]);
+            }
+
+            // Extract items from section 1 (completed)
+            let section1Items = todoListMenu.items(1);
+            for (let i = 0; i < section1Items.length; i++) {
+                completedItems.push(section1Items[i]);
+            }
+
+            // Calculate the next item to select after toggling
+            nextItemUidAfterToggle = getNextItemAfterToggle(
+                incompleteItems,
+                completedItems,
+                e.item.uid,
+                e.sectionIndex,
+                e.item.status
+            );
+
+            log_message(`Next item after toggle will be: ${nextItemUidAfterToggle}`);
 
             haws.callService(
                 'todo',
