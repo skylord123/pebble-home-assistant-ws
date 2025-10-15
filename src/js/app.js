@@ -4,13 +4,14 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-var Vibe = require('ui/vibe'); //needed for vibration to work
+const Vibe = require('ui/vibe'); //needed for vibration to work
+const isEmulator = Pebble.platform === 'pypkjs';
 
 const appVersion = '0.8.1',
     confVersion = '0.8.0',
     debugMode = false,
     debugHAWS = false,
-    hawsFaker = false,
+    hawsFaker = isEmulator,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
@@ -272,6 +273,13 @@ function showMainMenu() {
                 // subtitle: thisDevice.attributes[arr[i]],
                 on_click: function(e) {
                     showLabelMenu();
+                }
+            });
+            mainMenu.item(0, i++, {
+                title: "To-Do Lists",
+                // subtitle: thisDevice.attributes[arr[i]],
+                on_click: function(e) {
+                    showToDoLists();
                 }
             });
             mainMenu.item(0, i++, {
@@ -1893,7 +1901,7 @@ function showMediaPlayerEntity(entity_id) {
                 "entity_id": entity_id,
             },
         }, function(data) {
-            console.log("TEST", JSON.stringify(data) );
+            // console.log("received media_player subscription event", JSON.stringify(data) );
             updateMediaWindow(data.event.variables.trigger.to_state);
         }, function(error) {
             log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
@@ -4736,6 +4744,991 @@ function getEntityIcon(entity) {
         default:
             return 'images/icon_unknown.png';
     }
+}
+
+// show the list of todo lists
+function showToDoLists() {
+    let toDoListsMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'To-Do Lists'
+        }]
+    });
+
+    toDoListsMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    let i = 0;
+
+    let todoLists = [];
+    for(let entity_id in ha_state_dict) {
+        if(entity_id.split('.')[0] !== "todo") {
+            continue;
+        }
+
+        if(ha_state_dict[entity_id].state === "unavailable" || ha_state_dict[entity_id].state === "unknown") {
+            continue;
+        }
+
+        if(!ha_state_dict[entity_id].attributes || !ha_state_dict[entity_id].attributes.friendly_name) {
+            continue;
+        }
+
+        todoLists.push(ha_state_dict[entity_id]);
+    }
+
+    // sort todoLists alphabetically by friendly_name
+    todoLists.sort(function(a, b) {
+        return a.attributes.friendly_name.localeCompare(b.attributes.friendly_name);
+    });
+
+    // now add menu items
+    todoLists.forEach(function(entity) {
+        toDoListsMenu.item(0, i++, {
+            title: entity.attributes.friendly_name,
+            subtitle: (entity.state || 0) + " item" + (entity.state > 1 ? 's' : ''),
+            on_click: function (e) {
+                showToDoList(entity.entity_id);
+            }
+        });
+    });
+
+    toDoListsMenu.show();
+}
+
+// show a specific todo list
+function showToDoList(entity_id) {
+    let todoList = ha_state_dict[entity_id];
+    log_message(`showToDoList: ${entity_id}`);
+    if(!todoList) {
+        log_message(`showToDoList: ${entity_id} not found in ha_state_dict`);
+        throw new Error(`ToDo list ${entity_id} not found in ha_state_dict`);
+    }
+
+    let todoListMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [
+            {
+                title: 'To Do'
+            },
+            {
+                title: 'Completed'
+            },
+            {
+                title: 'Actions'
+            }
+        ]
+    });
+
+    // Track the currently selected item by UID and section
+    let selectedItemUid = null;
+    let selectedSectionIndex = 0;
+    let subscription_msg_id = null;
+    let hasRenderedOnce = false;
+
+    // Track the next item to select after toggling completion status
+    let nextItemUidAfterToggle = null;
+
+    /**
+     * Helper function to determine the next item to select after toggling completion status
+     * @param {Array} incompleteItems - Array of incomplete items
+     * @param {Array} completedItems - Array of completed items
+     * @param {string} currentUid - UID of the item being toggled
+     * @param {number} currentSection - Section index of the item being toggled (0 or 1)
+     * @param {string} currentStatus - Current status of the item ('needs_action' or 'completed')
+     * @returns {string|null} - UID of the next item to select, or null if no suitable item
+     */
+    function getNextItemAfterToggle(incompleteItems, completedItems, currentUid, currentSection, currentStatus) {
+        // Determine which section the item is currently in and where it will move to
+        let isMarkingComplete = (currentStatus === 'needs_action'); // Will move from section 0 to section 1
+
+        if (isMarkingComplete) {
+            // Item is moving from incomplete (section 0) to completed (section 1)
+            // Find the current item's index in the incomplete list
+            let currentIndex = -1;
+            for (let i = 0; i < incompleteItems.length; i++) {
+                if (incompleteItems[i].uid === currentUid) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex === -1) {
+                return null; // Item not found
+            }
+
+            // Try to select the next item in the incomplete section
+            if (currentIndex + 1 < incompleteItems.length) {
+                return incompleteItems[currentIndex + 1].uid;
+            }
+
+            // If there's no next incomplete item, try the item before the current one
+            if (currentIndex > 0) {
+                return incompleteItems[currentIndex - 1].uid;
+            }
+
+            // If no incomplete items remain, select the first completed item
+            if (completedItems.length > 0) {
+                return completedItems[0].uid;
+            }
+
+            // Otherwise, stay on the current item (it will be the only completed item)
+            return currentUid;
+        } else {
+            // Item is moving from completed (section 1) to incomplete (section 0)
+            // Find the current item's index in the completed list
+            let currentIndex = -1;
+            for (let i = 0; i < completedItems.length; i++) {
+                if (completedItems[i].uid === currentUid) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex === -1) {
+                return null; // Item not found
+            }
+
+            // Try to select the next item in the completed section
+            if (currentIndex + 1 < completedItems.length) {
+                return completedItems[currentIndex + 1].uid;
+            }
+
+            // If there's no next completed item, try the item before the current one
+            if (currentIndex > 0) {
+                return completedItems[currentIndex - 1].uid;
+            }
+
+            // If no completed items remain, select the first incomplete item
+            if (incompleteItems.length > 0) {
+                return incompleteItems[0].uid;
+            }
+
+            // Otherwise, stay on the current item (it will be the only incomplete item)
+            return currentUid;
+        }
+    }
+
+    // Function to update menu items based on subscription data
+    function updateToDoListItems(items) {
+        log_message(`updateToDoListItems: Updating ${items.length} items`);
+
+        // Filter items into incomplete and completed
+        let incompleteItems = [];
+        let completedItems = [];
+
+        items.forEach(function(item) {
+            if (item.status === 'completed') {
+                completedItems.push(item);
+            } else {
+                incompleteItems.push(item);
+            }
+        });
+
+        // Clear existing items in all sections
+        todoListMenu.items(0, []);
+        todoListMenu.items(1, []);
+        todoListMenu.items(2, []);
+
+        // Add incomplete items to section 0
+        incompleteItems.forEach(function(item, index) {
+            let subtitle = '';
+
+            // Priority: description > due date > empty
+            if (item.description) {
+                subtitle = item.description;
+            } else if (item.due) {
+                subtitle = `Due: ${item.due}`;
+            }
+
+            todoListMenu.item(0, index, {
+                title: item.summary,
+                subtitle: subtitle || '',
+                uid: item.uid,
+                status: item.status,
+                description: item.description,
+                due: item.due,
+                on_click: function(e) {
+                    log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
+                    // TODO: Show item details or actions menu
+                    showToDoItemMenu(entity_id, item);
+                }
+            });
+        });
+
+        // Add completed items to section 1
+        completedItems.forEach(function(item, index) {
+            let subtitle = '';
+
+            // Priority: description > due date > empty
+            if (item.description) {
+                subtitle = item.description;
+            } else if (item.due) {
+                subtitle = `Due: ${item.due}`;
+            }
+
+            todoListMenu.item(1, index, {
+                title: item.summary,
+                subtitle: subtitle || '',
+                uid: item.uid,
+                status: item.status,
+                description: item.description,
+                due: item.due,
+                on_click: function(e) {
+                    log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
+                    // TODO: Show item details or actions menu
+                    showToDoItemMenu(entity_id, item);
+                }
+            });
+        });
+
+        // Add action items to section 2
+        let actionIndex = 0;
+
+        // Always show "Clear List" action
+        todoListMenu.item(2, actionIndex++, {
+            title: 'Clear List',
+            on_click: function(e) {
+                confirmAction(
+                    'Clear all items from this list?',
+                    function() {
+                        // Success callback - clear all items
+                        log_message(`Clearing all items from ${entity_id}`);
+                        let allItems = incompleteItems.concat(completedItems);
+                        allItems.forEach(function(item) {
+                            haws.callService(
+                                'todo',
+                                'remove_item',
+                                { item: item.uid },
+                                { entity_id: entity_id },
+                                function(data) {
+                                    log_message(`Removed item: ${item.summary}`);
+                                },
+                                function(error) {
+                                    log_message(`Error removing item: ${JSON.stringify(error)}`);
+                                }
+                            );
+                        });
+                    },
+                    function() {
+                        // Failure/cancel callback
+                        log_message('Clear list cancelled');
+                    }
+                );
+            }
+        });
+
+        // Only show "Clear Completed" if there are completed items
+        if (completedItems.length > 0) {
+            todoListMenu.item(2, actionIndex++, {
+                title: 'Clear Completed',
+                on_click: function(e) {
+                    confirmAction(
+                        'Clear all completed items?',
+                        function() {
+                            // Success callback - use the built-in service
+                            log_message(`Clearing completed items from ${entity_id}`);
+                            haws.callService(
+                                'todo',
+                                'remove_completed_items',
+                                {},
+                                { entity_id: entity_id },
+                                function(data) {
+                                    log_message(`Cleared completed items successfully`);
+                                },
+                                function(error) {
+                                    log_message(`Error clearing completed items: ${JSON.stringify(error)}`);
+                                }
+                            );
+                        },
+                        function() {
+                            // Failure/cancel callback
+                            log_message('Clear completed cancelled');
+                        }
+                    );
+                }
+            });
+        }
+
+        // Add "Add Item" action if microphone is available
+        if (Feature.microphone(true, false)) {
+            todoListMenu.item(2, actionIndex++, {
+                title: 'Add Item',
+                on_click: function(e) {
+                    log_message('Starting voice dictation for new todo item');
+                    Voice.dictate('start', true, function(voiceEvent) {
+                        if (voiceEvent.err) {
+                            if (voiceEvent.err === "systemAborted") {
+                                log_message("Add item dictation cancelled by user");
+                                return;
+                            }
+                            log_message(`Add item dictation error: ${voiceEvent.err}`);
+                            return;
+                        }
+
+                        log_message(`Add item transcription received: ${voiceEvent.transcription}`);
+
+                        // Add the new item to the todo list
+                        haws.callService(
+                            'todo',
+                            'add_item',
+                            {
+                                item: voiceEvent.transcription
+                            },
+                            { entity_id: entity_id },
+                            function(data) {
+                                log_message(`Successfully added new item: ${JSON.stringify(data)}`);
+                                // The subscription will automatically update the list with the new item
+                            },
+                            function(error) {
+                                log_message(`Error adding new item: ${JSON.stringify(error)}`);
+                            }
+                        );
+                    });
+                }
+            });
+        }
+
+        // Restore selection after updating items
+        let newSectionIndex = 0;
+        let newItemIndex = 0;
+        let foundSelection = false;
+
+        // Determine which UID to select
+        let targetUid = selectedItemUid;
+
+        // If we have a next item to select after toggling, use that instead
+        if (nextItemUidAfterToggle !== null) {
+            targetUid = nextItemUidAfterToggle;
+            selectedItemUid = nextItemUidAfterToggle;
+            nextItemUidAfterToggle = null; // Clear the flag
+            log_message(`Selecting next item after toggle: ${targetUid}`);
+        }
+
+        // If we had a previously selected item, try to find it by UID across all sections
+        if (targetUid !== null && hasRenderedOnce) {
+            // Search in incomplete items (section 0)
+            for (let i = 0; i < incompleteItems.length; i++) {
+                if (incompleteItems[i].uid === targetUid) {
+                    newSectionIndex = 0;
+                    newItemIndex = i;
+                    foundSelection = true;
+                    log_message(`Restored selection to section 0, index ${i} (UID: ${targetUid})`);
+                    break;
+                }
+            }
+
+            // If not found, search in completed items (section 1)
+            if (!foundSelection) {
+                for (let i = 0; i < completedItems.length; i++) {
+                    if (completedItems[i].uid === targetUid) {
+                        newSectionIndex = 1;
+                        newItemIndex = i;
+                        foundSelection = true;
+                        log_message(`Restored selection to section 1, index ${i} (UID: ${targetUid})`);
+                        break;
+                    }
+                }
+            }
+
+            // If we didn't find the previously selected item, it was deleted
+            if (!foundSelection) {
+                log_message(`Previously selected item (UID: ${targetUid}) no longer exists, selecting first item`);
+                if (incompleteItems.length > 0) {
+                    selectedItemUid = incompleteItems[0].uid;
+                    newSectionIndex = 0;
+                    newItemIndex = 0;
+                } else if (completedItems.length > 0) {
+                    selectedItemUid = completedItems[0].uid;
+                    newSectionIndex = 1;
+                    newItemIndex = 0;
+                }
+            }
+        } else {
+            // First time rendering, select the first item
+            if (incompleteItems.length > 0) {
+                selectedItemUid = incompleteItems[0].uid;
+                newSectionIndex = 0;
+                newItemIndex = 0;
+            } else if (completedItems.length > 0) {
+                selectedItemUid = completedItems[0].uid;
+                newSectionIndex = 1;
+                newItemIndex = 0;
+            }
+        }
+
+        // Apply the selection
+        if (incompleteItems.length > 0 || completedItems.length > 0) {
+            setTimeout(function() {
+                todoListMenu.selection(newSectionIndex, newItemIndex);
+            }, 100);
+        }
+
+        hasRenderedOnce = true;
+    }
+
+    // Configuration: Set to true to use long-press for details and tap for toggle
+    // Set to false to use tap for details and long-press for toggle
+    let useLongPressForDetails = true;
+
+    // Handle item selection
+    todoListMenu.on('select', function(e) {
+        // Update the currently selected item UID and section
+        if (e.item && e.item.uid) {
+            selectedItemUid = e.item.uid;
+            selectedSectionIndex = e.sectionIndex;
+            log_message(`Selected todo item: ${e.item.title} (UID: ${selectedItemUid}, Section: ${e.sectionIndex})`);
+        }
+
+        // For action items (section 2), always call on_click
+        if (e.sectionIndex === 2) {
+            if(typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
+            }
+            return;
+        }
+
+        // For todo items (sections 0 and 1), behavior depends on configuration
+        if (e.item && e.item.uid) {
+            if (useLongPressForDetails) {
+                // Tap toggles completion status
+                let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
+                log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+
+                // Get all items from the menu to calculate next selection
+                let incompleteItems = [];
+                let completedItems = [];
+
+                // Extract items from section 0 (incomplete)
+                let section0Items = todoListMenu.items(0);
+                for (let i = 0; i < section0Items.length; i++) {
+                    incompleteItems.push(section0Items[i]);
+                }
+
+                // Extract items from section 1 (completed)
+                let section1Items = todoListMenu.items(1);
+                for (let i = 0; i < section1Items.length; i++) {
+                    completedItems.push(section1Items[i]);
+                }
+
+                // Calculate the next item to select after toggling
+                nextItemUidAfterToggle = getNextItemAfterToggle(
+                    incompleteItems,
+                    completedItems,
+                    e.item.uid,
+                    e.sectionIndex,
+                    e.item.status
+                );
+
+                log_message(`Next item after toggle will be: ${nextItemUidAfterToggle}`);
+
+                haws.callService(
+                    'todo',
+                    'update_item',
+                    {
+                        item: e.item.uid,
+                        status: newStatus
+                    },
+                    { entity_id: entity_id },
+                    function(data) {
+                        log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
+                    },
+                    function(error) {
+                        log_message(`Error updating item status: ${JSON.stringify(error)}`);
+                    }
+                );
+            } else {
+                // Tap opens item details
+                if(typeof e.item.on_click == 'function') {
+                    e.item.on_click(e);
+                }
+            }
+        }
+    });
+
+    // Handle long-press
+    todoListMenu.on('longSelect', function(e) {
+        // Only handle long-press for actual todo items (sections 0 and 1), not actions
+        if (e.sectionIndex === 2 || !e.item || !e.item.uid) {
+            return;
+        }
+
+        if (useLongPressForDetails) {
+            // Long-press opens item details
+            log_message(`Long-press: Opening details for item ${e.item.title}`);
+            if(typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
+            }
+        } else {
+            // Long-press toggles completion status
+            let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
+            log_message(`Long-press: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+
+            // Get all items from the menu to calculate next selection
+            let incompleteItems = [];
+            let completedItems = [];
+
+            // Extract items from section 0 (incomplete)
+            let section0Items = todoListMenu.items(0);
+            for (let i = 0; i < section0Items.length; i++) {
+                incompleteItems.push(section0Items[i]);
+            }
+
+            // Extract items from section 1 (completed)
+            let section1Items = todoListMenu.items(1);
+            for (let i = 0; i < section1Items.length; i++) {
+                completedItems.push(section1Items[i]);
+            }
+
+            // Calculate the next item to select after toggling
+            nextItemUidAfterToggle = getNextItemAfterToggle(
+                incompleteItems,
+                completedItems,
+                e.item.uid,
+                e.sectionIndex,
+                e.item.status
+            );
+
+            log_message(`Next item after toggle will be: ${nextItemUidAfterToggle}`);
+
+            haws.callService(
+                'todo',
+                'update_item',
+                {
+                    item: e.item.uid,
+                    status: newStatus
+                },
+                { entity_id: entity_id },
+                function(data) {
+                    log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
+                },
+                function(error) {
+                    log_message(`Error updating item status: ${JSON.stringify(error)}`);
+                }
+            );
+        }
+    });
+
+    // Unsubscribe when menu is hidden
+    todoListMenu.on('hide', function() {
+        if (subscription_msg_id) {
+            log_message(`Unsubscribing from todo/item/subscribe for ${entity_id}`);
+            haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    });
+
+
+    todoListMenu.on('show', function() {
+        subscription_msg_id = haws.subscribe({
+            "type": "todo/item/subscribe",
+            "entity_id": entity_id
+        }, function(data) {
+            log_message(`todo/item/subscribe: ${JSON.stringify(data)}`);
+
+            // Extract items from the event data
+            if (data.event && data.event.items) {
+                updateToDoListItems(data.event.items);
+            }
+        }, function(error) {
+            log_message(`todo/item/subscribe ERROR: ${JSON.stringify(error)}`);
+        });
+    });
+
+    todoListMenu.show();
+}
+
+// Helper function to show confirmation dialog
+function confirmAction(message, successCallback, failureCallback) {
+    log_message(`confirmAction: ${message}`);
+
+    let confirmMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: message
+        }]
+    });
+
+    // Add Confirm option
+    confirmMenu.item(0, 0, {
+        title: 'Confirm',
+        on_click: function(e) {
+            log_message('User confirmed action');
+            confirmMenu.hide();
+            if (typeof successCallback === 'function') {
+                successCallback();
+            }
+        }
+    });
+
+    // Add Cancel option
+    confirmMenu.item(0, 1, {
+        title: 'Cancel',
+        on_click: function(e) {
+            log_message('User cancelled action');
+            confirmMenu.hide();
+            if (typeof failureCallback === 'function') {
+                failureCallback();
+            }
+        }
+    });
+
+    // Handle selection
+    confirmMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    // Handle back button as cancel
+    confirmMenu.on('hide', function() {
+        log_message('Confirmation dialog closed');
+    });
+
+    confirmMenu.show();
+}
+
+// Show detailed view of a single todo item with editing capabilities
+function showToDoItemMenu(entity_id, item) {
+    log_message(`showToDoItemMenu: ${item.summary} (${item.uid})`);
+
+    let itemMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [
+            {
+                title: 'Item'
+            },
+            {
+                title: 'Actions'
+            }
+        ]
+    });
+
+    let hasMicrophone = Feature.microphone(true, false);
+    let subscription_msg_id = null;
+    let currentItem = item; // Track the current item data
+
+    // Function to update menu items based on subscription data
+    function updateToDoItemMenu(items) {
+        log_message(`updateToDoItemMenu: Searching for item ${currentItem.uid} in ${items.length} items`);
+
+        // Find the current item by UID
+        let updatedItem = null;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].uid === currentItem.uid) {
+                updatedItem = items[i];
+                break;
+            }
+        }
+
+        // If item was deleted, close the menu
+        if (!updatedItem) {
+            log_message(`Item ${currentItem.uid} no longer exists, closing menu`);
+            itemMenu.hide();
+            return;
+        }
+
+        // Update current item reference
+        currentItem = updatedItem;
+        log_message(`Updating menu with latest item data: ${JSON.stringify(updatedItem)}`);
+
+        // Update Section 0 - Item Fields
+        let fieldIndex = 0;
+
+        // 1. Update Name/Summary field
+        itemMenu.item(0, fieldIndex++, {
+            title: 'Name',
+            subtitle: updatedItem.summary,
+            on_click: hasMicrophone ? function(e) {
+                log_message('Starting voice dictation for item name');
+                Voice.dictate('start', true, function(voiceEvent) {
+                    if (voiceEvent.err) {
+                        if (voiceEvent.err === "systemAborted") {
+                            log_message("Name dictation cancelled by user");
+                            return;
+                        }
+                        log_message(`Name dictation error: ${voiceEvent.err}`);
+                        return;
+                    }
+
+                    log_message(`Name transcription received: ${voiceEvent.transcription}`);
+
+                    // Update the item name
+                    haws.callService(
+                        'todo',
+                        'update_item',
+                        {
+                            item: currentItem.uid,
+                            rename: voiceEvent.transcription
+                        },
+                        { entity_id: entity_id },
+                        function(data) {
+                            log_message(`Successfully updated item name: ${JSON.stringify(data)}`);
+                        },
+                        function(error) {
+                            log_message(`Error updating item name: ${JSON.stringify(error)}`);
+                        }
+                    );
+                });
+            } : undefined
+        });
+
+        // 2. Update Description field
+        itemMenu.item(0, fieldIndex++, {
+            title: 'Description',
+            subtitle: updatedItem.description || '',
+            on_click: hasMicrophone ? function(e) {
+                // If description exists, show options menu
+                if (currentItem.description) {
+                    showToDoItemDescriptionOptionsMenu(entity_id, currentItem);
+                } else {
+                    // No description, go straight to voice dictation
+                    startToDoItemDescriptionDictation(entity_id, currentItem);
+                }
+            } : undefined
+        });
+
+        // 3. Update Due Date field (read-only for now)
+        itemMenu.item(0, fieldIndex++, {
+            title: 'Due Date',
+            subtitle: updatedItem.due || 'Not set'
+        });
+
+        // Update Section 1 - Actions
+        // Clear actions section first
+        itemMenu.items(1, []);
+        let actionIndex = 0;
+
+        // 1. Delete action (always present)
+        itemMenu.item(1, actionIndex++, {
+            title: 'Delete',
+            on_click: function(e) {
+                confirmAction(
+                    'Delete this item?',
+                    function() {
+                        // Success callback - delete the item
+                        log_message(`Deleting item: ${currentItem.summary} (${currentItem.uid})`);
+                        haws.callService(
+                            'todo',
+                            'remove_item',
+                            { item: currentItem.uid },
+                            { entity_id: entity_id },
+                            function(data) {
+                                log_message(`Successfully deleted item: ${JSON.stringify(data)}`);
+                                // Hide the menu to return to the todo list
+                                itemMenu.hide();
+                            },
+                            function(error) {
+                                log_message(`Error deleting item: ${JSON.stringify(error)}`);
+                            }
+                        );
+                    },
+                    function() {
+                        // Failure/cancel callback
+                        log_message('Delete item cancelled');
+                    }
+                );
+            }
+        });
+
+        // 2. Toggle completion status action (conditional based on current status)
+        if (updatedItem.status !== 'completed') {
+            itemMenu.item(1, actionIndex++, {
+                title: 'Mark Completed',
+                on_click: function(e) {
+                    log_message(`Marking item as completed: ${currentItem.summary} (${currentItem.uid})`);
+                    haws.callService(
+                        'todo',
+                        'update_item',
+                        {
+                            item: currentItem.uid,
+                            status: 'completed'
+                        },
+                        { entity_id: entity_id },
+                        function(data) {
+                            log_message(`Successfully marked item as completed: ${JSON.stringify(data)}`);
+                            // Menu remains open, subscription will update
+                        },
+                        function(error) {
+                            log_message(`Error marking item as completed: ${JSON.stringify(error)}`);
+                        }
+                    );
+                }
+            });
+        } else {
+            itemMenu.item(1, actionIndex++, {
+                title: 'Mark Incomplete',
+                on_click: function(e) {
+                    log_message(`Marking item as incomplete: ${currentItem.summary} (${currentItem.uid})`);
+                    haws.callService(
+                        'todo',
+                        'update_item',
+                        {
+                            item: currentItem.uid,
+                            status: 'needs_action'
+                        },
+                        { entity_id: entity_id },
+                        function(data) {
+                            log_message(`Successfully marked item as incomplete: ${JSON.stringify(data)}`);
+                            // Menu remains open, subscription will update
+                        },
+                        function(error) {
+                            log_message(`Error marking item as incomplete: ${JSON.stringify(error)}`);
+                        }
+                    );
+                }
+            });
+        }
+    }
+
+    // Handle selection
+    itemMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    // Subscribe when menu is shown
+    itemMenu.on('show', function() {
+        log_message(`Subscribing to todo items for ${entity_id}`);
+        subscription_msg_id = haws.subscribe({
+            "type": "todo/item/subscribe",
+            "entity_id": entity_id
+        }, function(data) {
+            log_message(`todo/item/subscribe (item menu): ${JSON.stringify(data)}`);
+
+            // Extract items from the event data
+            if (data.event && data.event.items) {
+                updateToDoItemMenu(data.event.items);
+            }
+        }, function(error) {
+            log_message(`todo/item/subscribe ERROR (item menu): ${JSON.stringify(error)}`);
+        });
+    });
+
+    // Unsubscribe when menu is hidden
+    itemMenu.on('hide', function() {
+        if (subscription_msg_id) {
+            log_message(`Unsubscribing from todo/item/subscribe for ${entity_id} (item menu)`);
+            haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    });
+
+    itemMenu.show();
+}
+
+// Helper function to show todo item description options menu
+function showToDoItemDescriptionOptionsMenu(entity_id, item) {
+    log_message('Showing todo item description options menu');
+
+    let descOptionsMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Description'
+        }]
+    });
+
+    // Update Description option
+    descOptionsMenu.item(0, 0, {
+        title: 'Update Desc',
+        on_click: function(e) {
+            descOptionsMenu.hide();
+            startToDoItemDescriptionDictation(entity_id, item);
+        }
+    });
+
+    // Remove Description option
+    descOptionsMenu.item(0, 1, {
+        title: 'Remove Desc',
+        on_click: function(e) {
+            log_message(`Removing description from item: ${item.summary} (${item.uid})`);
+            descOptionsMenu.hide();
+
+            haws.callService(
+                'todo',
+                'update_item',
+                {
+                    item: item.uid,
+                    description: null
+                },
+                { entity_id: entity_id },
+                function(data) {
+                    log_message(`Successfully removed description: ${JSON.stringify(data)}`);
+                },
+                function(error) {
+                    log_message(`Error removing description: ${JSON.stringify(error)}`);
+                }
+            );
+        }
+    });
+
+    // Handle selection
+    descOptionsMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    descOptionsMenu.show();
+}
+
+// Helper function to start todo item description dictation
+function startToDoItemDescriptionDictation(entity_id, item) {
+    log_message('Starting voice dictation for todo item description');
+
+    Voice.dictate('start', true, function(voiceEvent) {
+        if (voiceEvent.err) {
+            if (voiceEvent.err === "systemAborted") {
+                log_message("Description dictation cancelled by user");
+                return;
+            }
+            log_message(`Description dictation error: ${voiceEvent.err}`);
+            return;
+        }
+
+        log_message(`Description transcription received: ${voiceEvent.transcription}`);
+
+        // Update the item description
+        haws.callService(
+            'todo',
+            'update_item',
+            {
+                item: item.uid,
+                description: voiceEvent.transcription
+            },
+            { entity_id: entity_id },
+            function(data) {
+                log_message(`Successfully updated item description: ${JSON.stringify(data)}`);
+            },
+            function(error) {
+                log_message(`Error updating item description: ${JSON.stringify(error)}`);
+            }
+        );
+    });
 }
 
 let entityListMenu = null;
