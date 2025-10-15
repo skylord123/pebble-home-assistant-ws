@@ -5329,19 +5329,21 @@ function showToDoList(entity_id) {
         }
     });
 
-    // Subscribe to todo item updates
-    subscription_msg_id = haws.subscribe({
-        "type": "todo/item/subscribe",
-        "entity_id": entity_id
-    }, function(data) {
-        log_message(`todo/item/subscribe: ${JSON.stringify(data)}`);
 
-        // Extract items from the event data
-        if (data.event && data.event.items) {
-            updateToDoListItems(data.event.items);
-        }
-    }, function(error) {
-        log_message(`todo/item/subscribe ERROR: ${JSON.stringify(error)}`);
+    todoListMenu.on('show', function() {
+        subscription_msg_id = haws.subscribe({
+            "type": "todo/item/subscribe",
+            "entity_id": entity_id
+        }, function(data) {
+            log_message(`todo/item/subscribe: ${JSON.stringify(data)}`);
+
+            // Extract items from the event data
+            if (data.event && data.event.items) {
+                updateToDoListItems(data.event.items);
+            }
+        }, function(error) {
+            log_message(`todo/item/subscribe ERROR: ${JSON.stringify(error)}`);
+        });
     });
 
     todoListMenu.show();
