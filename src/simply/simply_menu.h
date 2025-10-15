@@ -40,6 +40,12 @@ struct SimplyMenu {
   SimplyWindow window;
   SimplyMenuLayer menu_layer;
   AppTimer *spinner_timer;
+  AppTimer *scroll_timer;
+  MenuIndex scroll_index;
+  int16_t scroll_offset;
+  int16_t max_scroll_offset;
+  bool scrolling_active;
+  bool needs_scrolling;
 };
 
 typedef struct SimplyMenuCommon SimplyMenuCommon;

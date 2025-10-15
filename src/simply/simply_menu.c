@@ -25,6 +25,11 @@
 
 #define SPINNER_MS 66
 
+// Scrolling configuration
+#define SCROLL_WAIT_MS 1000  // Wait 1 second before starting to scroll
+#define SCROLL_STEP_MS 100   // Scroll every 100ms
+#define SCROLL_STEP_PX 4     // Scroll 4 pixels at a time
+
 typedef Packet MenuClearPacket;
 
 typedef struct MenuClearSectionPacket MenuClearSectionPacket;
@@ -105,6 +110,10 @@ static MenuIndex simply_menu_get_selection(SimplyMenu *self);
 static void simply_menu_set_selection(SimplyMenu *self, MenuIndex menu_index, MenuRowAlign align, bool animated);
 
 static void refresh_spinner_timer(SimplyMenu *self);
+
+// Forward declarations for scroll timer callbacks
+static void scroll_timer_callback(void *data);
+static void reset_scroll_callback(void *data);
 
 
 static int64_t prv_get_milliseconds(void) {
@@ -319,6 +328,87 @@ static void refresh_spinner_timer(SimplyMenu *self) {
   }
 }
 
+static void scroll_timer_callback(void *data) {
+  SimplyMenu *self = data;
+  self->scroll_timer = NULL;
+
+  // Only scroll if needed (will be set by draw callback)
+  if (!self->needs_scrolling) {
+    return;
+  }
+
+  if (!self->scrolling_active) {
+    // First time - start scrolling
+    self->scrolling_active = true;
+    self->scroll_offset = SCROLL_STEP_PX;
+  } else {
+    // Continue scrolling
+    self->scroll_offset += SCROLL_STEP_PX;
+
+    // Check if we've scrolled past the end
+    if (self->scroll_offset >= self->max_scroll_offset) {
+      // Wait a bit at the end, then reset
+      self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, reset_scroll_callback, self);
+      prv_mark_dirty(self);
+      return;
+    }
+  }
+
+  // Mark dirty to redraw
+  prv_mark_dirty(self);
+
+  // Schedule next scroll step
+  self->scroll_timer = app_timer_register(SCROLL_STEP_MS, scroll_timer_callback, self);
+}
+
+static void reset_scroll_callback(void *data) {
+  SimplyMenu *self = data;
+  self->scroll_timer = NULL;
+
+  // Reset scroll position
+  self->scroll_offset = 0;
+  self->scrolling_active = false;
+
+  // Mark dirty to redraw
+  prv_mark_dirty(self);
+
+  // Restart scrolling after the initial delay
+  self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback, self);
+}
+
+static void start_scroll_timer(SimplyMenu *self, MenuIndex index) {
+  // Cancel any existing scroll timer
+  if (self->scroll_timer) {
+    app_timer_cancel(self->scroll_timer);
+    self->scroll_timer = NULL;
+  }
+
+  // Reset scroll state
+  self->scroll_index = index;
+  self->scroll_offset = 0;
+  self->max_scroll_offset = 0;
+  self->scrolling_active = false;
+  self->needs_scrolling = false;
+
+  // Mark dirty to redraw without scroll
+  prv_mark_dirty(self);
+
+  // Start timer to begin scrolling after delay
+  // The draw callback will determine if scrolling is actually needed
+  self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback, self);
+}
+
+static void stop_scroll_timer(SimplyMenu *self) {
+  if (self->scroll_timer) {
+    app_timer_cancel(self->scroll_timer);
+    self->scroll_timer = NULL;
+  }
+  self->scroll_offset = 0;
+  self->max_scroll_offset = 0;
+  self->scrolling_active = false;
+  self->needs_scrolling = false;
+}
+
 static uint16_t prv_menu_get_num_sections_callback(MenuLayer *menu_layer, void *data) {
   SimplyMenu *self = data;
   return self->menu_layer.num_sections;
@@ -348,6 +438,13 @@ ROUND_USAGE static int16_t prv_menu_get_cell_height_callback(MenuLayer *menu_lay
   } else {
     return MENU_CELL_BASIC_CELL_HEIGHT;
   }
+}
+
+static void prv_menu_selection_changed_callback(MenuLayer *menu_layer, MenuIndex new_index,
+                                                 MenuIndex old_index, void *data) {
+  SimplyMenu *self = data;
+  // Start scroll timer for the new selection
+  start_scroll_timer(self, new_index);
 }
 
 static void prv_menu_draw_header_callback(GContext *ctx, const Layer *cell_layer,
@@ -449,7 +546,119 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   }
 
   graphics_context_set_alpha_blended(ctx, true);
-  menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
+
+  // Check if this is the selected item
+  MenuIndex current_selection = menu_layer_get_selected_index(self->menu_layer.menu_layer);
+  const bool is_selected = (cell_index->section == current_selection.section &&
+                           cell_index->row == current_selection.row);
+
+  // If this is selected but scroll timer hasn't been started yet, start it
+  if (is_selected && !self->scroll_timer && !self->scrolling_active) {
+    start_scroll_timer(self, current_selection);
+  }
+
+  // Measure text width to determine if scrolling is needed
+  if (is_selected) {
+    GRect bounds = layer_get_bounds(cell_layer);
+    int16_t available_width = bounds.size.w;
+
+    // Account for icon width if present
+    if (image && image->bitmap) {
+      GRect icon_rect = gbitmap_get_bounds(image->bitmap);
+      available_width -= (icon_rect.size.w + 8); // icon width + margins
+    }
+    available_width -= 8; // text margins
+
+    // Measure title text
+    const GFont title_font = item->subtitle ?
+        fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD) :
+        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    GSize title_size = graphics_text_layout_get_content_size(
+        item->title, title_font,
+        GRect(0, 0, 1000, 100),
+        GTextOverflowModeTrailingEllipsis,
+        GTextAlignmentLeft);
+
+    // Check if title needs scrolling
+    bool title_needs_scroll = title_size.w > available_width;
+
+    // Measure subtitle if present
+    bool subtitle_needs_scroll = false;
+    int16_t subtitle_width = 0;
+    if (item->subtitle) {
+      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_14);
+      GSize subtitle_size = graphics_text_layout_get_content_size(
+          item->subtitle, subtitle_font,
+          GRect(0, 0, 1000, 100),
+          GTextOverflowModeTrailingEllipsis,
+          GTextAlignmentLeft);
+      subtitle_width = subtitle_size.w;
+      subtitle_needs_scroll = subtitle_size.w > available_width;
+    }
+
+    // Set needs_scrolling flag and calculate max offset
+    self->needs_scrolling = title_needs_scroll || subtitle_needs_scroll;
+    if (self->needs_scrolling) {
+      // Calculate how far we need to scroll to show all text
+      // Add extra padding (40px) to ensure the last word is fully visible
+      int16_t max_title_scroll = title_needs_scroll ? (title_size.w - available_width + 40) : 0;
+      int16_t max_subtitle_scroll = subtitle_needs_scroll ? (subtitle_width - available_width + 40) : 0;
+      self->max_scroll_offset = max_title_scroll > max_subtitle_scroll ?
+          max_title_scroll : max_subtitle_scroll;
+    } else {
+      self->max_scroll_offset = 0;
+    }
+  }
+
+  // Use custom drawing only when actively scrolling
+  if (is_selected && self->scroll_offset > 0 && self->needs_scrolling) {
+    // Manual drawing with scroll offset
+    GRect bounds = layer_get_bounds(cell_layer);
+    const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
+
+    // Background - highlighted items have WHITE background
+    graphics_context_set_fill_color(ctx, is_highlighted ? GColorWhite : GColorBlack);
+    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+
+    // Icon - apply scroll offset to icon as well
+    int16_t text_x = 4;
+    if (image && image->bitmap) {
+      GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
+      graphics_context_set_compositing_mode(ctx, GCompOpSet);
+      // Scroll the icon along with the text
+      graphics_draw_bitmap_in_rect(ctx, image->bitmap,
+                                   GRect(4 - self->scroll_offset, (bounds.size.h - icon_bounds.size.h) / 2,
+                                        icon_bounds.size.w, icon_bounds.size.h));
+      text_x = 4 + icon_bounds.size.w + 4;
+    }
+
+    graphics_context_set_text_color(ctx, is_highlighted ? GColorBlack : GColorWhite);
+
+    // Text with scroll offset
+    const int16_t scroll_x = text_x - self->scroll_offset;
+    const int16_t text_w = bounds.size.w - text_x + self->scroll_offset;
+
+    if (item->subtitle) {
+      // Two lines - move UP 4 more pixels
+      graphics_draw_text(ctx, item->title,
+                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                        GRect(scroll_x, -4, text_w, 24),
+                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+      graphics_draw_text(ctx, item->subtitle,
+                        fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                        GRect(scroll_x, 20, text_w, 18),
+                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    } else {
+      // Single line - move DOWN, use vertical alignment
+      graphics_draw_text(ctx, item->title,
+                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                        GRect(scroll_x, 4, text_w, bounds.size.h),
+                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    }
+  } else {
+    // Standard drawing - no scrolling
+    menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
+  }
 
   if (palette) {
     gbitmap_set_palette(image->bitmap, palette, false);
@@ -502,18 +711,38 @@ static void prv_menu_window_load(Window *window) {
     .draw_row = prv_menu_draw_row_callback,
     .select_click = prv_menu_select_click_callback,
     .select_long_click = prv_menu_select_long_click_callback,
+    .selection_changed = prv_menu_selection_changed_callback,
   });
 
   menu_layer_set_click_config_provider_onto_window(menu_layer, prv_click_config_provider, window);
 }
 
+static void initial_scroll_timer_callback(void *data) {
+  SimplyMenu *self = data;
+  // Start scroll timer for the initially selected item
+  if (self->menu_layer.menu_layer) {
+    MenuIndex selected = menu_layer_get_selected_index(self->menu_layer.menu_layer);
+    start_scroll_timer(self, selected);
+  }
+}
+
 static void prv_menu_window_appear(Window *window) {
   SimplyMenu *self = window_get_user_data(window);
   simply_window_appear(&self->window);
+
+  // Stop any existing scroll timer first
+  stop_scroll_timer(self);
+
+  // Trigger initial scroll after a short delay to ensure menu is loaded
+  app_timer_register(100, initial_scroll_timer_callback, self);
 }
 
 static void prv_menu_window_disappear(Window *window) {
   SimplyMenu *self = window_get_user_data(window);
+
+  // Stop scrolling when window disappears
+  stop_scroll_timer(self);
+
   if (simply_window_disappear(&self->window)) {
     simply_res_clear(self->window.simply->res);
     simply_menu_clear(self);
@@ -522,6 +751,9 @@ static void prv_menu_window_disappear(Window *window) {
 
 static void prv_menu_window_unload(Window *window) {
   SimplyMenu *self = window_get_user_data(window);
+
+  // Clean up scroll timer
+  stop_scroll_timer(self);
 
   menu_layer_destroy(self->menu_layer.menu_layer);
   self->menu_layer.menu_layer = NULL;
@@ -660,6 +892,12 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .window.status_bar_insets_bottom = true,
 #endif
     .menu_layer.num_sections = 1,
+    .scroll_timer = NULL,
+    .scroll_offset = 0,
+    .max_scroll_offset = 0,
+    .scrolling_active = false,
+    .needs_scrolling = false,
+    .scroll_index = { .section = 0, .row = 0 },
   };
 
   static const WindowHandlers s_window_handlers = {
