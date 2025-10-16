@@ -5060,23 +5060,27 @@ function showToDoList(entity_id) {
                 confirmAction(
                     'Clear all items from this list?',
                     function() {
-                        // Success callback - clear all items
+                        // Success callback - clear all items in a single API call
                         log_message(`Clearing all items from ${entity_id}`);
                         let allItems = incompleteItems.concat(completedItems);
-                        allItems.forEach(function(item) {
+                        let allUids = allItems.map(function(item) { return item.uid; });
+
+                        if (allUids.length > 0) {
                             haws.callService(
                                 'todo',
                                 'remove_item',
-                                { item: item.uid },
+                                { item: allUids },
                                 { entity_id: entity_id },
                                 function(data) {
-                                    log_message(`Removed item: ${item.summary}`);
+                                    log_message(`Successfully cleared ${allUids.length} items from list`);
                                 },
                                 function(error) {
-                                    log_message(`Error removing item: ${JSON.stringify(error)}`);
+                                    log_message(`Error clearing list: ${JSON.stringify(error)}`);
                                 }
                             );
-                        });
+                        } else {
+                            log_message('No items to clear');
+                        }
                     },
                     function() {
                         // Failure/cancel callback
