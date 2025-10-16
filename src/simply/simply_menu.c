@@ -445,6 +445,11 @@ static void prv_menu_selection_changed_callback(MenuLayer *menu_layer, MenuIndex
   SimplyMenu *self = data;
   // Start scroll timer for the new selection
   start_scroll_timer(self, new_index);
+  // Only send selection event if the window is still loaded and visible
+  // This prevents crashes when the menu is being torn down
+  if (self->window.window && window_is_loaded(self->window.window)) {
+    prv_send_menu_selection(self);
+  }
 }
 
 static void prv_menu_draw_header_callback(GContext *ctx, const Layer *cell_layer,
@@ -567,7 +572,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       GRect icon_rect = gbitmap_get_bounds(image->bitmap);
       available_width -= (icon_rect.size.w + 8); // icon width + margins
     }
-    available_width -= 8; // text margins
+    available_width -= 10; // text margins
 
     // Measure title text
     const GFont title_font = item->subtitle ?

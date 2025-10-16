@@ -5170,9 +5170,7 @@ function showToDoList(entity_id) {
 
         // Apply the selection
         if (incompleteItems.length > 0 || completedItems.length > 0) {
-            setTimeout(function() {
-                todoListMenu.selection(newSectionIndex, newItemIndex);
-            }, 100);
+            todoListMenu.selection(newSectionIndex, newItemIndex);
         }
 
         hasRenderedOnce = true;
@@ -5181,6 +5179,16 @@ function showToDoList(entity_id) {
     // Configuration: Set to true to use long-press for details and tap for toggle
     // Set to false to use tap for details and long-press for toggle
     let useLongPressForDetails = true;
+
+    // Track selection changes (when user navigates with up/down buttons)
+    todoListMenu.on('selection', function(e) {
+        // Update the currently selected item UID and section when navigating
+        if (e.item && e.item.uid) {
+            selectedItemUid = e.item.uid;
+            selectedSectionIndex = e.sectionIndex;
+            log_message(`Selection changed to: ${e.item.title} (UID: ${selectedItemUid}, Section: ${e.sectionIndex})`);
+        }
+    });
 
     // Handle item selection
     todoListMenu.on('select', function(e) {
