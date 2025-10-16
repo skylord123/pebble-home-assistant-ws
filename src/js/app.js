@@ -305,6 +305,11 @@ function showMainMenu() {
                     showSettingsMenu();
                 }
             });
+
+            // Restore the previously selected index after items are populated
+            if (menuSelections.mainMenu > 0 && menuSelections.mainMenu < mainMenu.items(0).length) {
+                mainMenu.selection(0, menuSelections.mainMenu);
+            }
         });
 
         // menu item pressed, if it has an event fn call it
@@ -318,16 +323,6 @@ function showMainMenu() {
             } else {
                 log_message("No click function for main menu item " + e.title);
             }
-        });
-
-        // Restore selection when showing the menu
-        mainMenu.on('show', function() {
-            // Restore the previously selected index after a short delay
-            setTimeout(function() {
-                if (menuSelections.mainMenu > 0 && menuSelections.mainMenu < mainMenu.items(0).length) {
-                    mainMenu.selection(0, menuSelections.mainMenu);
-                }
-            }, 100);
         });
 
         mainMenu.show();
