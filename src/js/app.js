@@ -9,7 +9,7 @@ const isEmulator = Pebble.platform === 'pypkjs';
 
 const appVersion = '0.9',
     confVersion = '0.8.0',
-    debugMode = false,
+    debugMode = true,
     debugHAWS = false,
     hawsFaker = isEmulator,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
@@ -4759,46 +4759,103 @@ function showToDoLists() {
         }]
     });
 
+    // Track subscription IDs for cleanup
+    let subscriptionIds = {};
+
+    // Function to get sorted todo lists
+    function getSortedTodoLists() {
+        let todoLists = [];
+        for(let entity_id in ha_state_dict) {
+            if(entity_id.split('.')[0] !== "todo") {
+                continue;
+            }
+
+            if(ha_state_dict[entity_id].state === "unavailable" || ha_state_dict[entity_id].state === "unknown") {
+                continue;
+            }
+
+            if(!ha_state_dict[entity_id].attributes || !ha_state_dict[entity_id].attributes.friendly_name) {
+                continue;
+            }
+
+            todoLists.push(ha_state_dict[entity_id]);
+        }
+
+        // sort todoLists alphabetically by friendly_name
+        todoLists.sort(function(a, b) {
+            return a.attributes.friendly_name.localeCompare(b.attributes.friendly_name);
+        });
+
+        return todoLists;
+    }
+
+    // Function to update menu items
+    function updateMenuItems() {
+        let todoLists = getSortedTodoLists();
+
+        // Clear existing items
+        toDoListsMenu.items(0, []);
+
+        // Add menu items
+        let items = [];
+        todoLists.forEach(function(entity) {
+            items.push({
+                title: entity.attributes.friendly_name,
+                subtitle: (entity.state || 0) + " item" + (entity.state > 1 ? 's' : ''),
+                entity_id: entity.entity_id,
+                on_click: function (e) {
+                    showToDoList(e.item.entity_id);
+                }
+            });
+        });
+
+        toDoListsMenu.items(0, items);
+    }
+
     toDoListsMenu.on('select', function(e) {
         if(typeof e.item.on_click == 'function') {
             e.item.on_click(e);
         }
     });
 
-    let i = 0;
+    // Subscribe to all todo lists when menu is shown
+    toDoListsMenu.on('show', function() {
+        let todoLists = getSortedTodoLists();
 
-    let todoLists = [];
-    for(let entity_id in ha_state_dict) {
-        if(entity_id.split('.')[0] !== "todo") {
-            continue;
-        }
+        todoLists.forEach(function(entity) {
+            let entity_id = entity.entity_id;
 
-        if(ha_state_dict[entity_id].state === "unavailable" || ha_state_dict[entity_id].state === "unknown") {
-            continue;
-        }
-
-        if(!ha_state_dict[entity_id].attributes || !ha_state_dict[entity_id].attributes.friendly_name) {
-            continue;
-        }
-
-        todoLists.push(ha_state_dict[entity_id]);
-    }
-
-    // sort todoLists alphabetically by friendly_name
-    todoLists.sort(function(a, b) {
-        return a.attributes.friendly_name.localeCompare(b.attributes.friendly_name);
-    });
-
-    // now add menu items
-    todoLists.forEach(function(entity) {
-        toDoListsMenu.item(0, i++, {
-            title: entity.attributes.friendly_name,
-            subtitle: (entity.state || 0) + " item" + (entity.state > 1 ? 's' : ''),
-            on_click: function (e) {
-                showToDoList(entity.entity_id);
-            }
+            subscriptionIds[entity_id] = haws.subscribe({
+                "type": "todo/item/subscribe",
+                "entity_id": entity_id
+            }, function(data) {
+                // When items change, update the count in ha_state_dict
+                if (data.event && data.event.items) {
+                    let itemCount = data.event.items.length;
+                    if (ha_state_dict[entity_id]) {
+                        ha_state_dict[entity_id].state = itemCount;
+                    }
+                    // Update the menu to reflect the new count
+                    updateMenuItems();
+                }
+            }, function(error) {
+                log_message(`todo/item/subscribe ERROR for ${entity_id}: ${JSON.stringify(error)}`);
+            });
         });
     });
+
+    // Unsubscribe when menu is hidden
+    toDoListsMenu.on('hide', function() {
+        for(let entity_id in subscriptionIds) {
+            if (subscriptionIds[entity_id]) {
+                haws.unsubscribe(subscriptionIds[entity_id]);
+            }
+        }
+        subscriptionIds = {};
+    });
+
+    // Initial menu population
+    updateMenuItems();
 
     toDoListsMenu.show();
 }
