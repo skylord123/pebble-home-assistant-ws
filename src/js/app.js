@@ -8,7 +8,7 @@ const Vibe = require('ui/vibe'); //needed for vibration to work
 const isEmulator = Pebble.platform === 'pypkjs';
 
 const appVersion = '0.9',
-    confVersion = '0.8.0',
+    confVersion = '0.9',
     debugMode = true,
     debugHAWS = false,
     hawsFaker = isEmulator,
@@ -698,37 +698,45 @@ function showQuickLaunchSettings() {
         // Clear the menu
         quickLaunchMenu.items(0, []);
 
+        let itemIndex = 0;
+
         // Add options
-        quickLaunchMenu.item(0, 0, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Main Menu",
             subtitle: quick_launch_behavior === 'main_menu' ? "Current" : "",
             value: 'main_menu'
         });
 
         if ( voice_enabled ) {
-            quickLaunchMenu.item(0, 1, {
+            quickLaunchMenu.item(0, itemIndex++, {
                 title: "Assistant",
                 subtitle: quick_launch_behavior === 'assistant' ? "Current" : "",
                 value: 'assistant'
             });
         }
 
-        quickLaunchMenu.item(0, 2, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Favorites",
             subtitle: quick_launch_behavior === 'favorites' ? "Current" : "",
             value: 'favorites'
         });
 
-        quickLaunchMenu.item(0, 3, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Areas",
             subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
             value: 'areas'
         });
 
-        quickLaunchMenu.item(0, 4, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Labels",
             subtitle: quick_launch_behavior === 'labels' ? "Current" : "",
             value: 'labels'
+        });
+
+        quickLaunchMenu.item(0, itemIndex++, {
+            title: "To-Do Lists",
+            subtitle: quick_launch_behavior === 'todo_lists' ? "Current" : "",
+            value: 'todo_lists'
         });
     });
 
@@ -740,7 +748,8 @@ function showQuickLaunchSettings() {
         Settings.option('quick_launch_behavior', quick_launch_behavior);
 
         // Update menu items to show current selection
-        for (let i = 0; i < 5; i++) {
+        const items = quickLaunchMenu.items(0);
+        for (let i = 0; i < items.length; i++) {
             const item = quickLaunchMenu.item(0, i);
             quickLaunchMenu.item(0, i, {
                 title: item.title,
@@ -6282,6 +6291,9 @@ function on_auth_ok(evt) {
                                 break;
                             case 'labels':
                                 showLabelMenu();
+                                break;
+                            case 'todo_lists':
+                                showToDoLists();
                                 break;
                             case 'main_menu':
                             default:
