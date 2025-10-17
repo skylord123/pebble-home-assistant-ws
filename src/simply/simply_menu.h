@@ -40,12 +40,28 @@ struct SimplyMenu {
   SimplyWindow window;
   SimplyMenuLayer menu_layer;
   AppTimer *spinner_timer;
+#if !defined(PBL_PLATFORM_APLITE)
   AppTimer *scroll_timer;
   MenuIndex scroll_index;
   int16_t scroll_offset;
   int16_t max_scroll_offset;
   bool scrolling_active;
   bool needs_scrolling;
+#if defined(PBL_ROUND)
+  // For round displays: independent scrolling for title and subtitle
+  int16_t title_scroll_offset;
+  int16_t title_max_scroll_offset;
+  bool title_needs_scroll;
+  bool title_scrolling_active;
+  int16_t subtitle_scroll_offset;
+  int16_t subtitle_max_scroll_offset;
+  bool subtitle_needs_scroll;
+  bool subtitle_scrolling_active;
+  // Cached font heights to avoid expensive measurements every frame
+  int16_t title_height;
+  int16_t subtitle_height;
+#endif
+#endif
 };
 
 typedef struct SimplyMenuCommon SimplyMenuCommon;
