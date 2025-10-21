@@ -30,6 +30,7 @@
 #define SCROLL_WAIT_MS 1000  // Wait X ms before starting to scroll
 #define SCROLL_STEP_MS 100   // Scroll every X ms
 #define SCROLL_STEP_PX 8     // Scroll X pixels at a time
+#define SCROLL_IDLE_TIMEOUT_MS 60000  // Stop scrolling after 60 seconds of inactivity (configurable)
 #endif
 
 typedef Packet MenuClearPacket;
@@ -376,6 +377,16 @@ static void reset_scroll_callback(void *data) {
   // Mark dirty to redraw
   prv_mark_dirty(self);
 
+  // Check if idle timeout has been exceeded
+  time_t current_time = time(NULL);
+  time_t elapsed_ms = (current_time - self->last_input_time) * 1000;
+
+  if (elapsed_ms >= SCROLL_IDLE_TIMEOUT_MS) {
+    // Idle timeout exceeded - don't restart scrolling
+    self->scroll_idle = true;
+    return;
+  }
+
   // Restart scrolling after the initial delay
   self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback, self);
 }
@@ -458,6 +469,16 @@ static void reset_scroll_callback_round(void *data) {
 
   // Mark dirty to redraw
   prv_mark_dirty(self);
+
+  // Check if idle timeout has been exceeded
+  time_t current_time = time(NULL);
+  time_t elapsed_ms = (current_time - self->last_input_time) * 1000;
+
+  if (elapsed_ms >= SCROLL_IDLE_TIMEOUT_MS) {
+    // Idle timeout exceeded - don't restart scrolling
+    self->scroll_idle = true;
+    return;
+  }
 
   // Restart scrolling after the initial delay
   self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback_round, self);
@@ -560,6 +581,9 @@ ROUND_USAGE static int16_t prv_menu_get_cell_height_callback(MenuLayer *menu_lay
 static void prv_menu_selection_changed_callback(MenuLayer *menu_layer, MenuIndex new_index,
                                                  MenuIndex old_index, void *data) {
   SimplyMenu *self = data;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
   // Start scroll timer for the new selection
   start_scroll_timer(self, new_index);
   // Only send selection event if the window is still loaded and visible
@@ -677,7 +701,8 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
                            cell_index->row == current_selection.row);
 
   // If this is selected but scroll timer hasn't been started yet, start it
-  if (is_selected && !self->scroll_timer && !self->scrolling_active) {
+  // Don't start if we're in idle state (timeout exceeded)
+  if (is_selected && !self->scroll_timer && !self->scrolling_active && !self->scroll_idle) {
     start_scroll_timer(self, current_selection);
   }
 
@@ -932,17 +957,35 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
 static void prv_menu_select_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
                                            void *data) {
+#if !defined(PBL_PLATFORM_APLITE)
+  SimplyMenu *self = data;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
   prv_send_menu_select_click(cell_index->section, cell_index->row);
 }
 
 static void prv_menu_select_long_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
                                                 void *data) {
+#if !defined(PBL_PLATFORM_APLITE)
+  SimplyMenu *self = data;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
   prv_send_menu_select_long_click(cell_index->section, cell_index->row);
 }
 
 static void prv_single_click_handler(ClickRecognizerRef recognizer, void *context) {
   Window *base_window = layer_get_window(context);
   SimplyWindow *window = window_get_user_data(base_window);
+#if !defined(PBL_PLATFORM_APLITE)
+  SimplyMenu *self = (SimplyMenu *)window;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
   simply_window_single_click_handler(recognizer, window);
 }
 
@@ -1000,6 +1043,10 @@ static void prv_menu_window_appear(Window *window) {
   simply_window_appear(&self->window);
 
 #if !defined(PBL_PLATFORM_APLITE)
+  // Initialize last input time when menu appears
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+
   // Stop any existing scroll timer first
   stop_scroll_timer(self);
 
@@ -1174,6 +1221,8 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .scrolling_active = false,
     .needs_scrolling = false,
     .scroll_index = { .section = 0, .row = 0 },
+    .last_input_time = 0,
+    .scroll_idle = false,
 #if defined(PBL_ROUND)
     .title_scroll_offset = 0,
     .title_max_scroll_offset = 0,

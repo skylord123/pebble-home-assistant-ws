@@ -47,6 +47,9 @@ struct SimplyMenu {
   int16_t max_scroll_offset;
   bool scrolling_active;
   bool needs_scrolling;
+  // Idle timeout tracking
+  time_t last_input_time;
+  bool scroll_idle;
 #if defined(PBL_ROUND)
   // For round displays: independent scrolling for title and subtitle
   int16_t title_scroll_offset;
