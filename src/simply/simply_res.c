@@ -68,6 +68,23 @@ static void add_image(SimplyRes *self, SimplyImage *image) {
 typedef GBitmap *(*GBitmapCreator)(SimplyImage *image, void *data);
 
 static SimplyImage *create_image(SimplyRes *self, GBitmapCreator creator, void *data) {
+  // On APLITE, proactively evict images before attempting allocation
+  // to prevent malloc failures and crashes due to severe memory constraints
+  #if defined(PBL_PLATFORM_APLITE)
+    // On APLITE, only evict if we have more than 4 images cached
+    int image_count = 0;
+    List1Node *node = self->images;
+    while (node) {
+      image_count++;
+      node = node->next;
+    }
+
+    // Only evict if cache is getting full (more than 4 images)
+    if (image_count > 4) {
+      simply_res_evict_image(self);
+    }
+  #endif
+
   SimplyImage *image = NULL;
   while (!(image = malloc0(sizeof(*image)))) {
     if (!simply_res_evict_image(self)) {

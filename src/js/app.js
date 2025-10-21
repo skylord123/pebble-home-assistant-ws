@@ -6527,6 +6527,7 @@ let timerID = setInterval(function() {
  * @returns {Boolean} - Whether to show domain menu
  */
 function shouldShowDomainMenu(entities, menuSetting) {
+    const Platform = require('platform');
     // If setting is explicitly yes or no, respect that
     if (menuSetting === 'yes') return true;
     if (menuSetting === 'no') return false;
@@ -6546,6 +6547,13 @@ function shouldShowDomainMenu(entities, menuSetting) {
 
         // Check if we meet the minimum domain count condition
         const meetsDomainCountCondition = domainCount >= domain_menu_min_domains;
+
+        // OG Pebble (aplite) lacks memory to display more than 3 icons
+        // so we force the domain menu if there are multiple domains
+        // this way only 2 icons will ever display on the menu
+        if (Platform.version() === 'aplite' && domainCount > 1) {
+            return true;
+        }
 
         // Return true if both conditions are met
         return meetsEntityCountCondition && meetsDomainCountCondition;
