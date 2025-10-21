@@ -6532,6 +6532,15 @@ function shouldShowDomainMenu(entities, menuSetting) {
     if (menuSetting === 'yes') return true;
     if (menuSetting === 'no') return false;
 
+    const domainCount = Object.keys(domains).length;
+
+    // OG Pebble (aplite) lacks memory to display more than 3 icons
+    // so we force the domain menu if there are multiple domains
+    // this way only 2 icons will ever display on the menu
+    if (Platform.version() === 'aplite' && domainCount > 1) {
+        return true;
+    }
+
     // For conditional, check the conditions
     if (menuSetting === 'conditional') {
         // Get unique domains from entities
@@ -6540,20 +6549,12 @@ function shouldShowDomainMenu(entities, menuSetting) {
             const domain = entity_id.split('.')[0];
             domains[domain] = true;
         }
-        const domainCount = Object.keys(domains).length;
 
         // Check if we meet the minimum entity count condition
         const meetsEntityCountCondition = entities.length >= domain_menu_min_entities;
 
         // Check if we meet the minimum domain count condition
         const meetsDomainCountCondition = domainCount >= domain_menu_min_domains;
-
-        // OG Pebble (aplite) lacks memory to display more than 3 icons
-        // so we force the domain menu if there are multiple domains
-        // this way only 2 icons will ever display on the menu
-        if (Platform.version() === 'aplite' && domainCount > 1) {
-            return true;
-        }
 
         // Return true if both conditions are met
         return meetsEntityCountCondition && meetsDomainCountCondition;
