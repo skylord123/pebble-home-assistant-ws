@@ -964,9 +964,27 @@
 			}
 
 			console.log(JSON.stringify(watch_config));
-			let location = "pebblejs://close#" + encodeURIComponent(JSON.stringify(watch_config));
+
+			// Get return_to parameter if it exists, otherwise use default close URL
+			const urlParams = new URLSearchParams(window.location.search);
+			const returnTo = urlParams.get('return_to');
+
+			// Build the return URL with config data
+			const configData = encodeURIComponent(JSON.stringify(watch_config));
+			let location;
+
+			if (returnTo) {
+				// If return_to is specified, use it as the base URL
+				// Append the data as a hash fragment (Pebble expects this format)
+				const decodedReturnTo = decodeURIComponent(returnTo);
+				location = decodedReturnTo + configData;
+			} else {
+				// Default behavior: use pebblejs://close
+				location = "pebblejs://close#" + configData;
+			}
+
 			localStorage.setItem("watch_config", JSON.stringify(watch_config));
-			console.log(location);
+			console.log("Navigating to:", location);
 			window.location.href = location;
 		});
 	});
