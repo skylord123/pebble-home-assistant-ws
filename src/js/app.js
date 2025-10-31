@@ -5,13 +5,14 @@
  */
 
 const Vibe = require('ui/vibe'); //needed for vibration to work
-const isEmulator = Pebble.platform === 'pypkjs';
+const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
 
-const appVersion = '0.9',
-    confVersion = '0.9',
-    debugMode = true,
+const appVersion = '0.9', // displays in loading screen
+    confVersion = '0.9', // version of config page
+    debugMode = false,
     debugHAWS = false,
-    hawsFaker = isEmulator,
+    hawsFaker = isEmulator
+        && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
@@ -47,7 +48,8 @@ const appVersion = '0.9',
     ucwords = function( str ){
         return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
     }
-colour = {
+const Platform = require("./platform");
+const colour = {
     highlight: Feature.color("#00AAFF", "#000000"),
     highlight_text: Feature.color("black", "white")
 };
@@ -446,6 +448,7 @@ function showDomainFilterSettings() {
 
     // Handle long press to remove a domain
     domainFilterMenu.on('longSelect', function(e) {
+        Vibe.vibrate('short');
         if (e.item.is_domain) {
             const domain = e.item.domain;
             const index = ignore_domains.indexOf(domain);
@@ -1570,7 +1573,9 @@ function showAreaMenu() {
                 if (!a.isUnassigned && b.isUnassigned) return -1;
 
                 // Otherwise, sort alphabetically by display_name
-                return a.display_name.localeCompare(b.display_name);
+                if (a.display_name < b.display_name) return -1;
+                if (a.display_name > b.display_name) return 1;
+                return 0;
             });
 
             // Add items to menu
@@ -1628,7 +1633,11 @@ function showLabelMenu() {
         // Sort labels by name
         let sortedLabels = Object.values(label_registry_cache)
             .filter(label => label && label.name) // Ensure valid labels
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => {
+                if (a.name < b.name) return -1;
+                if (a.name > b.name) return 1;
+                return 0;
+            });
 
         if (sortedLabels.length === 0) {
             labelMenu.item(0, 0, {
@@ -3183,9 +3192,11 @@ function showLightEntity(entity_id) {
                     {},
                     { entity_id: updatedData.entity_id },
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(`Toggled light: ${updatedData.entity_id}`);
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message(`Error toggling light: ${error}`);
                     }
                 );
@@ -3365,10 +3376,12 @@ function showLightEntity(entity_id) {
                 { brightness: brightness },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Set brightness to ${current_brightness}%`);
                     brightnessWindow.hide();
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error setting brightness: ${error}`);
                 }
             );
@@ -3536,10 +3549,12 @@ function showLightEntity(entity_id) {
                 { color_temp_kelvin: current_temp },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Set color temperature to ${current_temp}K`);
                     tempWindow.hide();
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error setting color temperature: ${error}`);
                 }
             );
@@ -3725,10 +3740,12 @@ function showLightEntity(entity_id) {
                         { rgb_color: selectedColor },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Set color to ${colors[i].name}`);
                             colorMenu.hide();
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error setting color: ${error}`);
                         }
                     );
@@ -3825,10 +3842,12 @@ function showLightEntity(entity_id) {
                 { rgb_color: selectedColor },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Set color to ${colors[colorIndex].name}`);
                     colorWindow.hide();
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error setting color: ${error}`);
                 }
             );
@@ -3970,9 +3989,11 @@ function showLightEntity(entity_id) {
                     { effect: "none" },
                     { entity_id: entity_id },
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(`Effect set to none`);
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message(`Error setting effect: ${error}`);
                     }
                 );
@@ -3995,9 +4016,11 @@ function showLightEntity(entity_id) {
                         { effect: effect },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Effect set to ${effect}`);
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error setting effect: ${error}`);
                         }
                     );
@@ -4239,10 +4262,12 @@ function showEntityMenu(entity_id) {
                     {entity_id: entity.entity_id},
                     function(data) {
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4267,10 +4292,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4286,10 +4313,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4303,9 +4332,11 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4324,10 +4355,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4341,9 +4374,11 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4362,10 +4397,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4381,10 +4418,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4404,9 +4443,11 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4420,10 +4461,12 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4440,10 +4483,12 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4464,10 +4509,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4492,9 +4539,11 @@ function showEntityMenu(entity_id) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
                         log_message(JSON.stringify(data));
+                        Vibe.vibrate('short');
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4787,7 +4836,9 @@ function showToDoLists() {
 
         // sort todoLists alphabetically by friendly_name
         todoLists.sort(function(a, b) {
-            return a.attributes.friendly_name.localeCompare(b.attributes.friendly_name);
+            if (a.attributes.friendly_name < b.attributes.friendly_name) return -1;
+            if (a.attributes.friendly_name > b.attributes.friendly_name) return 1;
+            return 0;
         });
 
         return todoLists;
@@ -5076,9 +5127,11 @@ function showToDoList(entity_id) {
                                 { item: allUids },
                                 { entity_id: entity_id },
                                 function(data) {
+                                    Vibe.vibrate('short');
                                     log_message(`Successfully cleared ${allUids.length} items from list`);
                                 },
                                 function(error) {
+                                    Vibe.vibrate('double');
                                     log_message(`Error clearing list: ${JSON.stringify(error)}`);
                                 }
                             );
@@ -5110,9 +5163,11 @@ function showToDoList(entity_id) {
                                 {},
                                 { entity_id: entity_id },
                                 function(data) {
+                                    Vibe.vibrate('short');
                                     log_message(`Cleared completed items successfully`);
                                 },
                                 function(error) {
+                                    Vibe.vibrate('double');
                                     log_message(`Error clearing completed items: ${JSON.stringify(error)}`);
                                 }
                             );
@@ -5153,10 +5208,12 @@ function showToDoList(entity_id) {
                             },
                             { entity_id: entity_id },
                             function(data) {
+                                Vibe.vibrate('short');
                                 log_message(`Successfully added new item: ${JSON.stringify(data)}`);
                                 // The subscription will automatically update the list with the new item
                             },
                             function(error) {
+                                Vibe.vibrate('double');
                                 log_message(`Error adding new item: ${JSON.stringify(error)}`);
                             }
                         );
@@ -5272,81 +5329,11 @@ function showToDoList(entity_id) {
             return;
         }
 
-        // For todo items (sections 0 and 1), behavior depends on configuration
+        // items with a uid are todo list items otherwise they are actions
         if (e.item && e.item.uid) {
-            if (useLongPressForDetails) {
-                // Tap toggles completion status
-                let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
-                log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
-
-                // Get all items from the menu to calculate next selection
-                let incompleteItems = [];
-                let completedItems = [];
-
-                // Extract items from section 0 (incomplete)
-                let section0Items = todoListMenu.items(0);
-                for (let i = 0; i < section0Items.length; i++) {
-                    incompleteItems.push(section0Items[i]);
-                }
-
-                // Extract items from section 1 (completed)
-                let section1Items = todoListMenu.items(1);
-                for (let i = 0; i < section1Items.length; i++) {
-                    completedItems.push(section1Items[i]);
-                }
-
-                // Calculate the next item to select after toggling
-                nextItemUidAfterToggle = getNextItemAfterToggle(
-                    incompleteItems,
-                    completedItems,
-                    e.item.uid,
-                    e.sectionIndex,
-                    e.item.status
-                );
-
-                log_message(`Next item after toggle will be: ${nextItemUidAfterToggle}`);
-
-                haws.callService(
-                    'todo',
-                    'update_item',
-                    {
-                        item: e.item.uid,
-                        status: newStatus
-                    },
-                    { entity_id: entity_id },
-                    function(data) {
-                        log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
-                    },
-                    function(error) {
-                        log_message(`Error updating item status: ${JSON.stringify(error)}`);
-                    }
-                );
-            } else {
-                // Tap opens item details
-                if(typeof e.item.on_click == 'function') {
-                    e.item.on_click(e);
-                }
-            }
-        }
-    });
-
-    // Handle long-press
-    todoListMenu.on('longSelect', function(e) {
-        // Only handle long-press for actual todo items (sections 0 and 1), not actions
-        if (e.sectionIndex === 2 || !e.item || !e.item.uid) {
-            return;
-        }
-
-        if (useLongPressForDetails) {
-            // Long-press opens item details
-            log_message(`Long-press: Opening details for item ${e.item.title}`);
-            if(typeof e.item.on_click == 'function') {
-                e.item.on_click(e);
-            }
-        } else {
-            // Long-press toggles completion status
+            // Tap toggles completion status
             let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
-            log_message(`Long-press: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+            log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
 
             // Get all items from the menu to calculate next selection
             let incompleteItems = [];
@@ -5384,12 +5371,28 @@ function showToDoList(entity_id) {
                 },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error updating item status: ${JSON.stringify(error)}`);
                 }
             );
+        }
+    });
+
+    // Handle long-press
+    todoListMenu.on('longSelect', function(e) {
+        // Only handle long-press for actual todo items (sections 0 and 1), not actions
+        if (e.sectionIndex === 2 || !e.item || !e.item.uid) {
+            return;
+        }
+
+        // Long-press opens item details
+        log_message(`Long-press: Opening details for item ${e.item.title}`);
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
         }
     });
 
@@ -5555,9 +5558,11 @@ function showToDoItemMenu(entity_id, item) {
                         },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Successfully updated item name: ${JSON.stringify(data)}`);
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error updating item name: ${JSON.stringify(error)}`);
                         }
                     );
@@ -5606,11 +5611,13 @@ function showToDoItemMenu(entity_id, item) {
                             { item: currentItem.uid },
                             { entity_id: entity_id },
                             function(data) {
+                                Vibe.vibrate('short');
                                 log_message(`Successfully deleted item: ${JSON.stringify(data)}`);
                                 // Hide the menu to return to the todo list
                                 itemMenu.hide();
                             },
                             function(error) {
+                                Vibe.vibrate('double');
                                 log_message(`Error deleting item: ${JSON.stringify(error)}`);
                             }
                         );
@@ -5638,10 +5645,12 @@ function showToDoItemMenu(entity_id, item) {
                         },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Successfully marked item as completed: ${JSON.stringify(data)}`);
                             // Menu remains open, subscription will update
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error marking item as completed: ${JSON.stringify(error)}`);
                         }
                     );
@@ -5661,10 +5670,12 @@ function showToDoItemMenu(entity_id, item) {
                         },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Successfully marked item as incomplete: ${JSON.stringify(data)}`);
                             // Menu remains open, subscription will update
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error marking item as incomplete: ${JSON.stringify(error)}`);
                         }
                     );
@@ -5750,9 +5761,11 @@ function showToDoItemDescriptionOptionsMenu(entity_id, item) {
                 },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Successfully removed description: ${JSON.stringify(data)}`);
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error removing description: ${JSON.stringify(error)}`);
                 }
             );
@@ -5823,7 +5836,6 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     entityListMenu.current_page = null;
     entityListMenu.on('longSelect', function(e) {
         log_message(`Entity ${e.item.entity_id} was long pressed!`);
-        Vibe.vibrate('short'); //let the user know the long press has activated
         let [domain] = e.item.entity_id.split('.');
         if (
             domain === "switch" ||
@@ -5842,10 +5854,12 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                     // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                     // Success!
                     log_message(JSON.stringify(data));
+                    Vibe.vibrate('short');
                 },
                 function (error) {
                     // Failure!
                     log_message('no response');
+                    Vibe.vibrate('double');
                 });
         }
         else if (domain === "lock") {
@@ -5858,10 +5872,12 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 function (data) {
                     // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                     // Success!
+                    Vibe.vibrate('short');
                     log_message(JSON.stringify(data));
                 },
                 function (error) {
                     // Failure!
+                    Vibe.vibrate('double');
                     log_message('no response');
                 });
         }
@@ -6532,23 +6548,24 @@ function shouldShowDomainMenu(entities, menuSetting) {
     if (menuSetting === 'yes') return true;
     if (menuSetting === 'no') return false;
 
-    const domainCount = Object.keys(domains).length;
+    // Get unique domains from entities
+    const domains = new Set();
+    const isAplite = Platform.version() === 'aplite';
 
-    // OG Pebble (aplite) lacks memory to display more than 3 icons
-    // so we force the domain menu if there are multiple domains
-    // this way only 2 icons will ever display on the menu
-    if (Platform.version() === 'aplite' && domainCount > 1) {
-        return true;
+    for (let entity_id of entities) {
+        domains.add(entity_id.split('.')[0]);
+
+        // OG Pebble (aplite) lacks memory to display more than 3 icons
+        // so we force the domain menu if there are multiple domains
+        // this way only 2 icons will ever display on the menu
+        if (isAplite && domains.size > 1) {
+            return true;
+        }
     }
 
     // For conditional, check the conditions
     if (menuSetting === 'conditional') {
-        // Get unique domains from entities
-        const domains = {};
-        for (let entity_id of entities) {
-            const domain = entity_id.split('.')[0];
-            domains[domain] = true;
-        }
+        const domainCount = domains.size;
 
         // Check if we meet the minimum entity count condition
         const meetsEntityCountCondition = entities.length >= domain_menu_min_entities;
