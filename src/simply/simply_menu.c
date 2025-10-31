@@ -682,7 +682,11 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   list1_remove(&self->menu_layer.items, &item->node);
   list1_prepend(&self->menu_layer.items, &item->node);
 
-  SimplyImage *image = simply_res_get_image(self->window.simply->res, item->icon);
+  // Disable icons on APLITE platform to save memory
+  SimplyImage *image = NULL;
+#if !defined(PBL_PLATFORM_APLITE) // disable icons on APLITE as it causes crash
+  image = simply_res_get_image(self->window.simply->res, item->icon);
+#endif
   GColor8 *palette = NULL;
 
   if (image && image->is_palette_black_and_white) {
