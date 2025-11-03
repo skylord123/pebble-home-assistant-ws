@@ -45,6 +45,12 @@ jobs:
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
       - uses: actions/setup-node@v4
+      - name: Fix Debian Buster repositories
+        run: |
+          sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list
+          sed -i 's|security.debian.org|archive.debian.org/debian-security|g' /etc/apt/sources.list
+          sed -i '/stretch-updates/d' /etc/apt/sources.list
+          sed -i '/buster-updates/d' /etc/apt/sources.list
       - name: apt-get
         run: apt-get update; apt-get -qq install -y git zip wget python-pip python2.7-dev libsdl1.2debian libfdt1 libpixman-1-0 nodejs npm libfreetype6 libx11-6 rlwrap
       - name: virtualenv
