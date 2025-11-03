@@ -15,18 +15,14 @@ jobs:
     runs-on: ubuntu-24.04
     container:
       # Pebble SDK needs Python 2.7
-      image: python:2.7.18-buster
+      image: debian:bullseye
 
     steps:
       # Sanity checks for debugging, if/when problems occur
       - name: pyver
-        run: python --version
+        run: python --version || echo "Python not installed yet"
       - name: whichpy
-        run: which python
-      - name: whichpy2
-        run: which python2
-      - name: whichpy3
-        run: which python3
+        run: which python || echo "Python not found"
 
       - name: Clone Repository (Latest)
         uses: actions/checkout@v4
@@ -45,14 +41,14 @@ jobs:
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
       - uses: actions/setup-node@v4
-      - name: Fix Debian Buster repositories
-        run: |
-          sed -i 's/deb.debian.org/archive.debian.org/g' /etc/apt/sources.list
-          sed -i 's|security.debian.org|archive.debian.org/debian-security|g' /etc/apt/sources.list
-          sed -i '/stretch-updates/d' /etc/apt/sources.list
-          sed -i '/buster-updates/d' /etc/apt/sources.list
       - name: apt-get
-        run: apt-get update; apt-get -qq install -y git zip wget python-pip python2.7-dev libsdl1.2debian libfdt1 libpixman-1-0 nodejs npm libfreetype6 libx11-6 rlwrap
+        run: apt-get update; apt-get -qq install -y git zip wget python2.7 python2.7-dev python-pip-whl python3-pip libsdl1.2debian libfdt1 libpixman-1-0 libfreetype6 libx11-6 rlwrap curl ca-certificates
+      - name: Setup Python 2.7
+        run: |
+          curl https://bootstrap.pypa.io/pip/2.7/get-pip.py -o get-pip.py
+          python2.7 get-pip.py
+          ln -sf /usr/bin/python2.7 /usr/bin/python
+          ln -sf /usr/bin/python2.7 /usr/bin/python2
       - name: virtualenv
         run: pip install virtualenv
       - name: get sdk
