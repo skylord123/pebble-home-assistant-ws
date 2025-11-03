@@ -38,6 +38,8 @@ jobs:
       - uses: actions/setup-node@v4
       - name: apt-get
         run: apt-get update; apt-get -qq install -y git zip wget python2.7 python2.7-dev python-pip-whl python3-pip libsdl1.2debian libfdt1 libpixman-1-0 libfreetype6 libx11-6 rlwrap curl ca-certificates
+      - name: fix git safe directory
+        run: git config --global --add safe.directory /__w/pebble-home-assistant-ws/pebble-home-assistant-ws
       - name: Set short git commit SHA
         id: vars
         run: |
