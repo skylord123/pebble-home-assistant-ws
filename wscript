@@ -19,6 +19,10 @@ def options(ctx):
 def configure(ctx):
     ctx.load('pebble_sdk')
 
+    ctx.load('aplite_legacy', tooldir='waftools')
+    ctx.load('configure_appinfo', tooldir='waftools')
+    ctx.load('pebble_sdk_version', tooldir='waftools')
+
     ctx.configure_appinfo([ctx.appinfo_bitmap_to_png])
 
     if ctx.env.TARGET_PLATFORMS:
