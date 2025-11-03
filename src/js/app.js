@@ -189,7 +189,7 @@ function load_settings() {
         timeline_token = token;
         Settings.option("timeline_token", token);
     }, function(error) {
-        console.log('Error getting timeline token: ' + error);
+        log_message('Error getting timeline token: ' + error);
     });
 }
 
@@ -4202,7 +4202,6 @@ function showEntityMenu(entity_id) {
 
     // Store selection when navigating to a submenu
     showEntityMenu.on('select', function(e) {
-        console.log(e);
         // Handle on_click function if it exists
         if(typeof e.item.on_click == 'function') {
             e.item.on_click(e);
