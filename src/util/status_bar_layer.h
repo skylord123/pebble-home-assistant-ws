@@ -4,7 +4,8 @@
 
 #include "simply/simply.h"
 
-#ifdef PBL_SDK_2
+// Skip SDK 2 compatibility layer for flint which has a newer SDK
+#if defined(PBL_SDK_2) && !defined(PBL_PLATFORM_FLINT)
 
 typedef struct StatusBarLayer StatusBarLayer;
 struct StatusBarLayer;
