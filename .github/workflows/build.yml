@@ -33,6 +33,8 @@ jobs:
         with:
           ref: ${{ github.event.inputs.git-ref }}
           fetch-depth: 0
+      - name: fix git safe directory
+        run: git config --global --add safe.directory /__w/pebble-home-assistant-ws/pebble-home-assistant-ws
       - name: Set short git commit SHA
         id: vars
         run: |
