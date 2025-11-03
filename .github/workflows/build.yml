@@ -1,6 +1,5 @@
-name: CI
+name: Build Pebble app
 
-# Controls when the workflow will run
 on:
   # Triggers the workflow on push or pull request events for all branches
   push:
@@ -13,18 +12,70 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
+    container:
+      # Pebble SDK needs Python 2.7
+      image: python:2.7.18-buster
+
     steps:
-      - uses: actions/checkout@v2
+      # Sanity checks for debugging, if/when problems occur
+      - name: pyver
+        run: python --version
+      - name: whichpy
+        run: which python
+      - name: whichpy2
+        run: which python2
+      - name: whichpy3
+        run: which python3
 
-      - name: Build the app
-        run: make docker-build
-
-      - name: Upload PBW Artifact
+      - name: Clone Repository (Latest)
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+        if: github.event.inputs.git-ref == ''
+      - name: Clone Repository (Custom Ref)
+        uses: actions/checkout@v4
+        if: github.event.inputs.git-ref != ''
+        with:
+          ref: ${{ github.event.inputs.git-ref }}
+          fetch-depth: 0
+      - name: Set short git commit SHA
+        id: vars
+        run: |
+          calculatedSha=$(git rev-parse --short ${{ github.sha }})
+          echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
+      - uses: actions/setup-node@v4
+      - name: apt-get
+        run: apt-get update; apt-get -qq install -y git zip wget python-pip python2.7-dev libsdl1.2debian libfdt1 libpixman-1-0 nodejs npm libfreetype6 libx11-6 rlwrap
+      - name: virtualenv
+        run: pip install virtualenv
+      - name: get sdk
+        run: if [ ! -d ~/sdk ]; then mkdir ~/sdk && wget -q -O - https://developer.rebble.io/s3.amazonaws.com/assets.getpebble.com/pebble-tool/pebble-sdk-4.5-linux64.tar.bz2 | tar xj --strip-components=1 -C ~/sdk; fi
+      - name: requirements
+        run: if [ ! -d ~/sdk/.env ]; then cd ~/sdk && virtualenv .env && bash -c "source .env/bin/activate && pip install -r requirements.txt && deactivate" && cd -; fi
+      - name: sdk-core
+        run: if [ ! -f ~/sdk/sdk-core-4.3.tar.bz2 ]; then wget https://github.com/aveao/PebbleArchive/raw/master/SDKCores/sdk-core-4.3.tar.bz2 -O ~/sdk/sdk-core-4.3.tar.bz2; fi
+      - name: install sdk
+        run: if [ ! -d ~/.pebble-sdk ]; then mkdir -p ~/.pebble-sdk && touch ~/.pebble-sdk/NO_TRACKING && ~/sdk/bin/pebble sdk install ~/sdk/sdk-core-4.3.tar.bz2; fi
+      - name: fix whatever this git nonsense is
+        run: git config --global --add safe.directory /__w/pebble-home-assistant-ws/pebble-home-assistant-ws;
+      - name: pebble-build
+        run: yes | ~/sdk/bin/pebble build
+      - name: rename-app
+        run: cp build/pebble-home-assistant-ws.pbw pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
+      - name: generate elf bundle
+        run: mkdir elfs && cp build/basalt/pebble-app.elf elfs/pebble-app-basalt.elf && cp build/diorite/pebble-app.elf elfs/pebble-app-diorite.elf && cp build/chalk/pebble-app.elf elfs/pebble-app-chalk.elf && cp build/aplite/pebble-app.elf elfs/pebble-app-aplite.elf && zip -r elfs.zip elfs
+      - name: Upload PBW
         uses: actions/upload-artifact@v4
         with:
-          name: pebble-home-assistant-ws
-          path: ${{ github.workspace }}/build/*.pbw
+          name: pebble-home-assistant-ws PBW
+          path: pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
+          if-no-files-found: error
+      - name: Upload ELFs
+        uses: actions/upload-artifact@v4
+        with:
+          name: Debug ELFs
+          path: elfs.zip
 
       - name: Create Release
         uses: softprops/action-gh-release@v1
@@ -32,4 +83,4 @@ jobs:
         with:
           generate_release_notes: true
           files: |
-            ${{ github.workspace }}/build/*.pbw
+            pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
