@@ -13,15 +13,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-24.04
-    container:
-      # Pebble SDK needs Python 2.7
-      image: debian:bullseye
 
     steps:
-      # Install git first so checkout action works
-      - name: Install git
-        run: apt-get update && apt-get -qq install -y git
-
       - name: Clone Repository (Latest)
         uses: actions/checkout@v4
         with:
@@ -33,40 +26,35 @@ jobs:
         with:
           ref: ${{ github.event.inputs.git-ref }}
           fetch-depth: 0
-      - name: fix git safe directory
-        run: git config --global --add safe.directory /__w/pebble-home-assistant-ws/pebble-home-assistant-ws
       - name: Set short git commit SHA
         id: vars
         run: |
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
       - uses: actions/setup-node@v4
-      - name: apt-get
-        run: apt-get update; apt-get -qq install -y zip wget python2.7 python2.7-dev python-pip-whl python3-pip libsdl1.2debian libfdt1 libpixman-1-0 libfreetype6 libx11-6 rlwrap curl ca-certificates
-      - name: Setup Python 2.7
+      - name: Install dependencies
         run: |
-          curl https://bootstrap.pypa.io/pip/2.7/get-pip.py -o get-pip.py
-          python2.7 get-pip.py
-          ln -sf /usr/bin/python2.7 /usr/bin/python
-          ln -sf /usr/bin/python2.7 /usr/bin/python2
-      - name: virtualenv
-        run: pip install virtualenv
-      - name: get sdk
-        run: if [ ! -d ~/sdk ]; then mkdir ~/sdk && wget -q -O - https://developer.rebble.io/s3.amazonaws.com/assets.getpebble.com/pebble-tool/pebble-sdk-4.5-linux64.tar.bz2 | tar xj --strip-components=1 -C ~/sdk; fi
-      - name: requirements
-        run: if [ ! -d ~/sdk/.env ]; then cd ~/sdk && virtualenv .env && bash -c "source .env/bin/activate && pip install -r requirements.txt && deactivate" && cd -; fi
-      - name: sdk-core
-        run: if [ ! -f ~/sdk/sdk-core-4.3.tar.bz2 ]; then wget https://github.com/aveao/PebbleArchive/raw/master/SDKCores/sdk-core-4.3.tar.bz2 -O ~/sdk/sdk-core-4.3.tar.bz2; fi
-      - name: install sdk
-        run: if [ ! -d ~/.pebble-sdk ]; then mkdir -p ~/.pebble-sdk && touch ~/.pebble-sdk/NO_TRACKING && ~/sdk/bin/pebble sdk install ~/sdk/sdk-core-4.3.tar.bz2; fi
-      - name: fix whatever this git nonsense is
-        run: git config --global --add safe.directory /__w/pebble-home-assistant-ws/pebble-home-assistant-ws;
+          sudo apt-get update
+          sudo apt-get -qq install -y python3 python3-pip python3-venv pipx zip
+      - name: Install pebble tool
+        run: |
+          pipx install pebble-tool
+          pipx ensurepath
+          echo "$HOME/.local/bin" >> $GITHUB_PATH
       - name: pebble-build
-        run: yes | ~/sdk/bin/pebble build
+        run: pebble build
       - name: rename-app
         run: cp build/pebble-home-assistant-ws.pbw pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
       - name: generate elf bundle
-        run: mkdir elfs && cp build/basalt/pebble-app.elf elfs/pebble-app-basalt.elf && cp build/diorite/pebble-app.elf elfs/pebble-app-diorite.elf && cp build/chalk/pebble-app.elf elfs/pebble-app-chalk.elf && cp build/aplite/pebble-app.elf elfs/pebble-app-aplite.elf && zip -r elfs.zip elfs
+        run: |
+          mkdir elfs
+          cp build/basalt/pebble-app.elf elfs/pebble-app-basalt.elf
+          cp build/diorite/pebble-app.elf elfs/pebble-app-diorite.elf
+          cp build/chalk/pebble-app.elf elfs/pebble-app-chalk.elf
+          cp build/aplite/pebble-app.elf elfs/pebble-app-aplite.elf
+          cp build/emery/pebble-app.elf elfs/pebble-app-emery.elf
+          cp build/flint/pebble-app.elf elfs/pebble-app-flint.elf
+          zip -r elfs.zip elfs
       - name: Upload PBW
         uses: actions/upload-artifact@v4
         with:
