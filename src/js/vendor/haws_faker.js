@@ -1282,7 +1282,18 @@ class HAWS {
                 area_id: 'office',
                 device_id: 'device_work_pc',
                 platform: 'mock',
-                name: 'Work PC Active',
+                name: 'Work PC Active Long name goes on and on and on',
+                icon: 'mdi:desktop-tower-monitor',
+                disabled_by: null,
+                hidden_by: null,
+                labels: ['work_pc']
+            },
+            'binary_sensor.work_pc_active2': {
+                entity_id: 'binary_sensor.work_pc_active2',
+                area_id: 'office',
+                device_id: 'device_work_pc',
+                platform: 'mock',
+                name: 'Work PC Active Long name goes on and on and on',
                 icon: 'mdi:desktop-tower-monitor',
                 disabled_by: null,
                 hidden_by: null,
@@ -1677,7 +1688,23 @@ class HAWS {
                 entity_id: 'binary_sensor.work_pc_active',
                 state: 'on',
                 attributes: {
-                    friendly_name: 'Work PC Active',
+                    friendly_name: 'Work PC Active Long name goes on and on and on',
+                    device_class: 'power',
+                    labels: ['work_pc']
+                },
+                last_changed: currentTime,
+                last_updated: currentTime,
+                context: {
+                    id: this._generateRandomId(),
+                    parent_id: null,
+                    user_id: null
+                }
+            },
+            'binary_sensor.work_pc_active2': {
+                entity_id: 'binary_sensor.work_pc_active2',
+                state: 'on',
+                attributes: {
+                    friendly_name: 'Work PC Active Long name goes on and on and on',
                     device_class: 'power',
                     labels: ['work_pc']
                 },

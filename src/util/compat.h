@@ -9,7 +9,8 @@
  */
 
 // Compatibility definitions for aplite on 2.9
-#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK) && !defined(PBL_PLATFORM_DIORITE) && !defined(PBL_PLATFORM_EMERY)
+// Skip these for flint platform which has a newer SDK with these definitions built-in
+#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK) && !defined(PBL_PLATFORM_DIORITE) && !defined(PBL_PLATFORM_EMERY) && !defined(PBL_PLATFORM_FLINT)
 
 #define PBL_SDK_2
 

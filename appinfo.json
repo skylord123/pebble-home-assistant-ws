@@ -177,11 +177,12 @@
     "basalt",
     "chalk",
     "diorite",
-    "emery"
+    "emery",
+    "flint"
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
-  "versionLabel": "0.7",
+  "versionLabel": "0.9",
   "watchapp": {
     "hiddenApp": false,
     "watchface": false

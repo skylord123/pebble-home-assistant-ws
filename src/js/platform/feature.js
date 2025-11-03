@@ -26,6 +26,8 @@ Feature.blackAndWhite = Feature.makePlatformTest({
   chalk: false,
   diorite: true,
   emery: false,
+  flint: true,  // Core 2 Duo (Pebble 2 Duo)
+  unknown: false,  // Assume color by default for unknown platforms
 });
 
 Feature.color = Feature.makePlatformTest({
@@ -34,6 +36,8 @@ Feature.color = Feature.makePlatformTest({
   chalk: true,
   diorite: false,
   emery: true,
+  flint: false,  // Core 2 Duo (Pebble 2 Duo)
+  unknown: true,  // Assume color by default for unknown platforms
 });
 
 Feature.rectangle = Feature.makePlatformTest({
@@ -42,6 +46,8 @@ Feature.rectangle = Feature.makePlatformTest({
   chalk: false,
   diorite: true,
   emery: true,
+  flint: true,  // Core 2 Duo (Pebble 2 Duo)
+  unknown: true,  // Assume rectangle by default for unknown platforms
 });
 
 Feature.round = Feature.makePlatformTest({
@@ -50,6 +56,8 @@ Feature.round = Feature.makePlatformTest({
   chalk: true,
   diorite: false,
   emery: false,
+  flint: false,  // Core 2 Duo (Pebble 2 Duo)
+  unknown: false,  // Assume rectangle by default for unknown platforms
 });
 
 Feature.microphone = Feature.makePlatformTest({
@@ -58,6 +66,8 @@ Feature.microphone = Feature.makePlatformTest({
   chalk: true,
   diorite: true,
   emery: true,
+  flint: true,  // Core 2 Duo (Pebble 2 Duo) - has dual mics with ENC
+  unknown: true,  // Assume microphone support for unknown platforms
 });
 
 Feature.resolution = Feature.makePlatformTest({
@@ -66,6 +76,8 @@ Feature.resolution = Feature.makePlatformTest({
   chalk: new Vector2(180, 180),
   diorite: new Vector2(144, 168),
   emery: new Vector2(200, 228),
+  flint: new Vector2(144, 168),  // Core 2 Duo (Pebble 2 Duo)
+  unknown: new Vector2(144, 168),  // Safe default for unknown platforms
 });
 
 Feature.actionBarWidth = function() {

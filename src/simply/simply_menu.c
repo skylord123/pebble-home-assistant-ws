@@ -25,6 +25,14 @@
 
 #define SPINNER_MS 66
 
+#if !defined(PBL_PLATFORM_APLITE)
+// Scrolling configuration
+#define SCROLL_WAIT_MS 1000  // Wait X ms before starting to scroll
+#define SCROLL_STEP_MS 100   // Scroll every X ms
+#define SCROLL_STEP_PX 8     // Scroll X pixels at a time
+#define SCROLL_IDLE_TIMEOUT_MS 60000  // Stop scrolling after 60 seconds of inactivity (configurable)
+#endif
+
 typedef Packet MenuClearPacket;
 
 typedef struct MenuClearSectionPacket MenuClearSectionPacket;
@@ -106,6 +114,11 @@ static void simply_menu_set_selection(SimplyMenu *self, MenuIndex menu_index, Me
 
 static void refresh_spinner_timer(SimplyMenu *self);
 
+#if !defined(PBL_PLATFORM_APLITE)
+// Forward declarations for scroll timer callbacks
+static void scroll_timer_callback(void *data);
+static void reset_scroll_callback(void *data);
+#endif
 
 static int64_t prv_get_milliseconds(void) {
   time_t now_s;
@@ -319,6 +332,220 @@ static void refresh_spinner_timer(SimplyMenu *self) {
   }
 }
 
+#if !defined(PBL_PLATFORM_APLITE)
+static void scroll_timer_callback(void *data) {
+  SimplyMenu *self = data;
+  self->scroll_timer = NULL;
+
+  // Only scroll if needed (will be set by draw callback)
+  if (!self->needs_scrolling) {
+    return;
+  }
+
+  if (!self->scrolling_active) {
+    // First time - start scrolling
+    self->scrolling_active = true;
+    self->scroll_offset = SCROLL_STEP_PX;
+  } else {
+    // Continue scrolling
+    self->scroll_offset += SCROLL_STEP_PX;
+
+    // Check if we've scrolled past the end
+    if (self->scroll_offset >= self->max_scroll_offset) {
+      // Wait a bit at the end, then reset
+      self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, reset_scroll_callback, self);
+      prv_mark_dirty(self);
+      return;
+    }
+  }
+
+  // Mark dirty to redraw
+  prv_mark_dirty(self);
+
+  // Schedule next scroll step
+  self->scroll_timer = app_timer_register(SCROLL_STEP_MS, scroll_timer_callback, self);
+}
+
+static void reset_scroll_callback(void *data) {
+  SimplyMenu *self = data;
+  self->scroll_timer = NULL;
+
+  // Reset scroll position
+  self->scroll_offset = 0;
+  self->scrolling_active = false;
+
+  // Mark dirty to redraw
+  prv_mark_dirty(self);
+
+  // Check if idle timeout has been exceeded
+  time_t current_time = time(NULL);
+  time_t elapsed_ms = (current_time - self->last_input_time) * 1000;
+
+  if (elapsed_ms >= SCROLL_IDLE_TIMEOUT_MS) {
+    // Idle timeout exceeded - don't restart scrolling
+    self->scroll_idle = true;
+    return;
+  }
+
+  // Restart scrolling after the initial delay
+  self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback, self);
+}
+
+#if defined(PBL_ROUND)
+// Forward declarations for round display scroll callbacks
+static void reset_scroll_callback_round(void *data);
+
+// For round displays: handle independent scrolling of title and subtitle
+static void scroll_timer_callback_round(void *data) {
+  SimplyMenu *self = data;
+  self->scroll_timer = NULL;
+
+  // Check if either title or subtitle needs scrolling
+  if (!self->title_needs_scroll && !self->subtitle_needs_scroll) {
+    return;
+  }
+
+  bool title_finished = false;
+  bool subtitle_finished = false;
+
+  // Handle title scrolling
+  if (self->title_needs_scroll) {
+    if (!self->title_scrolling_active) {
+      self->title_scrolling_active = true;
+      self->title_scroll_offset = SCROLL_STEP_PX;
+    } else {
+      self->title_scroll_offset += SCROLL_STEP_PX;
+      if (self->title_scroll_offset >= self->title_max_scroll_offset) {
+        title_finished = true;
+      }
+    }
+  }
+
+  // Handle subtitle scrolling
+  if (self->subtitle_needs_scroll) {
+    if (!self->subtitle_scrolling_active) {
+      self->subtitle_scrolling_active = true;
+      self->subtitle_scroll_offset = SCROLL_STEP_PX;
+    } else {
+      self->subtitle_scroll_offset += SCROLL_STEP_PX;
+      if (self->subtitle_scroll_offset >= self->subtitle_max_scroll_offset) {
+        subtitle_finished = true;
+      }
+    }
+  }
+
+  // Check if all elements that need scrolling are finished
+  bool all_finished = true;
+  if (self->title_needs_scroll && !title_finished) {
+    all_finished = false;
+  }
+  if (self->subtitle_needs_scroll && !subtitle_finished) {
+    all_finished = false;
+  }
+
+  // If all elements that need scrolling are finished, wait and reset
+  if (all_finished) {
+    prv_mark_dirty(self);
+    self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, reset_scroll_callback_round, self);
+    return;
+  }
+
+  // Mark dirty to redraw
+  prv_mark_dirty(self);
+
+  // Schedule next scroll step
+  self->scroll_timer = app_timer_register(SCROLL_STEP_MS, scroll_timer_callback_round, self);
+}
+
+static void reset_scroll_callback_round(void *data) {
+  SimplyMenu *self = data;
+  self->scroll_timer = NULL;
+
+  // Reset scroll positions
+  self->title_scroll_offset = 0;
+  self->title_scrolling_active = false;
+  self->subtitle_scroll_offset = 0;
+  self->subtitle_scrolling_active = false;
+
+  // Mark dirty to redraw
+  prv_mark_dirty(self);
+
+  // Check if idle timeout has been exceeded
+  time_t current_time = time(NULL);
+  time_t elapsed_ms = (current_time - self->last_input_time) * 1000;
+
+  if (elapsed_ms >= SCROLL_IDLE_TIMEOUT_MS) {
+    // Idle timeout exceeded - don't restart scrolling
+    self->scroll_idle = true;
+    return;
+  }
+
+  // Restart scrolling after the initial delay
+  self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback_round, self);
+}
+#endif
+
+static void start_scroll_timer(SimplyMenu *self, MenuIndex index) {
+  // Cancel any existing scroll timer
+  if (self->scroll_timer) {
+    app_timer_cancel(self->scroll_timer);
+    self->scroll_timer = NULL;
+  }
+
+  // Reset scroll state
+  self->scroll_index = index;
+  self->scroll_offset = 0;
+  self->max_scroll_offset = 0;
+  self->scrolling_active = false;
+  self->needs_scrolling = false;
+
+#if defined(PBL_ROUND)
+  // Reset round display independent scroll states
+  self->title_scroll_offset = 0;
+  self->title_max_scroll_offset = 0;
+  self->title_needs_scroll = false;
+  self->title_scrolling_active = false;
+  self->subtitle_scroll_offset = 0;
+  self->subtitle_max_scroll_offset = 0;
+  self->subtitle_needs_scroll = false;
+  self->subtitle_scrolling_active = false;
+#endif
+
+  // Mark dirty to redraw without scroll
+  prv_mark_dirty(self);
+
+  // Start timer to begin scrolling after delay
+  // The draw callback will determine if scrolling is actually needed
+#if defined(PBL_ROUND)
+  self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback_round, self);
+#else
+  self->scroll_timer = app_timer_register(SCROLL_WAIT_MS, scroll_timer_callback, self);
+#endif
+}
+
+static void stop_scroll_timer(SimplyMenu *self) {
+  if (self->scroll_timer) {
+    app_timer_cancel(self->scroll_timer);
+    self->scroll_timer = NULL;
+  }
+  self->scroll_offset = 0;
+  self->max_scroll_offset = 0;
+  self->scrolling_active = false;
+  self->needs_scrolling = false;
+
+#if defined(PBL_ROUND)
+  self->title_scroll_offset = 0;
+  self->title_max_scroll_offset = 0;
+  self->title_needs_scroll = false;
+  self->title_scrolling_active = false;
+  self->subtitle_scroll_offset = 0;
+  self->subtitle_max_scroll_offset = 0;
+  self->subtitle_needs_scroll = false;
+  self->subtitle_scrolling_active = false;
+#endif
+}
+#endif
+
 static uint16_t prv_menu_get_num_sections_callback(MenuLayer *menu_layer, void *data) {
   SimplyMenu *self = data;
   return self->menu_layer.num_sections;
@@ -349,6 +576,23 @@ ROUND_USAGE static int16_t prv_menu_get_cell_height_callback(MenuLayer *menu_lay
     return MENU_CELL_BASIC_CELL_HEIGHT;
   }
 }
+
+#if !defined(PBL_PLATFORM_APLITE)
+static void prv_menu_selection_changed_callback(MenuLayer *menu_layer, MenuIndex new_index,
+                                                 MenuIndex old_index, void *data) {
+  SimplyMenu *self = data;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+  // Start scroll timer for the new selection
+  start_scroll_timer(self, new_index);
+  // Only send selection event if the window is still loaded and visible
+  // This prevents crashes when the menu is being torn down
+  if (self->window.window && window_is_loaded(self->window.window)) {
+    prv_send_menu_selection(self);
+  }
+}
+#endif
 
 static void prv_menu_draw_header_callback(GContext *ctx, const Layer *cell_layer,
                                           uint16_t section_index, void *data) {
@@ -438,7 +682,11 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   list1_remove(&self->menu_layer.items, &item->node);
   list1_prepend(&self->menu_layer.items, &item->node);
 
-  SimplyImage *image = simply_res_get_image(self->window.simply->res, item->icon);
+  // Disable icons on APLITE platform to save memory
+  SimplyImage *image = NULL;
+#if !defined(PBL_PLATFORM_APLITE) // disable icons on APLITE as it causes crash
+  image = simply_res_get_image(self->window.simply->res, item->icon);
+#endif
   GColor8 *palette = NULL;
 
   if (image && image->is_palette_black_and_white) {
@@ -449,7 +697,262 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   }
 
   graphics_context_set_alpha_blended(ctx, true);
+
+#if !defined(PBL_PLATFORM_APLITE)
+  // Check if this is the selected item
+  MenuIndex current_selection = menu_layer_get_selected_index(self->menu_layer.menu_layer);
+  const bool is_selected = (cell_index->section == current_selection.section &&
+                           cell_index->row == current_selection.row);
+
+  // If this is selected but scroll timer hasn't been started yet, start it
+  // Don't start if we're in idle state (timeout exceeded)
+  if (is_selected && !self->scroll_timer && !self->scrolling_active && !self->scroll_idle) {
+    start_scroll_timer(self, current_selection);
+  }
+
+  // Measure text width to determine if scrolling is needed
+  if (is_selected) {
+    GRect bounds = layer_get_bounds(cell_layer);
+    int16_t available_width = bounds.size.w;
+
+#if !defined(PBL_ROUND)
+    // RECTANGULAR DISPLAY: Account for icon width
+    if (image && image->bitmap) {
+      GRect icon_rect = gbitmap_get_bounds(image->bitmap);
+      available_width -= (icon_rect.size.w + 8); // icon width + margins
+    }
+    available_width -= 10; // text margins
+#else
+    // ROUND DISPLAY: Account for icon height and margins
+    // Icon is centered at top, text is below it
+    available_width -= 20; // left/right margins for centered text
+#endif
+
+    // Measure title text
+    // For round displays, use the system theme fonts which are:
+    // - Title: GOTHIC_24_BOLD (Medium content size)
+    // - Subtitle: GOTHIC_18 (Medium content size)
+    const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    GSize title_size = graphics_text_layout_get_content_size(
+        item->title, title_font,
+        GRect(0, 0, 1000, 100),
+        GTextOverflowModeTrailingEllipsis,
+        GTextAlignmentCenter);
+
+    // Check if title needs scrolling
+    bool title_needs_scroll = title_size.w > available_width;
+
+    // Measure subtitle if present
+    bool subtitle_needs_scroll = false;
+    int16_t subtitle_width = 0;
+    if (item->subtitle) {
+      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      GSize subtitle_size = graphics_text_layout_get_content_size(
+          item->subtitle, subtitle_font,
+          GRect(0, 0, 1000, 100),
+          GTextOverflowModeTrailingEllipsis,
+          GTextAlignmentCenter);
+      subtitle_width = subtitle_size.w;
+      subtitle_needs_scroll = subtitle_size.w > available_width;
+    }
+
+    // Set needs_scrolling flag and calculate max offset
+#if defined(PBL_ROUND)
+    // For round displays: track independent scroll needs for title and subtitle
+    self->title_needs_scroll = title_needs_scroll;
+    self->subtitle_needs_scroll = subtitle_needs_scroll;
+
+    // Cache font heights to avoid expensive measurements during drawing
+    const GFont title_font_for_height = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    GSize title_height_size = graphics_text_layout_get_content_size(
+        "A", title_font_for_height, GRect(0, 0, 100, 100),
+        GTextOverflowModeFill, GTextAlignmentLeft);
+    self->title_height = title_height_size.h;
+
+    if (item->subtitle) {
+      const GFont subtitle_font_for_height = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      GSize subtitle_height_size = graphics_text_layout_get_content_size(
+          "A", subtitle_font_for_height, GRect(0, 0, 100, 100),
+          GTextOverflowModeFill, GTextAlignmentLeft);
+      self->subtitle_height = subtitle_height_size.h;
+    } else {
+      self->subtitle_height = 0;
+    }
+
+    if (title_needs_scroll) {
+      self->title_max_scroll_offset = title_size.w - available_width + 40;
+    } else {
+      self->title_max_scroll_offset = 0;
+    }
+
+    if (subtitle_needs_scroll) {
+      self->subtitle_max_scroll_offset = subtitle_width - available_width + 40;
+    } else {
+      self->subtitle_max_scroll_offset = 0;
+    }
+
+    self->needs_scrolling = title_needs_scroll || subtitle_needs_scroll;
+#else
+    // For rectangular displays: use combined scroll offset
+    self->needs_scrolling = title_needs_scroll || subtitle_needs_scroll;
+    if (self->needs_scrolling) {
+      // Calculate how far we need to scroll to show all text
+      // Add extra padding (40px) to ensure the last word is fully visible
+      int16_t max_title_scroll = title_needs_scroll ? (title_size.w - available_width + 40) : 0;
+      int16_t max_subtitle_scroll = subtitle_needs_scroll ? (subtitle_width - available_width + 40) : 0;
+      self->max_scroll_offset = max_title_scroll > max_subtitle_scroll ?
+          max_title_scroll : max_subtitle_scroll;
+    } else {
+      self->max_scroll_offset = 0;
+    }
+#endif
+  }
+
+  // Use custom drawing when scrolling is needed (even if scroll_offset is 0, we need to draw with the correct fonts)
+  if (is_selected && self->needs_scrolling) {
+    // Manual drawing with scroll offset
+    GRect bounds = layer_get_bounds(cell_layer);
+    const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
+
+    // Background - highlighted items have WHITE background
+    graphics_context_set_fill_color(ctx, is_highlighted ? GColorWhite : GColorBlack);
+    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+
+#if !defined(PBL_ROUND)
+    // ===== RECTANGULAR DISPLAY: Scroll icon and text together =====
+    int16_t text_x = 4;
+    if (image && image->bitmap) {
+      GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
+      graphics_context_set_compositing_mode(ctx, GCompOpSet);
+      // Scroll the icon along with the text
+      graphics_draw_bitmap_in_rect(ctx, image->bitmap,
+                                   GRect(4 - self->scroll_offset, (bounds.size.h - icon_bounds.size.h) / 2,
+                                        icon_bounds.size.w, icon_bounds.size.h));
+      text_x = 4 + icon_bounds.size.w + 4;
+    }
+
+    graphics_context_set_text_color(ctx, is_highlighted ? GColorBlack : GColorWhite);
+
+    // Text with scroll offset
+    const int16_t scroll_x = text_x - self->scroll_offset;
+    const int16_t text_w = bounds.size.w - text_x + self->scroll_offset;
+
+    if (item->subtitle) {
+      // Two lines - move UP 4 more pixels
+      graphics_draw_text(ctx, item->title,
+                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                        GRect(scroll_x, -4, text_w, 24),
+                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+      graphics_draw_text(ctx, item->subtitle,
+                        fonts_get_system_font(FONT_KEY_GOTHIC_18),
+                        GRect(scroll_x, 20, text_w, 18),
+                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+    } else {
+      // Single line - move DOWN, use vertical alignment
+      graphics_draw_text(ctx, item->title,
+                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
+                        GRect(scroll_x, 4, text_w, bounds.size.h),
+                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+    }
+
+#else
+    // ===== ROUND DISPLAY: Keep icon static, scroll text independently =====
+    graphics_context_set_text_color(ctx, is_highlighted ? GColorBlack : GColorWhite);
+
+    // Draw icon centered at top (static, no scroll)
+    int16_t icon_y = 2;
+    if (image && image->bitmap) {
+      GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
+      graphics_context_set_compositing_mode(ctx, GCompOpSet);
+      int16_t icon_x = (bounds.size.w - icon_bounds.size.w) / 2;
+      graphics_draw_bitmap_in_rect(ctx, image->bitmap,
+                                   GRect(icon_x, icon_y, icon_bounds.size.w, icon_bounds.size.h));
+      icon_y += icon_bounds.size.h;
+    }
+
+    // For round display scrolling, we need to draw text in a much wider rect
+    // so that when we apply scroll offset, the text moves through the visible area
+    const int16_t text_rect_width = 2000; // very wide rect for scrolling
+    const int16_t text_center_x = bounds.size.w / 2;
+    const int16_t visible_width = bounds.size.w;
+    const int16_t left_margin = 8; // Small left margin so text doesn't start cut off
+
+    if (item->subtitle) {
+      // Two lines of text
+      // Use system theme fonts for round displays (Medium content size):
+      // - Title: GOTHIC_24_BOLD
+      // - Subtitle: GOTHIC_18
+      const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+
+      // Use cached font heights (measured once during measurement phase, not every frame)
+      const int16_t title_height = self->title_height;
+      const int16_t subtitle_height = self->subtitle_height;
+      const int16_t total_text_height = title_height + subtitle_height + 2;
+      const int16_t text_start_y = icon_y + (bounds.size.h - icon_y - total_text_height) / 2;
+
+      // Draw title - either centered (if fits) or scrolling (if too long)
+      if (self->title_needs_scroll) {
+        // Title is too long - scroll it with left margin
+        graphics_draw_text(ctx, item->title,
+                          title_font,
+                          GRect(bounds.origin.x + left_margin - self->title_scroll_offset, text_start_y, text_rect_width, title_height),
+                          GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+      } else {
+        // Title fits - draw it centered
+        graphics_draw_text(ctx, item->title,
+                          title_font,
+                          GRect(bounds.origin.x, text_start_y, bounds.size.w, title_height),
+                          GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+      }
+
+      // Draw subtitle - either centered (if fits) or scrolling (if too long)
+      if (self->subtitle_needs_scroll) {
+        // Subtitle is too long - scroll it with left margin
+        graphics_draw_text(ctx, item->subtitle,
+                          subtitle_font,
+                          GRect(bounds.origin.x + left_margin - self->subtitle_scroll_offset, text_start_y + title_height + 2, text_rect_width, subtitle_height),
+                          GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+      } else {
+        // Subtitle fits - draw it centered
+        graphics_draw_text(ctx, item->subtitle,
+                          subtitle_font,
+                          GRect(bounds.origin.x, text_start_y + title_height + 2, bounds.size.w, subtitle_height),
+                          GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+      }
+    } else {
+      // Single line of text
+      const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+
+      // Use cached font height (measured once during measurement phase, not every frame)
+      const int16_t text_height = self->title_height;
+      const int16_t text_start_y = icon_y + (bounds.size.h - icon_y - text_height) / 2;
+
+      // Draw title - either centered (if fits) or scrolling (if too long)
+      if (self->title_needs_scroll) {
+        // Title is too long - scroll it with left margin
+        graphics_draw_text(ctx, item->title,
+                          title_font,
+                          GRect(bounds.origin.x + left_margin - self->title_scroll_offset, text_start_y, text_rect_width, text_height),
+                          GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+      } else {
+        // Title fits - draw it centered
+        graphics_draw_text(ctx, item->title,
+                          title_font,
+                          GRect(bounds.origin.x, text_start_y, bounds.size.w, text_height),
+                          GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+      }
+    }
+#endif
+  } else {
+    // Standard drawing - no scrolling
+    menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
+  }
+
+#else
+  // On aplite, always use standard drawing (no scrolling)
   menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
+#endif
 
   if (palette) {
     gbitmap_set_palette(image->bitmap, palette, false);
@@ -458,17 +961,35 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
 static void prv_menu_select_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
                                            void *data) {
+#if !defined(PBL_PLATFORM_APLITE)
+  SimplyMenu *self = data;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
   prv_send_menu_select_click(cell_index->section, cell_index->row);
 }
 
 static void prv_menu_select_long_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
                                                 void *data) {
+#if !defined(PBL_PLATFORM_APLITE)
+  SimplyMenu *self = data;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
   prv_send_menu_select_long_click(cell_index->section, cell_index->row);
 }
 
 static void prv_single_click_handler(ClickRecognizerRef recognizer, void *context) {
   Window *base_window = layer_get_window(context);
   SimplyWindow *window = window_get_user_data(base_window);
+#if !defined(PBL_PLATFORM_APLITE)
+  SimplyMenu *self = (SimplyMenu *)window;
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
   simply_window_single_click_handler(recognizer, window);
 }
 
@@ -502,18 +1023,50 @@ static void prv_menu_window_load(Window *window) {
     .draw_row = prv_menu_draw_row_callback,
     .select_click = prv_menu_select_click_callback,
     .select_long_click = prv_menu_select_long_click_callback,
+#if !defined(PBL_PLATFORM_APLITE)
+    .selection_changed = prv_menu_selection_changed_callback,
+#endif
   });
 
   menu_layer_set_click_config_provider_onto_window(menu_layer, prv_click_config_provider, window);
 }
 
+#if !defined(PBL_PLATFORM_APLITE)
+static void initial_scroll_timer_callback(void *data) {
+  SimplyMenu *self = data;
+  // Start scroll timer for the initially selected item
+  if (self->menu_layer.menu_layer) {
+    MenuIndex selected = menu_layer_get_selected_index(self->menu_layer.menu_layer);
+    start_scroll_timer(self, selected);
+  }
+}
+#endif
+
 static void prv_menu_window_appear(Window *window) {
   SimplyMenu *self = window_get_user_data(window);
   simply_window_appear(&self->window);
+
+#if !defined(PBL_PLATFORM_APLITE)
+  // Initialize last input time when menu appears
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+
+  // Stop any existing scroll timer first
+  stop_scroll_timer(self);
+
+  // Trigger initial scroll after a short delay to ensure menu is loaded
+  app_timer_register(100, initial_scroll_timer_callback, self);
+#endif
 }
 
 static void prv_menu_window_disappear(Window *window) {
   SimplyMenu *self = window_get_user_data(window);
+
+#if !defined(PBL_PLATFORM_APLITE)
+  // Stop scrolling when window disappears
+  stop_scroll_timer(self);
+#endif
+
   if (simply_window_disappear(&self->window)) {
     simply_res_clear(self->window.simply->res);
     simply_menu_clear(self);
@@ -522,6 +1075,11 @@ static void prv_menu_window_disappear(Window *window) {
 
 static void prv_menu_window_unload(Window *window) {
   SimplyMenu *self = window_get_user_data(window);
+
+#if !defined(PBL_PLATFORM_APLITE)
+  // Clean up scroll timer
+  stop_scroll_timer(self);
+#endif
 
   menu_layer_destroy(self->menu_layer.menu_layer);
   self->menu_layer.menu_layer = NULL;
@@ -660,6 +1218,28 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .window.status_bar_insets_bottom = true,
 #endif
     .menu_layer.num_sections = 1,
+#if !defined(PBL_PLATFORM_APLITE)
+    .scroll_timer = NULL,
+    .scroll_offset = 0,
+    .max_scroll_offset = 0,
+    .scrolling_active = false,
+    .needs_scrolling = false,
+    .scroll_index = { .section = 0, .row = 0 },
+    .last_input_time = 0,
+    .scroll_idle = false,
+#if defined(PBL_ROUND)
+    .title_scroll_offset = 0,
+    .title_max_scroll_offset = 0,
+    .title_needs_scroll = false,
+    .title_scrolling_active = false,
+    .subtitle_scroll_offset = 0,
+    .subtitle_max_scroll_offset = 0,
+    .subtitle_needs_scroll = false,
+    .subtitle_scrolling_active = false,
+    .title_height = 0,
+    .subtitle_height = 0,
+#endif
+#endif
   };
 
   static const WindowHandlers s_window_handlers = {

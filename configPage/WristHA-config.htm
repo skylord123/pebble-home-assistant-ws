@@ -42,6 +42,18 @@
 			margin-bottom: 10px;
 			cursor: text;
 		}
+
+		#toggle-token-visibility {
+			border-left: 0;
+		}
+
+		#toggle-token-visibility:hover {
+			background-color: #e9ecef;
+		}
+
+		#ha-token {
+			border-right: 0;
+		}
 	</style>
 </head>
 <body>
@@ -75,7 +87,12 @@
 							</div>
 							<div class="form-group col-12 mt-2">
 								<label for="ha-token">Access Token</label>
-								<input type="password" class="form-control" id="ha-token" placeholder="">
+								<div class="input-group">
+									<input type="password" class="form-control" id="ha-token" placeholder="">
+									<button class="btn btn-outline-secondary" type="button" id="toggle-token-visibility">
+										<i class="fa fa-eye" id="toggle-token-icon"></i>
+									</button>
+								</div>
 								<small class="form-text text-muted">You can obtain a token ("Long-Lived Access Token") by logging into the frontend using a web browser, and going to your profile.</small>
 							</div>
 						</div>
@@ -146,6 +163,7 @@
 										<option value="favorites">Favorites</option>
 										<option value="areas">Areas</option>
 										<option value="labels">Labels</option>
+										<option value="todo_lists">To-Do Lists</option>
 									</select>
 									<small class="form-text text-muted">Select what screen to show when app is launched via Quick Launch</small>
 								</div>
@@ -570,6 +588,21 @@
 				conditionalSettings = $('#conditional-settings'),
 				quickLaunchBehavior = $('#ha-quick-launch-behavior');
 
+		// Toggle token visibility
+		$('#toggle-token-visibility').click(function(e) {
+			e.preventDefault();
+			const tokenInput = $('#ha-token');
+			const toggleIcon = $('#toggle-token-icon');
+
+			if (tokenInput.attr('type') === 'password') {
+				tokenInput.attr('type', 'text');
+				toggleIcon.removeClass('fa-eye').addClass('fa-eye-slash');
+			} else {
+				tokenInput.attr('type', 'password');
+				toggleIcon.removeClass('fa-eye-slash').addClass('fa-eye');
+			}
+		});
+
 		if(window.applicationCache && window.applicationCache.addEventListener) {
 			window.applicationCache.addEventListener('updateready', onUpdateReady);
 
@@ -931,9 +964,27 @@
 			}
 
 			console.log(JSON.stringify(watch_config));
-			let location = "pebblejs://close#" + encodeURIComponent(JSON.stringify(watch_config));
+
+			// Get return_to parameter if it exists, otherwise use default close URL
+			const urlParams = new URLSearchParams(window.location.search);
+			const returnTo = urlParams.get('return_to');
+
+			// Build the return URL with config data
+			const configData = encodeURIComponent(JSON.stringify(watch_config));
+			let location;
+
+			if (returnTo) {
+				// If return_to is specified, use it as the base URL
+				// Append the data as a hash fragment (Pebble expects this format)
+				const decodedReturnTo = decodeURIComponent(returnTo);
+				location = decodedReturnTo + configData;
+			} else {
+				// Default behavior: use pebblejs://close
+				location = "pebblejs://close#" + configData;
+			}
+
 			localStorage.setItem("watch_config", JSON.stringify(watch_config));
-			console.log(location);
+			console.log("Navigating to:", location);
 			window.location.href = location;
 		});
 	});

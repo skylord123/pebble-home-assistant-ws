@@ -4,13 +4,15 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-var Vibe = require('ui/vibe'); //needed for vibration to work
+const Vibe = require('ui/vibe'); //needed for vibration to work
+const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
 
-const appVersion = '0.8.1',
-    confVersion = '0.8.0',
+const appVersion = '0.9', // displays in loading screen
+    confVersion = '0.9', // version of config page
     debugMode = false,
     debugHAWS = false,
-    hawsFaker = false,
+    hawsFaker = isEmulator
+        && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
@@ -46,7 +48,8 @@ const appVersion = '0.8.1',
     ucwords = function( str ){
         return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
     }
-colour = {
+const Platform = require("./platform");
+const colour = {
     highlight: Feature.color("#00AAFF", "#000000"),
     highlight_text: Feature.color("black", "white")
 };
@@ -186,7 +189,7 @@ function load_settings() {
         timeline_token = token;
         Settings.option("timeline_token", token);
     }, function(error) {
-        console.log('Error getting timeline token: ' + error);
+        log_message('Error getting timeline token: ' + error);
     });
 }
 
@@ -275,6 +278,13 @@ function showMainMenu() {
                 }
             });
             mainMenu.item(0, i++, {
+                title: "To-Do Lists",
+                // subtitle: thisDevice.attributes[arr[i]],
+                on_click: function(e) {
+                    showToDoLists();
+                }
+            });
+            mainMenu.item(0, i++, {
                 title: "All Entities",
                 // subtitle: thisDevice.attributes[arr[i]],
                 on_click: function(e) {
@@ -297,6 +307,11 @@ function showMainMenu() {
                     showSettingsMenu();
                 }
             });
+
+            // Restore the previously selected index after items are populated
+            if (menuSelections.mainMenu > 0 && menuSelections.mainMenu < mainMenu.items(0).length) {
+                mainMenu.selection(0, menuSelections.mainMenu);
+            }
         });
 
         // menu item pressed, if it has an event fn call it
@@ -310,16 +325,6 @@ function showMainMenu() {
             } else {
                 log_message("No click function for main menu item " + e.title);
             }
-        });
-
-        // Restore selection when showing the menu
-        mainMenu.on('show', function() {
-            // Restore the previously selected index after a short delay
-            setTimeout(function() {
-                if (menuSelections.mainMenu > 0 && menuSelections.mainMenu < mainMenu.items(0).length) {
-                    mainMenu.selection(0, menuSelections.mainMenu);
-                }
-            }, 100);
         });
 
         mainMenu.show();
@@ -443,6 +448,7 @@ function showDomainFilterSettings() {
 
     // Handle long press to remove a domain
     domainFilterMenu.on('longSelect', function(e) {
+        Vibe.vibrate('short');
         if (e.item.is_domain) {
             const domain = e.item.domain;
             const index = ignore_domains.indexOf(domain);
@@ -695,37 +701,45 @@ function showQuickLaunchSettings() {
         // Clear the menu
         quickLaunchMenu.items(0, []);
 
+        let itemIndex = 0;
+
         // Add options
-        quickLaunchMenu.item(0, 0, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Main Menu",
             subtitle: quick_launch_behavior === 'main_menu' ? "Current" : "",
             value: 'main_menu'
         });
 
         if ( voice_enabled ) {
-            quickLaunchMenu.item(0, 1, {
+            quickLaunchMenu.item(0, itemIndex++, {
                 title: "Assistant",
                 subtitle: quick_launch_behavior === 'assistant' ? "Current" : "",
                 value: 'assistant'
             });
         }
 
-        quickLaunchMenu.item(0, 2, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Favorites",
             subtitle: quick_launch_behavior === 'favorites' ? "Current" : "",
             value: 'favorites'
         });
 
-        quickLaunchMenu.item(0, 3, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Areas",
             subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
             value: 'areas'
         });
 
-        quickLaunchMenu.item(0, 4, {
+        quickLaunchMenu.item(0, itemIndex++, {
             title: "Labels",
             subtitle: quick_launch_behavior === 'labels' ? "Current" : "",
             value: 'labels'
+        });
+
+        quickLaunchMenu.item(0, itemIndex++, {
+            title: "To-Do Lists",
+            subtitle: quick_launch_behavior === 'todo_lists' ? "Current" : "",
+            value: 'todo_lists'
         });
     });
 
@@ -737,7 +751,8 @@ function showQuickLaunchSettings() {
         Settings.option('quick_launch_behavior', quick_launch_behavior);
 
         // Update menu items to show current selection
-        for (let i = 0; i < 5; i++) {
+        const items = quickLaunchMenu.items(0);
+        for (let i = 0; i < items.length; i++) {
             const item = quickLaunchMenu.item(0, i);
             quickLaunchMenu.item(0, i, {
                 title: item.title,
@@ -1558,7 +1573,9 @@ function showAreaMenu() {
                 if (!a.isUnassigned && b.isUnassigned) return -1;
 
                 // Otherwise, sort alphabetically by display_name
-                return a.display_name.localeCompare(b.display_name);
+                if (a.display_name < b.display_name) return -1;
+                if (a.display_name > b.display_name) return 1;
+                return 0;
             });
 
             // Add items to menu
@@ -1616,7 +1633,11 @@ function showLabelMenu() {
         // Sort labels by name
         let sortedLabels = Object.values(label_registry_cache)
             .filter(label => label && label.name) // Ensure valid labels
-            .sort((a, b) => a.name.localeCompare(b.name));
+            .sort((a, b) => {
+                if (a.name < b.name) return -1;
+                if (a.name > b.name) return 1;
+                return 0;
+            });
 
         if (sortedLabels.length === 0) {
             labelMenu.item(0, 0, {
@@ -1893,7 +1914,7 @@ function showMediaPlayerEntity(entity_id) {
                 "entity_id": entity_id,
             },
         }, function(data) {
-            console.log("TEST", JSON.stringify(data) );
+            // console.log("received media_player subscription event", JSON.stringify(data) );
             updateMediaWindow(data.event.variables.trigger.to_state);
         }, function(error) {
             log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
@@ -3171,9 +3192,11 @@ function showLightEntity(entity_id) {
                     {},
                     { entity_id: updatedData.entity_id },
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(`Toggled light: ${updatedData.entity_id}`);
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message(`Error toggling light: ${error}`);
                     }
                 );
@@ -3353,10 +3376,12 @@ function showLightEntity(entity_id) {
                 { brightness: brightness },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Set brightness to ${current_brightness}%`);
                     brightnessWindow.hide();
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error setting brightness: ${error}`);
                 }
             );
@@ -3524,10 +3549,12 @@ function showLightEntity(entity_id) {
                 { color_temp_kelvin: current_temp },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Set color temperature to ${current_temp}K`);
                     tempWindow.hide();
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error setting color temperature: ${error}`);
                 }
             );
@@ -3713,10 +3740,12 @@ function showLightEntity(entity_id) {
                         { rgb_color: selectedColor },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Set color to ${colors[i].name}`);
                             colorMenu.hide();
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error setting color: ${error}`);
                         }
                     );
@@ -3813,10 +3842,12 @@ function showLightEntity(entity_id) {
                 { rgb_color: selectedColor },
                 { entity_id: entity_id },
                 function(data) {
+                    Vibe.vibrate('short');
                     log_message(`Set color to ${colors[colorIndex].name}`);
                     colorWindow.hide();
                 },
                 function(error) {
+                    Vibe.vibrate('double');
                     log_message(`Error setting color: ${error}`);
                 }
             );
@@ -3958,9 +3989,11 @@ function showLightEntity(entity_id) {
                     { effect: "none" },
                     { entity_id: entity_id },
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(`Effect set to none`);
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message(`Error setting effect: ${error}`);
                     }
                 );
@@ -3983,9 +4016,11 @@ function showLightEntity(entity_id) {
                         { effect: effect },
                         { entity_id: entity_id },
                         function(data) {
+                            Vibe.vibrate('short');
                             log_message(`Effect set to ${effect}`);
                         },
                         function(error) {
+                            Vibe.vibrate('double');
                             log_message(`Error setting effect: ${error}`);
                         }
                     );
@@ -4167,7 +4202,6 @@ function showEntityMenu(entity_id) {
 
     // Store selection when navigating to a submenu
     showEntityMenu.on('select', function(e) {
-        console.log(e);
         // Handle on_click function if it exists
         if(typeof e.item.on_click == 'function') {
             e.item.on_click(e);
@@ -4227,10 +4261,12 @@ function showEntityMenu(entity_id) {
                     {entity_id: entity.entity_id},
                     function(data) {
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4255,10 +4291,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4274,10 +4312,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4291,9 +4331,11 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4312,10 +4354,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4329,9 +4373,11 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4350,10 +4396,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4369,10 +4417,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4392,9 +4442,11 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4408,10 +4460,12 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4428,10 +4482,12 @@ function showEntityMenu(entity_id) {
                     {},
                     {entity_id: entity.entity_id},
                     function(data) {
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4452,10 +4508,12 @@ function showEntityMenu(entity_id) {
                     function(data) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
+                        Vibe.vibrate('short');
                         log_message(JSON.stringify(data));
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4480,9 +4538,11 @@ function showEntityMenu(entity_id) {
                         // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                         // Success!
                         log_message(JSON.stringify(data));
+                        Vibe.vibrate('short');
                     },
                     function(error) {
                         // Failure!
+                        Vibe.vibrate('double');
                         log_message('no response');
                     });
             }
@@ -4738,6 +4798,1024 @@ function getEntityIcon(entity) {
     }
 }
 
+// show the list of todo lists
+function showToDoLists() {
+    let toDoListsMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'To-Do Lists'
+        }]
+    });
+
+    // Track subscription IDs for cleanup
+    let subscriptionIds = {};
+
+    // Function to get sorted todo lists
+    function getSortedTodoLists() {
+        let todoLists = [];
+        for(let entity_id in ha_state_dict) {
+            if(entity_id.split('.')[0] !== "todo") {
+                continue;
+            }
+
+            if(ha_state_dict[entity_id].state === "unavailable" || ha_state_dict[entity_id].state === "unknown") {
+                continue;
+            }
+
+            if(!ha_state_dict[entity_id].attributes || !ha_state_dict[entity_id].attributes.friendly_name) {
+                continue;
+            }
+
+            todoLists.push(ha_state_dict[entity_id]);
+        }
+
+        // sort todoLists alphabetically by friendly_name
+        todoLists.sort(function(a, b) {
+            if (a.attributes.friendly_name < b.attributes.friendly_name) return -1;
+            if (a.attributes.friendly_name > b.attributes.friendly_name) return 1;
+            return 0;
+        });
+
+        return todoLists;
+    }
+
+    // Function to update menu items
+    function updateMenuItems() {
+        let todoLists = getSortedTodoLists();
+
+        // Clear existing items
+        toDoListsMenu.items(0, []);
+
+        // Add menu items
+        let items = [];
+        todoLists.forEach(function(entity) {
+            items.push({
+                title: entity.attributes.friendly_name,
+                subtitle: (entity.state || 0) + " item" + (entity.state > 1 ? 's' : ''),
+                entity_id: entity.entity_id,
+                on_click: function (e) {
+                    showToDoList(e.item.entity_id);
+                }
+            });
+        });
+
+        toDoListsMenu.items(0, items);
+    }
+
+    toDoListsMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    // Subscribe to all todo lists when menu is shown
+    toDoListsMenu.on('show', function() {
+        let todoLists = getSortedTodoLists();
+
+        todoLists.forEach(function(entity) {
+            let entity_id = entity.entity_id;
+
+            subscriptionIds[entity_id] = haws.subscribe({
+                "type": "todo/item/subscribe",
+                "entity_id": entity_id
+            }, function(data) {
+                // When items change, update the count in ha_state_dict
+                if (data.event && data.event.items) {
+                    let itemCount = data.event.items.length;
+                    if (ha_state_dict[entity_id]) {
+                        ha_state_dict[entity_id].state = itemCount;
+                    }
+                    // Update the menu to reflect the new count
+                    updateMenuItems();
+                }
+            }, function(error) {
+                log_message(`todo/item/subscribe ERROR for ${entity_id}: ${JSON.stringify(error)}`);
+            });
+        });
+    });
+
+    // Unsubscribe when menu is hidden
+    toDoListsMenu.on('hide', function() {
+        for(let entity_id in subscriptionIds) {
+            if (subscriptionIds[entity_id]) {
+                haws.unsubscribe(subscriptionIds[entity_id]);
+            }
+        }
+        subscriptionIds = {};
+    });
+
+    // Initial menu population
+    updateMenuItems();
+
+    toDoListsMenu.show();
+}
+
+// show a specific todo list
+function showToDoList(entity_id) {
+    let todoList = ha_state_dict[entity_id];
+    log_message(`showToDoList: ${entity_id}`);
+    if(!todoList) {
+        log_message(`showToDoList: ${entity_id} not found in ha_state_dict`);
+        throw new Error(`ToDo list ${entity_id} not found in ha_state_dict`);
+    }
+
+    let todoListMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [
+            {
+                title: 'To Do'
+            },
+            {
+                title: 'Completed'
+            },
+            {
+                title: 'Actions'
+            }
+        ]
+    });
+
+    // Track the currently selected item by UID and section
+    let selectedItemUid = null;
+    let selectedSectionIndex = 0;
+    let subscription_msg_id = null;
+    let hasRenderedOnce = false;
+
+    // Track the next item to select after toggling completion status
+    let nextItemUidAfterToggle = null;
+
+    /**
+     * Helper function to determine the next item to select after toggling completion status
+     * @param {Array} incompleteItems - Array of incomplete items
+     * @param {Array} completedItems - Array of completed items
+     * @param {string} currentUid - UID of the item being toggled
+     * @param {number} currentSection - Section index of the item being toggled (0 or 1)
+     * @param {string} currentStatus - Current status of the item ('needs_action' or 'completed')
+     * @returns {string|null} - UID of the next item to select, or null if no suitable item
+     */
+    function getNextItemAfterToggle(incompleteItems, completedItems, currentUid, currentSection, currentStatus) {
+        // Determine which section the item is currently in and where it will move to
+        let isMarkingComplete = (currentStatus === 'needs_action'); // Will move from section 0 to section 1
+
+        if (isMarkingComplete) {
+            // Item is moving from incomplete (section 0) to completed (section 1)
+            // Find the current item's index in the incomplete list
+            let currentIndex = -1;
+            for (let i = 0; i < incompleteItems.length; i++) {
+                if (incompleteItems[i].uid === currentUid) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex === -1) {
+                return null; // Item not found
+            }
+
+            // Try to select the next item in the incomplete section
+            if (currentIndex + 1 < incompleteItems.length) {
+                return incompleteItems[currentIndex + 1].uid;
+            }
+
+            // If there's no next incomplete item, try the item before the current one
+            if (currentIndex > 0) {
+                return incompleteItems[currentIndex - 1].uid;
+            }
+
+            // If no incomplete items remain, select the first completed item
+            if (completedItems.length > 0) {
+                return completedItems[0].uid;
+            }
+
+            // Otherwise, stay on the current item (it will be the only completed item)
+            return currentUid;
+        } else {
+            // Item is moving from completed (section 1) to incomplete (section 0)
+            // Find the current item's index in the completed list
+            let currentIndex = -1;
+            for (let i = 0; i < completedItems.length; i++) {
+                if (completedItems[i].uid === currentUid) {
+                    currentIndex = i;
+                    break;
+                }
+            }
+
+            if (currentIndex === -1) {
+                return null; // Item not found
+            }
+
+            // Try to select the next item in the completed section
+            if (currentIndex + 1 < completedItems.length) {
+                return completedItems[currentIndex + 1].uid;
+            }
+
+            // If there's no next completed item, try the item before the current one
+            if (currentIndex > 0) {
+                return completedItems[currentIndex - 1].uid;
+            }
+
+            // If no completed items remain, select the first incomplete item
+            if (incompleteItems.length > 0) {
+                return incompleteItems[0].uid;
+            }
+
+            // Otherwise, stay on the current item (it will be the only incomplete item)
+            return currentUid;
+        }
+    }
+
+    // Function to update menu items based on subscription data
+    function updateToDoListItems(items) {
+        log_message(`updateToDoListItems: Updating ${items.length} items`);
+
+        // Filter items into incomplete and completed
+        let incompleteItems = [];
+        let completedItems = [];
+
+        items.forEach(function(item) {
+            if (item.status === 'completed') {
+                completedItems.push(item);
+            } else {
+                incompleteItems.push(item);
+            }
+        });
+
+        // Clear existing items in all sections
+        todoListMenu.items(0, []);
+        todoListMenu.items(1, []);
+        todoListMenu.items(2, []);
+
+        // Add incomplete items to section 0
+        incompleteItems.forEach(function(item, index) {
+            let subtitle = '';
+
+            // Priority: description > due date > empty
+            if (item.description) {
+                subtitle = item.description;
+            } else if (item.due) {
+                subtitle = `Due: ${item.due}`;
+            }
+
+            todoListMenu.item(0, index, {
+                title: item.summary,
+                subtitle: subtitle || '',
+                uid: item.uid,
+                status: item.status,
+                description: item.description,
+                due: item.due,
+                on_click: function(e) {
+                    log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
+                    // TODO: Show item details or actions menu
+                    showToDoItemMenu(entity_id, item);
+                }
+            });
+        });
+
+        // Add completed items to section 1
+        completedItems.forEach(function(item, index) {
+            let subtitle = '';
+
+            // Priority: description > due date > empty
+            if (item.description) {
+                subtitle = item.description;
+            } else if (item.due) {
+                subtitle = `Due: ${item.due}`;
+            }
+
+            todoListMenu.item(1, index, {
+                title: item.summary,
+                subtitle: subtitle || '',
+                uid: item.uid,
+                status: item.status,
+                description: item.description,
+                due: item.due,
+                on_click: function(e) {
+                    log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
+                    // TODO: Show item details or actions menu
+                    showToDoItemMenu(entity_id, item);
+                }
+            });
+        });
+
+        // Add action items to section 2
+        let actionIndex = 0;
+
+        // Always show "Clear List" action
+        todoListMenu.item(2, actionIndex++, {
+            title: 'Clear List',
+            on_click: function(e) {
+                confirmAction(
+                    'Clear all items from this list?',
+                    function() {
+                        // Success callback - clear all items in a single API call
+                        log_message(`Clearing all items from ${entity_id}`);
+                        let allItems = incompleteItems.concat(completedItems);
+                        let allUids = allItems.map(function(item) { return item.uid; });
+
+                        if (allUids.length > 0) {
+                            haws.callService(
+                                'todo',
+                                'remove_item',
+                                { item: allUids },
+                                { entity_id: entity_id },
+                                function(data) {
+                                    Vibe.vibrate('short');
+                                    log_message(`Successfully cleared ${allUids.length} items from list`);
+                                },
+                                function(error) {
+                                    Vibe.vibrate('double');
+                                    log_message(`Error clearing list: ${JSON.stringify(error)}`);
+                                }
+                            );
+                        } else {
+                            log_message('No items to clear');
+                        }
+                    },
+                    function() {
+                        // Failure/cancel callback
+                        log_message('Clear list cancelled');
+                    }
+                );
+            }
+        });
+
+        // Only show "Clear Completed" if there are completed items
+        if (completedItems.length > 0) {
+            todoListMenu.item(2, actionIndex++, {
+                title: 'Clear Completed',
+                on_click: function(e) {
+                    confirmAction(
+                        'Clear all completed items?',
+                        function() {
+                            // Success callback - use the built-in service
+                            log_message(`Clearing completed items from ${entity_id}`);
+                            haws.callService(
+                                'todo',
+                                'remove_completed_items',
+                                {},
+                                { entity_id: entity_id },
+                                function(data) {
+                                    Vibe.vibrate('short');
+                                    log_message(`Cleared completed items successfully`);
+                                },
+                                function(error) {
+                                    Vibe.vibrate('double');
+                                    log_message(`Error clearing completed items: ${JSON.stringify(error)}`);
+                                }
+                            );
+                        },
+                        function() {
+                            // Failure/cancel callback
+                            log_message('Clear completed cancelled');
+                        }
+                    );
+                }
+            });
+        }
+
+        // Add "Add Item" action if microphone is available
+        if (Feature.microphone(true, false)) {
+            todoListMenu.item(2, actionIndex++, {
+                title: 'Add Item',
+                on_click: function(e) {
+                    log_message('Starting voice dictation for new todo item');
+                    Voice.dictate('start', true, function(voiceEvent) {
+                        if (voiceEvent.err) {
+                            if (voiceEvent.err === "systemAborted") {
+                                log_message("Add item dictation cancelled by user");
+                                return;
+                            }
+                            log_message(`Add item dictation error: ${voiceEvent.err}`);
+                            return;
+                        }
+
+                        log_message(`Add item transcription received: ${voiceEvent.transcription}`);
+
+                        // Add the new item to the todo list
+                        haws.callService(
+                            'todo',
+                            'add_item',
+                            {
+                                item: voiceEvent.transcription
+                            },
+                            { entity_id: entity_id },
+                            function(data) {
+                                Vibe.vibrate('short');
+                                log_message(`Successfully added new item: ${JSON.stringify(data)}`);
+                                // The subscription will automatically update the list with the new item
+                            },
+                            function(error) {
+                                Vibe.vibrate('double');
+                                log_message(`Error adding new item: ${JSON.stringify(error)}`);
+                            }
+                        );
+                    });
+                }
+            });
+        }
+
+        // Restore selection after updating items
+        let newSectionIndex = 0;
+        let newItemIndex = 0;
+        let foundSelection = false;
+
+        // Determine which UID to select
+        let targetUid = selectedItemUid;
+
+        // If we have a next item to select after toggling, use that instead
+        if (nextItemUidAfterToggle !== null) {
+            targetUid = nextItemUidAfterToggle;
+            selectedItemUid = nextItemUidAfterToggle;
+            nextItemUidAfterToggle = null; // Clear the flag
+            log_message(`Selecting next item after toggle: ${targetUid}`);
+        }
+
+        // If we had a previously selected item, try to find it by UID across all sections
+        if (targetUid !== null && hasRenderedOnce) {
+            // Search in incomplete items (section 0)
+            for (let i = 0; i < incompleteItems.length; i++) {
+                if (incompleteItems[i].uid === targetUid) {
+                    newSectionIndex = 0;
+                    newItemIndex = i;
+                    foundSelection = true;
+                    log_message(`Restored selection to section 0, index ${i} (UID: ${targetUid})`);
+                    break;
+                }
+            }
+
+            // If not found, search in completed items (section 1)
+            if (!foundSelection) {
+                for (let i = 0; i < completedItems.length; i++) {
+                    if (completedItems[i].uid === targetUid) {
+                        newSectionIndex = 1;
+                        newItemIndex = i;
+                        foundSelection = true;
+                        log_message(`Restored selection to section 1, index ${i} (UID: ${targetUid})`);
+                        break;
+                    }
+                }
+            }
+
+            // If we didn't find the previously selected item, it was deleted
+            if (!foundSelection) {
+                log_message(`Previously selected item (UID: ${targetUid}) no longer exists, selecting first item`);
+                if (incompleteItems.length > 0) {
+                    selectedItemUid = incompleteItems[0].uid;
+                    newSectionIndex = 0;
+                    newItemIndex = 0;
+                } else if (completedItems.length > 0) {
+                    selectedItemUid = completedItems[0].uid;
+                    newSectionIndex = 1;
+                    newItemIndex = 0;
+                }
+            }
+        } else {
+            // First time rendering, select the first item
+            if (incompleteItems.length > 0) {
+                selectedItemUid = incompleteItems[0].uid;
+                newSectionIndex = 0;
+                newItemIndex = 0;
+            } else if (completedItems.length > 0) {
+                selectedItemUid = completedItems[0].uid;
+                newSectionIndex = 1;
+                newItemIndex = 0;
+            }
+        }
+
+        // Apply the selection
+        if (incompleteItems.length > 0 || completedItems.length > 0) {
+            todoListMenu.selection(newSectionIndex, newItemIndex);
+        }
+
+        hasRenderedOnce = true;
+    }
+
+    // Configuration: Set to true to use long-press for details and tap for toggle
+    // Set to false to use tap for details and long-press for toggle
+    let useLongPressForDetails = true;
+
+    // Track selection changes (when user navigates with up/down buttons)
+    todoListMenu.on('selection', function(e) {
+        // Update the currently selected item UID and section when navigating
+        if (e.item && e.item.uid) {
+            selectedItemUid = e.item.uid;
+            selectedSectionIndex = e.sectionIndex;
+            log_message(`Selection changed to: ${e.item.title} (UID: ${selectedItemUid}, Section: ${e.sectionIndex})`);
+        }
+    });
+
+    // Handle item selection
+    todoListMenu.on('select', function(e) {
+        // Update the currently selected item UID and section
+        if (e.item && e.item.uid) {
+            selectedItemUid = e.item.uid;
+            selectedSectionIndex = e.sectionIndex;
+            log_message(`Selected todo item: ${e.item.title} (UID: ${selectedItemUid}, Section: ${e.sectionIndex})`);
+        }
+
+        // For action items (section 2), always call on_click
+        if (e.sectionIndex === 2) {
+            if(typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
+            }
+            return;
+        }
+
+        // items with a uid are todo list items otherwise they are actions
+        if (e.item && e.item.uid) {
+            // Tap toggles completion status
+            let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
+            log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
+
+            // Get all items from the menu to calculate next selection
+            let incompleteItems = [];
+            let completedItems = [];
+
+            // Extract items from section 0 (incomplete)
+            let section0Items = todoListMenu.items(0);
+            for (let i = 0; i < section0Items.length; i++) {
+                incompleteItems.push(section0Items[i]);
+            }
+
+            // Extract items from section 1 (completed)
+            let section1Items = todoListMenu.items(1);
+            for (let i = 0; i < section1Items.length; i++) {
+                completedItems.push(section1Items[i]);
+            }
+
+            // Calculate the next item to select after toggling
+            nextItemUidAfterToggle = getNextItemAfterToggle(
+                incompleteItems,
+                completedItems,
+                e.item.uid,
+                e.sectionIndex,
+                e.item.status
+            );
+
+            log_message(`Next item after toggle will be: ${nextItemUidAfterToggle}`);
+
+            haws.callService(
+                'todo',
+                'update_item',
+                {
+                    item: e.item.uid,
+                    status: newStatus
+                },
+                { entity_id: entity_id },
+                function(data) {
+                    Vibe.vibrate('short');
+                    log_message(`Successfully updated item status: ${JSON.stringify(data)}`);
+                },
+                function(error) {
+                    Vibe.vibrate('double');
+                    log_message(`Error updating item status: ${JSON.stringify(error)}`);
+                }
+            );
+        }
+    });
+
+    // Handle long-press
+    todoListMenu.on('longSelect', function(e) {
+        // Only handle long-press for actual todo items (sections 0 and 1), not actions
+        if (e.sectionIndex === 2 || !e.item || !e.item.uid) {
+            return;
+        }
+
+        // Long-press opens item details
+        log_message(`Long-press: Opening details for item ${e.item.title}`);
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    // Unsubscribe when menu is hidden
+    todoListMenu.on('hide', function() {
+        if (subscription_msg_id) {
+            log_message(`Unsubscribing from todo/item/subscribe for ${entity_id}`);
+            haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    });
+
+
+    todoListMenu.on('show', function() {
+        subscription_msg_id = haws.subscribe({
+            "type": "todo/item/subscribe",
+            "entity_id": entity_id
+        }, function(data) {
+            log_message(`todo/item/subscribe: ${JSON.stringify(data)}`);
+
+            // Extract items from the event data
+            if (data.event && data.event.items) {
+                updateToDoListItems(data.event.items);
+            }
+        }, function(error) {
+            log_message(`todo/item/subscribe ERROR: ${JSON.stringify(error)}`);
+        });
+    });
+
+    todoListMenu.show();
+}
+
+// Helper function to show confirmation dialog
+function confirmAction(message, successCallback, failureCallback) {
+    log_message(`confirmAction: ${message}`);
+
+    let confirmMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: message
+        }]
+    });
+
+    // Add Confirm option
+    confirmMenu.item(0, 0, {
+        title: 'Confirm',
+        on_click: function(e) {
+            log_message('User confirmed action');
+            confirmMenu.hide();
+            if (typeof successCallback === 'function') {
+                successCallback();
+            }
+        }
+    });
+
+    // Add Cancel option
+    confirmMenu.item(0, 1, {
+        title: 'Cancel',
+        on_click: function(e) {
+            log_message('User cancelled action');
+            confirmMenu.hide();
+            if (typeof failureCallback === 'function') {
+                failureCallback();
+            }
+        }
+    });
+
+    // Handle selection
+    confirmMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    // Handle back button as cancel
+    confirmMenu.on('hide', function() {
+        log_message('Confirmation dialog closed');
+    });
+
+    confirmMenu.show();
+}
+
+// Show detailed view of a single todo item with editing capabilities
+function showToDoItemMenu(entity_id, item) {
+    log_message(`showToDoItemMenu: ${item.summary} (${item.uid})`);
+
+    let itemMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [
+            {
+                title: 'Item'
+            },
+            {
+                title: 'Actions'
+            }
+        ]
+    });
+
+    let hasMicrophone = Feature.microphone(true, false);
+    let subscription_msg_id = null;
+    let currentItem = item; // Track the current item data
+
+    // Function to update menu items based on subscription data
+    function updateToDoItemMenu(items) {
+        log_message(`updateToDoItemMenu: Searching for item ${currentItem.uid} in ${items.length} items`);
+
+        // Find the current item by UID
+        let updatedItem = null;
+        for (let i = 0; i < items.length; i++) {
+            if (items[i].uid === currentItem.uid) {
+                updatedItem = items[i];
+                break;
+            }
+        }
+
+        // If item was deleted, close the menu
+        if (!updatedItem) {
+            log_message(`Item ${currentItem.uid} no longer exists, closing menu`);
+            itemMenu.hide();
+            return;
+        }
+
+        // Update current item reference
+        currentItem = updatedItem;
+        log_message(`Updating menu with latest item data: ${JSON.stringify(updatedItem)}`);
+
+        // Update Section 0 - Item Fields
+        let fieldIndex = 0;
+
+        // 1. Update Name/Summary field
+        itemMenu.item(0, fieldIndex++, {
+            title: 'Name',
+            subtitle: updatedItem.summary,
+            on_click: hasMicrophone ? function(e) {
+                log_message('Starting voice dictation for item name');
+                Voice.dictate('start', true, function(voiceEvent) {
+                    if (voiceEvent.err) {
+                        if (voiceEvent.err === "systemAborted") {
+                            log_message("Name dictation cancelled by user");
+                            return;
+                        }
+                        log_message(`Name dictation error: ${voiceEvent.err}`);
+                        return;
+                    }
+
+                    log_message(`Name transcription received: ${voiceEvent.transcription}`);
+
+                    // Update the item name
+                    haws.callService(
+                        'todo',
+                        'update_item',
+                        {
+                            item: currentItem.uid,
+                            rename: voiceEvent.transcription
+                        },
+                        { entity_id: entity_id },
+                        function(data) {
+                            Vibe.vibrate('short');
+                            log_message(`Successfully updated item name: ${JSON.stringify(data)}`);
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            log_message(`Error updating item name: ${JSON.stringify(error)}`);
+                        }
+                    );
+                });
+            } : undefined
+        });
+
+        // 2. Update Description field
+        itemMenu.item(0, fieldIndex++, {
+            title: 'Description',
+            subtitle: updatedItem.description || '',
+            on_click: hasMicrophone ? function(e) {
+                // If description exists, show options menu
+                if (currentItem.description) {
+                    showToDoItemDescriptionOptionsMenu(entity_id, currentItem);
+                } else {
+                    // No description, go straight to voice dictation
+                    startToDoItemDescriptionDictation(entity_id, currentItem);
+                }
+            } : undefined
+        });
+
+        // 3. Update Due Date field (read-only for now)
+        itemMenu.item(0, fieldIndex++, {
+            title: 'Due Date',
+            subtitle: updatedItem.due || 'Not set'
+        });
+
+        // Update Section 1 - Actions
+        // Clear actions section first
+        itemMenu.items(1, []);
+        let actionIndex = 0;
+
+        // 1. Delete action (always present)
+        itemMenu.item(1, actionIndex++, {
+            title: 'Delete',
+            on_click: function(e) {
+                confirmAction(
+                    'Delete this item?',
+                    function() {
+                        // Success callback - delete the item
+                        log_message(`Deleting item: ${currentItem.summary} (${currentItem.uid})`);
+                        haws.callService(
+                            'todo',
+                            'remove_item',
+                            { item: currentItem.uid },
+                            { entity_id: entity_id },
+                            function(data) {
+                                Vibe.vibrate('short');
+                                log_message(`Successfully deleted item: ${JSON.stringify(data)}`);
+                                // Hide the menu to return to the todo list
+                                itemMenu.hide();
+                            },
+                            function(error) {
+                                Vibe.vibrate('double');
+                                log_message(`Error deleting item: ${JSON.stringify(error)}`);
+                            }
+                        );
+                    },
+                    function() {
+                        // Failure/cancel callback
+                        log_message('Delete item cancelled');
+                    }
+                );
+            }
+        });
+
+        // 2. Toggle completion status action (conditional based on current status)
+        if (updatedItem.status !== 'completed') {
+            itemMenu.item(1, actionIndex++, {
+                title: 'Mark Completed',
+                on_click: function(e) {
+                    log_message(`Marking item as completed: ${currentItem.summary} (${currentItem.uid})`);
+                    haws.callService(
+                        'todo',
+                        'update_item',
+                        {
+                            item: currentItem.uid,
+                            status: 'completed'
+                        },
+                        { entity_id: entity_id },
+                        function(data) {
+                            Vibe.vibrate('short');
+                            log_message(`Successfully marked item as completed: ${JSON.stringify(data)}`);
+                            // Menu remains open, subscription will update
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            log_message(`Error marking item as completed: ${JSON.stringify(error)}`);
+                        }
+                    );
+                }
+            });
+        } else {
+            itemMenu.item(1, actionIndex++, {
+                title: 'Mark Incomplete',
+                on_click: function(e) {
+                    log_message(`Marking item as incomplete: ${currentItem.summary} (${currentItem.uid})`);
+                    haws.callService(
+                        'todo',
+                        'update_item',
+                        {
+                            item: currentItem.uid,
+                            status: 'needs_action'
+                        },
+                        { entity_id: entity_id },
+                        function(data) {
+                            Vibe.vibrate('short');
+                            log_message(`Successfully marked item as incomplete: ${JSON.stringify(data)}`);
+                            // Menu remains open, subscription will update
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            log_message(`Error marking item as incomplete: ${JSON.stringify(error)}`);
+                        }
+                    );
+                }
+            });
+        }
+    }
+
+    // Handle selection
+    itemMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    // Subscribe when menu is shown
+    itemMenu.on('show', function() {
+        log_message(`Subscribing to todo items for ${entity_id}`);
+        subscription_msg_id = haws.subscribe({
+            "type": "todo/item/subscribe",
+            "entity_id": entity_id
+        }, function(data) {
+            log_message(`todo/item/subscribe (item menu): ${JSON.stringify(data)}`);
+
+            // Extract items from the event data
+            if (data.event && data.event.items) {
+                updateToDoItemMenu(data.event.items);
+            }
+        }, function(error) {
+            log_message(`todo/item/subscribe ERROR (item menu): ${JSON.stringify(error)}`);
+        });
+    });
+
+    // Unsubscribe when menu is hidden
+    itemMenu.on('hide', function() {
+        if (subscription_msg_id) {
+            log_message(`Unsubscribing from todo/item/subscribe for ${entity_id} (item menu)`);
+            haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    });
+
+    itemMenu.show();
+}
+
+// Helper function to show todo item description options menu
+function showToDoItemDescriptionOptionsMenu(entity_id, item) {
+    log_message('Showing todo item description options menu');
+
+    let descOptionsMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Description'
+        }]
+    });
+
+    // Update Description option
+    descOptionsMenu.item(0, 0, {
+        title: 'Update Desc',
+        on_click: function(e) {
+            descOptionsMenu.hide();
+            startToDoItemDescriptionDictation(entity_id, item);
+        }
+    });
+
+    // Remove Description option
+    descOptionsMenu.item(0, 1, {
+        title: 'Remove Desc',
+        on_click: function(e) {
+            log_message(`Removing description from item: ${item.summary} (${item.uid})`);
+            descOptionsMenu.hide();
+
+            haws.callService(
+                'todo',
+                'update_item',
+                {
+                    item: item.uid,
+                    description: null
+                },
+                { entity_id: entity_id },
+                function(data) {
+                    Vibe.vibrate('short');
+                    log_message(`Successfully removed description: ${JSON.stringify(data)}`);
+                },
+                function(error) {
+                    Vibe.vibrate('double');
+                    log_message(`Error removing description: ${JSON.stringify(error)}`);
+                }
+            );
+        }
+    });
+
+    // Handle selection
+    descOptionsMenu.on('select', function(e) {
+        if(typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        }
+    });
+
+    descOptionsMenu.show();
+}
+
+// Helper function to start todo item description dictation
+function startToDoItemDescriptionDictation(entity_id, item) {
+    log_message('Starting voice dictation for todo item description');
+
+    Voice.dictate('start', true, function(voiceEvent) {
+        if (voiceEvent.err) {
+            if (voiceEvent.err === "systemAborted") {
+                log_message("Description dictation cancelled by user");
+                return;
+            }
+            log_message(`Description dictation error: ${voiceEvent.err}`);
+            return;
+        }
+
+        log_message(`Description transcription received: ${voiceEvent.transcription}`);
+
+        // Update the item description
+        haws.callService(
+            'todo',
+            'update_item',
+            {
+                item: item.uid,
+                description: voiceEvent.transcription
+            },
+            { entity_id: entity_id },
+            function(data) {
+                log_message(`Successfully updated item description: ${JSON.stringify(data)}`);
+            },
+            function(error) {
+                log_message(`Error updating item description: ${JSON.stringify(error)}`);
+            }
+        );
+    });
+}
+
 let entityListMenu = null;
 function showEntityList(title, entity_id_list = false, ignoreEntityCache = true, sortItems = true, skipIgnoredDomains = false) {
     log_message(`showEntityList (title=${title}): called`);
@@ -4757,7 +5835,6 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     entityListMenu.current_page = null;
     entityListMenu.on('longSelect', function(e) {
         log_message(`Entity ${e.item.entity_id} was long pressed!`);
-        Vibe.vibrate('short'); //let the user know the long press has activated
         let [domain] = e.item.entity_id.split('.');
         if (
             domain === "switch" ||
@@ -4776,10 +5853,12 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                     // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                     // Success!
                     log_message(JSON.stringify(data));
+                    Vibe.vibrate('short');
                 },
                 function (error) {
                     // Failure!
                     log_message('no response');
+                    Vibe.vibrate('double');
                 });
         }
         else if (domain === "lock") {
@@ -4792,10 +5871,12 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 function (data) {
                     // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
                     // Success!
+                    Vibe.vibrate('short');
                     log_message(JSON.stringify(data));
                 },
                 function (error) {
                     // Failure!
+                    Vibe.vibrate('double');
                     log_message('no response');
                 });
         }
@@ -5226,6 +6307,9 @@ function on_auth_ok(evt) {
                             case 'labels':
                                 showLabelMenu();
                                 break;
+                            case 'todo_lists':
+                                showToDoLists();
+                                break;
                             case 'main_menu':
                             default:
                                 // Default behavior is to show the main menu, which is already handled
@@ -5458,19 +6542,29 @@ let timerID = setInterval(function() {
  * @returns {Boolean} - Whether to show domain menu
  */
 function shouldShowDomainMenu(entities, menuSetting) {
+    const Platform = require('platform');
     // If setting is explicitly yes or no, respect that
     if (menuSetting === 'yes') return true;
     if (menuSetting === 'no') return false;
 
+    // Get unique domains from entities
+    const domains = new Set();
+    const isAplite = Platform.version() === 'aplite';
+
+    for (let entity_id of entities) {
+        domains.add(entity_id.split('.')[0]);
+
+        // OG Pebble (aplite) lacks memory to display more than 3 icons
+        // so we force the domain menu if there are multiple domains
+        // this way only 2 icons will ever display on the menu
+        if (isAplite && domains.size > 1) {
+            return true;
+        }
+    }
+
     // For conditional, check the conditions
     if (menuSetting === 'conditional') {
-        // Get unique domains from entities
-        const domains = {};
-        for (let entity_id of entities) {
-            const domain = entity_id.split('.')[0];
-            domains[domain] = true;
-        }
-        const domainCount = Object.keys(domains).length;
+        const domainCount = domains.size;
 
         // Check if we meet the minimum entity count condition
         const meetsEntityCountCondition = entities.length >= domain_menu_min_entities;

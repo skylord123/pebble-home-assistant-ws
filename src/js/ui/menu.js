@@ -131,6 +131,10 @@ Menu.prototype._getItems = function(e, create) {
 
 Menu.prototype._getItem = function(e, create) {
   var items = this._getItems(e, create);
+  // If items is undefined (e.g., during menu teardown), return undefined
+  if (!items) {
+    return undefined;
+  }
   var item = items[e.itemIndex];
   if (item) {
     return item;
