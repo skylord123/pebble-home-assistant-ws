@@ -33,7 +33,13 @@ Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Disc
 - **Accessible Interface**: Optimized for the small Pebble screen
 
 ## Installation
-We do not have a Pebble app store listing yet (still working towards a good first release), but you can fetch the pbw file from our GitHub [Releases](https://github.com/skylord123/pebble-home-assistant-ws/releases) page via these steps:
+
+#### Rebble App Store
+You can find our app in the app store under [Home Assistant WS](https://apps.rebble.io/en_US/application/68dea5734be9cb0009429595)
+
+#### Sideload
+
+This is useful if you want to install a version not yet available on the app store for example.
 
 1. **Download the app**:
    - Click the [Releases](https://github.com/skylord123/pebble-home-assistant-ws/releases) tab on the GitHub repository page
