@@ -9,7 +9,7 @@ const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
 
 const appVersion = '0.9', // displays in loading screen
     confVersion = '0.9', // version of config page
-    debugMode = false,
+    debugMode = true,
     debugHAWS = false,
     hawsFaker = isEmulator
         && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
@@ -122,6 +122,9 @@ let ha_url = null,
     ignore_domains = null,
     ha_connected = false,
     quick_launch_behavior = null;
+
+// Enable/disable coalesce_messages feature (set to true to enable, false to disable)
+const coalesce_messages_enabled = true;
 
 
 
@@ -6256,8 +6259,12 @@ function getEntitiesWithoutArea() {
  * @param evt
  */
 function on_auth_ok(evt) {
+    // Start timing
+    const fetch_start_time = Date.now();
+    log_message("Starting data fetch timing...");
+
     loadingCard.subtitle("Fetching states");
-    log_message("Fetching states, config areas, config devices, config entities, and config labels...");
+    log_message("Fetching states, config areas, config devices, config entities, assist pipelines, and config labels...");
     let pipelines_loaded = false;
 
     // Set connection status to true
@@ -6268,7 +6275,13 @@ function on_auth_ok(evt) {
         // basically just a wrapper to check that all the things have finished fetching
         if(area_registry_cache && device_registry_cache && entity_registry_cache &&
            ha_state_cache && label_registry_cache && pipelines_loaded) {
-            log_message("Finished fetching data, showing main menu");
+
+            // Calculate and log elapsed time
+            const fetch_end_time = Date.now();
+            const elapsed_ms = fetch_end_time - fetch_start_time;
+            log_message("Finished fetching data in " + elapsed_ms + "ms (" + (elapsed_ms/1000).toFixed(2) + "s)");
+            log_message("Coalesce messages: " + (coalesce_messages_enabled ? "ENABLED" : "DISABLED"));
+            log_message("Showing main menu");
 
             // try to resume previous WindowStack state if it's saved
             if(saved_windows) {
@@ -6349,6 +6362,7 @@ function on_auth_ok(evt) {
         done_fetching();
     }, function(){
         loadingCard.subtitle("Fetching states failed");
+        log_message("Fetching states failed");
     });
 
     haws.getConfigAreas(function(data) {
@@ -6371,6 +6385,7 @@ function on_auth_ok(evt) {
         done_fetching();
     }, function(){
         loadingCard.subtitle("Fetching areas failed");
+        log_message("Fetching areas failed");
     });
 
     haws.getConfigDevices(function(data) {
@@ -6412,6 +6427,7 @@ function on_auth_ok(evt) {
         done_fetching();
     }, function(){
         loadingCard.subtitle("Fetching devices failed");
+        log_message("Fetching devices failed");
     });
 
     haws.getConfigEntities( function(data) {
@@ -6448,6 +6464,7 @@ function on_auth_ok(evt) {
         done_fetching();
     }, function(){
         loadingCard.subtitle("Fetching labels failed");
+        log_message("Fetching labels failed");
     });
 
     loadAssistPipelines(function(){
@@ -6476,7 +6493,8 @@ function main() {
 
     loadingCard.subtitle('Connecting');
     log_message('Connecting');
-    haws = new HAWS(ha_url, ha_password, debugHAWS);
+    log_message('Coalesce messages: ' + (coalesce_messages_enabled ? 'ENABLED' : 'DISABLED'));
+    haws = new HAWS(ha_url, ha_password, debugHAWS, coalesce_messages_enabled);
 
     haws.on('open', function(evt){
         loadingCard.subtitle('Authenticating');
@@ -6511,6 +6529,11 @@ function main() {
 
     haws.on('error', function(evt){
         loadingCard.subtitle('Error');
+    });
+
+    haws.on('auth_invalid', function(evt){
+        loadingCard.title('Auth Failure');
+        loadingCard.subtitle(evt.detail.message || 'Unknown error');
     });
 
     haws.on('auth_ok', function(evt){

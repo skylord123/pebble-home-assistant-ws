@@ -65,7 +65,7 @@ if (typeof window !== 'undefined' && typeof window.CustomEvent !== 'undefined') 
 }
 
 class HAWS {
-    constructor(ha_url, token, debug) {
+    constructor(ha_url, token, debug, coalesce_messages) {
         this.events = new CustomEventTarget();
         this.connected = false;
         this.reconnectTimeout = null;
@@ -78,6 +78,7 @@ class HAWS {
         this._subscriptions = [];
         this.reconnectInterval = 2500;
         this.debug = debug || false;
+        this.coalesce_messages = coalesce_messages || false;
 
         // Mock entity data will be initialized in connect()
         this.mockEntities = {};
