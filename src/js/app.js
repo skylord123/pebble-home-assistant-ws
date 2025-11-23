@@ -96,8 +96,10 @@ Settings.config({
 
         // reload settings
         load_settings();
-        // @todo restart HAWS after config is saved on phone
-        // @todo need some way of resetting all the windows in the app
+
+        // Restart the app to apply settings immediately
+        // This will skip quick launch behavior and go straight to main menu
+        restartApp();
     }
 );
 
@@ -129,6 +131,9 @@ const coalesce_messages_enabled = true;
 // Enable/disable startup cache feature (set to true to enable, false to disable)
 // When enabled, cached data is loaded immediately and updates are fetched in background
 const startup_cache_enabled = true;
+
+// Flag to track if app is restarting (to skip quick launch behavior)
+let is_restarting = false;
 
 function load_settings() {
     // Set some variables for quicker access
@@ -358,6 +363,63 @@ function clearStartupCache() {
     } catch (e) {
         log_message('Error clearing startup cache: ' + e);
     }
+}
+
+/**
+ * Restart the app after settings change
+ * This will disconnect HAWS, clear all windows, and reinitialize the app
+ */
+function restartApp() {
+    log_message('Restarting app after settings change...');
+
+    // Set flag to skip quick launch behavior
+    is_restarting = true;
+
+    // Disconnect HAWS if connected
+    if (haws && haws.isConnected()) {
+        log_message('Disconnecting HAWS...');
+        haws.disconnect();
+    }
+
+    // Clear all windows except loading card
+    log_message('Clearing all windows...');
+    const windowsToRemove = [];
+    for (let window of WindowStack._items) {
+        if (window._id() !== loadingCard._id()) {
+            windowsToRemove.push(window);
+        }
+    }
+
+    // Hide all windows
+    for (let window of windowsToRemove) {
+        window.hide();
+    }
+
+    // Clear saved windows
+    saved_windows = null;
+
+    // Reset state variables
+    ha_state_cache = null;
+    ha_state_dict = null;
+    ha_state_cache_updated = null;
+    area_registry_cache = null;
+    device_registry_cache = null;
+    entity_registry_cache = null;
+    label_registry_cache = null;
+    ha_pipelines = null;
+    preferred_pipeline = null;
+    selected_pipeline = null;
+    ha_connected = false;
+
+    // Show loading card
+    loadingCard.show();
+    loadingCard.subtitle('Restarting...');
+
+    // Reinitialize the app
+    log_message('Reinitializing app...');
+    setTimeout(function() {
+        main();
+    }, 500); // Small delay to ensure cleanup is complete
 }
 
 // Initial screen
@@ -6433,64 +6495,70 @@ function on_auth_ok(evt) {
             loadingCard.hide();
 
             // Handle quick launch behavior after authentication is complete
-            // Use a function to handle the quick launch behavior so we can retry if needed
-            function handleQuickLaunch(retryCount) {
-                retryCount = retryCount || 0;
-                var retryDelay = 10; // Delay between retries in ms
+            // Skip quick launch if app is restarting (from settings change)
+            if (is_restarting) {
+                log_message('Skipping quick launch behavior - app is restarting from settings change');
+                is_restarting = false; // Reset flag
+            } else {
+                // Use a function to handle the quick launch behavior so we can retry if needed
+                function handleQuickLaunch(retryCount) {
+                    retryCount = retryCount || 0;
+                    var retryDelay = 10; // Delay between retries in ms
 
-                var launchReason = simply.impl.state.launchReason;
-                log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+                    var launchReason = simply.impl.state.launchReason;
+                    log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
 
-                // If launch reason is undefined and we haven't exceeded max retries, try again
-                if ( !launchReason ) {
-                    log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                    setTimeout(function() {
-                        handleQuickLaunch(retryCount + 1);
-                    }, retryDelay);
-                    return;
-                }
+                    // If launch reason is undefined and we haven't exceeded max retries, try again
+                    if ( !launchReason ) {
+                        log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+                        setTimeout(function() {
+                            handleQuickLaunch(retryCount + 1);
+                        }, retryDelay);
+                        return;
+                    }
 
-                // If we have a quickLaunch reason or we've exhausted retries, proceed
-                if (launchReason === 'quickLaunch') {
-                    log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+                    // If we have a quickLaunch reason or we've exhausted retries, proceed
+                    if (launchReason === 'quickLaunch') {
+                        log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
 
-                    // Handle the quick launch behavior based on settings
-                    switch (quick_launch_behavior) {
-                        case 'assistant':
-                            if (voice_enabled) {
-                                showAssistMenu();
-                            }
-                            break;
-                        case 'favorites':
-                            let favoriteEntities = favoriteEntityStore.all();
-                            if(favoriteEntities && favoriteEntities.length) {
-                                const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                if(shouldShowDomains) {
-                                    showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                } else {
-                                    showEntityList("Favorites", favoriteEntities, true, false, true);
+                        // Handle the quick launch behavior based on settings
+                        switch (quick_launch_behavior) {
+                            case 'assistant':
+                                if (voice_enabled) {
+                                    showAssistMenu();
                                 }
-                            }
-                            break;
-                        case 'areas':
-                            showAreaMenu();
-                            break;
-                        case 'labels':
-                            showLabelMenu();
-                            break;
-                        case 'todo_lists':
-                            showToDoLists();
-                            break;
-                        case 'main_menu':
-                        default:
-                            // Default behavior is to show the main menu, which is already handled
-                            break;
+                                break;
+                            case 'favorites':
+                                let favoriteEntities = favoriteEntityStore.all();
+                                if(favoriteEntities && favoriteEntities.length) {
+                                    const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+                                    if(shouldShowDomains) {
+                                        showEntityDomainsFromList(favoriteEntities, "Favorites");
+                                    } else {
+                                        showEntityList("Favorites", favoriteEntities, true, false, true);
+                                    }
+                                }
+                                break;
+                            case 'areas':
+                                showAreaMenu();
+                                break;
+                            case 'labels':
+                                showLabelMenu();
+                                break;
+                            case 'todo_lists':
+                                showToDoLists();
+                                break;
+                            case 'main_menu':
+                            default:
+                                // Default behavior is to show the main menu, which is already handled
+                                break;
+                        }
                     }
                 }
-            }
 
-            // Start the quick launch handling process
-            handleQuickLaunch();
+                // Start the quick launch handling process
+                handleQuickLaunch();
+            }
         }
     } else {
         // No cache, show loading dialog
@@ -6555,64 +6623,70 @@ function on_auth_ok(evt) {
                     loadingCard.hide();
 
                     // Handle quick launch behavior after authentication is complete
-                    // Use a function to handle the quick launch behavior so we can retry if needed
-                    function handleQuickLaunch(retryCount) {
-                        retryCount = retryCount || 0;
-                        var retryDelay = 10; // Delay between retries in ms
+                    // Skip quick launch if app is restarting (from settings change)
+                    if (is_restarting) {
+                        log_message('Skipping quick launch behavior - app is restarting from settings change');
+                        is_restarting = false; // Reset flag
+                    } else {
+                        // Use a function to handle the quick launch behavior so we can retry if needed
+                        function handleQuickLaunch(retryCount) {
+                            retryCount = retryCount || 0;
+                            var retryDelay = 10; // Delay between retries in ms
 
-                        var launchReason = simply.impl.state.launchReason;
-                        log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+                            var launchReason = simply.impl.state.launchReason;
+                            log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
 
-                        // If launch reason is undefined and we haven't exceeded max retries, try again
-                        if ( !launchReason ) {
-                            log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                            setTimeout(function() {
-                                handleQuickLaunch(retryCount + 1);
-                            }, retryDelay);
-                            return;
-                        }
+                            // If launch reason is undefined and we haven't exceeded max retries, try again
+                            if ( !launchReason ) {
+                                log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+                                setTimeout(function() {
+                                    handleQuickLaunch(retryCount + 1);
+                                }, retryDelay);
+                                return;
+                            }
 
-                        // If we have a quickLaunch reason or we've exhausted retries, proceed
-                        if (launchReason === 'quickLaunch') {
-                            log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+                            // If we have a quickLaunch reason or we've exhausted retries, proceed
+                            if (launchReason === 'quickLaunch') {
+                                log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
 
-                            // Handle the quick launch behavior based on settings
-                            switch (quick_launch_behavior) {
-                                case 'assistant':
-                                    if (voice_enabled) {
-                                        showAssistMenu();
-                                    }
-                                    break;
-                                case 'favorites':
-                                    let favoriteEntities = favoriteEntityStore.all();
-                                    if(favoriteEntities && favoriteEntities.length) {
-                                        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                        if(shouldShowDomains) {
-                                            showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                        } else {
-                                            showEntityList("Favorites", favoriteEntities, true, false, true);
+                                // Handle the quick launch behavior based on settings
+                                switch (quick_launch_behavior) {
+                                    case 'assistant':
+                                        if (voice_enabled) {
+                                            showAssistMenu();
                                         }
-                                    }
-                                    break;
-                                case 'areas':
-                                    showAreaMenu();
-                                    break;
-                                case 'labels':
-                                    showLabelMenu();
-                                    break;
-                                case 'todo_lists':
-                                    showToDoLists();
-                                    break;
-                                case 'main_menu':
-                                default:
-                                    // Default behavior is to show the main menu, which is already handled
-                                    break;
+                                        break;
+                                    case 'favorites':
+                                        let favoriteEntities = favoriteEntityStore.all();
+                                        if(favoriteEntities && favoriteEntities.length) {
+                                            const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+                                            if(shouldShowDomains) {
+                                                showEntityDomainsFromList(favoriteEntities, "Favorites");
+                                            } else {
+                                                showEntityList("Favorites", favoriteEntities, true, false, true);
+                                            }
+                                        }
+                                        break;
+                                    case 'areas':
+                                        showAreaMenu();
+                                        break;
+                                    case 'labels':
+                                        showLabelMenu();
+                                        break;
+                                    case 'todo_lists':
+                                        showToDoLists();
+                                        break;
+                                    case 'main_menu':
+                                    default:
+                                        // Default behavior is to show the main menu, which is already handled
+                                        break;
+                                }
                             }
                         }
-                    }
 
-                    // Start the quick launch handling process
-                    handleQuickLaunch();
+                        // Start the quick launch handling process
+                        handleQuickLaunch();
+                    }
                 }
             } else {
                 log_message("Background fetch completed successfully");
