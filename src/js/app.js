@@ -9,7 +9,7 @@ const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
 
 const appVersion = '0.9', // displays in loading screen
     confVersion = '0.9', // version of config page
-    debugMode = true,
+    debugMode = false,
     debugHAWS = false,
     hawsFaker = isEmulator
         && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
@@ -126,7 +126,9 @@ let ha_url = null,
 // Enable/disable coalesce_messages feature (set to true to enable, false to disable)
 const coalesce_messages_enabled = true;
 
-
+// Enable/disable startup cache feature (set to true to enable, false to disable)
+// When enabled, cached data is loaded immediately and updates are fetched in background
+const startup_cache_enabled = true;
 
 function load_settings() {
     // Set some variables for quicker access
@@ -213,6 +215,150 @@ let device_status,
 //let events;
 
 log_message('ha_url: ' + baseurl);
+
+// Cache management functions for startup data
+const CACHE_KEYS = {
+    STATES: 'ha_startup_cache_states',
+    AREAS: 'ha_startup_cache_areas',
+    DEVICES: 'ha_startup_cache_devices',
+    ENTITIES: 'ha_startup_cache_entities',
+    LABELS: 'ha_startup_cache_labels',
+    PIPELINES: 'ha_startup_cache_pipelines',
+    TIMESTAMP: 'ha_startup_cache_timestamp'
+};
+
+function saveStartupCache() {
+    if (!startup_cache_enabled) return;
+
+    try {
+        log_message('Saving startup cache...');
+
+        // Save each piece of data to localStorage
+        if (ha_state_cache) {
+            localStorage.setItem(CACHE_KEYS.STATES, JSON.stringify(ha_state_cache));
+        }
+        if (area_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.AREAS, JSON.stringify(area_registry_cache));
+        }
+        if (device_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.DEVICES, JSON.stringify(device_registry_cache));
+        }
+        if (entity_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.ENTITIES, JSON.stringify(entity_registry_cache));
+        }
+        if (label_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.LABELS, JSON.stringify(label_registry_cache));
+        }
+        if (ha_pipelines) {
+            localStorage.setItem(CACHE_KEYS.PIPELINES, JSON.stringify({
+                pipelines: ha_pipelines,
+                preferred_pipeline: preferred_pipeline
+            }));
+        }
+
+        // Save timestamp
+        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+
+        log_message('Startup cache saved successfully');
+    } catch (e) {
+        log_message('Error saving startup cache: ' + e);
+    }
+}
+
+function loadStartupCache() {
+    if (!startup_cache_enabled) return false;
+
+    try {
+        log_message('Loading startup cache...');
+
+        // Check if we have a timestamp (indicates cache exists)
+        const timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+        if (!timestamp) {
+            log_message('No startup cache found');
+            return false;
+        }
+
+        // Load each piece of data
+        const statesStr = localStorage.getItem(CACHE_KEYS.STATES);
+        const areasStr = localStorage.getItem(CACHE_KEYS.AREAS);
+        const devicesStr = localStorage.getItem(CACHE_KEYS.DEVICES);
+        const entitiesStr = localStorage.getItem(CACHE_KEYS.ENTITIES);
+        const labelsStr = localStorage.getItem(CACHE_KEYS.LABELS);
+        const pipelinesStr = localStorage.getItem(CACHE_KEYS.PIPELINES);
+
+        // Parse and assign cached data
+        if (statesStr) {
+            ha_state_cache = JSON.parse(statesStr);
+            let new_state_map = {};
+            for(let entity of ha_state_cache) {
+                new_state_map[entity.entity_id] = entity;
+            }
+            ha_state_dict = new_state_map;
+            ha_state_cache_updated = new Date();
+        }
+
+        if (areasStr) {
+            area_registry_cache = JSON.parse(areasStr);
+        }
+
+        if (devicesStr) {
+            device_registry_cache = JSON.parse(devicesStr);
+        }
+
+        if (entitiesStr) {
+            entity_registry_cache = JSON.parse(entitiesStr);
+        }
+
+        if (labelsStr) {
+            label_registry_cache = JSON.parse(labelsStr);
+        }
+
+        if (pipelinesStr) {
+            const pipelineData = JSON.parse(pipelinesStr);
+            ha_pipelines = pipelineData.pipelines;
+            preferred_pipeline = pipelineData.preferred_pipeline;
+
+            // Restore pipeline settings
+            if (ha_pipelines && ha_pipelines.length > 0) {
+                const pipelineOptions = ha_pipelines.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    preferred: p.id === preferred_pipeline
+                }));
+                Settings.option('available_pipelines', pipelineOptions);
+
+                if (!selected_pipeline && preferred_pipeline) {
+                    selected_pipeline = preferred_pipeline;
+                }
+            }
+        }
+
+        const cacheAge = Date.now() - parseInt(timestamp);
+        log_message('Startup cache loaded successfully (age: ' + (cacheAge / 1000).toFixed(1) + 's)');
+        return true;
+    } catch (e) {
+        log_message('Error loading startup cache: ' + e);
+        return false;
+    }
+}
+
+function clearStartupCache() {
+    if (!startup_cache_enabled) return;
+
+    try {
+        log_message('Clearing startup cache...');
+        localStorage.removeItem(CACHE_KEYS.STATES);
+        localStorage.removeItem(CACHE_KEYS.AREAS);
+        localStorage.removeItem(CACHE_KEYS.DEVICES);
+        localStorage.removeItem(CACHE_KEYS.ENTITIES);
+        localStorage.removeItem(CACHE_KEYS.LABELS);
+        localStorage.removeItem(CACHE_KEYS.PIPELINES);
+        localStorage.removeItem(CACHE_KEYS.TIMESTAMP);
+        log_message('Startup cache cleared');
+    } catch (e) {
+        log_message('Error clearing startup cache: ' + e);
+    }
+}
 
 // Initial screen
 let loadingCard = new UI.Card({
@@ -6263,106 +6409,232 @@ function on_auth_ok(evt) {
     const fetch_start_time = Date.now();
     log_message("Starting data fetch timing...");
 
-    loadingCard.subtitle("Fetching states");
-    log_message("Fetching states, config areas, config devices, config entities, assist pipelines, and config labels...");
-    let pipelines_loaded = false;
-
     // Set connection status to true
     ha_connected = true;
     Settings.option('ha_connected', ha_connected);
 
+    // Try to load from cache first
+    const cacheLoaded = loadStartupCache();
+
+    // Track if we're fetching in background (when cache is loaded)
+    const isFetchingInBackground = cacheLoaded;
+
+    // If cache loaded, show main menu immediately
+    if (cacheLoaded) {
+        log_message("Cache loaded, showing main menu immediately");
+
+        // try to resume previous WindowStack state if it's saved
+        if(saved_windows) {
+            WindowStack._items = [...saved_windows];
+            saved_windows = null;
+            loadingCard.hide();
+        } else {
+            showMainMenu();
+            loadingCard.hide();
+
+            // Handle quick launch behavior after authentication is complete
+            // Use a function to handle the quick launch behavior so we can retry if needed
+            function handleQuickLaunch(retryCount) {
+                retryCount = retryCount || 0;
+                var retryDelay = 10; // Delay between retries in ms
+
+                var launchReason = simply.impl.state.launchReason;
+                log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+
+                // If launch reason is undefined and we haven't exceeded max retries, try again
+                if ( !launchReason ) {
+                    log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+                    setTimeout(function() {
+                        handleQuickLaunch(retryCount + 1);
+                    }, retryDelay);
+                    return;
+                }
+
+                // If we have a quickLaunch reason or we've exhausted retries, proceed
+                if (launchReason === 'quickLaunch') {
+                    log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+
+                    // Handle the quick launch behavior based on settings
+                    switch (quick_launch_behavior) {
+                        case 'assistant':
+                            if (voice_enabled) {
+                                showAssistMenu();
+                            }
+                            break;
+                        case 'favorites':
+                            let favoriteEntities = favoriteEntityStore.all();
+                            if(favoriteEntities && favoriteEntities.length) {
+                                const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+                                if(shouldShowDomains) {
+                                    showEntityDomainsFromList(favoriteEntities, "Favorites");
+                                } else {
+                                    showEntityList("Favorites", favoriteEntities, true, false, true);
+                                }
+                            }
+                            break;
+                        case 'areas':
+                            showAreaMenu();
+                            break;
+                        case 'labels':
+                            showLabelMenu();
+                            break;
+                        case 'todo_lists':
+                            showToDoLists();
+                            break;
+                        case 'main_menu':
+                        default:
+                            // Default behavior is to show the main menu, which is already handled
+                            break;
+                    }
+                }
+            }
+
+            // Start the quick launch handling process
+            handleQuickLaunch();
+        }
+    } else {
+        // No cache, show loading dialog
+        loadingCard.subtitle("Fetching states");
+        log_message("No cache available, fetching states, config areas, config devices, config entities, assist pipelines, and config labels...");
+    }
+
+    // Track what has been loaded (for background fetching or initial loading)
+    let pipelines_loaded = false;
+    let states_loaded = false;
+    let areas_loaded = false;
+    let devices_loaded = false;
+    let entities_loaded = false;
+    let labels_loaded = false;
+
+    // Track if any background fetch failed
+    let background_fetch_failed = false;
+    let background_fetch_error = null;
+
     let done_fetching = function(){
-        // basically just a wrapper to check that all the things have finished fetching
-        if(area_registry_cache && device_registry_cache && entity_registry_cache &&
-           ha_state_cache && label_registry_cache && pipelines_loaded) {
+        // Check that all the things have finished fetching
+        if(states_loaded && areas_loaded && devices_loaded &&
+           entities_loaded && labels_loaded && pipelines_loaded) {
 
             // Calculate and log elapsed time
             const fetch_end_time = Date.now();
             const elapsed_ms = fetch_end_time - fetch_start_time;
             log_message("Finished fetching data in " + elapsed_ms + "ms (" + (elapsed_ms/1000).toFixed(2) + "s)");
             log_message("Coalesce messages: " + (coalesce_messages_enabled ? "ENABLED" : "DISABLED"));
-            log_message("Showing main menu");
 
-            // try to resume previous WindowStack state if it's saved
-            if(saved_windows) {
-                WindowStack._items = [...saved_windows];
-                saved_windows = null;
-                loadingCard.hide();
-            } else {
-                showMainMenu();
-                loadingCard.hide();
+            // Save the cache for next startup
+            saveStartupCache();
 
-                // Handle quick launch behavior after authentication is complete
-                // Use a function to handle the quick launch behavior so we can retry if needed
-                function handleQuickLaunch(retryCount) {
-                    retryCount = retryCount || 0;
-                    var retryDelay = 10; // Delay between retries in ms
+            // If we were fetching in background and there was an error, show it
+            if (isFetchingInBackground && background_fetch_failed) {
+                log_message("Background fetch failed: " + background_fetch_error);
+                // Check if loading card is currently visible
+                const loadingCardVisible = WindowStack._items.some(function(w) {
+                    return w._id() === loadingCard._id();
+                });
 
-                    var launchReason = simply.impl.state.launchReason;
-                    log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+                if (!loadingCardVisible) {
+                    // Show loading card with error
+                    loadingCard.subtitle("Background update failed");
+                    loadingCard.body(background_fetch_error || "Unknown error");
+                    loadingCard.show();
+                }
+                return;
+            }
 
-                    // If launch reason is undefined and we haven't exceeded max retries, try again
-                    if ( !launchReason ) {
-                        log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                        setTimeout(function() {
-                            handleQuickLaunch(retryCount + 1);
-                        }, retryDelay);
-                        return;
-                    }
+            // If we weren't fetching in background, show the main menu now
+            if (!isFetchingInBackground) {
+                log_message("Showing main menu");
 
-                    // If we have a quickLaunch reason or we've exhausted retries, proceed
-                    if (launchReason === 'quickLaunch') {
-                        log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+                // try to resume previous WindowStack state if it's saved
+                if(saved_windows) {
+                    WindowStack._items = [...saved_windows];
+                    saved_windows = null;
+                    loadingCard.hide();
+                } else {
+                    showMainMenu();
+                    loadingCard.hide();
 
-                        // Handle the quick launch behavior based on settings
-                        switch (quick_launch_behavior) {
-                            case 'assistant':
-                                if (voice_enabled) {
-                                    showAssistMenu();
-                                }
-                                break;
-                            case 'favorites':
-                                let favoriteEntities = favoriteEntityStore.all();
-                                if(favoriteEntities && favoriteEntities.length) {
-                                    const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                    if(shouldShowDomains) {
-                                        showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                    } else {
-                                        showEntityList("Favorites", favoriteEntities, true, false, true);
+                    // Handle quick launch behavior after authentication is complete
+                    // Use a function to handle the quick launch behavior so we can retry if needed
+                    function handleQuickLaunch(retryCount) {
+                        retryCount = retryCount || 0;
+                        var retryDelay = 10; // Delay between retries in ms
+
+                        var launchReason = simply.impl.state.launchReason;
+                        log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+
+                        // If launch reason is undefined and we haven't exceeded max retries, try again
+                        if ( !launchReason ) {
+                            log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+                            setTimeout(function() {
+                                handleQuickLaunch(retryCount + 1);
+                            }, retryDelay);
+                            return;
+                        }
+
+                        // If we have a quickLaunch reason or we've exhausted retries, proceed
+                        if (launchReason === 'quickLaunch') {
+                            log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+
+                            // Handle the quick launch behavior based on settings
+                            switch (quick_launch_behavior) {
+                                case 'assistant':
+                                    if (voice_enabled) {
+                                        showAssistMenu();
                                     }
-                                }
-                                break;
-                            case 'areas':
-                                showAreaMenu();
-                                break;
-                            case 'labels':
-                                showLabelMenu();
-                                break;
-                            case 'todo_lists':
-                                showToDoLists();
-                                break;
-                            case 'main_menu':
-                            default:
-                                // Default behavior is to show the main menu, which is already handled
-                                break;
+                                    break;
+                                case 'favorites':
+                                    let favoriteEntities = favoriteEntityStore.all();
+                                    if(favoriteEntities && favoriteEntities.length) {
+                                        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+                                        if(shouldShowDomains) {
+                                            showEntityDomainsFromList(favoriteEntities, "Favorites");
+                                        } else {
+                                            showEntityList("Favorites", favoriteEntities, true, false, true);
+                                        }
+                                    }
+                                    break;
+                                case 'areas':
+                                    showAreaMenu();
+                                    break;
+                                case 'labels':
+                                    showLabelMenu();
+                                    break;
+                                case 'todo_lists':
+                                    showToDoLists();
+                                    break;
+                                case 'main_menu':
+                                default:
+                                    // Default behavior is to show the main menu, which is already handled
+                                    break;
+                            }
                         }
                     }
-                }
 
-                // Start the quick launch handling process
-                handleQuickLaunch();
+                    // Start the quick launch handling process
+                    handleQuickLaunch();
+                }
+            } else {
+                log_message("Background fetch completed successfully");
             }
         }
     };
 
-    // Don't think getting an error here is possible (it should just disconnect)
-    // but we may need to add logic to handle it in the future
+    // Fetch states
     getStates(function(){
         log_message("States loaded.");
+        states_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching states failed");
-        log_message("Fetching states failed");
+    }, function(error){
+        log_message("Fetching states failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch states";
+            states_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching states failed");
+        }
     });
 
     haws.getConfigAreas(function(data) {
@@ -6382,10 +6654,18 @@ function on_auth_ok(evt) {
             //     },
         }
         log_message("Config areas loaded.");
+        areas_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching areas failed");
-        log_message("Fetching areas failed");
+    }, function(error){
+        log_message("Fetching areas failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch areas";
+            areas_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching areas failed");
+        }
     });
 
     haws.getConfigDevices(function(data) {
@@ -6424,10 +6704,18 @@ function on_auth_ok(evt) {
             device_registry_cache[result.id] = result;
         }
         log_message("Config devices loaded.");
+        devices_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching devices failed");
-        log_message("Fetching devices failed");
+    }, function(error){
+        log_message("Fetching devices failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch devices";
+            devices_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching devices failed");
+        }
     });
 
     haws.getConfigEntities( function(data) {
@@ -6450,9 +6738,18 @@ function on_auth_ok(evt) {
         }
 
         log_message("Config entities loaded.");
+        entities_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching entities failed");
+    }, function(error){
+        log_message("Fetching entities failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch entities";
+            entities_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching entities failed");
+        }
     });
 
     haws.getConfigLabels(function(data) {
@@ -6461,14 +6758,26 @@ function on_auth_ok(evt) {
             label_registry_cache[result.label_id] = result;
         }
         log_message("Config labels loaded.");
+        labels_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching labels failed");
-        log_message("Fetching labels failed");
+    }, function(error){
+        log_message("Fetching labels failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch labels";
+            labels_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching labels failed");
+        }
     });
 
-    loadAssistPipelines(function(){
+    loadAssistPipelines(function(success){
         pipelines_loaded = true;
+        if (!success && isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch pipelines";
+        }
         done_fetching();
     });
 }
