@@ -7,7 +7,7 @@
 const Vibe = require('ui/vibe'); //needed for vibration to work
 const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
 
-const appVersion = '0.9', // displays in loading screen
+const appVersion = '1.0', // displays in loading screen
     confVersion = '0.9', // version of config page
     debugMode = true,
     debugHAWS = false,
