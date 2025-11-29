@@ -9,7 +9,7 @@ const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
 
 const appVersion = '0.9', // displays in loading screen
     confVersion = '0.9', // version of config page
-    debugMode = false,
+    debugMode = true,
     debugHAWS = false,
     hawsFaker = isEmulator
         && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
@@ -464,14 +464,7 @@ function showMainMenu() {
                     title: "Favorites",
                     // subtitle: thisDevice.attributes[arr[i]],
                     on_click: function(e) {
-                        // Check if we should show domains based on settings for Favorites
-                        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-
-                        if(shouldShowDomains) {
-                            showEntityDomainsFromList(favoriteEntities, "Favorites");
-                        } else {
-                            showEntityList("Favorites", favoriteEntities, true, false, true);
-                        }
+                        showFavorites();
                     }
                 });
             }
@@ -1747,6 +1740,26 @@ function showAssistMenu() {
     assistWindow.show();
 }
 
+function showFavorites() {
+    let favoriteEntities = favoriteEntityStore.all();
+    log_message("Showing " + favoriteEntities.length + " favorite entities", JSON.stringify(favoriteEntities));
+    if (favoriteEntities && favoriteEntities.length) {
+        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+        if (shouldShowDomains) {
+            showEntityDomainsFromList(favoriteEntities, "Favorites");
+        } else {
+            showEntityList("Favorites", favoriteEntities, true, false, true);
+        }
+    } else {
+        let noFavoritesCard = new UI.Card({
+            title: "No Favorites",
+            subtitle: "Long-press an entity and select 'Add Favorite'",
+            status: false
+        });
+        noFavoritesCard.show();
+    }
+}
+
 let areaMenu = null;
 function showAreaMenu() {
     if(!areaMenu) {
@@ -2119,7 +2132,7 @@ function showMediaPlayerEntity(entity_id) {
     position_progress_fg.maxWidth = position_progress_bg_inner.position2().x - position_progress_bg_inner.position().x;
 
     mediaControlWindow.on('show', function(){
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2399,7 +2412,7 @@ function showClimateEntity(entity_id) {
                     }
 
                     // Subscribe to entity updates
-                    let temp_range_subscription_msg_id = haws.subscribe({
+                    let temp_range_subscription_msg_id = haws.subscribeTrigger({
                         "type": "subscribe_trigger",
                         "trigger": {
                             "platform": "state",
@@ -2565,7 +2578,7 @@ function showClimateEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2747,7 +2760,7 @@ function showClimateEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let temp_subscription_msg_id = haws.subscribe({
+        let temp_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2845,7 +2858,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let hvac_subscription_msg_id = haws.subscribe({
+        let hvac_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2956,7 +2969,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let fan_subscription_msg_id = haws.subscribe({
+        let fan_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3067,7 +3080,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let preset_subscription_msg_id = haws.subscribe({
+        let preset_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3178,7 +3191,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let swing_subscription_msg_id = haws.subscribe({
+        let swing_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3607,7 +3620,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let brightness_subscription_msg_id = haws.subscribe({
+        let brightness_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3781,7 +3794,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let temp_subscription_msg_id = haws.subscribe({
+        let temp_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4128,7 +4141,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let color_subscription_msg_id = haws.subscribe({
+        let color_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4266,7 +4279,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let effect_subscription_msg_id = haws.subscribe({
+        let effect_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4328,7 +4341,7 @@ function showLightEntity(entity_id) {
         updateLightMenuItems(light);
 
         // Subscribe to entity updates
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4779,7 +4792,7 @@ function showEntityMenu(entity_id) {
     _renderFavoriteBtn();
 
     showEntityMenu.on('show', function(){
-        msg_id = haws.subscribe({
+        msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4847,7 +4860,7 @@ function showEntityAttributesMenu(entity_id) {
         }
 
         // Subscribe to entity updates
-        msg_id = haws.subscribe({
+        msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -5091,7 +5104,7 @@ function showToDoLists() {
         todoLists.forEach(function(entity) {
             let entity_id = entity.entity_id;
 
-            subscriptionIds[entity_id] = haws.subscribe({
+            subscriptionIds[entity_id] = haws.subscribeTrigger({
                 "type": "todo/item/subscribe",
                 "entity_id": entity_id
             }, function(data) {
@@ -5618,7 +5631,7 @@ function showToDoList(entity_id) {
 
 
     todoListMenu.on('show', function() {
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
         }, function(data) {
@@ -5905,7 +5918,7 @@ function showToDoItemMenu(entity_id, item) {
     // Subscribe when menu is shown
     itemMenu.on('show', function() {
         log_message(`Subscribing to todo items for ${entity_id}`);
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
         }, function(data) {
@@ -6166,175 +6179,203 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         // Check if we're staying on the same page
         let stayingOnSamePage = (entityListMenu.current_page === pageNumber);
 
+        // Unsubscribe from previous subscription if exists
+        if(entityListMenu.subscription_id) {
+            haws.unsubscribe(entityListMenu.subscription_id);
+            entityListMenu.subscription_id = null;
+        }
+
+        // Determine which entity IDs to subscribe to
+        let entitiesToSubscribe = entity_id_list ? entity_id_list.slice() : [];
+
+        // Filter out ignored domains if skipIgnoredDomains is true
+        if (skipIgnoredDomains && ignore_domains && ignore_domains.length > 0) {
+            entitiesToSubscribe = entitiesToSubscribe.filter(function(entity_id) {
+                const [domain] = entity_id.split('.');
+                return ignore_domains.indexOf(domain) === -1;
+            });
+        }
+
+        if (entitiesToSubscribe.length === 0) {
+            log_message('No entities to subscribe to');
+            entityListMenu.section(0).title = 'No entities';
+            return;
+        }
+
         let prev_title = entityListMenu.section(0).title;
         entityListMenu.section(0).title = 'updating ...';
-        getStates(
-            function(data) {
-                entityListMenu.section(0).title = prev_title;
 
-                // Filter out ignored domains if skipIgnoredDomains is true
-                if (skipIgnoredDomains && ignore_domains && ignore_domains.length > 0) {
-                    data = data.filter(function(element) {
-                        const [domain] = element.entity_id.split('.');
-                        return ignore_domains.indexOf(domain) === -1;
-                    });
-                }
+        // Local state cache for this subscription
+        let entityStates = {};
+        let renderedEntityIds = {};
+        let initialSnapshotReceived = false;
 
-                if(entity_id_list) {
-                    data = data.filter(function(element, index) {
-                        return entity_id_list.indexOf(element.entity_id) > -1;
-                    });
-                }
+        // Helper to convert subscribeEntities format to standard entity format
+        function convertEntityData(entity_id, data) {
+            return {
+                entity_id: entity_id,
+                state: data.s,
+                attributes: data.a || {},
+                context: data.c,
+                last_changed: data.lc ? new Date(data.lc * 1000).toISOString() : new Date().toISOString()
+            };
+        }
 
-                if(sortItems) {
-                    // sort items by an entity attribute
-                    data = sortJSON(data, ha_order_by, ha_order_dir);
-                } else {
-                    // sort items in same order as they appear in entity_id_list
-                    data.sort(function(a, b){
-                        return entity_id_list.indexOf(a.entity_id) - entity_id_list.indexOf(b.entity_id);
-                    });
-                }
-                let data_length = data.length;
-                device_status = data;
+        // Helper to render the menu from entityStates
+        function renderMenu() {
+            // Convert entityStates to array for sorting/pagination
+            let data = [];
+            for (let entity_id in entityStates) {
+                data.push(entityStates[entity_id]);
+            }
 
-                function paginate(array, pageSize, pageNumber) {
-                    return array.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
-                }
-                if(data.length > maxPageItems) {
-                    data = paginate(data, maxPageItems, pageNumber);
-                    paginated = true;
-                    paginateMore = (maxPageItems * pageNumber) < data_length;
-                    log_message(`maxPageItems:${maxPageItems} pageNumber:${pageNumber} data_length:${data_length} paginateMore:${paginateMore?1:0}`)
-                }
+            if(sortItems) {
+                // sort items by an entity attribute
+                data = sortJSON(data, ha_order_by, ha_order_dir);
+            } else if (entity_id_list) {
+                // sort items in same order as they appear in entity_id_list
+                data.sort(function(a, b){
+                    return entity_id_list.indexOf(a.entity_id) - entity_id_list.indexOf(b.entity_id);
+                });
+            }
 
-                // Prepare to set up subscription for entity updates
-                let renderedEntityIds = {};
+            let data_length = data.length;
+            device_status = data;
 
-                // If we're not staying on the same page, clear all items and rebuild the menu
-                if (!stayingOnSamePage) {
-                    entityListMenu.items(0, []); // clear items
-                    let menuIndex = 0;
+            function paginate(array, pageSize, pageNumber) {
+                return array.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+            }
+            if(data.length > maxPageItems) {
+                data = paginate(data, maxPageItems, pageNumber);
+                paginated = true;
+                paginateMore = (maxPageItems * pageNumber) < data_length;
+                log_message(`maxPageItems:${maxPageItems} pageNumber:${pageNumber} data_length:${data_length} paginateMore:${paginateMore?1:0}`)
+            }
 
-                    if(pageNumber > 1) {
-                        entityListMenu.item(0, menuIndex, {
-                            title: "Prev Page",
-                            on_click: function(e) {
-                                updateStates(pageNumber - 1);
-                            }
-                        });
-                        menuIndex++;
+            // Clear renderedEntityIds for fresh mapping
+            renderedEntityIds = {};
+
+            entityListMenu.items(0, []); // clear items
+            let menuIndex = 0;
+
+            if(pageNumber > 1) {
+                entityListMenu.item(0, menuIndex, {
+                    title: "Prev Page",
+                    on_click: function(e) {
+                        updateStates(pageNumber - 1);
                     }
+                });
+                menuIndex++;
+            }
 
-                    for (let i = 0; i < data.length; i++) {
-                        if(entity_id_list && entity_id_list.indexOf(data[i].entity_id) === -1) {
-                            continue;
-                        }
-
-                        if(data[i].attributes.hidden){
-                            continue;
-                        }
-
-                        let menuId = menuIndex++;
-                        entityListMenu.item(0, menuId, {
-                            title: data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id,
-                            subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed)),
-                            entity_id: data[i].entity_id,
-                            icon: getEntityIcon(data[i])
-                        });
-                        renderedEntityIds[data[i].entity_id] = menuId;
-                    }
-
-                    if(paginateMore) {
-                        entityListMenu.item(0, menuIndex, {
-                            title: "Next Page",
-                            on_click: function(e) {
-                                updateStates(pageNumber + 1);
-                            }
-                        });
-                        paginateMoreIndex = menuIndex;
-                    }
-                } else {
-                    // We're staying on the same page, just update the existing items
-                    log_message('Staying on same page, updating existing items');
-
-                    // Get all current menu items
-                    let currentItems = entityListMenu.items(0);
-                    let entityMap = {};
-
-                    // Create a map of entity_id to data for quick lookup
-                    for (let i = 0; i < data.length; i++) {
-                        entityMap[data[i].entity_id] = data[i];
-                    }
-
-                    // Update each menu item with new data if available
-                    for (let i = 0; i < currentItems.length; i++) {
-                        let item = currentItems[i];
-
-                        // Skip navigation items (Prev/Next Page)
-                        if (!item.entity_id) {
-                            continue;
-                        }
-
-                        // If we have updated data for this entity, update the menu item
-                        if (entityMap[item.entity_id]) {
-                            let entity = entityMap[item.entity_id];
-                            entityListMenu.item(0, i, {
-                                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
-                                entity_id: entity.entity_id,
-                                icon: getEntityIcon(entity)
-                            });
-
-                            // Build the renderedEntityIds map for subscription
-                            renderedEntityIds[entity.entity_id] = i;
-                        }
-                    }
+            for (let i = 0; i < data.length; i++) {
+                if(data[i].attributes.hidden){
+                    continue;
                 }
 
-                // Always set up subscription for entity updates, regardless of whether we're staying on the same page
-                if(entityListMenu.subscription_id) {
-                    haws.unsubscribe(entityListMenu.subscription_id);
-                    entityListMenu.subscription_id = null;
+                let menuId = menuIndex++;
+                entityListMenu.item(0, menuId, {
+                    title: data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id,
+                    subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed)),
+                    entity_id: data[i].entity_id,
+                    icon: getEntityIcon(data[i])
+                });
+                renderedEntityIds[data[i].entity_id] = menuId;
+            }
+
+            if(paginateMore) {
+                entityListMenu.item(0, menuIndex, {
+                    title: "Next Page",
+                    on_click: function(e) {
+                        updateStates(pageNumber + 1);
+                    }
+                });
+                paginateMoreIndex = menuIndex;
+            }
+
+            entityListMenu.current_page = pageNumber;
+        }
+
+        // Helper to update a single entity in the menu
+        function updateEntityInMenu(entity_id) {
+            if (renderedEntityIds[entity_id] === undefined) {
+                return; // Entity not currently rendered
+            }
+
+            let entity = entityStates[entity_id];
+            if (!entity) {
+                return;
+            }
+
+            entityListMenu.item(0, renderedEntityIds[entity_id], {
+                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
+                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
+                entity_id: entity.entity_id,
+                icon: getEntityIcon(entity)
+            });
+        }
+
+        log_message(`Setting up subscribeEntities for ${entitiesToSubscribe.length} entities`);
+        entityListMenu.subscription_id = haws.subscribeEntities(entitiesToSubscribe, function(data) {
+            // log_message(`subscribeEntities event: ${JSON.stringify(data)}`, JSON.stringify(data, null, 4));
+            let ev = data.event || {};
+
+            // Handle added entities (initial snapshot)
+            if (ev.a) {
+                for (let entity_id in ev.a) {
+                    let entityData = convertEntityData(entity_id, ev.a[entity_id]);
+                    entityStates[entity_id] = entityData;
+                    ha_state_dict[entity_id] = entityData;
                 }
 
-                if(Object.keys(renderedEntityIds).length) {
-                    log_message(`Setting up subscription for ${Object.keys(renderedEntityIds).length} entities`);
-                    entityListMenu.subscription_id = haws.subscribe({
-                        "type": "subscribe_trigger",
-                        "trigger": {
-                            "platform": "state",
-                            "entity_id": Object.keys(renderedEntityIds),
-                        },
-                    }, function(data) {
-                        ha_state_dict[data.event.variables.trigger.to_state.entity_id] = data.event.variables.trigger.to_state;
-                        let entity = ha_state_dict[data.event.variables.trigger.to_state.entity_id];
-                        log_message("ENTITY GETTING UPDATE:" + JSON.stringify(entity));
-                        if(!entity) {
-                            log_message('FAILED TO FIND ENTITY ' + data.event.variables.trigger.to_state.entity_id);
-                            return;
-                        }
-                        entityListMenu.item(0, renderedEntityIds[entity.entity_id], {
-                            title: data.event.variables.trigger.to_state.attributes.friendly_name ? data.event.variables.trigger.to_state.attributes.friendly_name : entity.entity_id,
-                            subtitle: data.event.variables.trigger.to_state.state + (data.event.variables.trigger.to_state.attributes.unit_of_measurement ? ` ${data.event.variables.trigger.to_state.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data.event.variables.trigger.to_state.last_changed)),
-                            entity_id: entity.entity_id,
-                            icon: getEntityIcon(data.event.variables.trigger.to_state)
-                        });
-                    }, function(error) {
-                        log_message(`ENTITY UPDATE ERROR ${JSON.stringify(Object.keys(renderedEntityIds))}: ` + JSON.stringify(error));
-                    });
+                // On initial snapshot, render the full menu
+                if (!initialSnapshotReceived) {
+                    initialSnapshotReceived = true;
+                    entityListMenu.section(0).title = prev_title;
+                    renderMenu();
                 }
+            }
 
-                // Update the current page number
-                entityListMenu.current_page = pageNumber;
+            // Handle changed entities (updates)
+            if (ev.c) {
+                for (let entity_id in ev.c) {
+                    let patch = ev.c[entity_id];
+                    let plus = patch["+"] || {};
 
-                //Vibe.vibrate('short');
-            },
-            function() {
-                entityListMenu.section(0).title = 'HAWS - failed updating';
-            },
-            true
-        );
+                    // Get existing state or create new one
+                    let cur = entityStates[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
+
+                    // Merge the changes
+                    entityStates[entity_id] = {
+                        entity_id: entity_id,
+                        state: plus.s !== undefined ? plus.s : cur.state,
+                        attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                        context: plus.c !== undefined ? plus.c : cur.context,
+                        last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
+                    };
+                    ha_state_dict[entity_id] = entityStates[entity_id];
+
+                    log_message(`Entity update for ${entity_id}: ${entityStates[entity_id].state}`);
+                    updateEntityInMenu(entity_id);
+                }
+            }
+
+            // Handle removed entities
+            if (ev.r) {
+                for (let entity_id in ev.r) {
+                    delete entityStates[entity_id];
+                    delete ha_state_dict[entity_id];
+                    log_message(`Entity removed: ${entity_id}`);
+                    // Re-render menu if an entity was removed
+                    if (initialSnapshotReceived) {
+                        renderMenu();
+                    }
+                }
+            }
+        }, function(error) {
+            log_message(`subscribeEntities ERROR: ` + JSON.stringify(error));
+            entityListMenu.section(0).title = 'HAWS - failed updating';
+        });
     }
 
     entityListMenu.on('show', function(e) {
@@ -6530,15 +6571,7 @@ function on_auth_ok(evt) {
                                 }
                                 break;
                             case 'favorites':
-                                let favoriteEntities = favoriteEntityStore.all();
-                                if(favoriteEntities && favoriteEntities.length) {
-                                    const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                    if(shouldShowDomains) {
-                                        showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                    } else {
-                                        showEntityList("Favorites", favoriteEntities, true, false, true);
-                                    }
-                                }
+                                showFavorites();
                                 break;
                             case 'areas':
                                 showAreaMenu();
@@ -6658,15 +6691,7 @@ function on_auth_ok(evt) {
                                         }
                                         break;
                                     case 'favorites':
-                                        let favoriteEntities = favoriteEntityStore.all();
-                                        if(favoriteEntities && favoriteEntities.length) {
-                                            const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                            if(shouldShowDomains) {
-                                                showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                            } else {
-                                                showEntityList("Favorites", favoriteEntities, true, false, true);
-                                            }
-                                        }
+                                        showFavorites();
                                         break;
                                     case 'areas':
                                         showAreaMenu();

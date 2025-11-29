@@ -187,6 +187,10 @@ class HAWS {
                     response = this._handleSubscribeTrigger(msg, successCallback);
                     // For subscriptions, we don't call the callback immediately
                     return msg.id;
+                case 'subscribe_entities':
+                    response = this._handleSubscribeEntities(msg, successCallback);
+                    // For subscriptions, we don't call the callback immediately
+                    return msg.id;
                 case 'unsubscribe_events':
                     response = this._handleUnsubscribe(msg, successCallback);
                     break;
@@ -211,8 +215,8 @@ class HAWS {
                     return msg.id;
             }
 
-            // Call the success callback with the response (except for subscribe_trigger)
-            if(successCallback && msg.type !== 'subscribe_trigger') {
+            // Call the success callback with the response (except for subscriptions)
+            if(successCallback && msg.type !== 'subscribe_trigger' && msg.type !== 'subscribe_entities') {
                 successCallback(response);
             }
         } catch (err) {
@@ -519,6 +523,65 @@ class HAWS {
         callback(event_data);
     }
 
+    _handleSubscribeEntities(msg, callback) {
+        const subscription_id = msg.id;
+        this._subscriptions.push(subscription_id);
+
+        // Store the callback and entity_ids for later use with state updates
+        if(callback) {
+            this._commands.set(subscription_id, [callback, null, msg.entity_ids]);
+        }
+
+        // Return success response, but DON'T call the callback with it
+        const response = {
+            id: msg.id,
+            type: 'result',
+            success: true,
+            result: null
+        };
+
+        // Send initial snapshot after a short delay
+        setTimeout(() => {
+            if (msg.entity_ids && msg.entity_ids.length > 0) {
+                const added = {};
+
+                for (const entity_id of msg.entity_ids) {
+                    const entity = this.mockEntities[entity_id];
+                    if (entity) {
+                        // Format: { "s": state, "a": attributes, "c": context, "lc": last_changed }
+                        added[entity_id] = {
+                            s: entity.state,
+                            a: entity.attributes || {},
+                            c: this._generateRandomId(),
+                            lc: Date.now() / 1000
+                        };
+                    }
+                }
+
+                if (Object.keys(added).length > 0) {
+                    this._sendSubscribeEntitiesEvent(subscription_id, { a: added });
+                }
+            }
+        }, 100);
+
+        return response;
+    }
+
+    _sendSubscribeEntitiesEvent(subscription_id, eventData) {
+        const callbacks = this._commands.get(subscription_id);
+        if (!callbacks || callbacks.length === 0) return;
+
+        const callback = callbacks[0];
+
+        const event_message = {
+            id: subscription_id,
+            type: 'event',
+            event: eventData
+        };
+
+        callback(event_message);
+    }
+
     _handleUnsubscribe(msg, callback) {
         const subscription = msg.subscription;
         const index = this._subscriptions.indexOf(subscription);
@@ -716,7 +779,30 @@ class HAWS {
         if(!entity) return;
 
         for(const subscription_id of this._subscriptions) {
-            this._sendStateEvent(subscription_id, previousState, entity);
+            const callbacks = this._commands.get(subscription_id);
+            if (!callbacks) continue;
+
+            // Check if this is a subscribe_entities subscription (has entity_ids in callbacks[2])
+            const subscribedEntityIds = callbacks[2];
+            if (subscribedEntityIds && Array.isArray(subscribedEntityIds)) {
+                // This is a subscribe_entities subscription
+                if (subscribedEntityIds.indexOf(entity_id) !== -1) {
+                    // Build the change event with "+" containing changed fields
+                    const changed = {};
+                    changed[entity_id] = {
+                        "+": {
+                            s: entity.state,
+                            a: entity.attributes || {},
+                            c: this._generateRandomId(),
+                            lc: Date.now() / 1000
+                        }
+                    };
+                    this._sendSubscribeEntitiesEvent(subscription_id, { c: changed });
+                }
+            } else {
+                // This is a subscribe_trigger subscription
+                this._sendStateEvent(subscription_id, previousState, entity);
+            }
         }
     }
 
@@ -746,7 +832,7 @@ class HAWS {
         }
     }
 
-    subscribe(data, successCallback, errorCallback) {
+    subscribeTrigger(data, successCallback, errorCallback) {
         // Generate ID if not provided
         if (!data.id) {
             data.id = this._genCmdId();
@@ -763,6 +849,30 @@ class HAWS {
 
         if(this.debug) {
             console.log(`[HAWS Mock] subscribe: ${JSON.stringify(data, null, 4)}, id: ${msg_id}`);
+        }
+
+        return msg_id;
+    }
+
+    // Subscribe to entity state changes
+    subscribeEntities(entity_ids, successCallback, errorCallback) {
+        let data = {
+            "type": "subscribe_entities",
+            "entity_ids": Array.isArray(entity_ids) ? entity_ids : [entity_ids]
+        };
+
+        data.id = this._genCmdId();
+        const msg_id = data.id;
+
+        this.send(data, successCallback, errorCallback);
+
+        // Make sure this subscription ID is tracked
+        if (this._subscriptions.indexOf(msg_id) === -1) {
+            this._subscriptions.push(msg_id);
+        }
+
+        if(this.debug) {
+            console.log(`[HAWS Mock] subscribeEntities: ${JSON.stringify(data, null, 4)}, id: ${msg_id}`);
         }
 
         return msg_id;

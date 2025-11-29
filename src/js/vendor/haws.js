@@ -219,7 +219,7 @@ class HAWS {
 
     // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-trigger
     // trigger options: https://www.home-assistant.io/docs/automation/trigger/#state-trigger
-    subscribe(data, successCallback, errorCallback ) {
+    subscribeTrigger(data, successCallback, errorCallback ) {
         // {
         //     "id": 2,
         //     "type": "subscribe_trigger",
@@ -235,6 +235,38 @@ class HAWS {
 
         if(this.debug) {
             console.log(`[HAWS] subscribe: ${JSON.stringify(data, null, 4)}`);
+        }
+
+        return msg_id;
+    }
+
+    // Subscribe to entity state changes
+    // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-entity-changes
+    subscribeEntities(entity_ids, successCallback, errorCallback) {
+        // {
+        //     "id": <unique_int>,
+        //     "type": "subscribe_entities",
+        //     "entity_ids": ["light.office", "sensor.co2_living_room"]
+        // }
+        //
+        // Response events contain:
+        //   event.a = added entities (initial snapshot has full state here)
+        //   event.c = changed entities (contains "+" object with changed fields)
+        //   event.r = removed entities
+        //
+        // Entity data format:
+        //   { "s": "<state>", "a": {attributes}, "c": "<context>", "lc": <last_changed_timestamp> }
+
+        let data = {
+            "type": "subscribe_entities",
+            "entity_ids": Array.isArray(entity_ids) ? entity_ids : [entity_ids]
+        };
+
+        let msg_id = this.send(data, successCallback, errorCallback);
+        this._subscriptions.push(msg_id);
+
+        if(this.debug) {
+            console.log(`[HAWS] subscribeEntities: ${JSON.stringify(data, null, 4)}`);
         }
 
         return msg_id;
