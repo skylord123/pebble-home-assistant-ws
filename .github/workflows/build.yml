@@ -57,7 +57,6 @@ jobs:
           cp build/chalk/pebble-app.elf elfs/pebble-app-chalk.elf
           cp build/aplite/pebble-app.elf elfs/pebble-app-aplite.elf
           cp build/emery/pebble-app.elf elfs/pebble-app-emery.elf
-          cp build/flint/pebble-app.elf elfs/pebble-app-flint.elf
           zip -r elfs.zip elfs
       - name: Upload PBW
         uses: actions/upload-artifact@v4
