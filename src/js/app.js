@@ -424,7 +424,8 @@ function restartApp() {
 
 // Initial screen
 let loadingCard = new UI.Card({
-    title: 'Home Assistant WS v' + appVersion
+    title: 'Home Assistant WS',
+    status: false
 });
 
 let mainMenu = null;
