@@ -78,6 +78,22 @@ static SimplyMsg *s_msg = NULL;
 
 static bool s_has_communicated = false;
 
+// Pending scroll state for retry when system dialogs are on top
+typedef struct PendingScroll PendingScroll;
+
+struct PendingScroll {
+  Simply *simply;
+  int scroll_y;
+  bool animated;
+  AppTimer *timer;
+  int retry_count;
+};
+
+static PendingScroll s_pending_scroll = { NULL, 0, false, NULL, 0 };
+
+#define SCROLL_RETRY_DELAY_MS 100
+#define SCROLL_MAX_RETRIES 50  // 5 seconds max wait
+
 typedef struct CommandHandlerEntry CommandHandlerEntry;
 
 struct CommandHandlerEntry {
@@ -195,6 +211,69 @@ static bool simply_base_handle_packet(Simply *simply, Packet *packet) {
   return false;
 }
 
+// Forward declaration for retry timer callback
+static void scroll_retry_timer_callback(void *data);
+
+// Helper function to execute the scroll if possible
+static bool try_execute_scroll(Simply *simply, int scroll_y, bool animated) {
+  // Get the top window using the helper function
+  SimplyWindow *simply_window = simply_window_stack_get_top_window(simply);
+  if (!simply_window) {
+    // Window not available (system dialog on top)
+    return false;
+  }
+
+  // Check if the window has a scroll layer
+  if (!simply_window->scroll_layer) {
+    return true;  // No scroll layer, nothing to do, don't retry
+  }
+
+  // Check if the window is still valid
+  if (!simply_window->window) {
+    return true;  // Window invalid, don't retry
+  }
+
+  // Get the scroll layer from the SimplyWindow
+  ScrollLayer *scroll_layer = simply_window->scroll_layer;
+
+  // Extra safety check
+  if (!scroll_layer) {
+    return true;  // No scroll layer, don't retry
+  }
+
+  // Set the content offset
+  if (scroll_layer && simply_window->is_scrollable) {
+    scroll_layer_set_content_offset(scroll_layer, GPoint(0, scroll_y), animated);
+  }
+
+  return true;  // Success
+}
+
+// Timer callback to retry scroll when system dialog closes
+static void scroll_retry_timer_callback(void *data) {
+  s_pending_scroll.timer = NULL;
+
+  if (!s_pending_scroll.simply) {
+    return;
+  }
+
+  if (try_execute_scroll(s_pending_scroll.simply, s_pending_scroll.scroll_y, s_pending_scroll.animated)) {
+    // Success - clear pending scroll
+    s_pending_scroll.simply = NULL;
+    s_pending_scroll.retry_count = 0;
+  } else {
+    // Still blocked, retry if we haven't exceeded max retries
+    s_pending_scroll.retry_count++;
+    if (s_pending_scroll.retry_count < SCROLL_MAX_RETRIES) {
+      s_pending_scroll.timer = app_timer_register(SCROLL_RETRY_DELAY_MS, scroll_retry_timer_callback, NULL);
+    } else {
+      // Give up after max retries
+      s_pending_scroll.simply = NULL;
+      s_pending_scroll.retry_count = 0;
+    }
+  }
+}
+
 static void handle_scroll_message(Simply *simply, DictionaryIterator *iter) {
   Tuple *scroll_y_tuple = dict_find(iter, MESSAGE_KEY_SCROLL_Y);
   Tuple *animated_tuple = dict_find(iter, MESSAGE_KEY_ANIMATED);
@@ -206,35 +285,24 @@ static void handle_scroll_message(Simply *simply, DictionaryIterator *iter) {
   int scroll_y = scroll_y_tuple->value->int32;
   bool animated = animated_tuple && animated_tuple->value->int32;
 
-  // We don't need to get the window since we'll use the SimplyWindow directly
-
-  // Get the top window using the helper function
-  SimplyWindow *simply_window = simply_window_stack_get_top_window(simply);
-  if (!simply_window) {
-    return;
+  // Cancel any pending scroll timer
+  if (s_pending_scroll.timer) {
+    app_timer_cancel(s_pending_scroll.timer);
+    s_pending_scroll.timer = NULL;
   }
 
-  // Check if the window has a scroll layer
-  if (!simply_window->scroll_layer) {
-    return;
-  }
-
-  // Check if the window is still valid
-  if (!simply_window->window) {
-    return;
-  }
-
-  // Get the scroll layer from the SimplyWindow
-  ScrollLayer *scroll_layer = simply_window->scroll_layer;
-
-  // Extra safety check
-  if (!scroll_layer) {
-    return;
-  }
-
-  // Set the content offset with a try/catch equivalent
-  if (scroll_layer && simply_window->is_scrollable) {
-    scroll_layer_set_content_offset(scroll_layer, GPoint(0, scroll_y), animated);
+  // Try to execute the scroll immediately
+  if (try_execute_scroll(simply, scroll_y, animated)) {
+    // Success - clear any pending state
+    s_pending_scroll.simply = NULL;
+    s_pending_scroll.retry_count = 0;
+  } else {
+    // Window not available (system dialog on top), schedule retry
+    s_pending_scroll.simply = simply;
+    s_pending_scroll.scroll_y = scroll_y;
+    s_pending_scroll.animated = animated;
+    s_pending_scroll.retry_count = 0;
+    s_pending_scroll.timer = app_timer_register(SCROLL_RETRY_DELAY_MS, scroll_retry_timer_callback, NULL);
   }
 }
 

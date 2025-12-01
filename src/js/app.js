@@ -7,7 +7,7 @@
 const appVersion = '1.0', // displays in loading screen
     confVersion = '1.0', // version of config page
     configPageUrl = 'https://skylar.tech/uploads/pebble-haws-config-' + confVersion + '.htm',
-    debugMode = true,
+    debugMode = false,
     debugHAWS = false,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
@@ -1707,7 +1707,7 @@ function showAssistMenu() {
     }
 
     assistWindow.on('click', 'select', function(e) {
-        log_message("Assist button pressed", e);
+        log_message("Assist button pressed");
         startAssist();
     });
 
