@@ -4,28 +4,25 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const Vibe = require('ui/vibe'); //needed for vibration to work
-const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
-
 const appVersion = '1.0', // displays in loading screen
-    confVersion = '0.9', // version of config page
+    confVersion = '1.0', // version of config page
+    configPageUrl = 'https://skylar.tech/uploads/pebble-haws-config-' + confVersion + '.htm',
     debugMode = true,
     debugHAWS = false,
-    hawsFaker = isEmulator
-        && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
     ajax = require('ajax'),
     Settings = require('settings'),
     Voice = require('ui/voice'),
-    HAWS = hawsFaker ? require('vendor/haws_faker') : require('vendor/haws'),
+    HAWS = require('vendor/haws'),
     FavoriteEntityStore = require('vendor/FavoriteEntityStore'),
     Feature = require('platform/feature'),
     Vector = require('vector2'),
     sortJSON = require('vendor/sortjson'),
     Light = require('ui/light'),
     simply = require('ui/simply'),
+    Vibe = require('ui/vibe'),
     enableIcons = true,
     sortObjectByKeys = function(object) {
         return Object.fromEntries(
@@ -47,12 +44,12 @@ const appVersion = '1.0', // displays in loading screen
     },
     ucwords = function( str ){
         return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
-    }
-const Platform = require("./platform");
-const colour = {
-    highlight: Feature.color("#00AAFF", "#000000"),
-    highlight_text: Feature.color("black", "white")
-};
+    },
+    Platform = require("./platform"),
+    colour = {
+        highlight: Feature.color("#00AAFF", "#000000"),
+        highlight_text: Feature.color("black", "white")
+    };
 
 // Add to global variables
 let ha_pipelines = [],
@@ -77,7 +74,7 @@ log_message('   AccountToken:' + Pebble.getAccountToken());
 // log_message('   TimelineToken:' + Pebble.getTimelineToken());
 
 Settings.config({
-        url: 'https://skylar.tech/uploads/wrist-ha-' + confVersion + '.htm',
+        url: configPageUrl,
     },
     function(e) {
         log_message('opened configurable');
@@ -112,6 +109,7 @@ let ha_url = null,
     ha_order_dir = null,
     voice_enabled = null,
     voice_confirm = null,
+    voice_backlight_trigger = null,
     voice_agent = null,
     domain_menu_enabled = null,
     domain_menu_all_entities = null,
@@ -145,6 +143,7 @@ function load_settings() {
     ha_order_dir = Settings.option('order_dir');
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
+    voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     quick_launch_behavior = Settings.option('quick_launch_behavior') || 'main_menu';
 
@@ -1349,6 +1348,11 @@ function showAssistMenu() {
             }
 
             log_message("Error message added, content height: " + currentY);
+
+            // Trigger backlight for error messages
+            if (voice_backlight_trigger) {
+                Light.trigger();
+            }
         });
     }
 
@@ -1463,6 +1467,11 @@ function showAssistMenu() {
                 }
 
                 log_message("Message added successfully, content height: " + currentY);
+
+                // Trigger backlight for assistant responses (not user messages)
+                if (voice_backlight_trigger && speaker !== 'Me') {
+                    Light.trigger();
+                }
 
                 if (callback) {
                     log_message("Executing callback");
@@ -1583,31 +1592,6 @@ function showAssistMenu() {
     }
 
     function startAssist() {
-        if(hawsFaker) {
-            const testMessageDelay = 2000; // 2 seconds delay between messages, adjust as needed
-
-            addMessage('Me', "Hello!", function() {
-                setTimeout(function() {
-                    addMessage('HA', "Hi! How are you?", function() {
-                        setTimeout(function() {
-                            addMessage('Me', "I am actually doing really good. Yourself?", function() {
-                                setTimeout(function() {
-                                    addMessage('HA', "Yeah I guess things are going pretty alright. I can't complain too much.", function() {
-                                        setTimeout(function(){
-                                            addMessage('HA', "Test!\n - list test\n- list item two", function() {
-                                            });
-                                        }, testMessageDelay)
-                                    });
-                                }, testMessageDelay);
-                            });
-                        }, testMessageDelay);
-                    });
-                }, testMessageDelay);
-            });
-
-            return;
-        }
-
         log_message("startAssist");
         Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
@@ -6886,7 +6870,7 @@ function main() {
     load_settings();
 
     // if config not complete display message
-    if( !hawsFaker && ( !ha_url || !ha_password ) ) {
+    if( !ha_url || !ha_password ) {
         loadingCard.subtitle('Setup required');
         loadingCard.body("Configure from the Pebble app");
         return;

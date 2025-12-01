@@ -118,6 +118,10 @@
 									<input class="form-check-input" type="checkbox" id="ha-voice-confirm">
 									<label class="form-check-label" for="ha-voice-confirm">Confirm assist before sending</label>
 								</div>
+								<div class="form-check form-switch">
+									<input class="form-check-input" type="checkbox" id="ha-voice-backlight-trigger" checked>
+									<label class="form-check-label" for="ha-voice-backlight-trigger">Trigger backlight on response</label>
+								</div>
 								<div class="form-group mt-3" id="pipeline-container">
 									<label for="ha-pipeline-select">Assist Pipeline</label>
 									<select class="form-select" id="ha-pipeline-select" disabled>
@@ -569,6 +573,7 @@
 				orderDirInput = $('#ha-order-dir'),
 				voiceEnabled = $('#ha-voice-enabled'),
 				voiceConfirm = $('#ha-voice-confirm'),
+				voiceBacklightTrigger = $('#ha-voice-backlight-trigger'),
 				voiceFontSize = $('#ha-voice-font-size'),
 				pipelineSelect = $('#ha-pipeline-select'),
 				pipelineWarning = $('#pipeline-warning'),
@@ -622,6 +627,7 @@
 				'order_dir': orderDirInput.val(),
 				'voice_enabled': voiceEnabled.is(':checked'),
 				'voice_confirm': voiceConfirm.is(':checked'),
+				'voice_backlight_trigger': voiceBacklightTrigger.is(':checked'),
 				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'selected_pipeline': pipelineSelect.val(),
 				'quick_launch_behavior': quickLaunchBehavior.val(),
@@ -690,6 +696,7 @@
 
 			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
 			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
+			voiceBacklightTrigger.attr('checked', typeof watch_config['voice_backlight_trigger'] !== 'undefined' ? watch_config['voice_backlight_trigger'] : true);
 			if (watch_config['voice_font_size']) {
 				voiceFontSize.val(watch_config['voice_font_size']);
 			} else {
