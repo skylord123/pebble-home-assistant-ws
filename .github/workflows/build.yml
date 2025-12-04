@@ -12,44 +12,27 @@ on:
 
 jobs:
   build:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
 
     steps:
-      - name: Clone Repository (Latest)
+      - name: Checkout
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-        if: github.event.inputs.git-ref == ''
-      - name: Clone Repository (Custom Ref)
-        uses: actions/checkout@v4
-        if: github.event.inputs.git-ref != ''
-        with:
-          ref: ${{ github.event.inputs.git-ref }}
-          fetch-depth: 0
+
       - name: Set short git commit SHA
         id: vars
         run: |
           calculatedSha=$(git rev-parse --short ${{ github.sha }})
           echo "COMMIT_SHORT_SHA=$calculatedSha" >> $GITHUB_ENV
-      - uses: actions/setup-node@v4
-      - name: Install dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get -qq install -y python3-pip python3-venv nodejs npm libsdl1.2debian libfdt1 zip
-      - name: Install uv
-        run: curl -LsSf https://astral.sh/uv/install.sh | sh
-      - name: Install pebble tool
-        run: |
-          export PATH="$HOME/.local/bin:$PATH"
-          uv tool install pebble-tool
-          echo "$HOME/.local/bin" >> $GITHUB_PATH
-      - name: Install SDK
-        run: pebble sdk install latest
-      - name: pebble-build
-        run: pebble build
-      - name: rename-app
-        run: cp build/pebble-home-assistant-ws.pbw pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
-      - name: generate elf bundle
+
+      - name: Build with Docker
+        run: make docker-build
+
+      - name: Rename app
+        run: cp build/pebble.pbw pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
+
+      - name: Generate ELF bundle
         run: |
           mkdir elfs
           cp build/basalt/pebble-app.elf elfs/pebble-app-basalt.elf
@@ -58,22 +41,16 @@ jobs:
           cp build/aplite/pebble-app.elf elfs/pebble-app-aplite.elf
           cp build/emery/pebble-app.elf elfs/pebble-app-emery.elf
           zip -r elfs.zip elfs
+
       - name: Upload PBW
         uses: actions/upload-artifact@v4
         with:
           name: pebble-home-assistant-ws PBW
           path: pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw
           if-no-files-found: error
+
       - name: Upload ELFs
         uses: actions/upload-artifact@v4
         with:
           name: Debug ELFs
           path: elfs.zip
-
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
-        if: startsWith(github.ref, 'refs/tags/')
-        with:
-          generate_release_notes: true
-          files: |
-            pebble-home-assistant-ws-g${{ env.COMMIT_SHORT_SHA }}.pbw

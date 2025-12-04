@@ -54,10 +54,20 @@ timeline-off:
 wipe:
 	pebble wipe
 
+DOCKER_IMAGE = ghcr.io/skylord123/docker-coredevices-pebble-tool:latest
+DOCKER_RUN = docker run --rm -v $(shell pwd):/pebble \
+	--user $(shell id -u):$(shell id -g) \
+	-e HOME=/tmp \
+	-e PEBBLE_HOME=/opt/pebble-sdk \
+	$(DOCKER_IMAGE)
+
 docker-build:
-	docker run --rm --name rebble-build -v $(shell pwd):/pebble/ --workdir /pebble/ rebble/pebble-sdk make
+	$(DOCKER_RUN)
+
+docker-clean:
+	$(DOCKER_RUN) pebble clean
 
 docker:
-	docker run --rm -it --name rebble-build -v $(shell pwd):/pebble/ --workdir /pebble/ -e PEBBLE_PHONE rebble/pebble-sdk
+	docker run --rm -it -v $(shell pwd):/pebble -e PEBBLE_PHONE $(DOCKER_IMAGE) /bin/bash
 
-.PHONY: all build config log install clean size logs screenshot deploy timeline-on timeline-off wipe phone-logs weather-api
+.PHONY: all build config log install clean size logs screenshot deploy timeline-on timeline-off wipe phone-logs docker-build docker-clean docker
