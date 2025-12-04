@@ -123,7 +123,8 @@ let ha_url = null,
     quick_launch_behavior = null,
     quick_launch_exit_on_back = null,
     unavailable_entity_handling = null,
-    unknown_entity_handling = null;
+    unknown_entity_handling = null,
+    automation_longpress_action = null;
 
 // Enable/disable coalesce_messages feature (set to true to enable, false to disable)
 const coalesce_messages_enabled = true;
@@ -200,7 +201,13 @@ function load_settings() {
     unknown_entity_handling = Settings.option('unknown_entity_handling');
     unknown_entity_handling = unknown_entity_handling !== undefined ? unknown_entity_handling : 'sort_normally'; // Default: sort normally
 
+    // Automation long-press action setting
+    // Options: 'toggle' (default - toggle enabled/disabled), 'trigger' (execute automation actions)
+    automation_longpress_action = Settings.option('automation_longpress_action');
+    automation_longpress_action = automation_longpress_action !== undefined ? automation_longpress_action : 'toggle'; // Default: toggle
+
     log_message('Entity handling - unavailable: ' + unavailable_entity_handling + ', unknown: ' + unknown_entity_handling);
+    log_message('Automation long-press action: ' + automation_longpress_action);
 
     // Update Voice Pipeline handling
     selected_pipeline = Settings.option('selected_pipeline');
@@ -803,6 +810,15 @@ function showEntitySettings() {
             }
         }
 
+        // Helper to get display text for automation long-press action
+        function getAutomationLongpressText(value) {
+            switch (value) {
+                case 'toggle': return 'Toggle';
+                case 'trigger': return 'Trigger';
+                default: return 'Toggle';
+            }
+        }
+
         entitySettingsMenu.on('show', function() {
             // Clear the menu
             entitySettingsMenu.items(0, []);
@@ -857,6 +873,15 @@ function showEntitySettings() {
                 subtitle: getEntityHandlingText(unknown_entity_handling),
                 on_click: function(e) {
                     showUnknownEntitiesMenu();
+                }
+            });
+
+            // Add Automation Long-Press setting
+            entitySettingsMenu.item(0, 4, {
+                title: "Automation Long-Press",
+                subtitle: getAutomationLongpressText(automation_longpress_action),
+                on_click: function(e) {
+                    showAutomationLongpressMenu();
                 }
             });
         });
@@ -1027,6 +1052,53 @@ function showEntitySettings() {
         });
 
         unknownMenu.show();
+    }
+
+    // Automation Long-Press Menu
+    function showAutomationLongpressMenu() {
+        let automationMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Automation Long-Press'
+            }]
+        });
+
+        automationMenu.on('show', function() {
+            // Clear the menu
+            automationMenu.items(0, []);
+
+            // Add options
+            automationMenu.item(0, 0, {
+                title: "Toggle",
+                subtitle: automation_longpress_action === "toggle" ? "Current" : "",
+                value: "toggle"
+            });
+
+            automationMenu.item(0, 1, {
+                title: "Trigger",
+                subtitle: automation_longpress_action === "trigger" ? "Current" : "",
+                value: "trigger"
+            });
+        });
+
+        automationMenu.on('select', function(e) {
+            // Set the value
+            automation_longpress_action = e.item.value;
+
+            // Save to settings
+            Settings.option('automation_longpress_action', automation_longpress_action);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                automationMenu.hide();
+            }, 500);
+        });
+
+        automationMenu.show();
     }
 
     // Create and show the entity settings menu
@@ -6394,11 +6466,28 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     entityListMenu.on('longSelect', function(e) {
         log_message(`Entity ${e.item.entity_id} was long pressed!`);
         let [domain] = e.item.entity_id.split('.');
-        if (
+        if (domain === "automation") {
+            // Handle automation based on user setting
+            let service = automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
+            log_message(`Automation long-press: calling ${service} for ${e.item.entity_id}`);
+            haws.callService(
+                domain,
+                service,
+                {},
+                {entity_id: e.item.entity_id},
+                function (data) {
+                    log_message(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function (error) {
+                    log_message('no response');
+                    Vibe.vibrate('double');
+                });
+        }
+        else if (
             domain === "switch" ||
             domain === "light" ||
             domain === "input_boolean" ||
-            domain === "automation" ||
             domain === "script" ||
             domain === "cover"
         ) {
