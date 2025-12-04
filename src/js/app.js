@@ -5013,13 +5013,16 @@ function showEntityDomainsFromList(entity_id_list, title) {
     });
 
     domainListMenu.on('show', function(){
+        log_message(`showEntityDomainsFromList: building domain list from ${entity_id_list.length} entities`);
+
         // loop over entity id list and index them by their domain
         // we got this during boot
         let domainEntities = {};
+        let missingEntities = [];
         for(let entity_id of entity_id_list) {
             let entity = ha_state_dict[entity_id];
             if(!entity) {
-                // throw new Error(`${entity_id} does not exist in ha_state_dict`);
+                missingEntities.push(entity_id);
                 continue;
             }
 
@@ -5037,8 +5040,17 @@ function showEntityDomainsFromList(entity_id_list, title) {
             }
         }
 
+        if (missingEntities.length > 0) {
+            log_message(`showEntityDomainsFromList: WARNING - ${missingEntities.length} entities missing from ha_state_dict: ${missingEntities.join(', ')}`);
+        }
+
         // sort domain list
         domainEntities = sortObjectByKeys(domainEntities);
+
+        // Log domain counts
+        for(let domain in domainEntities) {
+            log_message(`showEntityDomainsFromList: domain '${domain}' has ${domainEntities[domain].length} entities`);
+        }
 
         // add domain entries into menu
         let i = 0;
@@ -5050,6 +5062,7 @@ function showEntityDomainsFromList(entity_id_list, title) {
                 title: display_name,
                 subtitle: `${entities.length} ${entities.length > 1 ? 'entities' : 'entity'}`,
                 on_click: function(e) {
+                    log_message(`showEntityDomainsFromList: clicked domain '${domain}' with ${entities.length} entities`);
                     showEntityList(display_name, entities);
                 }
             });
@@ -6409,20 +6422,39 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 menuIndex++;
             }
 
+            log_message(`renderMenu: about to render ${data.length} items to menu`);
             for (let i = 0; i < data.length; i++) {
-                if(data[i].attributes.hidden){
-                    continue;
-                }
+                try {
+                    if(data[i].attributes.hidden){
+                        log_message(`renderMenu: skipping hidden entity ${data[i].entity_id}`);
+                        continue;
+                    }
 
-                let menuId = menuIndex++;
-                entityListMenu.item(0, menuId, {
-                    title: data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id,
-                    subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed)),
-                    entity_id: data[i].entity_id,
-                    icon: getEntityIcon(data[i])
-                });
-                renderedEntityIds[data[i].entity_id] = menuId;
+                    let menuId = menuIndex++;
+                    let itemTitle = data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id;
+                    let itemSubtitle = data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed));
+
+                    // Get icon path - use try/catch as icon loading can fail for certain entities
+                    let itemIcon;
+                    try {
+                        itemIcon = getEntityIcon(data[i]);
+                    } catch (iconErr) {
+                        log_message(`renderMenu: icon error for ${data[i].entity_id}: ${iconErr.message}`);
+                        itemIcon = 'images/icon_unknown.png';
+                    }
+
+                    entityListMenu.item(0, menuId, {
+                        title: itemTitle,
+                        subtitle: itemSubtitle,
+                        entity_id: data[i].entity_id,
+                        icon: itemIcon
+                    });
+                    renderedEntityIds[data[i].entity_id] = menuId;
+                } catch (err) {
+                    log_message(`renderMenu: ERROR rendering entity ${data[i] ? data[i].entity_id : 'unknown'} at index ${i}: ${err.message}`);
+                }
             }
+            log_message(`renderMenu: rendered ${menuIndex} items total`);
 
             if(paginateMore) {
                 entityListMenu.item(0, menuIndex, {
@@ -6456,10 +6488,21 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
             });
         }
 
-        log_message(`Setting up subscribeEntities for ${entitiesToSubscribe.length} entities`);
+        log_message(`Setting up subscribeEntities for ${entitiesToSubscribe.length} entities: ${entitiesToSubscribe.join(', ')}`);
         entityListMenu.subscription_id = haws.subscribeEntities(entitiesToSubscribe, function(data) {
             // log_message(`subscribeEntities event: ${JSON.stringify(data)}`, JSON.stringify(data, null, 4));
             let ev = data.event || {};
+
+            // Debug logging for subscription events
+            if (ev.a) {
+                log_message(`subscribeEntities: received ${Object.keys(ev.a).length} added entities`);
+            }
+            if (ev.c) {
+                log_message(`subscribeEntities: received ${Object.keys(ev.c).length} changed entities`);
+            }
+            if (ev.r) {
+                log_message(`subscribeEntities: received ${Object.keys(ev.r).length} removed entities: ${Object.keys(ev.r).join(', ')}`);
+            }
 
             // Handle added entities (initial snapshot)
             if (ev.a) {

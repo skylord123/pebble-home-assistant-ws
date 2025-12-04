@@ -172,6 +172,11 @@
         "file": "images/icon_vacuum.png",
         "name": "IMAGE_ICON_VACUUM",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_scene.png",
+        "name": "IMAGE_ICON_SCENE",
+        "type": "bitmap"
       }
     ]
   },
