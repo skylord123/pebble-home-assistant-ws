@@ -195,17 +195,6 @@
 					</div>
 					<div class="card-body">
 						<div class="row">
-							<div class="form-group col-12">
-								<label for="ha-filter">Entity Filter</label>
-								<select class="form-select" aria-label="Entity Filter" id="ha-filter">
-									<option value="all">Display all</option>
-									<option value="specify">Specify entities</option>
-								</select>
-								<small class="form-text text-muted">Change what entities display</small>
-							</div>
-
-
-
 							<div class="form-group col-6 mt-2">
 								<label for="ha-order-by">Order By</label>
 								<select class="form-select" aria-label="Entity Filter" id="ha-order-by">
@@ -223,6 +212,26 @@
 									<option value="asc">Ascending</option>
 								</select>
 								<small class="form-text text-muted">Change direction entities are sorted</small>
+							</div>
+
+							<div class="form-group col-6 mt-2">
+								<label for="ha-unavailable-handling">Unavailable Entities</label>
+								<select class="form-select" id="ha-unavailable-handling">
+									<option value="sort_to_end">Sort to end</option>
+									<option value="sort_normally">Sort normally</option>
+									<option value="hide">Hide</option>
+								</select>
+								<small class="form-text text-muted">How to display unavailable entities</small>
+							</div>
+
+							<div class="form-group col-6 mt-2">
+								<label for="ha-unknown-handling">Unknown Entities</label>
+								<select class="form-select" id="ha-unknown-handling">
+									<option value="sort_to_end">Sort to end</option>
+									<option value="sort_normally">Sort normally</option>
+									<option value="hide">Hide</option>
+								</select>
+								<small class="form-text text-muted">How to display unknown entities</small>
 							</div>
 						</div>
 					</div>
@@ -577,7 +586,6 @@
 	$(function() {
 		let urlInput = $("#ha-url"),
 				tokenInput = $('#ha-token'),
-				filterInput = $('#ha-filter'),
 				orderByInput = $('#ha-order-by'),
 				orderDirInput = $('#ha-order-dir'),
 				voiceEnabled = $('#ha-voice-enabled'),
@@ -601,7 +609,9 @@
 				domainMenuMinDomains = $('#domain-menu-min-domains'),
 				conditionalSettings = $('#conditional-settings'),
 				quickLaunchBehavior = $('#ha-quick-launch-behavior'),
-				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back');
+				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back'),
+				unavailableHandling = $('#ha-unavailable-handling'),
+				unknownHandling = $('#ha-unknown-handling');
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -632,7 +642,6 @@
 			let values = {
 				'ha_url': urlInput.val().replace(/\/+$/, ''),
 				'token': tokenInput.val(),
-				'filter': filterInput.val(),
 				'order_by': orderByInput.val(),
 				'order_dir': orderDirInput.val(),
 				'voice_enabled': voiceEnabled.is(':checked'),
@@ -655,7 +664,10 @@
 				}).toArray(),
 				'ignore_domains': $("#ignore-domains-list li").map(function(a,b){
 					return $(b).data('domain');
-				}).toArray()
+				}).toArray(),
+				// Entity state handling settings
+				'unavailable_entity_handling': unavailableHandling.val(),
+				'unknown_entity_handling': unknownHandling.val()
 			};
 
 			// Preserve timeline_token if it exists
@@ -694,9 +706,6 @@
 			}
 			if(watch_config['token']) {
 				tokenInput.val(watch_config['token']);
-			}
-			if(watch_config['filter']) {
-				filterInput.val(watch_config['filter']);
 			}
 			if(watch_config['order_by']) {
 				orderByInput.val(watch_config['order_by']);
@@ -805,6 +814,20 @@
 									domainMenuLabels.val() === 'conditional' ||
 									domainMenuFavorites.val() === 'conditional';
 			conditionalSettings.toggle(showConditional);
+
+			// Handle unavailable entity handling
+			if (watch_config['unavailable_entity_handling']) {
+				unavailableHandling.val(watch_config['unavailable_entity_handling']);
+			} else {
+				unavailableHandling.val('sort_to_end'); // Default
+			}
+
+			// Handle unknown entity handling
+			if (watch_config['unknown_entity_handling']) {
+				unknownHandling.val(watch_config['unknown_entity_handling']);
+			} else {
+				unknownHandling.val('sort_normally'); // Default
+			}
 
 			if(watch_config['favorite_entities']) {
 				let html = '';
@@ -942,14 +965,6 @@
 
 			ignoreDomainsDiv.append(newItem);
 			domainInput.val('').focus();
-		});
-
-		filterInput.change(function(e){
-			if($(this).val() == 'all') {
-
-			} else {
-
-			}
 		});
 
 		urlInput.keyup(function(e){

@@ -104,7 +104,6 @@ Settings.config({
 let ha_url = null,
     ha_password = null,
     ha_refresh_interval = null,
-    ha_filter = null,
     ha_order_by = null,
     ha_order_dir = null,
     voice_enabled = null,
@@ -122,7 +121,9 @@ let ha_url = null,
     ignore_domains = null,
     ha_connected = false,
     quick_launch_behavior = null,
-    quick_launch_exit_on_back = null;
+    quick_launch_exit_on_back = null,
+    unavailable_entity_handling = null,
+    unknown_entity_handling = null;
 
 // Enable/disable coalesce_messages feature (set to true to enable, false to disable)
 const coalesce_messages_enabled = true;
@@ -139,7 +140,6 @@ function load_settings() {
     ha_url = Settings.option('ha_url');
     ha_password = Settings.option('token');
     ha_refresh_interval = Settings.option('refreshTime') ? Settings.option('refreshTime') : 15;
-    ha_filter = Settings.option('filter');
     ha_order_by = Settings.option('order_by');
     ha_order_dir = Settings.option('order_dir');
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
@@ -191,6 +191,16 @@ function load_settings() {
     }
     // If ignore_domains is an empty array, respect user's choice to show all domains
     log_message('Ignore domains: ' + JSON.stringify(ignore_domains));
+
+    // Entity state handling settings
+    // Options: 'sort_to_end', 'sort_normally', 'hide'
+    unavailable_entity_handling = Settings.option('unavailable_entity_handling');
+    unavailable_entity_handling = unavailable_entity_handling !== undefined ? unavailable_entity_handling : 'sort_to_end'; // Default: sort to end
+
+    unknown_entity_handling = Settings.option('unknown_entity_handling');
+    unknown_entity_handling = unknown_entity_handling !== undefined ? unknown_entity_handling : 'sort_normally'; // Default: sort normally
+
+    log_message('Entity handling - unavailable: ' + unavailable_entity_handling + ', unknown: ' + unknown_entity_handling);
 
     // Update Voice Pipeline handling
     selected_pipeline = Settings.option('selected_pipeline');
@@ -783,6 +793,16 @@ function showEntitySettings() {
             }]
         });
 
+        // Helper to get display text for entity handling setting
+        function getEntityHandlingText(value) {
+            switch (value) {
+                case 'sort_to_end': return 'Sort to end';
+                case 'sort_normally': return 'Sort normally';
+                case 'hide': return 'Hide';
+                default: return 'Sort to end';
+            }
+        }
+
         entitySettingsMenu.on('show', function() {
             // Clear the menu
             entitySettingsMenu.items(0, []);
@@ -819,6 +839,24 @@ function showEntitySettings() {
                         subtitle: ha_order_dir === "desc" ? "Descending" : "Ascending",
                         on_click: e.item.on_click
                     });
+                }
+            });
+
+            // Add Unavailable Entities setting
+            entitySettingsMenu.item(0, 2, {
+                title: "Unavailable Entities",
+                subtitle: getEntityHandlingText(unavailable_entity_handling),
+                on_click: function(e) {
+                    showUnavailableEntitiesMenu();
+                }
+            });
+
+            // Add Unknown Entities setting
+            entitySettingsMenu.item(0, 3, {
+                title: "Unknown Entities",
+                subtitle: getEntityHandlingText(unknown_entity_handling),
+                on_click: function(e) {
+                    showUnknownEntitiesMenu();
                 }
             });
         });
@@ -883,6 +921,112 @@ function showEntitySettings() {
         });
 
         orderByMenu.show();
+    }
+
+    // Unavailable Entities Menu
+    function showUnavailableEntitiesMenu() {
+        let unavailableMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Unavailable Entities'
+            }]
+        });
+
+        unavailableMenu.on('show', function() {
+            // Clear the menu
+            unavailableMenu.items(0, []);
+
+            // Add options
+            unavailableMenu.item(0, 0, {
+                title: "Sort to end",
+                subtitle: unavailable_entity_handling === "sort_to_end" ? "Current" : "",
+                value: "sort_to_end"
+            });
+
+            unavailableMenu.item(0, 1, {
+                title: "Sort normally",
+                subtitle: unavailable_entity_handling === "sort_normally" ? "Current" : "",
+                value: "sort_normally"
+            });
+
+            unavailableMenu.item(0, 2, {
+                title: "Hide",
+                subtitle: unavailable_entity_handling === "hide" ? "Current" : "",
+                value: "hide"
+            });
+        });
+
+        unavailableMenu.on('select', function(e) {
+            // Set the value
+            unavailable_entity_handling = e.item.value;
+
+            // Save to settings
+            Settings.option('unavailable_entity_handling', unavailable_entity_handling);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                unavailableMenu.hide();
+            }, 500);
+        });
+
+        unavailableMenu.show();
+    }
+
+    // Unknown Entities Menu
+    function showUnknownEntitiesMenu() {
+        let unknownMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Unknown Entities'
+            }]
+        });
+
+        unknownMenu.on('show', function() {
+            // Clear the menu
+            unknownMenu.items(0, []);
+
+            // Add options
+            unknownMenu.item(0, 0, {
+                title: "Sort to end",
+                subtitle: unknown_entity_handling === "sort_to_end" ? "Current" : "",
+                value: "sort_to_end"
+            });
+
+            unknownMenu.item(0, 1, {
+                title: "Sort normally",
+                subtitle: unknown_entity_handling === "sort_normally" ? "Current" : "",
+                value: "sort_normally"
+            });
+
+            unknownMenu.item(0, 2, {
+                title: "Hide",
+                subtitle: unknown_entity_handling === "hide" ? "Current" : "",
+                value: "hide"
+            });
+        });
+
+        unknownMenu.on('select', function(e) {
+            // Set the value
+            unknown_entity_handling = e.item.value;
+
+            // Save to settings
+            Settings.option('unknown_entity_handling', unknown_entity_handling);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                unknownMenu.hide();
+            }, 500);
+        });
+
+        unknownMenu.show();
     }
 
     // Create and show the entity settings menu
@@ -6449,15 +6593,53 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 data.push(entityStates[entity_id]);
             }
 
+            // Filter and sort based on unavailable/unknown entity handling settings
+            // First, filter out hidden entities
+            data = data.filter(function(entity) {
+                const state = entity.state;
+                if (state === 'unavailable' && unavailable_entity_handling === 'hide') {
+                    return false;
+                }
+                if (state === 'unknown' && unknown_entity_handling === 'hide') {
+                    return false;
+                }
+                return true;
+            });
+
+            // Separate entities into groups based on their state and handling settings
+            let normalEntities = [];
+            let unavailableToEnd = [];
+            let unknownToEnd = [];
+
+            data.forEach(function(entity) {
+                const state = entity.state;
+                if (state === 'unavailable' && unavailable_entity_handling === 'sort_to_end') {
+                    unavailableToEnd.push(entity);
+                } else if (state === 'unknown' && unknown_entity_handling === 'sort_to_end') {
+                    unknownToEnd.push(entity);
+                } else {
+                    normalEntities.push(entity);
+                }
+            });
+
+            // Sort each group
             if(sortItems) {
                 // sort items by an entity attribute
-                data = sortJSON(data, ha_order_by, ha_order_dir);
+                normalEntities = sortJSON(normalEntities, ha_order_by, ha_order_dir);
+                unavailableToEnd = sortJSON(unavailableToEnd, ha_order_by, ha_order_dir);
+                unknownToEnd = sortJSON(unknownToEnd, ha_order_by, ha_order_dir);
             } else if (entity_id_list) {
                 // sort items in same order as they appear in entity_id_list
-                data.sort(function(a, b){
+                const sortByList = function(a, b) {
                     return entity_id_list.indexOf(a.entity_id) - entity_id_list.indexOf(b.entity_id);
-                });
+                };
+                normalEntities.sort(sortByList);
+                unavailableToEnd.sort(sortByList);
+                unknownToEnd.sort(sortByList);
             }
+
+            // Combine: normal entities first, then unavailable (sorted to end), then unknown (sorted to end)
+            data = normalEntities.concat(unavailableToEnd).concat(unknownToEnd);
 
             let data_length = data.length;
             device_status = data;
