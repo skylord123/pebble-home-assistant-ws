@@ -5096,9 +5096,7 @@ function getEntityIcon(entity) {
 
         case 'binary_sensor':
             // Check for door/window sensors
-            log_message("binary_sensor icon render entity:", JSON.stringify(entity, null, 4));
             let entity_registry = entity_registry_cache[entity.entity_id];
-            log_message("binary_sensor icon render entity_registry_cache:", JSON.stringify(entity_registry, null, 4));
             if (
                 entity.attributes.device_class === 'opening'
                 || entity.attributes.device_class === 'door'
