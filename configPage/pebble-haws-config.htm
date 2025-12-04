@@ -172,6 +172,15 @@
 									<small class="form-text text-muted">Select what screen to show when app is launched via Quick Launch</small>
 								</div>
 							</div>
+							<div class="col-12 mt-3">
+								<div class="form-check">
+									<input class="form-check-input" type="checkbox" id="ha-quick-launch-exit-on-back">
+									<label class="form-check-label" for="ha-quick-launch-exit-on-back">
+										Exit on Back
+									</label>
+									<small class="form-text text-muted d-block">When enabled, pressing back on a quick launched screen will exit the app instead of going to the main menu</small>
+								</div>
+							</div>
 						</div>
 					</div>
 				</div>
@@ -591,7 +600,8 @@
 				domainMenuMinEntitiesCheck = $('#domain-menu-min-entities-check'),
 				domainMenuMinDomains = $('#domain-menu-min-domains'),
 				conditionalSettings = $('#conditional-settings'),
-				quickLaunchBehavior = $('#ha-quick-launch-behavior');
+				quickLaunchBehavior = $('#ha-quick-launch-behavior'),
+				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back');
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -631,6 +641,7 @@
 				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'selected_pipeline': pipelineSelect.val(),
 				'quick_launch_behavior': quickLaunchBehavior.val(),
+				'quick_launch_exit_on_back': quickLaunchExitOnBack.is(':checked'),
 				// Domain menu settings
 				'domain_menu_enabled': 'conditional', // Default global setting
 				'domain_menu_all_entities': domainMenuAll.val(),
@@ -741,6 +752,13 @@
 				quickLaunchBehavior.val(watch_config['quick_launch_behavior']);
 			} else {
 				quickLaunchBehavior.val('main_menu'); // Default
+			}
+
+			// Handle quick launch exit on back
+			if (watch_config['quick_launch_exit_on_back']) {
+				quickLaunchExitOnBack.prop('checked', true);
+			} else {
+				quickLaunchExitOnBack.prop('checked', false);
 			}
 
 			// Handle domain menu settings

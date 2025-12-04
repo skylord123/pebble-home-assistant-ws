@@ -121,7 +121,8 @@ let ha_url = null,
     timeline_token = null,
     ignore_domains = null,
     ha_connected = false,
-    quick_launch_behavior = null;
+    quick_launch_behavior = null,
+    quick_launch_exit_on_back = null;
 
 // Enable/disable coalesce_messages feature (set to true to enable, false to disable)
 const coalesce_messages_enabled = true;
@@ -146,6 +147,7 @@ function load_settings() {
     voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     quick_launch_behavior = Settings.option('quick_launch_behavior') || 'main_menu';
+    quick_launch_exit_on_back = Settings.option('quick_launch_exit_on_back') === true;
 
     // Domain menu settings
     const domainMenuSetting = Settings.option('domain_menu_enabled');
@@ -889,6 +891,19 @@ function showEntitySettings() {
 }
 
 function showQuickLaunchSettings() {
+    // Helper to get display name for quick launch behavior
+    function getActionDisplayName(behavior) {
+        switch (behavior) {
+            case 'main_menu': return 'Main Menu';
+            case 'assistant': return 'Assistant';
+            case 'favorites': return 'Favorites';
+            case 'areas': return 'Areas';
+            case 'labels': return 'Labels';
+            case 'todo_lists': return 'To-Do Lists';
+            default: return 'Main Menu';
+        }
+    }
+
     // Create a menu for quick launch settings
     let quickLaunchMenu = new UI.Menu({
         status: false,
@@ -897,76 +912,127 @@ function showQuickLaunchSettings() {
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'Quick Launch Action'
+            title: 'Quick Launch'
         }]
     });
 
-    quickLaunchMenu.on('show', function() {
+    function updateMenuItems() {
         // Clear the menu
         quickLaunchMenu.items(0, []);
 
+        // Action - opens submenu to select quick launch destination
+        quickLaunchMenu.item(0, 0, {
+            title: "Action",
+            subtitle: getActionDisplayName(quick_launch_behavior),
+            action: 'select_action'
+        });
+
+        // Exit on Back - toggles on click
+        quickLaunchMenu.item(0, 1, {
+            title: "Exit on Back",
+            subtitle: quick_launch_exit_on_back ? "Enabled" : "Disabled",
+            action: 'toggle_exit_on_back'
+        });
+    }
+
+    quickLaunchMenu.on('show', updateMenuItems);
+
+    quickLaunchMenu.on('select', function(e) {
+        if (e.item.action === 'select_action') {
+            showQuickLaunchActionMenu(function() {
+                // Update just the Action item subtitle
+                quickLaunchMenu.item(0, 0, {
+                    title: "Action",
+                    subtitle: getActionDisplayName(quick_launch_behavior),
+                    action: 'select_action'
+                });
+            });
+        } else if (e.item.action === 'toggle_exit_on_back') {
+            quick_launch_exit_on_back = !quick_launch_exit_on_back;
+            Settings.option('quick_launch_exit_on_back', quick_launch_exit_on_back);
+            // Update just this item to preserve selection position
+            quickLaunchMenu.item(0, 1, {
+                title: "Exit on Back",
+                subtitle: quick_launch_exit_on_back ? "Enabled" : "Disabled",
+                action: 'toggle_exit_on_back'
+            });
+        }
+    });
+
+    quickLaunchMenu.show();
+}
+
+function showQuickLaunchActionMenu(onSelect) {
+    // Create a submenu for selecting quick launch action
+    let actionMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Select Action'
+        }]
+    });
+
+    function updateMenuItems() {
+        actionMenu.items(0, []);
+
         let itemIndex = 0;
 
-        // Add options
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Main Menu",
             subtitle: quick_launch_behavior === 'main_menu' ? "Current" : "",
             value: 'main_menu'
         });
 
-        if ( voice_enabled ) {
-            quickLaunchMenu.item(0, itemIndex++, {
+        if (voice_enabled) {
+            actionMenu.item(0, itemIndex++, {
                 title: "Assistant",
                 subtitle: quick_launch_behavior === 'assistant' ? "Current" : "",
                 value: 'assistant'
             });
         }
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Favorites",
             subtitle: quick_launch_behavior === 'favorites' ? "Current" : "",
             value: 'favorites'
         });
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Areas",
             subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
             value: 'areas'
         });
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Labels",
             subtitle: quick_launch_behavior === 'labels' ? "Current" : "",
             value: 'labels'
         });
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "To-Do Lists",
             subtitle: quick_launch_behavior === 'todo_lists' ? "Current" : "",
             value: 'todo_lists'
         });
-    });
+    }
 
-    quickLaunchMenu.on('select', function(e) {
-        // Set the quick launch behavior
-        quick_launch_behavior = e.item.value;
+    actionMenu.on('show', updateMenuItems);
 
-        // Save to settings
-        Settings.option('quick_launch_behavior', quick_launch_behavior);
-
-        // Update menu items to show current selection
-        const items = quickLaunchMenu.items(0);
-        for (let i = 0; i < items.length; i++) {
-            const item = quickLaunchMenu.item(0, i);
-            quickLaunchMenu.item(0, i, {
-                title: item.title,
-                subtitle: item.value === quick_launch_behavior ? "Current" : "",
-                value: item.value
-            });
+    actionMenu.on('select', function(e) {
+        if (e.item.value) {
+            quick_launch_behavior = e.item.value;
+            Settings.option('quick_launch_behavior', quick_launch_behavior);
+            actionMenu.hide();
+            if (typeof onSelect === 'function') {
+                onSelect();
+            }
         }
     });
 
-    quickLaunchMenu.show();
+    actionMenu.show();
 }
 
 function showVoicePipelineMenu() {
@@ -6707,77 +6773,94 @@ function on_auth_ok(evt) {
     // Track if we're fetching in background (when cache is loaded)
     const isFetchingInBackground = cacheLoaded;
 
-    // If cache loaded, show main menu immediately
-    if (cacheLoaded) {
-        log_message("Cache loaded, showing main menu immediately");
+    // Helper function to handle the quick launch behavior with retry logic
+    function handleQuickLaunch(retryCount) {
+        retryCount = retryCount || 0;
+        var retryDelay = 10; // Delay between retries in ms
 
+        var launchReason = simply.impl.state.launchReason;
+        log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+
+        // If launch reason is undefined and we haven't exceeded max retries, try again
+        if ( !launchReason ) {
+            log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+            setTimeout(function() {
+                handleQuickLaunch(retryCount + 1);
+            }, retryDelay);
+            return;
+        }
+
+        // Determine if we should skip showing main menu (exit on back for quick launch)
+        var skipMainMenu = launchReason === 'quickLaunch' &&
+                           quick_launch_behavior !== 'main_menu' &&
+                           quick_launch_exit_on_back;
+
+        // Show main menu unless we're quick launching with exit on back enabled
+        if (!skipMainMenu) {
+            showMainMenu();
+        }
+        loadingCard.hide();
+
+        // If we have a quickLaunch reason, proceed with quick launch behavior
+        if (launchReason === 'quickLaunch') {
+            log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+            if (skipMainMenu) {
+                log_message('Exit on back enabled - skipping main menu');
+            }
+
+            // Handle the quick launch behavior based on settings
+            switch (quick_launch_behavior) {
+                case 'assistant':
+                    if (voice_enabled) {
+                        showAssistMenu();
+                    }
+                    break;
+                case 'favorites':
+                    showFavorites();
+                    break;
+                case 'areas':
+                    showAreaMenu();
+                    break;
+                case 'labels':
+                    showLabelMenu();
+                    break;
+                case 'todo_lists':
+                    showToDoLists();
+                    break;
+                case 'main_menu':
+                default:
+                    // Default behavior is to show the main menu, which is already handled
+                    break;
+            }
+        }
+    }
+
+    // Helper function to handle showing UI after auth (handles saved_windows, is_restarting, and quick launch)
+    function showUIAfterAuth() {
         // try to resume previous WindowStack state if it's saved
         if(saved_windows) {
             WindowStack._items = [...saved_windows];
             saved_windows = null;
             loadingCard.hide();
         } else {
-            showMainMenu();
-            loadingCard.hide();
-
             // Handle quick launch behavior after authentication is complete
             // Skip quick launch if app is restarting (from settings change)
             if (is_restarting) {
                 log_message('Skipping quick launch behavior - app is restarting from settings change');
                 is_restarting = false; // Reset flag
+                showMainMenu();
+                loadingCard.hide();
             } else {
-                // Use a function to handle the quick launch behavior so we can retry if needed
-                function handleQuickLaunch(retryCount) {
-                    retryCount = retryCount || 0;
-                    var retryDelay = 10; // Delay between retries in ms
-
-                    var launchReason = simply.impl.state.launchReason;
-                    log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
-
-                    // If launch reason is undefined and we haven't exceeded max retries, try again
-                    if ( !launchReason ) {
-                        log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                        setTimeout(function() {
-                            handleQuickLaunch(retryCount + 1);
-                        }, retryDelay);
-                        return;
-                    }
-
-                    // If we have a quickLaunch reason or we've exhausted retries, proceed
-                    if (launchReason === 'quickLaunch') {
-                        log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
-
-                        // Handle the quick launch behavior based on settings
-                        switch (quick_launch_behavior) {
-                            case 'assistant':
-                                if (voice_enabled) {
-                                    showAssistMenu();
-                                }
-                                break;
-                            case 'favorites':
-                                showFavorites();
-                                break;
-                            case 'areas':
-                                showAreaMenu();
-                                break;
-                            case 'labels':
-                                showLabelMenu();
-                                break;
-                            case 'todo_lists':
-                                showToDoLists();
-                                break;
-                            case 'main_menu':
-                            default:
-                                // Default behavior is to show the main menu, which is already handled
-                                break;
-                        }
-                    }
-                }
-
                 // Start the quick launch handling process
                 handleQuickLaunch();
             }
         }
+    }
+
+    // If cache loaded, show main menu immediately
+    if (cacheLoaded) {
+        log_message("Cache loaded, showing main menu immediately");
+        showUIAfterAuth();
     } else {
         // No cache, show loading dialog
         loadingCard.subtitle("Fetching states");
@@ -6830,74 +6913,7 @@ function on_auth_ok(evt) {
             // If we weren't fetching in background, show the main menu now
             if (!isFetchingInBackground) {
                 log_message("Showing main menu");
-
-                // try to resume previous WindowStack state if it's saved
-                if(saved_windows) {
-                    WindowStack._items = [...saved_windows];
-                    saved_windows = null;
-                    loadingCard.hide();
-                } else {
-                    showMainMenu();
-                    loadingCard.hide();
-
-                    // Handle quick launch behavior after authentication is complete
-                    // Skip quick launch if app is restarting (from settings change)
-                    if (is_restarting) {
-                        log_message('Skipping quick launch behavior - app is restarting from settings change');
-                        is_restarting = false; // Reset flag
-                    } else {
-                        // Use a function to handle the quick launch behavior so we can retry if needed
-                        function handleQuickLaunch(retryCount) {
-                            retryCount = retryCount || 0;
-                            var retryDelay = 10; // Delay between retries in ms
-
-                            var launchReason = simply.impl.state.launchReason;
-                            log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
-
-                            // If launch reason is undefined and we haven't exceeded max retries, try again
-                            if ( !launchReason ) {
-                                log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                                setTimeout(function() {
-                                    handleQuickLaunch(retryCount + 1);
-                                }, retryDelay);
-                                return;
-                            }
-
-                            // If we have a quickLaunch reason or we've exhausted retries, proceed
-                            if (launchReason === 'quickLaunch') {
-                                log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
-
-                                // Handle the quick launch behavior based on settings
-                                switch (quick_launch_behavior) {
-                                    case 'assistant':
-                                        if (voice_enabled) {
-                                            showAssistMenu();
-                                        }
-                                        break;
-                                    case 'favorites':
-                                        showFavorites();
-                                        break;
-                                    case 'areas':
-                                        showAreaMenu();
-                                        break;
-                                    case 'labels':
-                                        showLabelMenu();
-                                        break;
-                                    case 'todo_lists':
-                                        showToDoLists();
-                                        break;
-                                    case 'main_menu':
-                                    default:
-                                        // Default behavior is to show the main menu, which is already handled
-                                        break;
-                                }
-                            }
-                        }
-
-                        // Start the quick launch handling process
-                        handleQuickLaunch();
-                    }
-                }
+                showUIAfterAuth();
             } else {
                 log_message("Background fetch completed successfully");
             }
