@@ -7,7 +7,7 @@
 const appVersion = '1.0', // displays in loading screen
     confVersion = '1.0', // version of config page
     configPageUrl = 'https://skylar.tech/uploads/pebble-haws-config-' + confVersion + '.htm',
-    debugMode = false,
+    debugMode = true,
     debugHAWS = false,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
@@ -4979,8 +4979,19 @@ function getEntityIcon(entity) {
 
         case 'binary_sensor':
             // Check for door/window sensors
-            if (entity.attributes.device_class === 'opening') {
+            log_message("binary_sensor icon render entity:", JSON.stringify(entity, null, 4));
+            let entity_registry = entity_registry_cache[entity.entity_id];
+            log_message("binary_sensor icon render entity_registry_cache:", JSON.stringify(entity_registry, null, 4));
+            if (
+                entity.attributes.device_class === 'opening'
+                || entity.attributes.device_class === 'door'
+                || entity.attributes.device_class === 'garage_door'
+            ) {
                 return state === 'on' ? 'images/icon_door_open.png' : 'images/icon_door_closed.png';
+            } else if(entity.attributes.device_class === 'window') {
+                return state === 'on' ? 'images/icon_blinds_open.png' : 'images/icon_blinds_closed.png';
+            } else if(entity.attributes.device_class === 'light') {
+                return state === 'on' ? 'images/icon_bulb_on.png' : 'images/icon_bulb.png';
             }
             return 'images/icon_sensor.png';
 

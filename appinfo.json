@@ -167,6 +167,11 @@
         "file": "images/icon_unlocked.png",
         "name": "IMAGE_ICON_UNLOCKED",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_vacuum.png",
+        "name": "IMAGE_ICON_VACUUM",
+        "type": "bitmap"
       }
     ]
   },
