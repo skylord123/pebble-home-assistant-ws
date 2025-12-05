@@ -1,0 +1,1643 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<title>Home Assistant WS Config</title>
+	<script src="https://use.fontawesome.com/3a291b24ff.js"></script>
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<meta name="color-scheme" content="light dark">
+	<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+		<symbol id="check-circle-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+		</symbol>
+		<symbol id="info-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+		</symbol>
+		<symbol id="exclamation-triangle-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+		</symbol>
+	</svg>
+	<style>
+		/* Clay-inspired CSS Variables */
+		:root {
+			/* Light mode (default) */
+			--color-accent: #ff4700;
+			--color-accent-dark: #cc3900;
+			--color-background: #f2f2f2;
+			--color-section-bg: #ffffff;
+			--color-section-header: #e8e8e8;
+			--color-text: #333333;
+			--color-text-muted: #666666;
+			--color-text-secondary: #858585;
+			--color-divider: #e0e0e0;
+			--color-input-bg: #ffffff;
+			--color-input-border: #cccccc;
+			--color-input-focus: #ff4700;
+			--color-success: #28a745;
+			--color-warning: #ffc107;
+			--color-danger: #dc3545;
+			--color-info: #17a2b8;
+			--shadow-section: 0 0.15rem 0.25rem rgba(0,0,0,0.1);
+			--shadow-button: 0 0.1rem 0.1rem rgba(0,0,0,0.1);
+		}
+
+		@media (prefers-color-scheme: dark) {
+			:root {
+				--color-accent: #ff4700;
+				--color-accent-dark: #993d19;
+				--color-background: #333333;
+				--color-section-bg: #484848;
+				--color-section-header: #414141;
+				--color-text: #ffffff;
+				--color-text-muted: #a4a4a4;
+				--color-text-secondary: #858585;
+				--color-divider: #666666;
+				--color-input-bg: #5b5b5b;
+				--color-input-border: #666666;
+				--color-input-focus: #ff4700;
+				--color-success: #28a745;
+				--color-warning: #ffc107;
+				--color-danger: #ff6b6b;
+				--color-info: #5bc0de;
+				--shadow-section: 0 0.15rem 0.25rem rgba(0,0,0,0.3);
+				--shadow-button: 0 0.1rem 0.1rem rgba(0,0,0,0.2);
+			}
+		}
+
+		/* Reset and Base Styles */
+		*, *:before, *:after {
+			box-sizing: border-box;
+		}
+
+		html, body {
+			margin: 0;
+			padding: 0;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+			font-size: 17px;
+			line-height: 1.4;
+			-webkit-font-smoothing: antialiased;
+			background-color: var(--color-background);
+			color: var(--color-text);
+		}
+
+		/* Container */
+		.container {
+			max-width: 600px;
+			margin: 0 auto;
+			padding: 0 0.75rem 1.5rem;
+		}
+
+		/* Header */
+		.page-header {
+			text-align: center;
+			padding: 1.5rem 0 1rem;
+		}
+
+		.page-header h1 {
+			font-size: 1.4rem;
+			font-weight: 600;
+			margin: 0 0 0.5rem;
+			text-transform: uppercase;
+			letter-spacing: 0.02em;
+		}
+
+		.page-header .author-link {
+			font-size: 0.85rem;
+			color: var(--color-text-muted);
+		}
+
+		.page-header .author-link a {
+			color: var(--color-accent);
+			text-decoration: none;
+		}
+
+		/* Section (Card) Styles - Clay-like */
+		.section {
+			background: var(--color-section-bg);
+			border-radius: 0.25rem;
+			box-shadow: var(--shadow-section);
+			margin-top: 1rem;
+			overflow: hidden;
+		}
+
+		.section-header {
+			background: var(--color-section-header);
+			padding: 0.6rem 0.75rem;
+			font-size: 0.85rem;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.02em;
+			color: var(--color-text);
+		}
+
+		.section-body {
+			padding: 0;
+		}
+
+		/* Component (Item) Styles */
+		.component {
+			padding: 0.6rem 0.75rem;
+			position: relative;
+		}
+
+		.component + .component::before {
+			content: "";
+			display: block;
+			position: absolute;
+			top: 0;
+			left: 0.375rem;
+			right: 0.375rem;
+			height: 1px;
+			background: var(--color-divider);
+		}
+
+		/* Form Elements */
+		.form-group {
+			margin-bottom: 0;
+		}
+
+		.form-label {
+			display: block;
+			font-size: 0.95rem;
+			font-weight: 500;
+			margin-bottom: 0.4rem;
+			color: var(--color-text);
+		}
+
+		.form-text {
+			font-size: 0.8rem;
+			color: var(--color-text-muted);
+			margin-top: 0.3rem;
+		}
+
+		.form-control {
+			display: block;
+			width: 100%;
+			padding: 0.5rem 0.75rem;
+			font-size: 1rem;
+			font-family: inherit;
+			line-height: 1.4;
+			color: var(--color-text);
+			background-color: var(--color-input-bg);
+			border: 1px solid var(--color-input-border);
+			border-radius: 0.25rem;
+			transition: border-color 0.15s ease-in-out;
+		}
+
+		.form-control:focus {
+			outline: none;
+			border-color: var(--color-input-focus);
+		}
+
+		.form-control.is-invalid {
+			border-color: var(--color-danger);
+		}
+
+		.form-select {
+			display: block;
+			width: 100%;
+			padding: 0.5rem 2rem 0.5rem 0.75rem;
+			font-size: 1rem;
+			font-family: inherit;
+			line-height: 1.4;
+			color: var(--color-text);
+			background-color: var(--color-input-bg);
+			background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23666666' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+			background-repeat: no-repeat;
+			background-position: right 0.75rem center;
+			background-size: 16px 12px;
+			border: 1px solid var(--color-input-border);
+			border-radius: 0.25rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.form-select {
+				background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+			}
+		}
+
+		.form-select:focus {
+			outline: none;
+			border-color: var(--color-input-focus);
+		}
+
+		.form-select:disabled {
+			opacity: 0.6;
+			cursor: not-allowed;
+		}
+
+		/* Toggle Switch - Clay-like */
+		.form-switch {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0.4rem 0;
+		}
+
+		.form-switch .form-check-label {
+			font-size: 0.95rem;
+			color: var(--color-text);
+			flex: 1;
+		}
+
+		.form-switch .form-check-input {
+			width: 3rem;
+			height: 1.75rem;
+			margin: 0;
+			background-color: var(--color-input-border);
+			border: none;
+			border-radius: 1rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+			cursor: pointer;
+			position: relative;
+			transition: background-color 0.2s ease;
+			flex-shrink: 0;
+		}
+
+		.form-switch .form-check-input::before {
+			content: "";
+			position: absolute;
+			top: 0.125rem;
+			left: 0.125rem;
+			width: 1.5rem;
+			height: 1.5rem;
+			background-color: #ffffff;
+			border-radius: 50%;
+			box-shadow: var(--shadow-button);
+			transition: transform 0.2s ease;
+		}
+
+		.form-switch .form-check-input:checked {
+			background-color: var(--color-accent);
+		}
+
+		.form-switch .form-check-input:checked::before {
+			transform: translateX(1.25rem);
+		}
+
+		/* Checkbox */
+		.form-check {
+			display: flex;
+			align-items: flex-start;
+			padding: 0.4rem 0;
+		}
+
+		.form-check .form-check-input {
+			width: 1.25rem;
+			height: 1.25rem;
+			margin: 0.1rem 0.5rem 0 0;
+			background-color: var(--color-input-bg);
+			border: 2px solid var(--color-input-border);
+			border-radius: 0.25rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.form-check .form-check-input:checked {
+			background-color: var(--color-accent);
+			border-color: var(--color-accent);
+			background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+			background-size: 100%;
+			background-position: center;
+			background-repeat: no-repeat;
+		}
+
+		.form-check .form-check-label {
+			font-size: 0.95rem;
+			color: var(--color-text);
+		}
+
+		/* Input Group */
+		.input-group {
+			display: flex;
+		}
+
+		.input-group .form-control {
+			flex: 1;
+			border-top-right-radius: 0;
+			border-bottom-right-radius: 0;
+		}
+
+		.input-group .btn {
+			border-top-left-radius: 0;
+			border-bottom-left-radius: 0;
+		}
+
+		/* Buttons */
+		.btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			padding: 0.6rem 1.2rem;
+			font-size: 1rem;
+			font-family: inherit;
+			font-weight: 500;
+			line-height: 1.4;
+			text-align: center;
+			text-decoration: none;
+			border: none;
+			border-radius: 0.25rem;
+			cursor: pointer;
+			transition: background-color 0.15s ease, opacity 0.15s ease;
+		}
+
+		.btn-primary {
+			background-color: var(--color-accent);
+			color: #ffffff;
+		}
+
+		.btn-primary:hover {
+			background-color: var(--color-accent-dark);
+		}
+
+		.btn-secondary {
+			background-color: var(--color-section-header);
+			color: var(--color-text);
+		}
+
+		.btn-secondary:hover {
+			opacity: 0.8;
+		}
+
+		.btn-outline-secondary {
+			background-color: transparent;
+			color: var(--color-text-muted);
+			border: 1px solid var(--color-input-border);
+		}
+
+		.btn-outline-secondary:hover {
+			background-color: var(--color-section-header);
+		}
+
+		.btn-sm {
+			padding: 0.4rem 0.8rem;
+			font-size: 0.85rem;
+		}
+
+		.btn:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+
+		/* Alerts */
+		.alert {
+			padding: 0.75rem 1rem;
+			border-radius: 0.25rem;
+			font-size: 0.9rem;
+			margin-bottom: 0.75rem;
+		}
+
+		.alert-danger {
+			background-color: rgba(220, 53, 69, 0.15);
+			color: var(--color-danger);
+			border: 1px solid var(--color-danger);
+		}
+
+		.alert-warning {
+			background-color: rgba(255, 193, 7, 0.15);
+			color: #856404;
+			border: 1px solid var(--color-warning);
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.alert-warning {
+				color: var(--color-warning);
+			}
+		}
+
+		.alert-info {
+			background-color: rgba(23, 162, 184, 0.15);
+			color: var(--color-info);
+			border: 1px solid var(--color-info);
+		}
+
+		.alert-success {
+			background-color: rgba(40, 167, 69, 0.15);
+			color: var(--color-success);
+			border: 1px solid var(--color-success);
+		}
+
+		.alert svg {
+			vertical-align: -0.125em;
+			margin-right: 0.5rem;
+		}
+
+		/* List Group (for favorites/domains) */
+		.list-group {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+		}
+
+		.list-group-item {
+			display: flex;
+			align-items: center;
+			padding: 0.6rem 0.75rem;
+			background: var(--color-input-bg);
+			border: 1px solid var(--color-divider);
+			margin-top: -1px;
+			font-size: 0.95rem;
+		}
+
+		.list-group-item:first-child {
+			border-top-left-radius: 0.25rem;
+			border-top-right-radius: 0.25rem;
+			margin-top: 0;
+		}
+
+		.list-group-item:last-child {
+			border-bottom-left-radius: 0.25rem;
+			border-bottom-right-radius: 0.25rem;
+		}
+
+		.list-group-item .fa-bars {
+			cursor: grab;
+			color: var(--color-text-muted);
+			margin-right: 0.75rem;
+			flex-shrink: 0;
+		}
+
+		.list-group-item .entity-info {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+		}
+
+		.list-group-item .entity-name {
+			font-size: 0.95rem;
+			font-weight: 500;
+			color: var(--color-text);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list-group-item .entity-id {
+			font-size: 0.8rem;
+			color: var(--color-text-muted);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list-group-item .remove-favorite,
+		.list-group-item .remove-domain {
+			margin-left: 0.75rem;
+			color: var(--color-danger);
+			text-decoration: none;
+			flex-shrink: 0;
+		}
+
+		/* Timeline Token */
+		.timeline-token {
+			word-break: break-all;
+			background-color: var(--color-input-bg);
+			padding: 0.75rem;
+			border-radius: 0.25rem;
+			border: 1px solid var(--color-divider);
+			margin-bottom: 0.75rem;
+			cursor: text;
+			font-family: monospace;
+			font-size: 0.85rem;
+		}
+
+		/* Invalid Feedback */
+		.invalid-feedback {
+			color: var(--color-danger);
+			font-size: 0.8rem;
+			margin-top: 0.25rem;
+		}
+
+		/* Conditional Settings Box */
+		.conditional-box {
+			background: var(--color-section-header);
+			border-radius: 0.25rem;
+			padding: 0.75rem;
+			margin-top: 0.75rem;
+		}
+
+		.conditional-box p {
+			margin: 0 0 0.5rem;
+			font-size: 0.9rem;
+			color: var(--color-text-muted);
+		}
+
+		.conditional-box .form-check {
+			margin-bottom: 0.5rem;
+		}
+
+		.conditional-box .form-check:last-child {
+			margin-bottom: 0;
+		}
+
+		.conditional-box .form-control-sm {
+			display: inline-block;
+			width: 60px;
+			padding: 0.25rem 0.5rem;
+			font-size: 0.85rem;
+		}
+
+		/* Row/Column Grid */
+		.row {
+			display: flex;
+			flex-wrap: wrap;
+			margin: 0 -0.375rem;
+		}
+
+		.col-6 {
+			flex: 0 0 50%;
+			max-width: 50%;
+			padding: 0 0.375rem;
+		}
+
+		.col-8 {
+			flex: 0 0 66.666%;
+			max-width: 66.666%;
+			padding: 0 0.375rem;
+		}
+
+		.col-4 {
+			flex: 0 0 33.333%;
+			max-width: 33.333%;
+			padding: 0 0.375rem;
+		}
+
+		.col-12 {
+			flex: 0 0 100%;
+			max-width: 100%;
+			padding: 0 0.375rem;
+		}
+
+		/* Utility Classes */
+		.mt-2 { margin-top: 0.5rem; }
+		.mt-3 { margin-top: 0.75rem; }
+		.mb-2 { margin-bottom: 0.5rem; }
+		.mb-3 { margin-bottom: 0.75rem; }
+		.d-block { display: block; }
+		.text-danger { color: var(--color-danger); }
+		.float-end { float: right; }
+
+		/* Save Button Container */
+		.save-container {
+			padding: 1rem 0;
+		}
+
+		.save-container .btn {
+			width: 100%;
+		}
+
+		/* Loading spinner */
+		button .test-btn-loading {
+			display: none;
+		}
+		button[disabled] .test-btn-loading {
+			display: inline-block;
+		}
+		button .btn-text {
+			display: inline-block;
+		}
+		button[disabled] .btn-text {
+			display: none;
+		}
+
+		/* Links */
+		a {
+			color: var(--color-accent);
+			text-decoration: none;
+		}
+
+		a:hover {
+			text-decoration: underline;
+		}
+
+		/* jQuery UI Sortable */
+		.ui-sortable-helper {
+			background: var(--color-section-bg) !important;
+			box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+		}
+
+		.ui-sortable-placeholder {
+			visibility: visible !important;
+			background: var(--color-section-header);
+			border: 2px dashed var(--color-divider);
+		}
+
+		/* Scrollbar styling for dark mode */
+		@media (prefers-color-scheme: dark) {
+			::-webkit-scrollbar {
+				width: 8px;
+			}
+			::-webkit-scrollbar-track {
+				background: var(--color-background);
+			}
+			::-webkit-scrollbar-thumb {
+				background: var(--color-divider);
+				border-radius: 4px;
+			}
+		}
+
+        .page-header {
+            padding-bottom: 0;
+        }
+	</style>
+</head>
+<body>
+<div class="container">
+	<form id="watch-config-form">
+		<!-- Header -->
+		<div class="page-header">
+			<h1>Home Assistant WS Config</h1>
+			<p class="author-link">Created by <a href="https://skylar.tech" target="_blank">Skylar Sadlier</a></p>
+		</div>
+
+		<div id="alert-container"></div>
+
+		<!-- Connection Settings -->
+		<div class="section">
+			<div class="section-header">Connection Settings</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-url">Home Assistant URL</label>
+						<input type="url" class="form-control" id="ha-url" aria-describedby="Home Assistant URL" placeholder="https://ha.example.com">
+						<div id="ha-url-invalid" class="invalid-feedback" style="display:none;">
+							URL must begin with either http:// or https://
+						</div>
+						<small class="form-text">Example: https://ha.example.com</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-token">Access Token</label>
+						<div class="input-group">
+							<input type="password" class="form-control" id="ha-token" placeholder="">
+							<button class="btn btn-outline-secondary" type="button" id="toggle-token-visibility">
+								<i class="fa fa-eye" id="toggle-token-icon"></i>
+							</button>
+						</div>
+						<small class="form-text">You can obtain a token ("Long-Lived Access Token") by logging into the frontend using a web browser, and going to your profile.</small>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Voice Assistant Settings -->
+		<div class="section">
+			<div class="section-header">Voice Assistant Settings</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-enabled">Enabled</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-enabled">
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-confirm">Confirm assist before sending</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-confirm">
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-backlight-trigger">Trigger backlight on response</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-backlight-trigger" checked>
+					</div>
+				</div>
+				<div class="component" id="pipeline-container">
+					<div class="form-group">
+						<label class="form-label" for="ha-pipeline-select">Assist Pipeline</label>
+						<select class="form-select" id="ha-pipeline-select" disabled>
+							<option value="">Loading pipelines...</option>
+						</select>
+						<div id="pipeline-warning" class="alert alert-warning mt-2" role="alert" style="display:none;">
+							<svg class="bi" width="20" height="20" role="img" aria-label="Warning:"><use xlink:href="#exclamation-triangle-fill"/></svg>
+							You need to connect successfully to your Home Assistant instance to load available pipelines.
+						</div>
+						<small class="form-text">Select which Home Assistant Assist pipeline to use</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-voice-font-size">Font Size</label>
+						<select class="form-select" id="ha-voice-font-size">
+							<option value="14">14px</option>
+							<option value="18">18px</option>
+							<option value="24">24px</option>
+							<option value="28">28px</option>
+						</select>
+						<small class="form-text">Select the font size for the assistant conversation</small>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Quick Launch Settings -->
+		<div class="section">
+			<div class="section-header">Quick Launch Settings</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-quick-launch-behavior">Quick Launch Behavior</label>
+						<select class="form-select" id="ha-quick-launch-behavior">
+							<option value="main_menu">Main Menu</option>
+							<option value="assistant">Assistant</option>
+							<option value="favorites">Favorites</option>
+							<option value="areas">Areas</option>
+							<option value="labels">Labels</option>
+							<option value="todo_lists">To-Do Lists</option>
+						</select>
+						<small class="form-text">Select what screen to show when app is launched via Quick Launch</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-check">
+						<input class="form-check-input" type="checkbox" id="ha-quick-launch-exit-on-back">
+						<label class="form-check-label" for="ha-quick-launch-exit-on-back">Exit on Back</label>
+					</div>
+					<small class="form-text">When enabled, pressing back on a quick launched screen will exit the app instead of going to the main menu</small>
+				</div>
+			</div>
+		</div>
+
+		<!-- Entity Settings -->
+		<div class="section">
+			<div class="section-header">Entity Settings</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="row">
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-order-by">Order By</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-order-by">
+									<option value="attributes.friendly_name">Name</option>
+									<option value="entity_id">Entity ID</option>
+									<option value="attributes.last_updated">Last Updated</option>
+								</select>
+							</div>
+						</div>
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-order-dir">Order Direction</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-order-dir">
+									<option value="desc">Descending</option>
+									<option value="asc">Ascending</option>
+								</select>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="component">
+					<div class="row">
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-unavailable-handling">Unavailable Entities</label>
+								<select class="form-select" id="ha-unavailable-handling">
+									<option value="sort_to_end">Sort to end</option>
+									<option value="sort_normally">Sort normally</option>
+									<option value="hide">Hide</option>
+								</select>
+							</div>
+						</div>
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-unknown-handling">Unknown Entities</label>
+								<select class="form-select" id="ha-unknown-handling">
+									<option value="sort_to_end">Sort to end</option>
+									<option value="sort_normally">Sort normally</option>
+									<option value="hide">Hide</option>
+								</select>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-automation-longpress">Automation Long-Press</label>
+						<select class="form-select" id="ha-automation-longpress">
+							<option value="toggle">Toggle</option>
+							<option value="trigger">Trigger</option>
+						</select>
+						<small class="form-text">Action when long-pressing an automation</small>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Entity Domain Grouping -->
+		<div class="section">
+			<div class="section-header">Entity Domain Grouping</div>
+			<div class="section-body">
+				<div class="component">
+					<p class="form-text mb-2" style="margin-top:0;">Group entities by domain when viewing:</p>
+					<div class="form-group mb-3">
+						<label class="form-label" for="domain-menu-all">All Entities</label>
+						<select class="form-select domain-menu-select" id="domain-menu-all">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div class="form-group mb-3">
+						<label class="form-label" for="domain-menu-areas">Areas</label>
+						<select class="form-select domain-menu-select" id="domain-menu-areas">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div class="form-group mb-3">
+						<label class="form-label" for="domain-menu-labels">Labels</label>
+						<select class="form-select domain-menu-select" id="domain-menu-labels">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label class="form-label" for="domain-menu-favorites">Favorites</label>
+						<select class="form-select domain-menu-select" id="domain-menu-favorites">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div id="conditional-settings" class="conditional-box" style="display: none;">
+						<p>Conditionally show domain menu when:</p>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="domain-menu-min-entities-check" checked>
+							<label class="form-check-label" for="domain-menu-min-entities-check">
+								More than <input type="number" class="form-control form-control-sm" id="domain-menu-min-entities" value="10"> entities
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="domain-menu-min-domains-check" checked>
+							<label class="form-check-label" for="domain-menu-min-domains-check">
+								More than <input type="number" class="form-control form-control-sm" id="domain-menu-min-domains" value="1"> domains
+							</label>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Favorite Entities -->
+		<div class="section" id="favorites-container" style="display:none;">
+			<div class="section-header">Favorite Entities</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+						Drag and drop items to reorder them
+					</div>
+					<ul id="favorites-sortable" class="list-group">
+						</ul>
+				</div>
+			</div>
+		</div>
+
+		<!-- Domain Filters -->
+		<div class="section">
+			<div class="section-header">Domain Filters</div>
+			<div class="section-body">
+				<div class="component">
+					<p class="form-text" style="margin-top:0;">Domains listed here will be hidden from the interface</p>
+					<div class="row mt-2">
+						<div class="col-8">
+							<input type="text" class="form-control" id="domain-input" placeholder="Enter domain to ignore">
+						</div>
+						<div class="col-4">
+							<button type="button" class="btn btn-primary" id="add-domain-btn" style="width:100%;">Add</button>
+						</div>
+					</div>
+					<div class="mt-3">
+						<ul id="ignore-domains-list" class="list-group">
+							<!-- Domains will be added here -->
+						</ul>
+					</div>
+				</div>
+			</div>
+		</div>
+
+		<!-- Timeline Section -->
+		<div class="section" id="timeline-section" style="display:none;">
+			<div class="section-header">Timeline</div>
+			<div class="section-body">
+				<div class="component">
+					<label class="form-label" for="timeline-token-display">Timeline Token</label>
+					<div class="timeline-token" id="timeline-token-display" onclick="selectTimelineToken()"></div>
+					<button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyTimelineToken()">
+						<i class="fa fa-clipboard"></i> Copy to Clipboard
+					</button>
+				</div>
+			</div>
+		</div>
+
+		<!-- Save Button -->
+		<div class="save-container">
+			<button type="button" class="btn btn-primary" id="save-btn">Save</button>
+		</div>
+	</form>
+</div>
+
+<script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+<script type="text/javascript">
+	// Functions for Timeline Token
+	function selectTimelineToken() {
+		const tokenElement = document.getElementById('timeline-token-display');
+		const selection = window.getSelection();
+		const range = document.createRange();
+		range.selectNodeContents(tokenElement);
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+
+	function copyTimelineToken() {
+		selectTimelineToken();
+		document.execCommand('copy');
+		// Show a temporary message
+		const copyBtn = document.querySelector('#timeline-section button');
+		const originalHTML = copyBtn.innerHTML;
+		copyBtn.innerHTML = '<i class="fa fa-check"></i> Copied!';
+		setTimeout(() => {
+			copyBtn.innerHTML = originalHTML;
+		}, 2000);
+	}
+
+	(function ($) {
+
+		// Detect touch support
+		$.support.touch = 'ontouchend' in document;
+
+		// Ignore browsers without touch support
+		if (!$.support.touch) {
+			return;
+		}
+
+		var mouseProto = $.ui.mouse.prototype,
+				_mouseInit = mouseProto._mouseInit,
+				_mouseDestroy = mouseProto._mouseDestroy,
+				touchHandled;
+
+		/**
+		 * Simulate a mouse event based on a corresponding touch event
+		 * @param {Object} event A touch event
+		 * @param {String} simulatedType The corresponding mouse event
+		 */
+		function simulateMouseEvent (event, simulatedType) {
+
+			// Ignore multi-touch events
+			if (event.originalEvent.touches.length > 1) {
+				return;
+			}
+
+			event.preventDefault();
+
+			var touch = event.originalEvent.changedTouches[0],
+					simulatedEvent = document.createEvent('MouseEvents');
+
+			// Initialize the simulated mouse event using the touch event's coordinates
+			simulatedEvent.initMouseEvent(
+					simulatedType,    // type
+					true,             // bubbles
+					true,             // cancelable
+					window,           // view
+					1,                // detail
+					touch.screenX,    // screenX
+					touch.screenY,    // screenY
+					touch.clientX,    // clientX
+					touch.clientY,    // clientY
+					false,            // ctrlKey
+					false,            // altKey
+					false,            // shiftKey
+					false,            // metaKey
+					0,                // button
+					null              // relatedTarget
+			);
+
+			// Dispatch the simulated event to the target element
+			event.target.dispatchEvent(simulatedEvent);
+		}
+
+		/**
+		 * Handle the jQuery UI widget's touchstart events
+		 * @param {Object} event The widget element's touchstart event
+		 */
+		mouseProto._touchStart = function (event) {
+
+			var self = this;
+
+			// Ignore the event if another widget is already being handled
+			if (touchHandled || !self._mouseCapture(event.originalEvent.changedTouches[0])) {
+				return;
+			}
+
+			// Set the flag to prevent other widgets from inheriting the touch event
+			touchHandled = true;
+
+			// Track movement to determine if interaction was a click
+			self._touchMoved = false;
+
+			// Simulate the mouseover event
+			simulateMouseEvent(event, 'mouseover');
+
+			// Simulate the mousemove event
+			simulateMouseEvent(event, 'mousemove');
+
+			// Simulate the mousedown event
+			simulateMouseEvent(event, 'mousedown');
+		};
+
+		/**
+		 * Handle the jQuery UI widget's touchmove events
+		 * @param {Object} event The document's touchmove event
+		 */
+		mouseProto._touchMove = function (event) {
+
+			// Ignore event if not handled
+			if (!touchHandled) {
+				return;
+			}
+
+			// Interaction was not a click
+			this._touchMoved = true;
+
+			// Simulate the mousemove event
+			simulateMouseEvent(event, 'mousemove');
+		};
+
+		/**
+		 * Handle the jQuery UI widget's touchend events
+		 * @param {Object} event The document's touchend event
+		 */
+		mouseProto._touchEnd = function (event) {
+
+			// Ignore event if not handled
+			if (!touchHandled) {
+				return;
+			}
+
+			// Simulate the mouseup event
+			simulateMouseEvent(event, 'mouseup');
+
+			// Simulate the mouseout event
+			simulateMouseEvent(event, 'mouseout');
+
+			// If the touch interaction did not move, it should trigger a click
+			if (!this._touchMoved) {
+
+				// Simulate the click event
+				simulateMouseEvent(event, 'click');
+			}
+
+			// Unset the flag to allow other widgets to inherit the touch event
+			touchHandled = false;
+		};
+
+		/**
+		 * A duck punch of the $.ui.mouse _mouseInit method to support touch events.
+		 * This method extends the widget with bound touch event handlers that
+		 * translate touch events to mouse events and pass them to the widget's
+		 * original mouse event handling methods.
+		 */
+		mouseProto._mouseInit = function () {
+
+			var self = this;
+
+			// Delegate the touch handlers to the widget's element
+			self.element.bind({
+				touchstart: $.proxy(self, '_touchStart'),
+				touchmove: $.proxy(self, '_touchMove'),
+				touchend: $.proxy(self, '_touchEnd')
+			});
+
+			// Call the original $.ui.mouse init method
+			_mouseInit.call(self);
+		};
+
+		/**
+		 * Remove the touch event handlers
+		 */
+		mouseProto._mouseDestroy = function () {
+
+			var self = this;
+
+			// Delegate the touch handlers to the widget's element
+			self.element.unbind({
+				touchstart: $.proxy(self, '_touchStart'),
+				touchmove: $.proxy(self, '_touchMove'),
+				touchend: $.proxy(self, '_touchEnd')
+			});
+
+			// Call the original $.ui.mouse destroy method
+			_mouseDestroy.call(self);
+		};
+
+	})(jQuery);
+
+	$(function() {
+		let urlInput = $("#ha-url"),
+				tokenInput = $('#ha-token'),
+				orderByInput = $('#ha-order-by'),
+				orderDirInput = $('#ha-order-dir'),
+				voiceEnabled = $('#ha-voice-enabled'),
+				voiceConfirm = $('#ha-voice-confirm'),
+				voiceBacklightTrigger = $('#ha-voice-backlight-trigger'),
+				voiceFontSize = $('#ha-voice-font-size'),
+				pipelineSelect = $('#ha-pipeline-select'),
+				pipelineWarning = $('#pipeline-warning'),
+				timelineSection = $('#timeline-section'),
+				timelineTokenDisplay = $('#timeline-token-display'),
+				domainInput = $('#domain-input'),
+				addDomainBtn = $('#add-domain-btn'),
+				ignoreDomainsDiv = $('#ignore-domains-list'),
+				domainMenuAll = $('#domain-menu-all'),
+				domainMenuAreas = $('#domain-menu-areas'),
+				domainMenuLabels = $('#domain-menu-labels'),
+				domainMenuFavorites = $('#domain-menu-favorites'),
+				domainMenuMinEntities = $('#domain-menu-min-entities'),
+				domainMenuMinDomainsCheck = $('#domain-menu-min-domains-check'),
+				domainMenuMinEntitiesCheck = $('#domain-menu-min-entities-check'),
+				domainMenuMinDomains = $('#domain-menu-min-domains'),
+				conditionalSettings = $('#conditional-settings'),
+				quickLaunchBehavior = $('#ha-quick-launch-behavior'),
+				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back'),
+				unavailableHandling = $('#ha-unavailable-handling'),
+				unknownHandling = $('#ha-unknown-handling'),
+				automationLongpress = $('#ha-automation-longpress');
+
+		// Toggle token visibility
+		$('#toggle-token-visibility').click(function(e) {
+			e.preventDefault();
+			const tokenInput = $('#ha-token');
+			const toggleIcon = $('#toggle-token-icon');
+
+			if (tokenInput.attr('type') === 'password') {
+				tokenInput.attr('type', 'text');
+				toggleIcon.removeClass('fa-eye').addClass('fa-eye-slash');
+			} else {
+				tokenInput.attr('type', 'password');
+				toggleIcon.removeClass('fa-eye-slash').addClass('fa-eye');
+			}
+		});
+
+		if(window.applicationCache && window.applicationCache.addEventListener) {
+			window.applicationCache.addEventListener('updateready', onUpdateReady);
+
+			function onUpdateReady() {
+				if(window.applicationCache.status === window.applicationCache.UPDATEREADY) {
+					window.location.reload();
+				}
+			}
+		}
+
+		function getFormValues() {
+			let values = {
+				'ha_url': urlInput.val().replace(/\/+$/, ''),
+				'token': tokenInput.val(),
+				'order_by': orderByInput.val(),
+				'order_dir': orderDirInput.val(),
+				'voice_enabled': voiceEnabled.is(':checked'),
+				'voice_confirm': voiceConfirm.is(':checked'),
+				'voice_backlight_trigger': voiceBacklightTrigger.is(':checked'),
+				'voice_font_size': parseInt(voiceFontSize.val(), 10),
+				'selected_pipeline': pipelineSelect.val(),
+				'quick_launch_behavior': quickLaunchBehavior.val(),
+				'quick_launch_exit_on_back': quickLaunchExitOnBack.is(':checked'),
+				// Domain menu settings
+				'domain_menu_enabled': 'conditional', // Default global setting
+				'domain_menu_all_entities': domainMenuAll.val(),
+				'domain_menu_areas': domainMenuAreas.val(),
+				'domain_menu_labels': domainMenuLabels.val(),
+				'domain_menu_favorites': domainMenuFavorites.val(),
+				'domain_menu_min_entities': domainMenuMinEntitiesCheck.is(':checked') ? parseInt(domainMenuMinEntities.val(), 10) : 0,
+				'domain_menu_min_domains': domainMenuMinDomainsCheck.is(':checked') ? parseInt(domainMenuMinDomains.val(), 10) : 0,
+				'favorite_entities': $("#favorites-sortable li").map(function(a,b){
+					let $item = $(b);
+					let entityId = $item.data('entity-id');
+					let friendlyName = $item.data('friendly-name');
+					// Save as object with entity_id and name (if available)
+					if (friendlyName) {
+						return { entity_id: entityId, name: friendlyName };
+					} else {
+						// If no friendly name, still save as object for consistency
+						return { entity_id: entityId };
+					}
+				}).toArray(),
+				'ignore_domains': $("#ignore-domains-list li").map(function(a,b){
+					return $(b).data('domain');
+				}).toArray(),
+				// Entity state handling settings
+				'unavailable_entity_handling': unavailableHandling.val(),
+				'unknown_entity_handling': unknownHandling.val(),
+				// Automation long-press action
+				'automation_longpress_action': automationLongpress.val()
+			};
+
+			// Preserve timeline_token if it exists
+			if (watch_config && watch_config.timeline_token) {
+				values.timeline_token = watch_config.timeline_token;
+			}
+
+			return values;
+		}
+
+		function restoreFormValues() {
+			let hash = window.location.hash.substring(1),
+					favorites_container = $("#favorites-container"),
+					favorites_sortable = $("#favorites-sortable");
+
+			// Try to get config from hash first (for initial setup)
+			if(hash) {
+				try {
+					watch_config = JSON.parse(decodeURIComponent(hash));
+				} catch(e) {
+					console.error("Error parsing hash config", e);
+					watch_config = {};
+				}
+			} else {
+				// Otherwise try localStorage (for returning visits)
+				try {
+					watch_config = JSON.parse(localStorage.getItem("watch_config")) || {};
+				} catch(e) {
+					console.error("Error parsing localStorage config", e);
+					watch_config = {};
+				}
+			}
+
+			if(watch_config['ha_url']) {
+				urlInput.val(watch_config['ha_url']);
+			}
+			if(watch_config['token']) {
+				tokenInput.val(watch_config['token']);
+			}
+			if(watch_config['order_by']) {
+				orderByInput.val(watch_config['order_by']);
+			}
+			if(watch_config['order_dir']) {
+				orderDirInput.val(watch_config['order_dir']);
+			}
+
+			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
+			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
+			voiceBacklightTrigger.attr('checked', typeof watch_config['voice_backlight_trigger'] !== 'undefined' ? watch_config['voice_backlight_trigger'] : true);
+			if (watch_config['voice_font_size']) {
+				voiceFontSize.val(watch_config['voice_font_size']);
+			} else {
+				voiceFontSize.val('18'); // Default to 18px
+			}
+
+			// Handle pipeline selection
+			const haConnected = watch_config['ha_connected'] || false;
+			const availablePipelines = watch_config['available_pipelines'] || [];
+			const selectedPipeline = watch_config['selected_pipeline'] || '';
+
+			if (haConnected && availablePipelines.length > 0) {
+				// Clear and populate the pipeline dropdown
+				pipelineSelect.empty().prop('disabled', false);
+
+				// Add pipelines to dropdown
+				for (let pipeline of availablePipelines) {
+					const option = $('<option></option>')
+						.attr('value', pipeline.id)
+						.text(pipeline.name + (pipeline.preferred ? ' (Preferred)' : ''));
+					pipelineSelect.append(option);
+				}
+
+				// Set selected pipeline if available
+				if (selectedPipeline) {
+					pipelineSelect.val(selectedPipeline);
+				}
+
+				// Hide warning
+				pipelineWarning.hide();
+			} else {
+				// No connection or no pipelines available
+				pipelineSelect.empty().prop('disabled', true)
+					.append($('<option></option>').attr('value', '').text('No pipelines available'));
+
+				// Show warning
+				pipelineWarning.show();
+			}
+
+			// Handle quick launch behavior
+			if (watch_config['quick_launch_behavior']) {
+				quickLaunchBehavior.val(watch_config['quick_launch_behavior']);
+			} else {
+				quickLaunchBehavior.val('main_menu'); // Default
+			}
+
+			// Handle quick launch exit on back
+			if (watch_config['quick_launch_exit_on_back']) {
+				quickLaunchExitOnBack.prop('checked', true);
+			} else {
+				quickLaunchExitOnBack.prop('checked', false);
+			}
+
+			// Handle domain menu settings
+			if (watch_config['domain_menu_all_entities']) {
+				domainMenuAll.val(watch_config['domain_menu_all_entities']);
+			} else {
+				domainMenuAll.val('conditional'); // Default
+			}
+
+			if (watch_config['domain_menu_areas']) {
+				domainMenuAreas.val(watch_config['domain_menu_areas']);
+			} else {
+				domainMenuAreas.val('conditional'); // Default
+			}
+
+			if (watch_config['domain_menu_labels']) {
+				domainMenuLabels.val(watch_config['domain_menu_labels']);
+			} else {
+				domainMenuLabels.val('conditional'); // Default
+			}
+
+			if (watch_config['domain_menu_favorites']) {
+				domainMenuFavorites.val(watch_config['domain_menu_favorites']);
+			} else {
+				domainMenuFavorites.val('conditional'); // Default
+			}
+
+			// Handle conditional settings
+			if (typeof watch_config['domain_menu_min_entities'] !== 'undefined') {
+				const minEntities = watch_config['domain_menu_min_entities'];
+				domainMenuMinEntitiesCheck.prop('checked', minEntities > 0);
+				domainMenuMinEntities.val(minEntities > 0 ? minEntities : 10);
+			}
+
+			if (typeof watch_config['domain_menu_min_domains'] !== 'undefined') {
+				const minDomains = watch_config['domain_menu_min_domains'];
+				domainMenuMinDomainsCheck.prop('checked', minDomains > 0);
+				domainMenuMinDomains.val(minDomains > 0 ? minDomains : 1);
+			}
+
+			// Show/hide conditional settings based on if any dropdown is set to conditional
+			const showConditional = domainMenuAll.val() === 'conditional' ||
+									domainMenuAreas.val() === 'conditional' ||
+									domainMenuLabels.val() === 'conditional' ||
+									domainMenuFavorites.val() === 'conditional';
+			conditionalSettings.toggle(showConditional);
+
+			// Handle unavailable entity handling
+			if (watch_config['unavailable_entity_handling']) {
+				unavailableHandling.val(watch_config['unavailable_entity_handling']);
+			} else {
+				unavailableHandling.val('sort_to_end'); // Default
+			}
+
+			// Handle unknown entity handling
+			if (watch_config['unknown_entity_handling']) {
+				unknownHandling.val(watch_config['unknown_entity_handling']);
+			} else {
+				unknownHandling.val('sort_normally'); // Default
+			}
+
+			// Handle automation long-press action
+			if (watch_config['automation_longpress_action']) {
+				automationLongpress.val(watch_config['automation_longpress_action']);
+			} else {
+				automationLongpress.val('toggle'); // Default
+			}
+
+			if(watch_config['favorite_entities']) {
+				let html = '';
+				for(let fav of watch_config['favorite_entities']) {
+					// Handle both old format (string) and new format (object with entity_id and name)
+					let entity_id, friendly_name;
+					if (typeof fav === 'string') {
+						entity_id = fav;
+						friendly_name = null;
+					} else {
+						entity_id = fav.entity_id;
+						friendly_name = fav.name || null;
+					}
+
+					// Build the display HTML
+					let displayHtml;
+					if (friendly_name) {
+						displayHtml = `
+							<div class="entity-info">
+								<div class="entity-name">${friendly_name}</div>
+								<div class="entity-id">${entity_id}</div>
+							</div>`;
+					} else {
+						displayHtml = `
+							<div class="entity-info">
+								<div class="entity-name">${entity_id}</div>
+							</div>`;
+					}
+
+					html += `
+						<li class="list-group-item" data-entity-id="${entity_id}" data-friendly-name="${friendly_name || ''}">
+							<i class="fa fa-bars"></i>
+							${displayHtml}
+							<a href="javascript:void(0)" class="remove-favorite"><i class="fa fa-trash"></i></a>
+						</li>`;
+				}
+				favorites_sortable
+						.html(html)
+						.sortable();
+
+				favorites_sortable.disableSelection();
+
+				$(".remove-favorite").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					let entityId = parent.data('entity-id');
+					let friendlyName = parent.data('friendly-name');
+					let displayName = friendlyName || entityId;
+					if(confirm(`Are you sure you want to remove "${displayName}" from your favorites?`)) {
+						parent.remove();
+					}
+				});
+
+				favorites_container.show();
+			}
+
+			if(watch_config['ignore_domains'] && Array.isArray(watch_config['ignore_domains'])) {
+				let html = '';
+				for(let domain of watch_config['ignore_domains']) {
+					html += `
+						<li class="list-group-item" data-domain="${domain}">
+							<div class="entity-info">
+								<div class="entity-name">${domain}</div>
+							</div>
+							<a href="javascript:void(0)" class="remove-domain"><i class="fa fa-trash"></i></a>
+						</li>`;
+				}
+				ignoreDomainsDiv.html(html);
+
+				$(".remove-domain").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					if(confirm(`Are you sure you want to remove ${parent.data('domain')} from your ignore list?`)) {
+						parent.remove();
+					}
+				});
+			} else {
+				// Display default domains if no custom ones are set
+				let defaultDomains = ["assist_satellite", "tts"];
+				let html = '';
+				for(let domain of defaultDomains) {
+					html += `
+						<li class="list-group-item" data-domain="${domain}">
+							<div class="entity-info">
+								<div class="entity-name">${domain}</div>
+							</div>
+							<a href="javascript:void(0)" class="remove-domain"><i class="fa fa-trash"></i></a>
+						</li>`;
+				}
+				ignoreDomainsDiv.html(html);
+
+				$(".remove-domain").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					if(confirm(`Are you sure you want to remove ${parent.data('domain')} from your ignore list?`)) {
+						parent.remove();
+					}
+				});
+			}
+
+			// Set up the timeline token section if it exists
+			if(watch_config['timeline_token'] && typeof watch_config['timeline_token'] === 'string') {
+				timelineTokenDisplay.text(watch_config['timeline_token']);
+				timelineSection.show();
+			}
+		}
+
+		function display_alert(type, content) {
+			let container = $("#alert-container");
+
+			if(!type && !content) {
+				container.hide();
+				return;
+			}
+
+			container
+					.html(
+							`<div class="alert alert-${type}" role="alert">
+                        ${content}
+                    </div>`)
+					.show();
+		}
+
+		let watch_config;
+		try {
+			restoreFormValues();
+		} catch(e) {
+			console.error("Error in restoreFormValues", e);
+			watch_config = {};
+		}
+
+		addDomainBtn.click(function(e) {
+			e.preventDefault();
+			let domain = domainInput.val().trim().toLowerCase();
+
+			if(!domain) {
+				return;
+			}
+
+			// Check if domain already exists
+			let exists = false;
+			$("#ignore-domains-list li").each(function() {
+				if($(this).data('domain') === domain) {
+					exists = true;
+					return false;
+				}
+			});
+
+			if(exists) {
+				alert(`Domain "${domain}" is already in the ignore list.`);
+				return;
+			}
+
+			// Add the domain to the list
+			let newItem = $(`
+        <li class="list-group-item" data-domain="${domain}">
+            ${domain}
+            <a href="javascript:void(0)" class="text-danger float-end remove-domain"><i class="fa fa-trash"></i></a>
+        </li>`);
+
+			newItem.find('.remove-domain').on('click', function(e) {
+				e.preventDefault();
+				if(confirm(`Are you sure you want to remove ${domain} from your ignore list?`)) {
+					newItem.remove();
+				}
+			});
+
+			ignoreDomainsDiv.append(newItem);
+			domainInput.val('').focus();
+		});
+
+		urlInput.keyup(function(e){
+			let value = $(this).val();
+			if(value && !value.startsWith('https://') && !value.startsWith('http://')) {
+				$("#ha-url-invalid").show();
+				urlInput.addClass('is-invalid');
+			} else {
+				$("#ha-url-invalid:visible").hide();
+				urlInput.removeClass('is-invalid');
+			}
+		}).keyup();
+
+		// Handle domain menu dropdowns
+		$('.domain-menu-select').on('change', function() {
+			// Show/hide conditional settings based on if any dropdown is set to conditional
+			const showConditional = domainMenuAll.val() === 'conditional' ||
+									domainMenuAreas.val() === 'conditional' ||
+									domainMenuLabels.val() === 'conditional' ||
+									domainMenuFavorites.val() === 'conditional';
+			conditionalSettings.toggle(showConditional);
+		});
+
+		$('#save-btn').click(function(e) {
+			e.preventDefault();
+			display_alert();
+			watch_config = getFormValues();
+
+			if(!watch_config['ha_url']) {
+				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant URL`);
+				return;
+			}
+
+			if(!watch_config['token']) {
+				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token`);
+				return;
+			}
+
+			console.log(JSON.stringify(watch_config));
+
+			// Get return_to parameter if it exists, otherwise use default close URL
+			const urlParams = new URLSearchParams(window.location.search);
+			const returnTo = urlParams.get('return_to');
+
+			// Build the return URL with config data
+			const configData = encodeURIComponent(JSON.stringify(watch_config));
+			let location;
+
+			if (returnTo) {
+				// If return_to is specified, use it as the base URL
+				// Append the data as a hash fragment (Pebble expects this format)
+				const decodedReturnTo = decodeURIComponent(returnTo);
+				location = decodedReturnTo + configData;
+			} else {
+				// Default behavior: use pebblejs://close
+				location = "pebblejs://close#" + configData;
+			}
+
+			localStorage.setItem("watch_config", JSON.stringify(watch_config));
+			console.log("Navigating to:", location);
+			window.location.href = location;
+		});
+	});
+</script>
+</body>
+</html>

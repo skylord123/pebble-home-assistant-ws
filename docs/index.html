@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pebble Home Assistant WS</title>
+    <style>
+        :root {
+            --primary-color: #03a9f4;
+            --bg-color: #1a1a2e;
+            --card-bg: #16213e;
+            --text-color: #eee;
+            --text-muted: #aaa;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: var(--bg-color);
+            color: var(--text-color);
+            line-height: 1.6;
+            min-height: 100vh;
+        }
+        .container { max-width: 900px; margin: 0 auto; padding: 2rem 1.5rem; }
+        header { text-align: center; margin-bottom: 3rem; }
+        .logo { width: 120px; height: 120px; border-radius: 24px; margin-bottom: 1rem; }
+        h1 { font-size: 2.2rem; margin-bottom: 0.5rem; }
+        .tagline { color: var(--text-muted); font-size: 1.1rem; }
+        .buttons { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; margin-top: 1.5rem; }
+        .btn {
+            display: inline-flex; align-items: center; gap: 0.5rem;
+            padding: 0.75rem 1.5rem; border-radius: 8px;
+            text-decoration: none; font-weight: 500; transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+        .btn-primary { background: var(--primary-color); color: #fff; }
+        .btn-secondary { background: var(--card-bg); color: var(--text-color); border: 1px solid #333; }
+        .features { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.5rem; margin: 3rem 0; }
+        .feature {
+            background: var(--card-bg); padding: 1.5rem; border-radius: 12px;
+            border: 1px solid #2a2a4a;
+        }
+        .feature h3 { color: var(--primary-color); margin-bottom: 0.5rem; font-size: 1.1rem; }
+        .feature p { color: var(--text-muted); font-size: 0.95rem; }
+        .section { margin: 3rem 0; }
+        .section h2 { font-size: 1.5rem; margin-bottom: 1rem; border-bottom: 2px solid var(--primary-color); padding-bottom: 0.5rem; display: inline-block; }
+        .links-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; }
+        .link-card {
+            background: var(--card-bg); padding: 1.25rem; border-radius: 8px;
+            text-decoration: none; color: var(--text-color); border: 1px solid #2a2a4a;
+            transition: border-color 0.2s;
+        }
+        .link-card:hover { border-color: var(--primary-color); }
+        .link-card h4 { margin-bottom: 0.25rem; }
+        .link-card p { color: var(--text-muted); font-size: 0.85rem; }
+        footer { text-align: center; margin-top: 4rem; padding-top: 2rem; border-top: 1px solid #2a2a4a; color: var(--text-muted); }
+        footer a { color: var(--primary-color); text-decoration: none; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <img src="https://raw.githubusercontent.com/skylord123/pebble-home-assistant-ws/master/pebble-ha-ws-logo.png" alt="Pebble Home Assistant WS Logo" class="logo">
+            <h1>Pebble Home Assistant WS</h1>
+            <p class="tagline">Control your Home Assistant smart home directly from your Pebble smartwatch</p>
+            <div class="buttons">
+                <a href="https://apps.rebble.io/en_US/application/68dea5734be9cb0009429595" class="btn btn-primary">
+                    📥 Get on Rebble Store
+                </a>
+                <a href="https://github.com/skylord123/pebble-home-assistant-ws" class="btn btn-secondary">
+                    ⭐ View on GitHub
+                </a>
+            </div>
+        </header>
+
+        <section class="features">
+            <div class="feature">
+                <h3>🔌 Real-time WebSocket</h3>
+                <p>Live updates and faster response times with automatic reconnection if connection is lost.</p>
+            </div>
+            <div class="feature">
+                <h3>🎤 Voice Control</h3>
+                <p>Control your smart home with voice commands using any conversation agent configured in Home Assistant.</p>
+            </div>
+            <div class="feature">
+                <h3>🏠 Entity Management</h3>
+                <p>Browse entities by area, domain, or favorites. View details and control devices with ease.</p>
+            </div>
+            <div class="feature">
+                <h3>🎵 Media Controls</h3>
+                <p>Dedicated interface for controlling media players with volume and playback controls.</p>
+            </div>
+        </section>
+
+        <section class="section">
+            <h2>Quick Links</h2>
+            <div class="links-grid">
+                <a href="https://github.com/skylord123/pebble-home-assistant-ws#installation" class="link-card">
+                    <h4>📖 Installation Guide</h4>
+                    <p>Get started with the app</p>
+                </a>
+                <a href="https://github.com/skylord123/pebble-home-assistant-ws#configuration" class="link-card">
+                    <h4>⚙️ Configuration</h4>
+                    <p>Set up your Home Assistant connection</p>
+                </a>
+                <a href="https://github.com/skylord123/pebble-home-assistant-ws/releases" class="link-card">
+                    <h4>📦 Releases</h4>
+                    <p>Download the latest version</p>
+                </a>
+                <a href="https://discord.com/channels/221364737269694464/1356054710439903232" class="link-card">
+                    <h4>💬 Discord</h4>
+                    <p>Join the community discussion</p>
+                </a>
+            </div>
+        </section>
+
+        <footer>
+            <p>Made with ❤️ for the Pebble community</p>
+            <p style="margin-top: 0.5rem;">
+                <a href="https://github.com/skylord123/pebble-home-assistant-ws">GitHub</a> · 
+                <a href="https://github.com/skylord123/pebble-home-assistant-ws/blob/master/LICENSE">MIT License</a>
+            </p>
+        </footer>
+    </div>
+</body>
+</html>
+
