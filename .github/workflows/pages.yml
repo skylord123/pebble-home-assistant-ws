@@ -1,0 +1,85 @@
+# Workflow for deploying static content to GitHub Pages
+# - config/* is deployed from the triggering branch (all branches)
+# - docs/* is deployed from master branch only (when push is to master)
+name: Deploy static content to Pages
+
+on:
+  # Runs on pushes to any branch
+  push:
+    branches: ['**']
+
+  # Allows you to run this workflow manually from the Actions tab
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout current branch
+        uses: actions/checkout@v4
+        with:
+          path: current-branch
+
+      - name: Checkout master branch (for docs)
+        if: github.ref == 'refs/heads/master'
+        uses: actions/checkout@v4
+        with:
+          ref: master
+          path: master-branch
+
+      - name: Prepare deployment directory
+        run: |
+          mkdir -p deploy
+
+          # Always copy config from the current branch
+          if [ -d "current-branch/config" ]; then
+            cp -r current-branch/config deploy/
+            echo "✓ Copied config/ from current branch (${{ github.ref_name }})"
+          else
+            echo "⚠ No config/ directory found in current branch"
+          fi
+
+          # Only copy docs from master when we're on master branch
+          if [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            if [ -d "master-branch/docs" ]; then
+              # Copy docs contents to root of deploy directory
+              cp -r master-branch/docs/* deploy/ 2>/dev/null || echo "⚠ docs/ directory is empty"
+              echo "✓ Copied docs/ contents to root (master branch)"
+            else
+              echo "⚠ No docs/ directory found in master branch"
+            fi
+          else
+            echo "ℹ Skipping docs/ deployment (not on master branch)"
+          fi
+
+          echo ""
+          echo "=== Deployment directory contents ==="
+          find deploy -type f | head -50 || echo "(empty)"
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: 'deploy'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

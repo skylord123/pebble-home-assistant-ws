@@ -6,7 +6,7 @@
 
 const appVersion = '1.0', // displays in loading screen
     confVersion = '1.0', // version of config page
-    configPageUrl = 'https://skylar.tech/uploads/pebble-haws-config-' + confVersion + '.htm',
+    configPageUrl = 'https://skylord123.github.io/pebble-home-assistant-ws/config/v' + confVersion + '.html',
     debugMode = true,
     debugHAWS = false,
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
@@ -318,6 +318,9 @@ function loadStartupCache() {
             }
             ha_state_dict = new_state_map;
             ha_state_cache_updated = new Date();
+
+            // Update favorite entity friendly names from cached state data
+            favoriteEntityStore.updateFriendlyNames(ha_state_dict);
         }
 
         if (areasStr) {
@@ -5163,7 +5166,9 @@ function showEntityMenu(entity_id) {
             on_click: function(e) {
                 if(!favoriteEntityStore.has(entity.entity_id)) {
                     log_message(`Adding ${entity.entity_id} to favorites`);
-                    favoriteEntityStore.add(entity.entity_id);
+                    // Include friendly name when adding to favorites
+                    let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
+                    favoriteEntityStore.add(entity.entity_id, friendlyName);
                 } else {
                     log_message(`Removing ${entity.entity_id} from favorites`);
                     favoriteEntityStore.remove(entity.entity_id);
@@ -6943,6 +6948,10 @@ function getStates(successCallback, errorCallback, ignoreCache = false) {
             ha_state_dict = new_state_map;
 
             ha_state_cache_updated = new Date();
+
+            // Update favorite entity friendly names from current state data
+            favoriteEntityStore.updateFriendlyNames(ha_state_dict);
+
             if(typeof successCallback == "function") {
                 successCallback(data.result);
             }
