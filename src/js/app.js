@@ -4,28 +4,25 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const Vibe = require('ui/vibe'); //needed for vibration to work
-const isEmulator = Pebble.platform === 'pypkjs'; // we are in an emulator
-
-const appVersion = '0.9', // displays in loading screen
-    confVersion = '0.9', // version of config page
-    debugMode = false,
+const appVersion = '1.0', // displays in loading screen
+    confVersion = '1.0', // version of config page
+    configPageUrl = 'https://skylord123.github.io/pebble-home-assistant-ws/config/v' + confVersion + '.html',
+    debugMode = true,
     debugHAWS = false,
-    hawsFaker = isEmulator
-        && !( typeof window.EventTarget == 'function' || typeof window.WebSocket == 'function'); // we do not support websockets so use mock
     DEFAULT_IGNORE_DOMAINS = ['assist_satellite', 'conversation', 'tts', 'stt', 'wake_word', 'tag', 'todo', 'update', 'zone'],
     UI = require('ui'),
     WindowStack = require('ui/windowstack'),
     ajax = require('ajax'),
     Settings = require('settings'),
     Voice = require('ui/voice'),
-    HAWS = hawsFaker ? require('vendor/haws_faker') : require('vendor/haws'),
+    HAWS = require('vendor/haws'),
     FavoriteEntityStore = require('vendor/FavoriteEntityStore'),
     Feature = require('platform/feature'),
     Vector = require('vector2'),
     sortJSON = require('vendor/sortjson'),
     Light = require('ui/light'),
     simply = require('ui/simply'),
+    Vibe = require('ui/vibe'),
     enableIcons = true,
     sortObjectByKeys = function(object) {
         return Object.fromEntries(
@@ -47,12 +44,12 @@ const appVersion = '0.9', // displays in loading screen
     },
     ucwords = function( str ){
         return str.replace(/(\b\w)/g, function(s) { return s.toUpperCase() } );
-    }
-const Platform = require("./platform");
-const colour = {
-    highlight: Feature.color("#00AAFF", "#000000"),
-    highlight_text: Feature.color("black", "white")
-};
+    },
+    Platform = require("./platform"),
+    colour = {
+        highlight: Feature.color("#00AAFF", "#000000"),
+        highlight_text: Feature.color("black", "white")
+    };
 
 // Add to global variables
 let ha_pipelines = [],
@@ -77,7 +74,7 @@ log_message('   AccountToken:' + Pebble.getAccountToken());
 // log_message('   TimelineToken:' + Pebble.getTimelineToken());
 
 Settings.config({
-        url: 'https://skylar.tech/uploads/wrist-ha-' + confVersion + '.htm',
+        url: configPageUrl,
     },
     function(e) {
         log_message('opened configurable');
@@ -96,8 +93,10 @@ Settings.config({
 
         // reload settings
         load_settings();
-        // @todo restart HAWS after config is saved on phone
-        // @todo need some way of resetting all the windows in the app
+
+        // Restart the app to apply settings immediately
+        // This will skip quick launch behavior and go straight to main menu
+        restartApp();
     }
 );
 
@@ -105,11 +104,11 @@ Settings.config({
 let ha_url = null,
     ha_password = null,
     ha_refresh_interval = null,
-    ha_filter = null,
     ha_order_by = null,
     ha_order_dir = null,
     voice_enabled = null,
     voice_confirm = null,
+    voice_backlight_trigger = null,
     voice_agent = null,
     domain_menu_enabled = null,
     domain_menu_all_entities = null,
@@ -121,22 +120,35 @@ let ha_url = null,
     timeline_token = null,
     ignore_domains = null,
     ha_connected = false,
-    quick_launch_behavior = null;
+    quick_launch_behavior = null,
+    quick_launch_exit_on_back = null,
+    unavailable_entity_handling = null,
+    unknown_entity_handling = null,
+    automation_longpress_action = null;
 
+// Enable/disable coalesce_messages feature (set to true to enable, false to disable)
+const coalesce_messages_enabled = true;
 
+// Enable/disable startup cache feature (set to true to enable, false to disable)
+// When enabled, cached data is loaded immediately and updates are fetched in background
+const startup_cache_enabled = true;
+
+// Flag to track if app is restarting (to skip quick launch behavior)
+let is_restarting = false;
 
 function load_settings() {
     // Set some variables for quicker access
     ha_url = Settings.option('ha_url');
     ha_password = Settings.option('token');
     ha_refresh_interval = Settings.option('refreshTime') ? Settings.option('refreshTime') : 15;
-    ha_filter = Settings.option('filter');
     ha_order_by = Settings.option('order_by');
     ha_order_dir = Settings.option('order_dir');
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
+    voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     quick_launch_behavior = Settings.option('quick_launch_behavior') || 'main_menu';
+    quick_launch_exit_on_back = Settings.option('quick_launch_exit_on_back') === true;
 
     // Domain menu settings
     const domainMenuSetting = Settings.option('domain_menu_enabled');
@@ -181,6 +193,22 @@ function load_settings() {
     // If ignore_domains is an empty array, respect user's choice to show all domains
     log_message('Ignore domains: ' + JSON.stringify(ignore_domains));
 
+    // Entity state handling settings
+    // Options: 'sort_to_end', 'sort_normally', 'hide'
+    unavailable_entity_handling = Settings.option('unavailable_entity_handling');
+    unavailable_entity_handling = unavailable_entity_handling !== undefined ? unavailable_entity_handling : 'sort_to_end'; // Default: sort to end
+
+    unknown_entity_handling = Settings.option('unknown_entity_handling');
+    unknown_entity_handling = unknown_entity_handling !== undefined ? unknown_entity_handling : 'sort_normally'; // Default: sort normally
+
+    // Automation long-press action setting
+    // Options: 'toggle' (default - toggle enabled/disabled), 'trigger' (execute automation actions)
+    automation_longpress_action = Settings.option('automation_longpress_action');
+    automation_longpress_action = automation_longpress_action !== undefined ? automation_longpress_action : 'toggle'; // Default: toggle
+
+    log_message('Entity handling - unavailable: ' + unavailable_entity_handling + ', unknown: ' + unknown_entity_handling);
+    log_message('Automation long-press action: ' + automation_longpress_action);
+
     // Update Voice Pipeline handling
     selected_pipeline = Settings.option('selected_pipeline');
 
@@ -211,9 +239,214 @@ let device_status,
 
 log_message('ha_url: ' + baseurl);
 
+// Cache management functions for startup data
+const CACHE_KEYS = {
+    STATES: 'ha_startup_cache_states',
+    AREAS: 'ha_startup_cache_areas',
+    DEVICES: 'ha_startup_cache_devices',
+    ENTITIES: 'ha_startup_cache_entities',
+    LABELS: 'ha_startup_cache_labels',
+    PIPELINES: 'ha_startup_cache_pipelines',
+    TIMESTAMP: 'ha_startup_cache_timestamp'
+};
+
+function saveStartupCache() {
+    if (!startup_cache_enabled) return;
+
+    try {
+        log_message('Saving startup cache...');
+
+        // Save each piece of data to localStorage
+        if (ha_state_cache) {
+            localStorage.setItem(CACHE_KEYS.STATES, JSON.stringify(ha_state_cache));
+        }
+        if (area_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.AREAS, JSON.stringify(area_registry_cache));
+        }
+        if (device_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.DEVICES, JSON.stringify(device_registry_cache));
+        }
+        if (entity_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.ENTITIES, JSON.stringify(entity_registry_cache));
+        }
+        if (label_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.LABELS, JSON.stringify(label_registry_cache));
+        }
+        if (ha_pipelines) {
+            localStorage.setItem(CACHE_KEYS.PIPELINES, JSON.stringify({
+                pipelines: ha_pipelines,
+                preferred_pipeline: preferred_pipeline
+            }));
+        }
+
+        // Save timestamp
+        localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+
+        log_message('Startup cache saved successfully');
+    } catch (e) {
+        log_message('Error saving startup cache: ' + e);
+    }
+}
+
+function loadStartupCache() {
+    if (!startup_cache_enabled) return false;
+
+    try {
+        log_message('Loading startup cache...');
+
+        // Check if we have a timestamp (indicates cache exists)
+        const timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
+        if (!timestamp) {
+            log_message('No startup cache found');
+            return false;
+        }
+
+        // Load each piece of data
+        const statesStr = localStorage.getItem(CACHE_KEYS.STATES);
+        const areasStr = localStorage.getItem(CACHE_KEYS.AREAS);
+        const devicesStr = localStorage.getItem(CACHE_KEYS.DEVICES);
+        const entitiesStr = localStorage.getItem(CACHE_KEYS.ENTITIES);
+        const labelsStr = localStorage.getItem(CACHE_KEYS.LABELS);
+        const pipelinesStr = localStorage.getItem(CACHE_KEYS.PIPELINES);
+
+        // Parse and assign cached data
+        if (statesStr) {
+            ha_state_cache = JSON.parse(statesStr);
+            let new_state_map = {};
+            for(let entity of ha_state_cache) {
+                new_state_map[entity.entity_id] = entity;
+            }
+            ha_state_dict = new_state_map;
+            ha_state_cache_updated = new Date();
+
+            // Update favorite entity friendly names from cached state data
+            favoriteEntityStore.updateFriendlyNames(ha_state_dict);
+        }
+
+        if (areasStr) {
+            area_registry_cache = JSON.parse(areasStr);
+        }
+
+        if (devicesStr) {
+            device_registry_cache = JSON.parse(devicesStr);
+        }
+
+        if (entitiesStr) {
+            entity_registry_cache = JSON.parse(entitiesStr);
+        }
+
+        if (labelsStr) {
+            label_registry_cache = JSON.parse(labelsStr);
+        }
+
+        if (pipelinesStr) {
+            const pipelineData = JSON.parse(pipelinesStr);
+            ha_pipelines = pipelineData.pipelines;
+            preferred_pipeline = pipelineData.preferred_pipeline;
+
+            // Restore pipeline settings
+            if (ha_pipelines && ha_pipelines.length > 0) {
+                const pipelineOptions = ha_pipelines.map(p => ({
+                    id: p.id,
+                    name: p.name,
+                    preferred: p.id === preferred_pipeline
+                }));
+                Settings.option('available_pipelines', pipelineOptions);
+
+                if (!selected_pipeline && preferred_pipeline) {
+                    selected_pipeline = preferred_pipeline;
+                }
+            }
+        }
+
+        const cacheAge = Date.now() - parseInt(timestamp);
+        log_message('Startup cache loaded successfully (age: ' + (cacheAge / 1000).toFixed(1) + 's)');
+        return true;
+    } catch (e) {
+        log_message('Error loading startup cache: ' + e);
+        return false;
+    }
+}
+
+function clearStartupCache() {
+    if (!startup_cache_enabled) return;
+
+    try {
+        log_message('Clearing startup cache...');
+        localStorage.removeItem(CACHE_KEYS.STATES);
+        localStorage.removeItem(CACHE_KEYS.AREAS);
+        localStorage.removeItem(CACHE_KEYS.DEVICES);
+        localStorage.removeItem(CACHE_KEYS.ENTITIES);
+        localStorage.removeItem(CACHE_KEYS.LABELS);
+        localStorage.removeItem(CACHE_KEYS.PIPELINES);
+        localStorage.removeItem(CACHE_KEYS.TIMESTAMP);
+        log_message('Startup cache cleared');
+    } catch (e) {
+        log_message('Error clearing startup cache: ' + e);
+    }
+}
+
+/**
+ * Restart the app after settings change
+ * This will disconnect HAWS, clear all windows, and reinitialize the app
+ */
+function restartApp() {
+    log_message('Restarting app after settings change...');
+
+    // Set flag to skip quick launch behavior
+    is_restarting = true;
+
+    // Disconnect HAWS if connected
+    if (haws && haws.isConnected()) {
+        log_message('Disconnecting HAWS...');
+        haws.disconnect();
+    }
+
+    // Clear all windows except loading card
+    log_message('Clearing all windows...');
+    const windowsToRemove = [];
+    for (let window of WindowStack._items) {
+        if (window._id() !== loadingCard._id()) {
+            windowsToRemove.push(window);
+        }
+    }
+
+    // Hide all windows
+    for (let window of windowsToRemove) {
+        window.hide();
+    }
+
+    // Clear saved windows
+    saved_windows = null;
+
+    // Reset state variables
+    ha_state_cache = null;
+    ha_state_dict = null;
+    ha_state_cache_updated = null;
+    area_registry_cache = null;
+    device_registry_cache = null;
+    entity_registry_cache = null;
+    label_registry_cache = null;
+    ha_pipelines = null;
+    preferred_pipeline = null;
+    selected_pipeline = null;
+    ha_connected = false;
+
+    // Show loading card
+    loadingCard.show();
+    loadingCard.subtitle('Restarting...');
+
+    // Reinitialize the app
+    log_message('Reinitializing app...');
+    setTimeout(function() {
+        main();
+    }, 500); // Small delay to ensure cleanup is complete
+}
+
 // Initial screen
 let loadingCard = new UI.Card({
-    title: 'Home Assistant WS v' + appVersion
+    title: 'Home Assistant WS',
+    status: false
 });
 
 let mainMenu = null;
@@ -252,14 +485,7 @@ function showMainMenu() {
                     title: "Favorites",
                     // subtitle: thisDevice.attributes[arr[i]],
                     on_click: function(e) {
-                        // Check if we should show domains based on settings for Favorites
-                        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-
-                        if(shouldShowDomains) {
-                            showEntityDomainsFromList(favoriteEntities, "Favorites");
-                        } else {
-                            showEntityList("Favorites", favoriteEntities, true, false, true);
-                        }
+                        showFavorites();
                     }
                 });
             }
@@ -577,6 +803,25 @@ function showEntitySettings() {
             }]
         });
 
+        // Helper to get display text for entity handling setting
+        function getEntityHandlingText(value) {
+            switch (value) {
+                case 'sort_to_end': return 'Sort to end';
+                case 'sort_normally': return 'Sort normally';
+                case 'hide': return 'Hide';
+                default: return 'Sort to end';
+            }
+        }
+
+        // Helper to get display text for automation long-press action
+        function getAutomationLongpressText(value) {
+            switch (value) {
+                case 'toggle': return 'Toggle';
+                case 'trigger': return 'Trigger';
+                default: return 'Toggle';
+            }
+        }
+
         entitySettingsMenu.on('show', function() {
             // Clear the menu
             entitySettingsMenu.items(0, []);
@@ -613,6 +858,33 @@ function showEntitySettings() {
                         subtitle: ha_order_dir === "desc" ? "Descending" : "Ascending",
                         on_click: e.item.on_click
                     });
+                }
+            });
+
+            // Add Unavailable Entities setting
+            entitySettingsMenu.item(0, 2, {
+                title: "Unavailable Entities",
+                subtitle: getEntityHandlingText(unavailable_entity_handling),
+                on_click: function(e) {
+                    showUnavailableEntitiesMenu();
+                }
+            });
+
+            // Add Unknown Entities setting
+            entitySettingsMenu.item(0, 3, {
+                title: "Unknown Entities",
+                subtitle: getEntityHandlingText(unknown_entity_handling),
+                on_click: function(e) {
+                    showUnknownEntitiesMenu();
+                }
+            });
+
+            // Add Automation Long-Press setting
+            entitySettingsMenu.item(0, 4, {
+                title: "Automation Long-Press",
+                subtitle: getAutomationLongpressText(automation_longpress_action),
+                on_click: function(e) {
+                    showAutomationLongpressMenu();
                 }
             });
         });
@@ -679,12 +951,178 @@ function showEntitySettings() {
         orderByMenu.show();
     }
 
+    // Unavailable Entities Menu
+    function showUnavailableEntitiesMenu() {
+        let unavailableMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Unavailable Entities'
+            }]
+        });
+
+        unavailableMenu.on('show', function() {
+            // Clear the menu
+            unavailableMenu.items(0, []);
+
+            // Add options
+            unavailableMenu.item(0, 0, {
+                title: "Sort to end",
+                subtitle: unavailable_entity_handling === "sort_to_end" ? "Current" : "",
+                value: "sort_to_end"
+            });
+
+            unavailableMenu.item(0, 1, {
+                title: "Sort normally",
+                subtitle: unavailable_entity_handling === "sort_normally" ? "Current" : "",
+                value: "sort_normally"
+            });
+
+            unavailableMenu.item(0, 2, {
+                title: "Hide",
+                subtitle: unavailable_entity_handling === "hide" ? "Current" : "",
+                value: "hide"
+            });
+        });
+
+        unavailableMenu.on('select', function(e) {
+            // Set the value
+            unavailable_entity_handling = e.item.value;
+
+            // Save to settings
+            Settings.option('unavailable_entity_handling', unavailable_entity_handling);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                unavailableMenu.hide();
+            }, 500);
+        });
+
+        unavailableMenu.show();
+    }
+
+    // Unknown Entities Menu
+    function showUnknownEntitiesMenu() {
+        let unknownMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Unknown Entities'
+            }]
+        });
+
+        unknownMenu.on('show', function() {
+            // Clear the menu
+            unknownMenu.items(0, []);
+
+            // Add options
+            unknownMenu.item(0, 0, {
+                title: "Sort to end",
+                subtitle: unknown_entity_handling === "sort_to_end" ? "Current" : "",
+                value: "sort_to_end"
+            });
+
+            unknownMenu.item(0, 1, {
+                title: "Sort normally",
+                subtitle: unknown_entity_handling === "sort_normally" ? "Current" : "",
+                value: "sort_normally"
+            });
+
+            unknownMenu.item(0, 2, {
+                title: "Hide",
+                subtitle: unknown_entity_handling === "hide" ? "Current" : "",
+                value: "hide"
+            });
+        });
+
+        unknownMenu.on('select', function(e) {
+            // Set the value
+            unknown_entity_handling = e.item.value;
+
+            // Save to settings
+            Settings.option('unknown_entity_handling', unknown_entity_handling);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                unknownMenu.hide();
+            }, 500);
+        });
+
+        unknownMenu.show();
+    }
+
+    // Automation Long-Press Menu
+    function showAutomationLongpressMenu() {
+        let automationMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'black',
+            textColor: 'white',
+            highlightBackgroundColor: 'white',
+            highlightTextColor: 'black',
+            sections: [{
+                title: 'Automation Long-Press'
+            }]
+        });
+
+        automationMenu.on('show', function() {
+            // Clear the menu
+            automationMenu.items(0, []);
+
+            // Add options
+            automationMenu.item(0, 0, {
+                title: "Toggle",
+                subtitle: automation_longpress_action === "toggle" ? "Current" : "",
+                value: "toggle"
+            });
+
+            automationMenu.item(0, 1, {
+                title: "Trigger",
+                subtitle: automation_longpress_action === "trigger" ? "Current" : "",
+                value: "trigger"
+            });
+        });
+
+        automationMenu.on('select', function(e) {
+            // Set the value
+            automation_longpress_action = e.item.value;
+
+            // Save to settings
+            Settings.option('automation_longpress_action', automation_longpress_action);
+
+            // Close the menu after a brief delay to show the selection
+            setTimeout(function() {
+                automationMenu.hide();
+            }, 500);
+        });
+
+        automationMenu.show();
+    }
+
     // Create and show the entity settings menu
     let entitySettingsMenu = createEntitySettingsMenu();
     entitySettingsMenu.show();
 }
 
 function showQuickLaunchSettings() {
+    // Helper to get display name for quick launch behavior
+    function getActionDisplayName(behavior) {
+        switch (behavior) {
+            case 'main_menu': return 'Main Menu';
+            case 'assistant': return 'Assistant';
+            case 'favorites': return 'Favorites';
+            case 'areas': return 'Areas';
+            case 'labels': return 'Labels';
+            case 'todo_lists': return 'To-Do Lists';
+            default: return 'Main Menu';
+        }
+    }
+
     // Create a menu for quick launch settings
     let quickLaunchMenu = new UI.Menu({
         status: false,
@@ -693,76 +1131,127 @@ function showQuickLaunchSettings() {
         highlightBackgroundColor: 'white',
         highlightTextColor: 'black',
         sections: [{
-            title: 'Quick Launch Action'
+            title: 'Quick Launch'
         }]
     });
 
-    quickLaunchMenu.on('show', function() {
+    function updateMenuItems() {
         // Clear the menu
         quickLaunchMenu.items(0, []);
 
+        // Action - opens submenu to select quick launch destination
+        quickLaunchMenu.item(0, 0, {
+            title: "Action",
+            subtitle: getActionDisplayName(quick_launch_behavior),
+            action: 'select_action'
+        });
+
+        // Exit on Back - toggles on click
+        quickLaunchMenu.item(0, 1, {
+            title: "Exit on Back",
+            subtitle: quick_launch_exit_on_back ? "Enabled" : "Disabled",
+            action: 'toggle_exit_on_back'
+        });
+    }
+
+    quickLaunchMenu.on('show', updateMenuItems);
+
+    quickLaunchMenu.on('select', function(e) {
+        if (e.item.action === 'select_action') {
+            showQuickLaunchActionMenu(function() {
+                // Update just the Action item subtitle
+                quickLaunchMenu.item(0, 0, {
+                    title: "Action",
+                    subtitle: getActionDisplayName(quick_launch_behavior),
+                    action: 'select_action'
+                });
+            });
+        } else if (e.item.action === 'toggle_exit_on_back') {
+            quick_launch_exit_on_back = !quick_launch_exit_on_back;
+            Settings.option('quick_launch_exit_on_back', quick_launch_exit_on_back);
+            // Update just this item to preserve selection position
+            quickLaunchMenu.item(0, 1, {
+                title: "Exit on Back",
+                subtitle: quick_launch_exit_on_back ? "Enabled" : "Disabled",
+                action: 'toggle_exit_on_back'
+            });
+        }
+    });
+
+    quickLaunchMenu.show();
+}
+
+function showQuickLaunchActionMenu(onSelect) {
+    // Create a submenu for selecting quick launch action
+    let actionMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Select Action'
+        }]
+    });
+
+    function updateMenuItems() {
+        actionMenu.items(0, []);
+
         let itemIndex = 0;
 
-        // Add options
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Main Menu",
             subtitle: quick_launch_behavior === 'main_menu' ? "Current" : "",
             value: 'main_menu'
         });
 
-        if ( voice_enabled ) {
-            quickLaunchMenu.item(0, itemIndex++, {
+        if (voice_enabled) {
+            actionMenu.item(0, itemIndex++, {
                 title: "Assistant",
                 subtitle: quick_launch_behavior === 'assistant' ? "Current" : "",
                 value: 'assistant'
             });
         }
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Favorites",
             subtitle: quick_launch_behavior === 'favorites' ? "Current" : "",
             value: 'favorites'
         });
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Areas",
             subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
             value: 'areas'
         });
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "Labels",
             subtitle: quick_launch_behavior === 'labels' ? "Current" : "",
             value: 'labels'
         });
 
-        quickLaunchMenu.item(0, itemIndex++, {
+        actionMenu.item(0, itemIndex++, {
             title: "To-Do Lists",
             subtitle: quick_launch_behavior === 'todo_lists' ? "Current" : "",
             value: 'todo_lists'
         });
-    });
+    }
 
-    quickLaunchMenu.on('select', function(e) {
-        // Set the quick launch behavior
-        quick_launch_behavior = e.item.value;
+    actionMenu.on('show', updateMenuItems);
 
-        // Save to settings
-        Settings.option('quick_launch_behavior', quick_launch_behavior);
-
-        // Update menu items to show current selection
-        const items = quickLaunchMenu.items(0);
-        for (let i = 0; i < items.length; i++) {
-            const item = quickLaunchMenu.item(0, i);
-            quickLaunchMenu.item(0, i, {
-                title: item.title,
-                subtitle: item.value === quick_launch_behavior ? "Current" : "",
-                value: item.value
-            });
+    actionMenu.on('select', function(e) {
+        if (e.item.value) {
+            quick_launch_behavior = e.item.value;
+            Settings.option('quick_launch_behavior', quick_launch_behavior);
+            actionMenu.hide();
+            if (typeof onSelect === 'function') {
+                onSelect();
+            }
         }
     });
 
-    quickLaunchMenu.show();
+    actionMenu.show();
 }
 
 function showVoicePipelineMenu() {
@@ -1144,6 +1633,11 @@ function showAssistMenu() {
             }
 
             log_message("Error message added, content height: " + currentY);
+
+            // Trigger backlight for error messages
+            if (voice_backlight_trigger) {
+                Light.trigger();
+            }
         });
     }
 
@@ -1258,6 +1752,11 @@ function showAssistMenu() {
                 }
 
                 log_message("Message added successfully, content height: " + currentY);
+
+                // Trigger backlight for assistant responses (not user messages)
+                if (voice_backlight_trigger && speaker !== 'Me') {
+                    Light.trigger();
+                }
 
                 if (callback) {
                     log_message("Executing callback");
@@ -1378,31 +1877,6 @@ function showAssistMenu() {
     }
 
     function startAssist() {
-        if(hawsFaker) {
-            const testMessageDelay = 2000; // 2 seconds delay between messages, adjust as needed
-
-            addMessage('Me', "Hello!", function() {
-                setTimeout(function() {
-                    addMessage('HA', "Hi! How are you?", function() {
-                        setTimeout(function() {
-                            addMessage('Me', "I am actually doing really good. Yourself?", function() {
-                                setTimeout(function() {
-                                    addMessage('HA', "Yeah I guess things are going pretty alright. I can't complain too much.", function() {
-                                        setTimeout(function(){
-                                            addMessage('HA', "Test!\n - list test\n- list item two", function() {
-                                            });
-                                        }, testMessageDelay)
-                                    });
-                                }, testMessageDelay);
-                            });
-                        }, testMessageDelay);
-                    });
-                }, testMessageDelay);
-            });
-
-            return;
-        }
-
         log_message("startAssist");
         Voice.dictate('start', voice_confirm, function(e) {
             if (e.err) {
@@ -1518,7 +1992,7 @@ function showAssistMenu() {
     }
 
     assistWindow.on('click', 'select', function(e) {
-        log_message("Assist button pressed", e);
+        log_message("Assist button pressed");
         startAssist();
     });
 
@@ -1533,6 +2007,26 @@ function showAssistMenu() {
     });
 
     assistWindow.show();
+}
+
+function showFavorites() {
+    let favoriteEntities = favoriteEntityStore.all();
+    log_message("Showing " + favoriteEntities.length + " favorite entities", JSON.stringify(favoriteEntities));
+    if (favoriteEntities && favoriteEntities.length) {
+        const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
+        if (shouldShowDomains) {
+            showEntityDomainsFromList(favoriteEntities, "Favorites");
+        } else {
+            showEntityList("Favorites", favoriteEntities, true, false, true);
+        }
+    } else {
+        let noFavoritesCard = new UI.Card({
+            title: "No Favorites",
+            subtitle: "Long-press an entity and select 'Add Favorite'",
+            status: false
+        });
+        noFavoritesCard.show();
+    }
 }
 
 let areaMenu = null;
@@ -1907,7 +2401,7 @@ function showMediaPlayerEntity(entity_id) {
     position_progress_fg.maxWidth = position_progress_bg_inner.position2().x - position_progress_bg_inner.position().x;
 
     mediaControlWindow.on('show', function(){
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2187,7 +2681,7 @@ function showClimateEntity(entity_id) {
                     }
 
                     // Subscribe to entity updates
-                    let temp_range_subscription_msg_id = haws.subscribe({
+                    let temp_range_subscription_msg_id = haws.subscribeTrigger({
                         "type": "subscribe_trigger",
                         "trigger": {
                             "platform": "state",
@@ -2353,7 +2847,7 @@ function showClimateEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2535,7 +3029,7 @@ function showClimateEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let temp_subscription_msg_id = haws.subscribe({
+        let temp_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2633,7 +3127,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let hvac_subscription_msg_id = haws.subscribe({
+        let hvac_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2744,7 +3238,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let fan_subscription_msg_id = haws.subscribe({
+        let fan_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2855,7 +3349,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let preset_subscription_msg_id = haws.subscribe({
+        let preset_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -2966,7 +3460,7 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let swing_subscription_msg_id = haws.subscribe({
+        let swing_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3395,7 +3889,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let brightness_subscription_msg_id = haws.subscribe({
+        let brightness_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3569,7 +4063,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let temp_subscription_msg_id = haws.subscribe({
+        let temp_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -3916,7 +4410,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let color_subscription_msg_id = haws.subscribe({
+        let color_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4054,7 +4548,7 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let effect_subscription_msg_id = haws.subscribe({
+        let effect_subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4116,7 +4610,7 @@ function showLightEntity(entity_id) {
         updateLightMenuItems(light);
 
         // Subscribe to entity updates
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4549,13 +5043,132 @@ function showEntityMenu(entity_id) {
         });
     }
 
+    if(domain === "vacuum") {
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Start',
+            on_click: function(){
+                log_message('Calling vacuum.start for ' + entity.entity_id);
+                haws.callService(
+                    'vacuum',
+                    'start',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message('vacuum.start success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function(error) {
+                        log_message('vacuum.start failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Pause',
+            on_click: function(){
+                log_message('Calling vacuum.pause for ' + entity.entity_id);
+                haws.callService(
+                    'vacuum',
+                    'pause',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message('vacuum.pause success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function(error) {
+                        log_message('vacuum.pause failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Stop',
+            on_click: function(){
+                log_message('Calling vacuum.stop for ' + entity.entity_id);
+                haws.callService(
+                    'vacuum',
+                    'stop',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message('vacuum.stop success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function(error) {
+                        log_message('vacuum.stop failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Return to Base',
+            on_click: function(){
+                log_message('Calling vacuum.return_to_base for ' + entity.entity_id);
+                haws.callService(
+                    'vacuum',
+                    'return_to_base',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message('vacuum.return_to_base success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function(error) {
+                        log_message('vacuum.return_to_base failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Locate',
+            on_click: function(){
+                log_message('Calling vacuum.locate for ' + entity.entity_id);
+                haws.callService(
+                    'vacuum',
+                    'locate',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message('vacuum.locate success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function(error) {
+                        log_message('vacuum.locate failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Clean Spot',
+            on_click: function(){
+                log_message('Calling vacuum.clean_spot for ' + entity.entity_id);
+                haws.callService(
+                    'vacuum',
+                    'clean_spot',
+                    {},
+                    {entity_id: entity.entity_id},
+                    function(data) {
+                        log_message('vacuum.clean_spot success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function(error) {
+                        log_message('vacuum.clean_spot failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            }
+        });
+    }
+
     function _renderFavoriteBtn() {
         showEntityMenu.item(2, 0, {
             title: (favoriteEntityStore.has(entity.entity_id) ? 'Remove' : 'Add') + ' Favorite',
             on_click: function(e) {
                 if(!favoriteEntityStore.has(entity.entity_id)) {
                     log_message(`Adding ${entity.entity_id} to favorites`);
-                    favoriteEntityStore.add(entity.entity_id);
+                    // Include friendly name when adding to favorites
+                    let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
+                    favoriteEntityStore.add(entity.entity_id, friendlyName);
                 } else {
                     log_message(`Removing ${entity.entity_id} from favorites`);
                     favoriteEntityStore.remove(entity.entity_id);
@@ -4567,7 +5180,7 @@ function showEntityMenu(entity_id) {
     _renderFavoriteBtn();
 
     showEntityMenu.on('show', function(){
-        msg_id = haws.subscribe({
+        msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4635,7 +5248,7 @@ function showEntityAttributesMenu(entity_id) {
         }
 
         // Subscribe to entity updates
-        msg_id = haws.subscribe({
+        msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
@@ -4687,13 +5300,16 @@ function showEntityDomainsFromList(entity_id_list, title) {
     });
 
     domainListMenu.on('show', function(){
+        log_message(`showEntityDomainsFromList: building domain list from ${entity_id_list.length} entities`);
+
         // loop over entity id list and index them by their domain
         // we got this during boot
         let domainEntities = {};
+        let missingEntities = [];
         for(let entity_id of entity_id_list) {
             let entity = ha_state_dict[entity_id];
             if(!entity) {
-                // throw new Error(`${entity_id} does not exist in ha_state_dict`);
+                missingEntities.push(entity_id);
                 continue;
             }
 
@@ -4711,8 +5327,17 @@ function showEntityDomainsFromList(entity_id_list, title) {
             }
         }
 
+        if (missingEntities.length > 0) {
+            log_message(`showEntityDomainsFromList: WARNING - ${missingEntities.length} entities missing from ha_state_dict: ${missingEntities.join(', ')}`);
+        }
+
         // sort domain list
         domainEntities = sortObjectByKeys(domainEntities);
+
+        // Log domain counts
+        for(let domain in domainEntities) {
+            log_message(`showEntityDomainsFromList: domain '${domain}' has ${domainEntities[domain].length} entities`);
+        }
 
         // add domain entries into menu
         let i = 0;
@@ -4724,6 +5349,7 @@ function showEntityDomainsFromList(entity_id_list, title) {
                 title: display_name,
                 subtitle: `${entities.length} ${entities.length > 1 ? 'entities' : 'entity'}`,
                 on_click: function(e) {
+                    log_message(`showEntityDomainsFromList: clicked domain '${domain}' with ${entities.length} entities`);
                     showEntityList(display_name, entities);
                 }
             });
@@ -4770,8 +5396,17 @@ function getEntityIcon(entity) {
 
         case 'binary_sensor':
             // Check for door/window sensors
-            if (entity.attributes.device_class === 'opening') {
+            let entity_registry = entity_registry_cache[entity.entity_id];
+            if (
+                entity.attributes.device_class === 'opening'
+                || entity.attributes.device_class === 'door'
+                || entity.attributes.device_class === 'garage_door'
+            ) {
                 return state === 'on' ? 'images/icon_door_open.png' : 'images/icon_door_closed.png';
+            } else if(entity.attributes.device_class === 'window') {
+                return state === 'on' ? 'images/icon_blinds_open.png' : 'images/icon_blinds_closed.png';
+            } else if(entity.attributes.device_class === 'light') {
+                return state === 'on' ? 'images/icon_bulb_on.png' : 'images/icon_bulb.png';
             }
             return 'images/icon_sensor.png';
 
@@ -4879,7 +5514,7 @@ function showToDoLists() {
         todoLists.forEach(function(entity) {
             let entity_id = entity.entity_id;
 
-            subscriptionIds[entity_id] = haws.subscribe({
+            subscriptionIds[entity_id] = haws.subscribeTrigger({
                 "type": "todo/item/subscribe",
                 "entity_id": entity_id
             }, function(data) {
@@ -5406,7 +6041,7 @@ function showToDoList(entity_id) {
 
 
     todoListMenu.on('show', function() {
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
         }, function(data) {
@@ -5693,7 +6328,7 @@ function showToDoItemMenu(entity_id, item) {
     // Subscribe when menu is shown
     itemMenu.on('show', function() {
         log_message(`Subscribing to todo items for ${entity_id}`);
-        subscription_msg_id = haws.subscribe({
+        subscription_msg_id = haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
         }, function(data) {
@@ -5836,11 +6471,28 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     entityListMenu.on('longSelect', function(e) {
         log_message(`Entity ${e.item.entity_id} was long pressed!`);
         let [domain] = e.item.entity_id.split('.');
-        if (
+        if (domain === "automation") {
+            // Handle automation based on user setting
+            let service = automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
+            log_message(`Automation long-press: calling ${service} for ${e.item.entity_id}`);
+            haws.callService(
+                domain,
+                service,
+                {},
+                {entity_id: e.item.entity_id},
+                function (data) {
+                    log_message(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function (error) {
+                    log_message('no response');
+                    Vibe.vibrate('double');
+                });
+        }
+        else if (
             domain === "switch" ||
             domain === "light" ||
             domain === "input_boolean" ||
-            domain === "automation" ||
             domain === "script" ||
             domain === "cover"
         ) {
@@ -5879,6 +6531,55 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                     Vibe.vibrate('double');
                     log_message('no response');
                 });
+        }
+        else if (domain === "scene") {
+            haws.callService(
+                domain,
+                "apply",
+                {},
+                {entity_id: e.item.entity_id},
+                function (data) {
+                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
+                    // Success!
+                    Vibe.vibrate('short');
+                    log_message(JSON.stringify(data));
+                },
+                function (error) {
+                    // Failure!
+                    Vibe.vibrate('double');
+                    log_message('no response');
+                });
+        }
+        else if (domain === "vacuum") {
+            let entity = ha_state_dict[e.item.entity_id];
+            let state = entity.state;
+            let service = null;
+
+            // Determine which service to call based on state
+            if (state === "cleaning" || state === "returning") {
+                service = "pause";
+            } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
+                service = "start";
+            }
+
+            if (service) {
+                log_message('Calling vacuum.' + service + ' for ' + e.item.entity_id + ' (state: ' + state + ')');
+                haws.callService(
+                    'vacuum',
+                    service,
+                    {},
+                    {entity_id: e.item.entity_id},
+                    function (data) {
+                        log_message('vacuum.' + service + ' success: ' + JSON.stringify(data));
+                        Vibe.vibrate('short');
+                    },
+                    function (error) {
+                        log_message('vacuum.' + service + ' failed: ' + JSON.stringify(error));
+                        Vibe.vibrate('double');
+                    });
+            } else {
+                log_message('Vacuum ' + e.item.entity_id + ' in state ' + state + ' - no action taken');
+            }
         }
     });
 
@@ -5936,175 +6637,271 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         // Check if we're staying on the same page
         let stayingOnSamePage = (entityListMenu.current_page === pageNumber);
 
+        // Unsubscribe from previous subscription if exists
+        if(entityListMenu.subscription_id) {
+            haws.unsubscribe(entityListMenu.subscription_id);
+            entityListMenu.subscription_id = null;
+        }
+
+        // Determine which entity IDs to subscribe to
+        let entitiesToSubscribe = entity_id_list ? entity_id_list.slice() : [];
+
+        // Filter out ignored domains if skipIgnoredDomains is true
+        if (skipIgnoredDomains && ignore_domains && ignore_domains.length > 0) {
+            entitiesToSubscribe = entitiesToSubscribe.filter(function(entity_id) {
+                const [domain] = entity_id.split('.');
+                return ignore_domains.indexOf(domain) === -1;
+            });
+        }
+
+        if (entitiesToSubscribe.length === 0) {
+            log_message('No entities to subscribe to');
+            entityListMenu.section(0).title = 'No entities';
+            return;
+        }
+
         let prev_title = entityListMenu.section(0).title;
         entityListMenu.section(0).title = 'updating ...';
-        getStates(
-            function(data) {
-                entityListMenu.section(0).title = prev_title;
 
-                // Filter out ignored domains if skipIgnoredDomains is true
-                if (skipIgnoredDomains && ignore_domains && ignore_domains.length > 0) {
-                    data = data.filter(function(element) {
-                        const [domain] = element.entity_id.split('.');
-                        return ignore_domains.indexOf(domain) === -1;
-                    });
+        // Local state cache for this subscription
+        let entityStates = {};
+        let renderedEntityIds = {};
+        let initialSnapshotReceived = false;
+
+        // Helper to convert subscribeEntities format to standard entity format
+        function convertEntityData(entity_id, data) {
+            return {
+                entity_id: entity_id,
+                state: data.s,
+                attributes: data.a || {},
+                context: data.c,
+                last_changed: data.lc ? new Date(data.lc * 1000).toISOString() : new Date().toISOString()
+            };
+        }
+
+        // Helper to render the menu from entityStates
+        function renderMenu() {
+            // Convert entityStates to array for sorting/pagination
+            let data = [];
+            for (let entity_id in entityStates) {
+                data.push(entityStates[entity_id]);
+            }
+
+            // Filter and sort based on unavailable/unknown entity handling settings
+            // First, filter out hidden entities
+            data = data.filter(function(entity) {
+                const state = entity.state;
+                if (state === 'unavailable' && unavailable_entity_handling === 'hide') {
+                    return false;
                 }
-
-                if(entity_id_list) {
-                    data = data.filter(function(element, index) {
-                        return entity_id_list.indexOf(element.entity_id) > -1;
-                    });
+                if (state === 'unknown' && unknown_entity_handling === 'hide') {
+                    return false;
                 }
+                return true;
+            });
 
-                if(sortItems) {
-                    // sort items by an entity attribute
-                    data = sortJSON(data, ha_order_by, ha_order_dir);
+            // Separate entities into groups based on their state and handling settings
+            let normalEntities = [];
+            let unavailableToEnd = [];
+            let unknownToEnd = [];
+
+            data.forEach(function(entity) {
+                const state = entity.state;
+                if (state === 'unavailable' && unavailable_entity_handling === 'sort_to_end') {
+                    unavailableToEnd.push(entity);
+                } else if (state === 'unknown' && unknown_entity_handling === 'sort_to_end') {
+                    unknownToEnd.push(entity);
                 } else {
-                    // sort items in same order as they appear in entity_id_list
-                    data.sort(function(a, b){
-                        return entity_id_list.indexOf(a.entity_id) - entity_id_list.indexOf(b.entity_id);
+                    normalEntities.push(entity);
+                }
+            });
+
+            // Sort each group
+            if(sortItems) {
+                // sort items by an entity attribute
+                normalEntities = sortJSON(normalEntities, ha_order_by, ha_order_dir);
+                unavailableToEnd = sortJSON(unavailableToEnd, ha_order_by, ha_order_dir);
+                unknownToEnd = sortJSON(unknownToEnd, ha_order_by, ha_order_dir);
+            } else if (entity_id_list) {
+                // sort items in same order as they appear in entity_id_list
+                const sortByList = function(a, b) {
+                    return entity_id_list.indexOf(a.entity_id) - entity_id_list.indexOf(b.entity_id);
+                };
+                normalEntities.sort(sortByList);
+                unavailableToEnd.sort(sortByList);
+                unknownToEnd.sort(sortByList);
+            }
+
+            // Combine: normal entities first, then unavailable (sorted to end), then unknown (sorted to end)
+            data = normalEntities.concat(unavailableToEnd).concat(unknownToEnd);
+
+            let data_length = data.length;
+            device_status = data;
+
+            function paginate(array, pageSize, pageNumber) {
+                return array.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
+            }
+            if(data.length > maxPageItems) {
+                data = paginate(data, maxPageItems, pageNumber);
+                paginated = true;
+                paginateMore = (maxPageItems * pageNumber) < data_length;
+                log_message(`maxPageItems:${maxPageItems} pageNumber:${pageNumber} data_length:${data_length} paginateMore:${paginateMore?1:0}`)
+            }
+
+            // Clear renderedEntityIds for fresh mapping
+            renderedEntityIds = {};
+
+            entityListMenu.items(0, []); // clear items
+            let menuIndex = 0;
+
+            if(pageNumber > 1) {
+                entityListMenu.item(0, menuIndex, {
+                    title: "Prev Page",
+                    on_click: function(e) {
+                        updateStates(pageNumber - 1);
+                    }
+                });
+                menuIndex++;
+            }
+
+            log_message(`renderMenu: about to render ${data.length} items to menu`);
+            for (let i = 0; i < data.length; i++) {
+                try {
+                    if(data[i].attributes.hidden){
+                        log_message(`renderMenu: skipping hidden entity ${data[i].entity_id}`);
+                        continue;
+                    }
+
+                    let menuId = menuIndex++;
+                    let itemTitle = data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id;
+                    let itemSubtitle = data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed));
+
+                    // Get icon path - use try/catch as icon loading can fail for certain entities
+                    let itemIcon;
+                    try {
+                        itemIcon = getEntityIcon(data[i]);
+                    } catch (iconErr) {
+                        log_message(`renderMenu: icon error for ${data[i].entity_id}: ${iconErr.message}`);
+                        itemIcon = 'images/icon_unknown.png';
+                    }
+
+                    entityListMenu.item(0, menuId, {
+                        title: itemTitle,
+                        subtitle: itemSubtitle,
+                        entity_id: data[i].entity_id,
+                        icon: itemIcon
                     });
+                    renderedEntityIds[data[i].entity_id] = menuId;
+                } catch (err) {
+                    log_message(`renderMenu: ERROR rendering entity ${data[i] ? data[i].entity_id : 'unknown'} at index ${i}: ${err.message}`);
                 }
-                let data_length = data.length;
-                device_status = data;
+            }
+            log_message(`renderMenu: rendered ${menuIndex} items total`);
 
-                function paginate(array, pageSize, pageNumber) {
-                    return array.slice((pageNumber - 1) * pageSize, pageNumber * pageSize);
-                }
-                if(data.length > maxPageItems) {
-                    data = paginate(data, maxPageItems, pageNumber);
-                    paginated = true;
-                    paginateMore = (maxPageItems * pageNumber) < data_length;
-                    log_message(`maxPageItems:${maxPageItems} pageNumber:${pageNumber} data_length:${data_length} paginateMore:${paginateMore?1:0}`)
-                }
-
-                // Prepare to set up subscription for entity updates
-                let renderedEntityIds = {};
-
-                // If we're not staying on the same page, clear all items and rebuild the menu
-                if (!stayingOnSamePage) {
-                    entityListMenu.items(0, []); // clear items
-                    let menuIndex = 0;
-
-                    if(pageNumber > 1) {
-                        entityListMenu.item(0, menuIndex, {
-                            title: "Prev Page",
-                            on_click: function(e) {
-                                updateStates(pageNumber - 1);
-                            }
-                        });
-                        menuIndex++;
+            if(paginateMore) {
+                entityListMenu.item(0, menuIndex, {
+                    title: "Next Page",
+                    on_click: function(e) {
+                        updateStates(pageNumber + 1);
                     }
+                });
+                paginateMoreIndex = menuIndex;
+            }
 
-                    for (let i = 0; i < data.length; i++) {
-                        if(entity_id_list && entity_id_list.indexOf(data[i].entity_id) === -1) {
-                            continue;
-                        }
+            entityListMenu.current_page = pageNumber;
+        }
 
-                        if(data[i].attributes.hidden){
-                            continue;
-                        }
+        // Helper to update a single entity in the menu
+        function updateEntityInMenu(entity_id) {
+            if (renderedEntityIds[entity_id] === undefined) {
+                return; // Entity not currently rendered
+            }
 
-                        let menuId = menuIndex++;
-                        entityListMenu.item(0, menuId, {
-                            title: data[i].attributes.friendly_name ? data[i].attributes.friendly_name : data[i].entity_id,
-                            subtitle: data[i].state + (data[i].attributes.unit_of_measurement ? ` ${data[i].attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data[i].last_changed)),
-                            entity_id: data[i].entity_id,
-                            icon: getEntityIcon(data[i])
-                        });
-                        renderedEntityIds[data[i].entity_id] = menuId;
-                    }
+            let entity = entityStates[entity_id];
+            if (!entity) {
+                return;
+            }
 
-                    if(paginateMore) {
-                        entityListMenu.item(0, menuIndex, {
-                            title: "Next Page",
-                            on_click: function(e) {
-                                updateStates(pageNumber + 1);
-                            }
-                        });
-                        paginateMoreIndex = menuIndex;
-                    }
-                } else {
-                    // We're staying on the same page, just update the existing items
-                    log_message('Staying on same page, updating existing items');
+            entityListMenu.item(0, renderedEntityIds[entity_id], {
+                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
+                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
+                entity_id: entity.entity_id,
+                icon: getEntityIcon(entity)
+            });
+        }
 
-                    // Get all current menu items
-                    let currentItems = entityListMenu.items(0);
-                    let entityMap = {};
+        log_message(`Setting up subscribeEntities for ${entitiesToSubscribe.length} entities: ${entitiesToSubscribe.join(', ')}`);
+        entityListMenu.subscription_id = haws.subscribeEntities(entitiesToSubscribe, function(data) {
+            // log_message(`subscribeEntities event: ${JSON.stringify(data)}`, JSON.stringify(data, null, 4));
+            let ev = data.event || {};
 
-                    // Create a map of entity_id to data for quick lookup
-                    for (let i = 0; i < data.length; i++) {
-                        entityMap[data[i].entity_id] = data[i];
-                    }
+            // Debug logging for subscription events
+            if (ev.a) {
+                log_message(`subscribeEntities: received ${Object.keys(ev.a).length} added entities`);
+            }
+            if (ev.c) {
+                log_message(`subscribeEntities: received ${Object.keys(ev.c).length} changed entities`);
+            }
+            if (ev.r) {
+                log_message(`subscribeEntities: received ${Object.keys(ev.r).length} removed entities: ${Object.keys(ev.r).join(', ')}`);
+            }
 
-                    // Update each menu item with new data if available
-                    for (let i = 0; i < currentItems.length; i++) {
-                        let item = currentItems[i];
-
-                        // Skip navigation items (Prev/Next Page)
-                        if (!item.entity_id) {
-                            continue;
-                        }
-
-                        // If we have updated data for this entity, update the menu item
-                        if (entityMap[item.entity_id]) {
-                            let entity = entityMap[item.entity_id];
-                            entityListMenu.item(0, i, {
-                                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
-                                entity_id: entity.entity_id,
-                                icon: getEntityIcon(entity)
-                            });
-
-                            // Build the renderedEntityIds map for subscription
-                            renderedEntityIds[entity.entity_id] = i;
-                        }
-                    }
+            // Handle added entities (initial snapshot)
+            if (ev.a) {
+                for (let entity_id in ev.a) {
+                    let entityData = convertEntityData(entity_id, ev.a[entity_id]);
+                    entityStates[entity_id] = entityData;
+                    ha_state_dict[entity_id] = entityData;
                 }
 
-                // Always set up subscription for entity updates, regardless of whether we're staying on the same page
-                if(entityListMenu.subscription_id) {
-                    haws.unsubscribe(entityListMenu.subscription_id);
-                    entityListMenu.subscription_id = null;
+                // On initial snapshot, render the full menu
+                if (!initialSnapshotReceived) {
+                    initialSnapshotReceived = true;
+                    entityListMenu.section(0).title = prev_title;
+                    renderMenu();
                 }
+            }
 
-                if(Object.keys(renderedEntityIds).length) {
-                    log_message(`Setting up subscription for ${Object.keys(renderedEntityIds).length} entities`);
-                    entityListMenu.subscription_id = haws.subscribe({
-                        "type": "subscribe_trigger",
-                        "trigger": {
-                            "platform": "state",
-                            "entity_id": Object.keys(renderedEntityIds),
-                        },
-                    }, function(data) {
-                        ha_state_dict[data.event.variables.trigger.to_state.entity_id] = data.event.variables.trigger.to_state;
-                        let entity = ha_state_dict[data.event.variables.trigger.to_state.entity_id];
-                        log_message("ENTITY GETTING UPDATE:" + JSON.stringify(entity));
-                        if(!entity) {
-                            log_message('FAILED TO FIND ENTITY ' + data.event.variables.trigger.to_state.entity_id);
-                            return;
-                        }
-                        entityListMenu.item(0, renderedEntityIds[entity.entity_id], {
-                            title: data.event.variables.trigger.to_state.attributes.friendly_name ? data.event.variables.trigger.to_state.attributes.friendly_name : entity.entity_id,
-                            subtitle: data.event.variables.trigger.to_state.state + (data.event.variables.trigger.to_state.attributes.unit_of_measurement ? ` ${data.event.variables.trigger.to_state.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(data.event.variables.trigger.to_state.last_changed)),
-                            entity_id: entity.entity_id,
-                            icon: getEntityIcon(data.event.variables.trigger.to_state)
-                        });
-                    }, function(error) {
-                        log_message(`ENTITY UPDATE ERROR ${JSON.stringify(Object.keys(renderedEntityIds))}: ` + JSON.stringify(error));
-                    });
+            // Handle changed entities (updates)
+            if (ev.c) {
+                for (let entity_id in ev.c) {
+                    let patch = ev.c[entity_id];
+                    let plus = patch["+"] || {};
+
+                    // Get existing state or create new one
+                    let cur = entityStates[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
+
+                    // Merge the changes
+                    entityStates[entity_id] = {
+                        entity_id: entity_id,
+                        state: plus.s !== undefined ? plus.s : cur.state,
+                        attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                        context: plus.c !== undefined ? plus.c : cur.context,
+                        last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
+                    };
+                    ha_state_dict[entity_id] = entityStates[entity_id];
+
+                    log_message(`Entity update for ${entity_id}: ${entityStates[entity_id].state}`);
+                    updateEntityInMenu(entity_id);
                 }
+            }
 
-                // Update the current page number
-                entityListMenu.current_page = pageNumber;
-
-                //Vibe.vibrate('short');
-            },
-            function() {
-                entityListMenu.section(0).title = 'HAWS - failed updating';
-            },
-            true
-        );
+            // Handle removed entities
+            if (ev.r) {
+                for (let entity_id in ev.r) {
+                    delete entityStates[entity_id];
+                    delete ha_state_dict[entity_id];
+                    log_message(`Entity removed: ${entity_id}`);
+                    // Re-render menu if an entity was removed
+                    if (initialSnapshotReceived) {
+                        renderMenu();
+                    }
+                }
+            }
+        }, function(error) {
+            log_message(`subscribeEntities ERROR: ` + JSON.stringify(error));
+            entityListMenu.section(0).title = 'HAWS - failed updating';
+        });
     }
 
     entityListMenu.on('show', function(e) {
@@ -6151,6 +6948,10 @@ function getStates(successCallback, errorCallback, ignoreCache = false) {
             ha_state_dict = new_state_map;
 
             ha_state_cache_updated = new Date();
+
+            // Update favorite entity friendly names from current state data
+            favoriteEntityStore.updateFriendlyNames(ha_state_dict);
+
             if(typeof successCallback == "function") {
                 successCallback(data.result);
             }
@@ -6238,99 +7039,182 @@ function getEntitiesWithoutArea() {
  * @param evt
  */
 function on_auth_ok(evt) {
-    loadingCard.subtitle("Fetching states");
-    log_message("Fetching states, config areas, config devices, config entities, and config labels...");
-    let pipelines_loaded = false;
+    // Start timing
+    const fetch_start_time = Date.now();
+    log_message("Starting data fetch timing...");
 
     // Set connection status to true
     ha_connected = true;
     Settings.option('ha_connected', ha_connected);
 
-    let done_fetching = function(){
-        // basically just a wrapper to check that all the things have finished fetching
-        if(area_registry_cache && device_registry_cache && entity_registry_cache &&
-           ha_state_cache && label_registry_cache && pipelines_loaded) {
-            log_message("Finished fetching data, showing main menu");
+    // Try to load from cache first
+    const cacheLoaded = loadStartupCache();
 
-            // try to resume previous WindowStack state if it's saved
-            if(saved_windows) {
-                WindowStack._items = [...saved_windows];
-                saved_windows = null;
-                loadingCard.hide();
-            } else {
+    // Track if we're fetching in background (when cache is loaded)
+    const isFetchingInBackground = cacheLoaded;
+
+    // Helper function to handle the quick launch behavior with retry logic
+    function handleQuickLaunch(retryCount) {
+        retryCount = retryCount || 0;
+        var retryDelay = 10; // Delay between retries in ms
+
+        var launchReason = simply.impl.state.launchReason;
+        log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
+
+        // If launch reason is undefined and we haven't exceeded max retries, try again
+        if ( !launchReason ) {
+            log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
+            setTimeout(function() {
+                handleQuickLaunch(retryCount + 1);
+            }, retryDelay);
+            return;
+        }
+
+        // Determine if we should skip showing main menu (exit on back for quick launch)
+        var skipMainMenu = launchReason === 'quickLaunch' &&
+                           quick_launch_behavior !== 'main_menu' &&
+                           quick_launch_exit_on_back;
+
+        // Show main menu unless we're quick launching with exit on back enabled
+        if (!skipMainMenu) {
+            showMainMenu();
+        }
+        loadingCard.hide();
+
+        // If we have a quickLaunch reason, proceed with quick launch behavior
+        if (launchReason === 'quickLaunch') {
+            log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
+            if (skipMainMenu) {
+                log_message('Exit on back enabled - skipping main menu');
+            }
+
+            // Handle the quick launch behavior based on settings
+            switch (quick_launch_behavior) {
+                case 'assistant':
+                    if (voice_enabled) {
+                        showAssistMenu();
+                    }
+                    break;
+                case 'favorites':
+                    showFavorites();
+                    break;
+                case 'areas':
+                    showAreaMenu();
+                    break;
+                case 'labels':
+                    showLabelMenu();
+                    break;
+                case 'todo_lists':
+                    showToDoLists();
+                    break;
+                case 'main_menu':
+                default:
+                    // Default behavior is to show the main menu, which is already handled
+                    break;
+            }
+        }
+    }
+
+    // Helper function to handle showing UI after auth (handles saved_windows, is_restarting, and quick launch)
+    function showUIAfterAuth() {
+        // try to resume previous WindowStack state if it's saved
+        if(saved_windows) {
+            WindowStack._items = [...saved_windows];
+            saved_windows = null;
+            loadingCard.hide();
+        } else {
+            // Handle quick launch behavior after authentication is complete
+            // Skip quick launch if app is restarting (from settings change)
+            if (is_restarting) {
+                log_message('Skipping quick launch behavior - app is restarting from settings change');
+                is_restarting = false; // Reset flag
                 showMainMenu();
                 loadingCard.hide();
-
-                // Handle quick launch behavior after authentication is complete
-                // Use a function to handle the quick launch behavior so we can retry if needed
-                function handleQuickLaunch(retryCount) {
-                    retryCount = retryCount || 0;
-                    var retryDelay = 10; // Delay between retries in ms
-
-                    var launchReason = simply.impl.state.launchReason;
-                    log_message('Launch reason: ' + launchReason + ' (retry: ' + retryCount + ')');
-
-                    // If launch reason is undefined and we haven't exceeded max retries, try again
-                    if ( !launchReason ) {
-                        log_message('Launch reason not available yet, retrying in ' + retryDelay + 'ms...');
-                        setTimeout(function() {
-                            handleQuickLaunch(retryCount + 1);
-                        }, retryDelay);
-                        return;
-                    }
-
-                    // If we have a quickLaunch reason or we've exhausted retries, proceed
-                    if (launchReason === 'quickLaunch') {
-                        log_message('App launched via quick launch, behavior: ' + quick_launch_behavior);
-
-                        // Handle the quick launch behavior based on settings
-                        switch (quick_launch_behavior) {
-                            case 'assistant':
-                                if (voice_enabled) {
-                                    showAssistMenu();
-                                }
-                                break;
-                            case 'favorites':
-                                let favoriteEntities = favoriteEntityStore.all();
-                                if(favoriteEntities && favoriteEntities.length) {
-                                    const shouldShowDomains = shouldShowDomainMenu(favoriteEntities, domain_menu_favorites);
-                                    if(shouldShowDomains) {
-                                        showEntityDomainsFromList(favoriteEntities, "Favorites");
-                                    } else {
-                                        showEntityList("Favorites", favoriteEntities, true, false, true);
-                                    }
-                                }
-                                break;
-                            case 'areas':
-                                showAreaMenu();
-                                break;
-                            case 'labels':
-                                showLabelMenu();
-                                break;
-                            case 'todo_lists':
-                                showToDoLists();
-                                break;
-                            case 'main_menu':
-                            default:
-                                // Default behavior is to show the main menu, which is already handled
-                                break;
-                        }
-                    }
-                }
-
+            } else {
                 // Start the quick launch handling process
                 handleQuickLaunch();
             }
         }
+    }
+
+    // If cache loaded, show main menu immediately
+    if (cacheLoaded) {
+        log_message("Cache loaded, showing main menu immediately");
+        showUIAfterAuth();
+    } else {
+        // No cache, show loading dialog
+        loadingCard.subtitle("Fetching states");
+        log_message("No cache available, fetching states, config areas, config devices, config entities, assist pipelines, and config labels...");
+    }
+
+    // Track what has been loaded (for background fetching or initial loading)
+    let pipelines_loaded = false;
+    let states_loaded = false;
+    let areas_loaded = false;
+    let devices_loaded = false;
+    let entities_loaded = false;
+    let labels_loaded = false;
+
+    // Track if any background fetch failed
+    let background_fetch_failed = false;
+    let background_fetch_error = null;
+
+    let done_fetching = function(){
+        // Check that all the things have finished fetching
+        if(states_loaded && areas_loaded && devices_loaded &&
+           entities_loaded && labels_loaded && pipelines_loaded) {
+
+            // Calculate and log elapsed time
+            const fetch_end_time = Date.now();
+            const elapsed_ms = fetch_end_time - fetch_start_time;
+            log_message("Finished fetching data in " + elapsed_ms + "ms (" + (elapsed_ms/1000).toFixed(2) + "s)");
+            log_message("Coalesce messages: " + (coalesce_messages_enabled ? "ENABLED" : "DISABLED"));
+
+            // Save the cache for next startup
+            saveStartupCache();
+
+            // If we were fetching in background and there was an error, show it
+            if (isFetchingInBackground && background_fetch_failed) {
+                log_message("Background fetch failed: " + background_fetch_error);
+                // Check if loading card is currently visible
+                const loadingCardVisible = WindowStack._items.some(function(w) {
+                    return w._id() === loadingCard._id();
+                });
+
+                if (!loadingCardVisible) {
+                    // Show loading card with error
+                    loadingCard.subtitle("Background update failed");
+                    loadingCard.body(background_fetch_error || "Unknown error");
+                    loadingCard.show();
+                }
+                return;
+            }
+
+            // If we weren't fetching in background, show the main menu now
+            if (!isFetchingInBackground) {
+                log_message("Showing main menu");
+                showUIAfterAuth();
+            } else {
+                log_message("Background fetch completed successfully");
+            }
+        }
     };
 
-    // Don't think getting an error here is possible (it should just disconnect)
-    // but we may need to add logic to handle it in the future
+    // Fetch states
     getStates(function(){
         log_message("States loaded.");
+        states_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching states failed");
+    }, function(error){
+        log_message("Fetching states failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch states";
+            states_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching states failed");
+        }
     });
 
     haws.getConfigAreas(function(data) {
@@ -6350,9 +7234,18 @@ function on_auth_ok(evt) {
             //     },
         }
         log_message("Config areas loaded.");
+        areas_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching areas failed");
+    }, function(error){
+        log_message("Fetching areas failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch areas";
+            areas_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching areas failed");
+        }
     });
 
     haws.getConfigDevices(function(data) {
@@ -6391,9 +7284,18 @@ function on_auth_ok(evt) {
             device_registry_cache[result.id] = result;
         }
         log_message("Config devices loaded.");
+        devices_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching devices failed");
+    }, function(error){
+        log_message("Fetching devices failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch devices";
+            devices_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching devices failed");
+        }
     });
 
     haws.getConfigEntities( function(data) {
@@ -6416,9 +7318,18 @@ function on_auth_ok(evt) {
         }
 
         log_message("Config entities loaded.");
+        entities_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching entities failed");
+    }, function(error){
+        log_message("Fetching entities failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch entities";
+            entities_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching entities failed");
+        }
     });
 
     haws.getConfigLabels(function(data) {
@@ -6427,13 +7338,26 @@ function on_auth_ok(evt) {
             label_registry_cache[result.label_id] = result;
         }
         log_message("Config labels loaded.");
+        labels_loaded = true;
         done_fetching();
-    }, function(){
-        loadingCard.subtitle("Fetching labels failed");
+    }, function(error){
+        log_message("Fetching labels failed: " + error);
+        if (isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch labels";
+            labels_loaded = true; // Mark as loaded to allow done_fetching to proceed
+            done_fetching();
+        } else {
+            loadingCard.subtitle("Fetching labels failed");
+        }
     });
 
-    loadAssistPipelines(function(){
+    loadAssistPipelines(function(success){
         pipelines_loaded = true;
+        if (!success && isFetchingInBackground) {
+            background_fetch_failed = true;
+            background_fetch_error = "Failed to fetch pipelines";
+        }
         done_fetching();
     });
 }
@@ -6442,7 +7366,7 @@ function main() {
     load_settings();
 
     // if config not complete display message
-    if( !hawsFaker && ( !ha_url || !ha_password ) ) {
+    if( !ha_url || !ha_password ) {
         loadingCard.subtitle('Setup required');
         loadingCard.body("Configure from the Pebble app");
         return;
@@ -6458,7 +7382,8 @@ function main() {
 
     loadingCard.subtitle('Connecting');
     log_message('Connecting');
-    haws = new HAWS(ha_url, ha_password, debugHAWS);
+    log_message('Coalesce messages: ' + (coalesce_messages_enabled ? 'ENABLED' : 'DISABLED'));
+    haws = new HAWS(ha_url, ha_password, debugHAWS, coalesce_messages_enabled);
 
     haws.on('open', function(evt){
         loadingCard.subtitle('Authenticating');
@@ -6493,6 +7418,11 @@ function main() {
 
     haws.on('error', function(evt){
         loadingCard.subtitle('Error');
+    });
+
+    haws.on('auth_invalid', function(evt){
+        loadingCard.title('Auth Failure');
+        loadingCard.subtitle(evt.detail.message || 'Unknown error');
     });
 
     haws.on('auth_ok', function(evt){

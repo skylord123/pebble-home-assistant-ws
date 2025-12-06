@@ -89,7 +89,12 @@ ImageService.load = function(opt, reset, callback) {
   image.loaded = true;
   state.cache[hash] = image;
   var onLoad = function() {
-    simply.impl.image(image.id, image.image);
+    // Only send image if image data is available
+    if (image.image) {
+      simply.impl.image(image.id, image.image);
+    } else {
+      console.log('[ImageService] ERROR: Image data unavailable for: ' + image.url);
+    }
     if (callback) {
       var e = {
         type: 'image',

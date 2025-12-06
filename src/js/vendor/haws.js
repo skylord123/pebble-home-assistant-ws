@@ -4,7 +4,7 @@
  * @description Simple library to use the Home Assistant's WebSocket API
  */
 class HAWS {
-    constructor(ha_url, token, debug) {
+    constructor(ha_url, token, debug, coalesce_messages) {
         this.events = new EventTarget();
         this.connected = false;
         this.reconnectTimeout = null;
@@ -17,6 +17,7 @@ class HAWS {
         this._subscriptions = [];
         this.reconnectInterval = 2500;
         this.debug = debug || false;
+        this.coalesce_messages = coalesce_messages || false;
     }
 
     isConnected() {
@@ -50,62 +51,17 @@ class HAWS {
 
         this.ws.onmessage = function(evt) {
             let data = JSON.parse(evt.data);
-            if(that.debug) {
-                // objects that are too big cause console.log to stop responding
-                console.log(`[HAWS] WebSocket msg: ${evt.data.length <= 2048 ? JSON.stringify(data, null, 4) : '<truncated>'}`);
-            }
-            switch(data.type) {
-                case 'auth_required':
-                    that.ws.send(
-                        JSON.stringify({
-                            type: 'auth',
-                            access_token: that.token,
-                        })
-                    );
-                    break;
 
-                case 'auth_ok':
-                    that.trigger("auth_ok", {detail: data});
-                    break;
-
-                case 'auth_invalid':
-                    that.trigger("auth_invalid", {detail: data});
-                    that.close();
-                    break;
-
-                case 'event':
-                    if(typeof data.id !== 'undefined' && that._commands.has(data.id)) {
-                        let callback = that._commands.get(data.id);
-                        if(typeof callback[0] == "function") {
-                            callback[0](data);
-                        }
-                    }
-
-                    that.trigger("event", {detail: data});
-                    break;
-
-                case 'result':
-                    if(typeof data.id !== 'undefined' && that._commands.has(data.id)) {
-                        let callback = that._commands.get(data.id);
-
-                        if (data.success) {
-                            // ignore subscription success messages
-                            if(that._subscriptions.indexOf(data.id) === -1) {
-                                if(typeof callback[0] == "function") {
-                                    callback[0](data);
-                                }
-                                that._commands.delete(data.id);
-                            }
-                        } else {
-                            if(typeof callback[1] !== 'undefined') {
-                                callback[1](data);
-                            }
-                            that._commands.delete(data.id);
-                        }
-                    }
-
-                    that.trigger("result", {detail: data});
-                    break;
+            // Handle coalesced messages (array of messages)
+            if(Array.isArray(data)) {
+                if(that.debug) {
+                    console.log(`[HAWS] WebSocket received ${data.length} coalesced messages`);
+                }
+                for(let message of data) {
+                    that._handleMessage(message);
+                }
+            } else {
+                that._handleMessage(data);
             }
         };
 
@@ -117,6 +73,88 @@ class HAWS {
             that.trigger("error", {detail: evt.detail});
             this.connected = false;
         };
+    }
+
+    _handleMessage(data) {
+        if(this.debug) {
+            // objects that are too big cause console.log to stop responding
+            console.log(`[HAWS] WebSocket msg: ${JSON.stringify(data).length <= 2048 ? JSON.stringify(data, null, 4) : '<truncated>'}`);
+        }
+
+        switch(data.type) {
+            case 'auth_required':
+                this.ws.send(
+                    JSON.stringify({
+                        type: 'auth',
+                        access_token: this.token,
+                    })
+                );
+                break;
+
+            case 'auth_ok':
+                // Send supported_features if coalesce_messages is enabled
+                if(this.coalesce_messages) {
+                    // Set _last_cmd_id to 1 so the first real command will be id 2
+                    this._last_cmd_id = 1;
+                    this.ws.send(JSON.stringify({
+                        id: 1,
+                        type: 'supported_features',
+                        features: { coalesce_messages: 1 }
+                    }));
+                    if(this.debug) {
+                        console.log('[HAWS] Sent supported_features with coalesce_messages enabled');
+                    }
+                }
+                this.trigger("auth_ok", {detail: data});
+                break;
+
+            case 'auth_invalid':
+                this.trigger("auth_invalid", {detail: data});
+                this.close();
+                break;
+
+            case 'event':
+                if(typeof data.id !== 'undefined' && this._commands.has(data.id)) {
+                    let callback = this._commands.get(data.id);
+                    if(typeof callback[0] == "function") {
+                        callback[0](data);
+                    }
+                }
+
+                this.trigger("event", {detail: data});
+                break;
+
+            case 'result':
+                // Ignore the result from supported_features message (id: 1)
+                if(data.id === 1 && this.coalesce_messages) {
+                    if(this.debug) {
+                        console.log('[HAWS] Received supported_features response');
+                    }
+                    break;
+                }
+
+                if(typeof data.id !== 'undefined' && this._commands.has(data.id)) {
+                    let callback = this._commands.get(data.id);
+
+                    if (data.success) {
+                        // ignore subscription success messages
+                        if(this._subscriptions.indexOf(data.id) === -1) {
+                            if(typeof callback[0] == "function") {
+                                callback[0](data);
+                            }
+                            this._commands.delete(data.id);
+                        }
+                    } else {
+                        if(typeof callback[1] !== 'undefined') {
+                            callback[1](data);
+                        }
+                        this._commands.delete(data.id);
+                    }
+                }
+
+                this.trigger("result", {detail: data});
+                break;
+        }
     }
 
     startAttemptingToEstablishConnection() {
@@ -181,7 +219,7 @@ class HAWS {
 
     // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-trigger
     // trigger options: https://www.home-assistant.io/docs/automation/trigger/#state-trigger
-    subscribe(data, successCallback, errorCallback ) {
+    subscribeTrigger(data, successCallback, errorCallback ) {
         // {
         //     "id": 2,
         //     "type": "subscribe_trigger",
@@ -197,6 +235,38 @@ class HAWS {
 
         if(this.debug) {
             console.log(`[HAWS] subscribe: ${JSON.stringify(data, null, 4)}`);
+        }
+
+        return msg_id;
+    }
+
+    // Subscribe to entity state changes
+    // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-entity-changes
+    subscribeEntities(entity_ids, successCallback, errorCallback) {
+        // {
+        //     "id": <unique_int>,
+        //     "type": "subscribe_entities",
+        //     "entity_ids": ["light.office", "sensor.co2_living_room"]
+        // }
+        //
+        // Response events contain:
+        //   event.a = added entities (initial snapshot has full state here)
+        //   event.c = changed entities (contains "+" object with changed fields)
+        //   event.r = removed entities
+        //
+        // Entity data format:
+        //   { "s": "<state>", "a": {attributes}, "c": "<context>", "lc": <last_changed_timestamp> }
+
+        let data = {
+            "type": "subscribe_entities",
+            "entity_ids": Array.isArray(entity_ids) ? entity_ids : [entity_ids]
+        };
+
+        let msg_id = this.send(data, successCallback, errorCallback);
+        this._subscriptions.push(msg_id);
+
+        if(this.debug) {
+            console.log(`[HAWS] subscribeEntities: ${JSON.stringify(data, null, 4)}`);
         }
 
         return msg_id;

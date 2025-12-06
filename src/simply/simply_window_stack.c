@@ -21,6 +21,9 @@ enum WindowType {
   WindowTypeLast,
 };
 
+// Number of known window types for validation
+const int WINDOW_TYPE_COUNT = WindowTypeLast;
+
 typedef struct WindowShowPacket WindowShowPacket;
 
 struct __attribute__((__packed__)) WindowShowPacket {
@@ -81,7 +84,17 @@ SimplyWindow *simply_window_stack_get_top_window(Simply *simply) {
   if (!window || (void*) window == simply->splash) {
     return NULL;
   }
-  return window;
+
+  // Validate that this is actually one of our known windows
+  // This prevents crashes when system dialogs (like dictation confirmation) are on top
+  for (int i = 0; i < WINDOW_TYPE_COUNT; i++) {
+    if (window == simply->windows[i]) {
+      return window;  // It's one of ours
+    }
+  }
+
+  // Not one of our windows (e.g., system dictation dialog)
+  return NULL;
 }
 
 #ifdef PBL_SDK_3

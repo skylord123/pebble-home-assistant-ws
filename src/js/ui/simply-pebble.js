@@ -923,6 +923,10 @@ MessageQueue.prototype.send = function(message) {
 };
 
 var toByteArray = function(packet) {
+  if (!packet || typeof packet._size === 'undefined') {
+    console.log('[SimplyPebble] ERROR: toByteArray called with undefined or invalid packet');
+    return [];
+  }
   var type = CommandPackets.indexOf(packet);
   var size = Math.max(packet._size, packet._cursor);
   packet.packetType(type);
@@ -980,6 +984,10 @@ SimplyPebble.sendMultiPacket = function(packet) {
 };
 
 SimplyPebble.sendPacket = function(packet) {
+  if (!packet || typeof packet._cursor === 'undefined') {
+    console.log('[SimplyPebble] WARNING: Attempted to send undefined or invalid packet');
+    return;
+  }
   if (packet._cursor < state.packetQueue._maxPayloadSize) {
     state.packetQueue.add(packet);
   } else {
@@ -1066,6 +1074,10 @@ SimplyPebble.windowActionBar = function(def) {
 };
 
 SimplyPebble.image = function(id, gbitmap) {
+  if (!gbitmap) {
+    console.log('[SimplyPebble] WARNING: image called with undefined gbitmap for id ' + id);
+    return;
+  }
   SimplyPebble.sendPacket(ImagePacket.id(id).prop(gbitmap));
 };
 
