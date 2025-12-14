@@ -141,8 +141,8 @@ function load_settings() {
     ha_url = Settings.option('ha_url');
     ha_password = Settings.option('token');
     ha_refresh_interval = Settings.option('refreshTime') ? Settings.option('refreshTime') : 15;
-    ha_order_by = Settings.option('order_by');
-    ha_order_dir = Settings.option('order_dir');
+    ha_order_by = Settings.option('order_by') || 'attributes.friendly_name';
+    ha_order_dir = Settings.option('order_dir') || 'asc';
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
     voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
