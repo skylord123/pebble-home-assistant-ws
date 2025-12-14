@@ -7215,7 +7215,7 @@ function on_auth_ok(evt) {
         } else {
             loadingCard.subtitle("Fetching states failed");
         }
-    });
+    }, true);
 
     haws.getConfigAreas(function(data) {
         // log_message('config/area_registry/list response: ' + JSON.stringify(data));
