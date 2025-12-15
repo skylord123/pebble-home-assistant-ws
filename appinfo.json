@@ -177,6 +177,11 @@
         "file": "images/icon_scene.png",
         "name": "IMAGE_ICON_SCENE",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_script.png",
+        "name": "IMAGE_ICON_SCRIPT",
+        "type": "bitmap"
       }
     ]
   },
@@ -191,7 +196,7 @@
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
-  "versionLabel": "1.0",
+  "versionLabel": "1.1",
   "watchapp": {
     "hiddenApp": false,
     "watchface": false

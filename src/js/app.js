@@ -4,7 +4,7 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const appVersion = '1.0', // displays in loading screen
+const appVersion = '1.1', // displays in loading screen
     confVersion = '1.0', // version of config page
     configPageUrl = 'https://skylord123.github.io/pebble-home-assistant-ws/config/v' + confVersion + '.html',
     debugMode = true,
@@ -141,8 +141,8 @@ function load_settings() {
     ha_url = Settings.option('ha_url');
     ha_password = Settings.option('token');
     ha_refresh_interval = Settings.option('refreshTime') ? Settings.option('refreshTime') : 15;
-    ha_order_by = Settings.option('order_by');
-    ha_order_dir = Settings.option('order_dir');
+    ha_order_by = Settings.option('order_by') || 'attributes.friendly_name';
+    ha_order_dir = Settings.option('order_dir') || 'asc';
     voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
     voice_confirm = Settings.option('voice_confirm');
     voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
@@ -419,6 +419,9 @@ function restartApp() {
     // Clear saved windows
     saved_windows = null;
 
+    // Reset menu variables so they get recreated fresh
+    mainMenu = null;
+
     // Reset state variables
     ha_state_cache = null;
     ha_state_dict = null;
@@ -552,9 +555,9 @@ function showMainMenu() {
                 log_message("No click function for main menu item " + e.title);
             }
         });
-
-        mainMenu.show();
     }
+
+    mainMenu.show();
 }
 
 function showSettingsMenu() {
@@ -7215,7 +7218,7 @@ function on_auth_ok(evt) {
         } else {
             loadingCard.subtitle("Fetching states failed");
         }
-    });
+    }, true);
 
     haws.getConfigAreas(function(data) {
         // log_message('config/area_registry/list response: ' + JSON.stringify(data));
@@ -7390,6 +7393,12 @@ function main() {
     });
 
     haws.on('close', function(evt){
+        // If we're restarting, don't try to save/restore windows - restartApp handles that
+        if (is_restarting) {
+            log_message('Connection closed during restart - skipping window save');
+            return;
+        }
+
         loadingCard.subtitle('Reconnecting...');
         loadingCard.show();
 
