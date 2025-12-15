@@ -419,6 +419,9 @@ function restartApp() {
     // Clear saved windows
     saved_windows = null;
 
+    // Reset menu variables so they get recreated fresh
+    mainMenu = null;
+
     // Reset state variables
     ha_state_cache = null;
     ha_state_dict = null;
@@ -552,9 +555,9 @@ function showMainMenu() {
                 log_message("No click function for main menu item " + e.title);
             }
         });
-
-        mainMenu.show();
     }
+
+    mainMenu.show();
 }
 
 function showSettingsMenu() {
@@ -7390,6 +7393,12 @@ function main() {
     });
 
     haws.on('close', function(evt){
+        // If we're restarting, don't try to save/restore windows - restartApp handles that
+        if (is_restarting) {
+            log_message('Connection closed during restart - skipping window save');
+            return;
+        }
+
         loadingCard.subtitle('Reconnecting...');
         loadingCard.show();
 
