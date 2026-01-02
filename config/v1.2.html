@@ -776,6 +776,43 @@
 			</div>
 		</div>
 
+		<!-- Main Menu Order -->
+		<div class="section">
+			<div class="section-header">Main Menu Order</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="main-menu-custom-order-enabled">Enable custom menu order</label>
+						<input class="form-check-input" type="checkbox" id="main-menu-custom-order-enabled">
+					</div>
+					<small class="form-text">When enabled, use the custom order below. When disabled, use the default order.</small>
+				</div>
+				<div class="component" id="main-menu-order-container" style="display:none;">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+						Drag and drop items to reorder them
+					</div>
+					<ul id="main-menu-sortable" class="list-group">
+					</ul>
+				</div>
+			</div>
+		</div>
+
+		<!-- Pinned Entities -->
+		<div class="section" id="pinned-container" style="display:none;">
+			<div class="section-header">Pinned Entities</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+						Entities pinned to the Main Menu. Drag to reorder, or remove them here.
+					</div>
+					<ul id="pinned-sortable" class="list-group">
+					</ul>
+				</div>
+			</div>
+		</div>
+
 		<!-- Entity Settings -->
 		<div class="section">
 			<div class="section-header">Entity Settings</div>
@@ -1183,7 +1220,12 @@
 				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back'),
 				unavailableHandling = $('#ha-unavailable-handling'),
 				unknownHandling = $('#ha-unknown-handling'),
-				automationLongpress = $('#ha-automation-longpress');
+				automationLongpress = $('#ha-automation-longpress'),
+				mainMenuCustomOrderEnabled = $('#main-menu-custom-order-enabled'),
+				mainMenuOrderContainer = $('#main-menu-order-container'),
+				mainMenuSortable = $('#main-menu-sortable'),
+				pinnedContainer = $('#pinned-container'),
+				pinnedSortable = $('#pinned-sortable');
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -1251,7 +1293,23 @@
 				'unavailable_entity_handling': unavailableHandling.val(),
 				'unknown_entity_handling': unknownHandling.val(),
 				// Automation long-press action
-				'automation_longpress_action': automationLongpress.val()
+				'automation_longpress_action': automationLongpress.val(),
+				// Main menu order settings
+				'main_menu_custom_order_enabled': mainMenuCustomOrderEnabled.is(':checked'),
+				'main_menu_order': $("#main-menu-sortable li").map(function(a,b){
+					return $(b).data('item-id');
+				}).toArray(),
+				// Pinned entities
+				'pinned_entities': $("#pinned-sortable li").map(function(a,b){
+					let $item = $(b);
+					let entityId = $item.data('entity-id');
+					let friendlyName = $item.data('friendly-name');
+					if (friendlyName) {
+						return { entity_id: entityId, name: friendlyName };
+					} else {
+						return { entity_id: entityId };
+					}
+				}).toArray()
 			};
 
 			// Preserve timeline_token if it exists
@@ -1523,6 +1581,186 @@
 				});
 
 				favorites_container.show();
+			}
+
+			// Handle main menu custom order
+			if (watch_config['main_menu_custom_order_enabled']) {
+				mainMenuCustomOrderEnabled.prop('checked', true);
+				mainMenuOrderContainer.show();
+			}
+
+			// Default menu items for the main menu order
+			const defaultMenuItems = [
+				{ id: 'assistant', name: 'Assistant' },
+				{ id: 'favorites', name: 'Favorites' },
+				{ id: 'areas', name: 'Areas' },
+				{ id: 'labels', name: 'Labels' },
+				{ id: 'todo_lists', name: 'To-Do Lists' },
+				{ id: 'all_entities', name: 'All Entities' },
+				{ id: 'settings', name: 'Settings' }
+			];
+
+			// Build the main menu order list
+			function buildMainMenuOrderList() {
+				let order = watch_config['main_menu_order'];
+				let pinnedEntities = watch_config['pinned_entities'] || [];
+				let items = [];
+
+				if (order && Array.isArray(order)) {
+					// Use saved order
+					for (let itemId of order) {
+						if (itemId.startsWith('pinned:')) {
+							// Find the pinned entity
+							let entityId = itemId.substring(7);
+							let pinned = pinnedEntities.find(p => (typeof p === 'string' ? p : p.entity_id) === entityId);
+							if (pinned) {
+								let name = typeof pinned === 'string' ? pinned : (pinned.name || pinned.entity_id);
+								items.push({ id: itemId, name: name, isPinned: true, entityId: entityId });
+							}
+						} else {
+							// Built-in item
+							let menuItem = defaultMenuItems.find(m => m.id === itemId);
+							if (menuItem) {
+								items.push({ id: itemId, name: menuItem.name, isPinned: false });
+							}
+						}
+					}
+
+					// Add any new default items not in the saved order (before settings)
+					for (let menuItem of defaultMenuItems) {
+						if (!items.find(i => i.id === menuItem.id)) {
+							let settingsIndex = items.findIndex(i => i.id === 'settings');
+							if (settingsIndex > -1) {
+								items.splice(settingsIndex, 0, { id: menuItem.id, name: menuItem.name, isPinned: false });
+							} else {
+								items.push({ id: menuItem.id, name: menuItem.name, isPinned: false });
+							}
+						}
+					}
+
+					// Add any new pinned entities not in the saved order (before settings)
+					for (let pinned of pinnedEntities) {
+						let entityId = typeof pinned === 'string' ? pinned : pinned.entity_id;
+						let pinnedId = 'pinned:' + entityId;
+						if (!items.find(i => i.id === pinnedId)) {
+							let name = typeof pinned === 'string' ? pinned : (pinned.name || pinned.entity_id);
+							let settingsIndex = items.findIndex(i => i.id === 'settings');
+							if (settingsIndex > -1) {
+								items.splice(settingsIndex, 0, { id: pinnedId, name: name, isPinned: true, entityId: entityId });
+							} else {
+								items.push({ id: pinnedId, name: name, isPinned: true, entityId: entityId });
+							}
+						}
+					}
+				} else {
+					// Use default order
+					for (let menuItem of defaultMenuItems) {
+						items.push({ id: menuItem.id, name: menuItem.name, isPinned: false });
+					}
+
+					// Add pinned entities before settings
+					let settingsIndex = items.findIndex(i => i.id === 'settings');
+					for (let pinned of pinnedEntities) {
+						let entityId = typeof pinned === 'string' ? pinned : pinned.entity_id;
+						let name = typeof pinned === 'string' ? pinned : (pinned.name || pinned.entity_id);
+						let pinnedId = 'pinned:' + entityId;
+						if (settingsIndex > -1) {
+							items.splice(settingsIndex, 0, { id: pinnedId, name: name, isPinned: true, entityId: entityId });
+							settingsIndex++;
+						} else {
+							items.push({ id: pinnedId, name: name, isPinned: true, entityId: entityId });
+						}
+					}
+				}
+
+				return items;
+			}
+
+			let menuItems = buildMainMenuOrderList();
+			let menuHtml = '';
+			for (let item of menuItems) {
+				let displayHtml;
+				if (item.isPinned) {
+					displayHtml = `
+						<div class="entity-info">
+							<div class="entity-name">${item.name}</div>
+							<div class="entity-id">${item.entityId}</div>
+						</div>`;
+				} else {
+					displayHtml = `
+						<div class="entity-info">
+							<div class="entity-name">${item.name}</div>
+						</div>`;
+				}
+				menuHtml += `
+					<li class="list-group-item" data-item-id="${item.id}">
+						<i class="fa fa-bars"></i>
+						${displayHtml}
+					</li>`;
+			}
+			mainMenuSortable.html(menuHtml).sortable({ handle: '.fa-bars' });
+			mainMenuSortable.disableSelection();
+
+			// Toggle main menu order container visibility
+			mainMenuCustomOrderEnabled.on('change', function() {
+				if ($(this).is(':checked')) {
+					mainMenuOrderContainer.show();
+				} else {
+					mainMenuOrderContainer.hide();
+				}
+			});
+
+			// Handle pinned entities
+			if (watch_config['pinned_entities'] && watch_config['pinned_entities'].length > 0) {
+				let pinnedHtml = '';
+				for (let pinned of watch_config['pinned_entities']) {
+					let entity_id, friendly_name;
+					if (typeof pinned === 'string') {
+						entity_id = pinned;
+						friendly_name = null;
+					} else {
+						entity_id = pinned.entity_id;
+						friendly_name = pinned.name || null;
+					}
+
+					let displayHtml;
+					if (friendly_name) {
+						displayHtml = `
+							<div class="entity-info">
+								<div class="entity-name">${friendly_name}</div>
+								<div class="entity-id">${entity_id}</div>
+							</div>`;
+					} else {
+						displayHtml = `
+							<div class="entity-info">
+								<div class="entity-name">${entity_id}</div>
+							</div>`;
+					}
+
+					pinnedHtml += `
+						<li class="list-group-item" data-entity-id="${entity_id}" data-friendly-name="${friendly_name || ''}">
+							<i class="fa fa-bars"></i>
+							${displayHtml}
+							<a href="javascript:void(0)" class="remove-pinned"><i class="fa fa-trash"></i></a>
+						</li>`;
+				}
+				pinnedSortable.html(pinnedHtml).sortable({ handle: '.fa-bars' });
+				pinnedSortable.disableSelection();
+
+				$(".remove-pinned").on('click', function(e) {
+					e.preventDefault();
+					let parent = $(this).parent();
+					let entityId = parent.data('entity-id');
+					let friendlyName = parent.data('friendly-name');
+					let displayName = friendlyName || entityId;
+					if (confirm(`Are you sure you want to unpin "${displayName}" from the Main Menu?`)) {
+						parent.remove();
+						// Also remove from main menu order list
+						mainMenuSortable.find(`li[data-item-id="pinned:${entityId}"]`).remove();
+					}
+				});
+
+				pinnedContainer.show();
 			}
 
 			if(watch_config['ignore_domains'] && Array.isArray(watch_config['ignore_domains'])) {
