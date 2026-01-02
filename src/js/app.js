@@ -5,7 +5,7 @@
  */
 
 const appVersion = '1.1', // displays in loading screen
-    confVersion = '1.0', // version of config page
+    confVersion = '1.2', // version of config page
     configPageUrl = 'https://skylord123.github.io/pebble-home-assistant-ws/config/v' + confVersion + '.html',
     debugMode = true,
     debugHAWS = false,
@@ -121,6 +121,7 @@ let ha_url = null,
     ignore_domains = null,
     ha_connected = false,
     quick_launch_behavior = null,
+    quick_launch_favorite_entity = null,
     quick_launch_exit_on_back = null,
     unavailable_entity_handling = null,
     unknown_entity_handling = null,
@@ -148,6 +149,7 @@ function load_settings() {
     voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     quick_launch_behavior = Settings.option('quick_launch_behavior') || 'main_menu';
+    quick_launch_favorite_entity = Settings.option('quick_launch_favorite_entity') || null;
     quick_launch_exit_on_back = Settings.option('quick_launch_exit_on_back') === true;
 
     // Domain menu settings
@@ -444,6 +446,69 @@ function restartApp() {
     setTimeout(function() {
         main();
     }, 500); // Small delay to ensure cleanup is complete
+}
+
+/**
+ * Toggle favorite status for an entity
+ * @param {Object} entity - The entity object with entity_id and attributes
+ * @returns {boolean} true if entity was added to favorites, false if removed
+ */
+function toggleFavorite(entity) {
+    if (!entity || !entity.entity_id) {
+        log_message('toggleFavorite: Invalid entity provided');
+        return false;
+    }
+
+    const entityId = entity.entity_id;
+    const wasAdded = !favoriteEntityStore.has(entityId);
+
+    if (wasAdded) {
+        log_message(`Adding ${entityId} to favorites`);
+        // Include friendly name when adding to favorites
+        let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
+        favoriteEntityStore.add(entityId, friendlyName);
+    } else {
+        log_message(`Removing ${entityId} from favorites`);
+        favoriteEntityStore.remove(entityId);
+
+        // If this entity was configured as the quick launch favorite entity, reset to main_menu
+        if (quick_launch_favorite_entity === entityId) {
+            log_message(`Removed entity ${entityId} was configured as quick launch target, resetting to main_menu`);
+            quick_launch_behavior = 'main_menu';
+            quick_launch_favorite_entity = null;
+            Settings.option('quick_launch_behavior', quick_launch_behavior);
+            Settings.option('quick_launch_favorite_entity', quick_launch_favorite_entity);
+        }
+    }
+
+    return wasAdded;
+}
+
+/**
+ * Show the appropriate entity menu based on the entity's domain
+ * @param {string} entity_id - The entity ID to show
+ */
+function showEntity(entity_id) {
+    if (!entity_id) {
+        log_message('showEntity: No entity_id provided');
+        return;
+    }
+
+    let [entity_domain] = entity_id.split('.');
+    switch(entity_domain) {
+        case 'media_player':
+            showMediaPlayerEntity(entity_id);
+            break;
+        case 'light':
+            showLightEntity(entity_id);
+            break;
+        case 'climate':
+            showClimateEntity(entity_id);
+            break;
+        default:
+            showEntityMenu(entity_id);
+            break;
+    }
 }
 
 // Initial screen
@@ -1119,6 +1184,16 @@ function showQuickLaunchSettings() {
             case 'main_menu': return 'Main Menu';
             case 'assistant': return 'Assistant';
             case 'favorites': return 'Favorites';
+            case 'favorite_entity':
+                // Get the friendly name of the configured favorite entity
+                if (quick_launch_favorite_entity) {
+                    let favorites = favoriteEntityStore.allWithNames();
+                    let fav = favorites.find(f => f.entity_id === quick_launch_favorite_entity);
+                    if (fav) {
+                        return fav.name || quick_launch_favorite_entity;
+                    }
+                }
+                return 'Favorite Entity';
             case 'areas': return 'Areas';
             case 'labels': return 'Labels';
             case 'todo_lists': return 'To-Do Lists';
@@ -1222,6 +1297,17 @@ function showQuickLaunchActionMenu(onSelect) {
             value: 'favorites'
         });
 
+        // Only show Favorite Entity option if there are favorites
+        let favoriteEntities = favoriteEntityStore.all();
+        if (favoriteEntities && favoriteEntities.length > 0) {
+            actionMenu.item(0, itemIndex++, {
+                title: "Favorite Entity",
+                subtitle: quick_launch_behavior === 'favorite_entity' ? "Current" : "",
+                value: 'favorite_entity',
+                action: 'select_favorite_entity'
+            });
+        }
+
         actionMenu.item(0, itemIndex++, {
             title: "Areas",
             subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
@@ -1245,16 +1331,82 @@ function showQuickLaunchActionMenu(onSelect) {
 
     actionMenu.on('select', function(e) {
         if (e.item.value) {
-            quick_launch_behavior = e.item.value;
-            Settings.option('quick_launch_behavior', quick_launch_behavior);
-            actionMenu.hide();
-            if (typeof onSelect === 'function') {
-                onSelect();
+            if (e.item.action === 'select_favorite_entity') {
+                // Show submenu to select which favorite entity
+                showFavoriteEntitySelectionMenu(function(selectedEntityId) {
+                    if (selectedEntityId) {
+                        quick_launch_behavior = 'favorite_entity';
+                        quick_launch_favorite_entity = selectedEntityId;
+                        Settings.option('quick_launch_behavior', quick_launch_behavior);
+                        Settings.option('quick_launch_favorite_entity', quick_launch_favorite_entity);
+                        actionMenu.hide();
+                        if (typeof onSelect === 'function') {
+                            onSelect();
+                        }
+                    }
+                });
+            } else {
+                quick_launch_behavior = e.item.value;
+                // Clear favorite entity if switching to a different behavior
+                if (e.item.value !== 'favorite_entity') {
+                    quick_launch_favorite_entity = null;
+                    Settings.option('quick_launch_favorite_entity', null);
+                }
+                Settings.option('quick_launch_behavior', quick_launch_behavior);
+                actionMenu.hide();
+                if (typeof onSelect === 'function') {
+                    onSelect();
+                }
             }
         }
     });
 
     actionMenu.show();
+}
+
+function showFavoriteEntitySelectionMenu(onSelect) {
+    // Create a submenu for selecting which favorite entity to quick launch to
+    let favoriteMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Select Favorite'
+        }]
+    });
+
+    function updateMenuItems() {
+        favoriteMenu.items(0, []);
+
+        let favorites = favoriteEntityStore.allWithNames();
+        let itemIndex = 0;
+
+        for (let fav of favorites) {
+            let displayName = fav.name || fav.entity_id;
+            let isCurrent = quick_launch_favorite_entity === fav.entity_id;
+
+            favoriteMenu.item(0, itemIndex++, {
+                title: displayName,
+                subtitle: isCurrent ? "Current" : "",
+                entity_id: fav.entity_id
+            });
+        }
+    }
+
+    favoriteMenu.on('show', updateMenuItems);
+
+    favoriteMenu.on('select', function(e) {
+        if (e.item.entity_id) {
+            favoriteMenu.hide();
+            if (typeof onSelect === 'function') {
+                onSelect(e.item.entity_id);
+            }
+        }
+    });
+
+    favoriteMenu.show();
 }
 
 function showVoicePipelineMenu() {
@@ -5167,15 +5319,7 @@ function showEntityMenu(entity_id) {
         showEntityMenu.item(2, 0, {
             title: (favoriteEntityStore.has(entity.entity_id) ? 'Remove' : 'Add') + ' Favorite',
             on_click: function(e) {
-                if(!favoriteEntityStore.has(entity.entity_id)) {
-                    log_message(`Adding ${entity.entity_id} to favorites`);
-                    // Include friendly name when adding to favorites
-                    let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
-                    favoriteEntityStore.add(entity.entity_id, friendlyName);
-                } else {
-                    log_message(`Removing ${entity.entity_id} from favorites`);
-                    favoriteEntityStore.remove(entity.entity_id);
-                }
+                toggleFavorite(entity);
                 _renderFavoriteBtn();
             }
         });
@@ -6614,21 +6758,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         }
         log_message(`Entity ${entity_id} was short pressed! Index: ${e.itemIndex}`);
 
-        let [entity_domain] = entity_id.split('.');
-        switch(entity_domain) {
-            case 'media_player':
-                showMediaPlayerEntity(entity_id);
-                break;
-            case 'light':
-                showLightEntity(entity_id);
-                break;
-            case 'climate':
-                showClimateEntity(entity_id);
-                break;
-            default:
-                showEntityMenu(entity_id);
-                break;
-        }
+        showEntity(entity_id);
         /*showEntityMenu.item(0, 0, { //menuIndex
                   title: 'test',
                   subtitle: 'test2'
@@ -7152,6 +7282,21 @@ function on_auth_ok(evt) {
                     break;
                 case 'favorites':
                     showFavorites();
+                    break;
+                case 'favorite_entity':
+                    // Check if the configured favorite entity still exists in favorites
+                    if (quick_launch_favorite_entity && favoriteEntityStore.has(quick_launch_favorite_entity)) {
+                        log_message('Quick launching to favorite entity: ' + quick_launch_favorite_entity);
+                        showEntity(quick_launch_favorite_entity);
+                    } else {
+                        // Entity was removed from favorites or not configured, reset to main_menu
+                        log_message('Configured favorite entity not found in favorites, resetting to main_menu');
+                        quick_launch_behavior = 'main_menu';
+                        quick_launch_favorite_entity = null;
+                        Settings.option('quick_launch_behavior', quick_launch_behavior);
+                        Settings.option('quick_launch_favorite_entity', quick_launch_favorite_entity);
+                        // Main menu is already shown above
+                    }
                     break;
                 case 'areas':
                     showAreaMenu();
