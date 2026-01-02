@@ -6471,6 +6471,10 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
 
     entityListMenu.subscription_id = null;
     entityListMenu.current_page = null;
+
+    // Create a RelativeTimeUpdater to keep entity subtitles updated
+    let relativeTimeUpdater = null;
+
     entityListMenu.on('longSelect', function(e) {
         log_message(`Entity ${e.item.entity_id} was long pressed!`);
         let [domain] = e.item.entity_id.split('.');
@@ -6591,6 +6595,10 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         if(entityListMenu.subscription_id) {
             haws.unsubscribe(entityListMenu.subscription_id);
         }
+        // Pause relative time updates when menu is hidden
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.pause();
+        }
     });
 
     // Add an action for SELECT
@@ -6670,6 +6678,35 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         let entityStates = {};
         let renderedEntityIds = {};
         let initialSnapshotReceived = false;
+
+        // Clear and recreate the RelativeTimeUpdater for this page
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+        }
+        relativeTimeUpdater = new RelativeTimeUpdater(function(entity_id, lastChanged) {
+            // This callback is called when an entity's relative time display needs updating
+            log_message(`Relative time update for ${entity_id}`);
+            updateEntitySubtitle(entity_id);
+        });
+
+        // Helper to update just the subtitle of an entity (for relative time updates)
+        function updateEntitySubtitle(entity_id) {
+            if (renderedEntityIds[entity_id] === undefined) {
+                return; // Entity not currently rendered
+            }
+
+            let entity = entityStates[entity_id];
+            if (!entity) {
+                return;
+            }
+
+            entityListMenu.item(0, renderedEntityIds[entity_id], {
+                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
+                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
+                entity_id: entity.entity_id,
+                icon: getEntityIcon(entity)
+            });
+        }
 
         // Helper to convert subscribeEntities format to standard entity format
         function convertEntityData(entity_id, data) {
@@ -6754,6 +6791,11 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
             // Clear renderedEntityIds for fresh mapping
             renderedEntityIds = {};
 
+            // Clear existing relative time timers before re-rendering
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.clear();
+            }
+
             entityListMenu.items(0, []); // clear items
             let menuIndex = 0;
 
@@ -6795,6 +6837,11 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         icon: itemIcon
                     });
                     renderedEntityIds[data[i].entity_id] = menuId;
+
+                    // Register entity for relative time updates
+                    if (relativeTimeUpdater) {
+                        relativeTimeUpdater.register(data[i].entity_id, data[i].last_changed);
+                    }
                 } catch (err) {
                     log_message(`renderMenu: ERROR rendering entity ${data[i] ? data[i].entity_id : 'unknown'} at index ${i}: ${err.message}`);
                 }
@@ -6831,6 +6878,11 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 entity_id: entity.entity_id,
                 icon: getEntityIcon(entity)
             });
+
+            // Update the relative time timer with the new last_changed timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, entity.last_changed);
+            }
         }
 
         log_message(`Setting up subscribeEntities for ${entitiesToSubscribe.length} entities: ${entitiesToSubscribe.join(', ')}`);
@@ -7557,6 +7609,247 @@ function humanDiff(newestDate, oldestDate) {
 
     // Round properly and return a formatted string
     return prettyDate.diffDate + ' ' + prettyDate.diffUnit;
+}
+
+/**
+ * Calculate milliseconds until the humanDiff output will change for a given timestamp.
+ * This is useful for scheduling updates to relative time displays.
+ *
+ * @param {Date|string|number} lastChanged - The timestamp to calculate from
+ * @returns {number} Milliseconds until the humanDiff output will change, or -1 if no update needed (days old)
+ */
+function getNextHumanDiffChangeMs(lastChanged) {
+    const now = new Date();
+    const lastChangedDate = lastChanged instanceof Date ? lastChanged : new Date(lastChanged);
+
+    // If lastChanged is in the future, return 0 (update immediately when it becomes "now")
+    if (lastChangedDate > now) {
+        return lastChangedDate - now;
+    }
+
+    const diffMs = now - lastChangedDate;
+
+    // Time thresholds in milliseconds (matching humanDiff logic)
+    const SECOND = 1000;
+    const MINUTE = 60 * SECOND;
+    const HOUR = 60 * MINUTE;
+    const DAY = 24 * HOUR;
+
+    // Determine current unit and calculate time until next change
+    if (diffMs < SECOND) {
+        // Currently showing milliseconds, will change to seconds at 1 second
+        return SECOND - diffMs;
+    } else if (diffMs < MINUTE) {
+        // Currently showing seconds (e.g., "5 s")
+        // Will change when we hit the next second
+        const currentSeconds = Math.floor(diffMs / SECOND);
+        const nextSecondMs = (currentSeconds + 1) * SECOND;
+        return nextSecondMs - diffMs;
+    } else if (diffMs < HOUR) {
+        // Currently showing minutes (e.g., "5 m")
+        // Will change when we hit the next minute
+        const currentMinutes = Math.floor(diffMs / MINUTE);
+        const nextMinuteMs = (currentMinutes + 1) * MINUTE;
+        return nextMinuteMs - diffMs;
+    } else if (diffMs < DAY) {
+        // Currently showing hours (e.g., "5 h")
+        // Will change when we hit the next hour
+        const currentHours = Math.floor(diffMs / HOUR);
+        const nextHourMs = (currentHours + 1) * HOUR;
+        return nextHourMs - diffMs;
+    } else {
+        // Currently showing days (e.g., "5 d")
+        // Will change when we hit the next day
+        const currentDays = Math.floor(diffMs / DAY);
+        const nextDayMs = (currentDays + 1) * DAY;
+        return nextDayMs - diffMs;
+    }
+}
+
+/**
+ * RelativeTimeUpdater - Manages timers for updating relative time displays.
+ * This class handles scheduling updates based on when humanDiff output will change.
+ *
+ * Usage:
+ *   const updater = new RelativeTimeUpdater(function(id, lastChanged) {
+ *       // Update the display for the item with this id
+ *   });
+ *
+ *   // Register items to track
+ *   updater.register('entity_id_1', entity.last_changed);
+ *
+ *   // Update when an item's timestamp changes
+ *   updater.update('entity_id_1', newLastChanged);
+ *
+ *   // Remove an item
+ *   updater.unregister('entity_id_1');
+ *
+ *   // Pause all timers (e.g., when menu is hidden)
+ *   updater.pause();
+ *
+ *   // Resume all timers (e.g., when menu is shown)
+ *   updater.resume();
+ *
+ *   // Clean up all timers
+ *   updater.destroy();
+ */
+class RelativeTimeUpdater {
+    /**
+     * @param {function} updateCallback - Called when an item needs updating: function(id, lastChanged)
+     * @param {object} options - Optional configuration
+     * @param {number} options.minInterval - Minimum interval between updates in ms (default: 500)
+     * @param {number} options.maxInterval - Maximum interval for updates in ms (default: 24 hours)
+     */
+    constructor(updateCallback, options = {}) {
+        this.updateCallback = updateCallback;
+        this.timers = new Map(); // Map of id -> { timerId, lastChanged }
+        this.paused = false;
+        this.minInterval = options.minInterval || 500;
+        this.maxInterval = options.maxInterval || 24 * 60 * 60 * 1000; // 24 hours
+    }
+
+    /**
+     * Register an item to track for relative time updates
+     * @param {string} id - Unique identifier for the item
+     * @param {Date|string|number} lastChanged - The timestamp to track
+     */
+    register(id, lastChanged) {
+        // Clear any existing timer for this id
+        this._clearTimer(id);
+
+        // Store the lastChanged and schedule the update
+        this.timers.set(id, {
+            timerId: null,
+            lastChanged: lastChanged
+        });
+
+        if (!this.paused) {
+            this._scheduleUpdate(id);
+        }
+    }
+
+    /**
+     * Update an item's timestamp (e.g., when entity state changes)
+     * @param {string} id - Unique identifier for the item
+     * @param {Date|string|number} lastChanged - The new timestamp
+     */
+    update(id, lastChanged) {
+        const entry = this.timers.get(id);
+        if (entry) {
+            this._clearTimer(id);
+            entry.lastChanged = lastChanged;
+            if (!this.paused) {
+                this._scheduleUpdate(id);
+            }
+        } else {
+            // If not registered, register it
+            this.register(id, lastChanged);
+        }
+    }
+
+    /**
+     * Unregister an item and clear its timer
+     * @param {string} id - Unique identifier for the item
+     */
+    unregister(id) {
+        this._clearTimer(id);
+        this.timers.delete(id);
+    }
+
+    /**
+     * Pause all timers (e.g., when menu is hidden)
+     */
+    pause() {
+        this.paused = true;
+        // Clear all active timers
+        for (const [id] of this.timers) {
+            this._clearTimer(id);
+        }
+    }
+
+    /**
+     * Resume all timers (e.g., when menu is shown)
+     */
+    resume() {
+        this.paused = false;
+        // Reschedule all timers
+        for (const [id] of this.timers) {
+            this._scheduleUpdate(id);
+        }
+    }
+
+    /**
+     * Clear all items and timers
+     */
+    clear() {
+        for (const [id] of this.timers) {
+            this._clearTimer(id);
+        }
+        this.timers.clear();
+    }
+
+    /**
+     * Destroy the updater and clean up all resources
+     */
+    destroy() {
+        this.clear();
+        this.updateCallback = null;
+    }
+
+    /**
+     * Get the number of registered items
+     * @returns {number}
+     */
+    size() {
+        return this.timers.size;
+    }
+
+    /**
+     * Clear a specific timer
+     * @private
+     */
+    _clearTimer(id) {
+        const entry = this.timers.get(id);
+        if (entry && entry.timerId !== null) {
+            clearTimeout(entry.timerId);
+            entry.timerId = null;
+        }
+    }
+
+    /**
+     * Schedule the next update for an item
+     * @private
+     */
+    _scheduleUpdate(id) {
+        const entry = this.timers.get(id);
+        if (!entry || this.paused) {
+            return;
+        }
+
+        // Calculate when the next update should occur
+        let intervalMs = getNextHumanDiffChangeMs(entry.lastChanged);
+
+        // Clamp to min/max intervals
+        intervalMs = Math.max(this.minInterval, Math.min(intervalMs, this.maxInterval));
+
+        // Add a small buffer (50ms) to ensure we're past the threshold
+        intervalMs += 50;
+
+        const self = this;
+        entry.timerId = setTimeout(function() {
+            if (self.paused || !self.timers.has(id)) {
+                return;
+            }
+
+            // Call the update callback
+            if (self.updateCallback) {
+                self.updateCallback(id, entry.lastChanged);
+            }
+
+            // Schedule the next update
+            self._scheduleUpdate(id);
+        }, intervalMs);
+    }
 }
 
 // the below method is just here for reference on the REST API
