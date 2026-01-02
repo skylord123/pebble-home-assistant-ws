@@ -5185,11 +5185,11 @@ function showEntityMenu(entity_id) {
         title: 'Entity ID',
         subtitle: entity.entity_id
     });
+    let stateIndex = i;
     showEntityMenu.item(0, i++, {
         title: 'State',
         subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '')
     });
-    let stateIndex = i;
     showEntityMenu.item(0, i++, {
         title: 'Last Changed',
         subtitle: entity.last_changed
