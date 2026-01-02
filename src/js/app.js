@@ -4,7 +4,7 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const appVersion = '1.1', // displays in loading screen
+const appVersion = '1.2', // displays in loading screen
     confVersion = '1.2', // version of config page
     configPageUrl = 'https://skylord123.github.io/pebble-home-assistant-ws/config/v' + confVersion + '.html',
     debugMode = true,
