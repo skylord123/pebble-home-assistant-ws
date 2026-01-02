@@ -17,6 +17,7 @@ const appVersion = '1.2', // displays in loading screen
     Voice = require('ui/voice'),
     HAWS = require('vendor/haws'),
     FavoriteEntityStore = require('vendor/FavoriteEntityStore'),
+    PinnedEntityStore = require('vendor/PinnedEntityStore'),
     Feature = require('platform/feature'),
     Vector = require('vector2'),
     sortJSON = require('vendor/sortjson'),
@@ -125,7 +126,9 @@ let ha_url = null,
     quick_launch_exit_on_back = null,
     unavailable_entity_handling = null,
     unknown_entity_handling = null,
-    automation_longpress_action = null;
+    automation_longpress_action = null,
+    main_menu_custom_order_enabled = null,
+    main_menu_order = null;
 
 // Enable/disable coalesce_messages feature (set to true to enable, false to disable)
 const coalesce_messages_enabled = true;
@@ -211,6 +214,22 @@ function load_settings() {
     log_message('Entity handling - unavailable: ' + unavailable_entity_handling + ', unknown: ' + unknown_entity_handling);
     log_message('Automation long-press action: ' + automation_longpress_action);
 
+    // Main menu ordering settings
+    main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;
+    main_menu_order = Settings.option('main_menu_order');
+    if (!Array.isArray(main_menu_order)) {
+        main_menu_order = null;
+    }
+    log_message('Main menu custom order enabled: ' + main_menu_custom_order_enabled);
+
+    // Reload pinned entities from settings (in case they were changed via config page)
+    pinnedEntityStore.load();
+    log_message('Pinned entities reloaded: ' + JSON.stringify(pinnedEntityStore.all()));
+
+    // Reload favorite entities from settings (in case they were changed via config page)
+    favoriteEntityStore.load();
+    log_message('Favorite entities reloaded: ' + JSON.stringify(favoriteEntityStore.all()));
+
     // Update Voice Pipeline handling
     selected_pipeline = Settings.option('selected_pipeline');
 
@@ -230,6 +249,7 @@ let haws = null,
     device_registry_cache = null,
     entity_registry_cache = null,
     favoriteEntityStore = new FavoriteEntityStore(),
+    pinnedEntityStore = new PinnedEntityStore(),
     label_registry_cache = null;
 
 let device_status,
@@ -485,6 +505,57 @@ function toggleFavorite(entity) {
 }
 
 /**
+ * Toggle pinned status for an entity (pin/unpin from Main Menu)
+ * @param {Object} entity - The entity object with entity_id and attributes
+ * @returns {boolean} true if entity was pinned, false if unpinned
+ */
+function togglePinned(entity) {
+    if (!entity || !entity.entity_id) {
+        log_message('togglePinned: Invalid entity provided');
+        return false;
+    }
+
+    const entityId = entity.entity_id;
+    const pinnedId = 'pinned:' + entityId;
+    const wasPinned = !pinnedEntityStore.has(entityId);
+
+    if (wasPinned) {
+        log_message(`Pinning ${entityId} to Main Menu`);
+        // Include friendly name when pinning
+        let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
+        pinnedEntityStore.add(entityId, friendlyName);
+
+        // Also add to main_menu_order if custom ordering is enabled
+        if (main_menu_custom_order_enabled && main_menu_order && Array.isArray(main_menu_order)) {
+            // First check if it's already in the order (prevent duplicates)
+            if (main_menu_order.indexOf(pinnedId) === -1) {
+                // Add at the very top of the list
+                main_menu_order.unshift(pinnedId);
+                // Save updated order to settings
+                Settings.option('main_menu_order', main_menu_order);
+                log_message(`Added ${pinnedId} to top of main_menu_order`);
+            }
+        }
+    } else {
+        log_message(`Unpinning ${entityId} from Main Menu`);
+        pinnedEntityStore.remove(entityId);
+
+        // Also remove from main_menu_order if custom ordering is enabled
+        if (main_menu_custom_order_enabled && main_menu_order && Array.isArray(main_menu_order)) {
+            let index = main_menu_order.indexOf(pinnedId);
+            if (index > -1) {
+                main_menu_order.splice(index, 1);
+                // Save updated order to settings
+                Settings.option('main_menu_order', main_menu_order);
+                log_message(`Removed ${pinnedId} from main_menu_order`);
+            }
+        }
+    }
+
+    return wasPinned;
+}
+
+/**
  * Show the appropriate entity menu based on the entity's domain
  * @param {string} entity_id - The entity ID to show
  */
@@ -517,7 +588,183 @@ let loadingCard = new UI.Card({
     status: false
 });
 
+// Default order for main menu items (used when custom order is disabled)
+const DEFAULT_MAIN_MENU_ORDER = [
+    'assistant',
+    'favorites',
+    'areas',
+    'labels',
+    'todo_lists',
+    'all_entities',
+    'settings'
+];
+
+/**
+ * Get the menu item definition for a given item ID
+ * @param {string} itemId - The item identifier
+ * @returns {Object|null} Menu item definition or null if not available
+ */
+function getMainMenuItem(itemId) {
+    // Handle pinned entities (format: "pinned:entity_id")
+    if (itemId.startsWith('pinned:')) {
+        const entityId = itemId.substring(7);
+        const entity = ha_state_dict ? ha_state_dict[entityId] : null;
+        if (!entity) {
+            // Entity not found in state dict, skip it
+            return null;
+        }
+        // Use utility functions for consistent entity display
+        let menuItem = getEntityMenuItem(entity);
+        menuItem.id = itemId;
+        return menuItem;
+    }
+
+    // Built-in menu items
+    switch (itemId) {
+        case 'assistant':
+            if (!voice_enabled) return null;
+            return {
+                id: 'assistant',
+                title: "Assistant",
+                on_click: function(e) {
+                    showAssistMenu();
+                }
+            };
+        case 'favorites':
+            let favoriteEntities = favoriteEntityStore.all();
+            if (!favoriteEntities || !favoriteEntities.length) return null;
+            return {
+                id: 'favorites',
+                title: "Favorites",
+                on_click: function(e) {
+                    showFavorites();
+                }
+            };
+        case 'areas':
+            return {
+                id: 'areas',
+                title: "Areas",
+                on_click: function(e) {
+                    showAreaMenu();
+                }
+            };
+        case 'labels':
+            return {
+                id: 'labels',
+                title: "Labels",
+                on_click: function(e) {
+                    showLabelMenu();
+                }
+            };
+        case 'todo_lists':
+            return {
+                id: 'todo_lists',
+                title: "To-Do Lists",
+                on_click: function(e) {
+                    showToDoLists();
+                }
+            };
+        case 'all_entities':
+            return {
+                id: 'all_entities',
+                title: "All Entities",
+                on_click: function(e) {
+                    const entityKeys = Object.keys(ha_state_dict);
+                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_all_entities);
+                    if (shouldShowDomains) {
+                        showEntityDomainsFromList(entityKeys, "All Entities");
+                    } else {
+                        showEntityList("All Entities", false, true, true, true);
+                    }
+                }
+            };
+        case 'settings':
+            return {
+                id: 'settings',
+                title: "Settings",
+                on_click: function(e) {
+                    showSettingsMenu();
+                }
+            };
+        default:
+            return null;
+    }
+}
+
+/**
+ * Get the ordered list of main menu item IDs
+ * @returns {string[]} Array of item IDs in display order
+ */
+function getMainMenuOrder() {
+    let order = [];
+    let pinnedEntities = pinnedEntityStore.all();
+
+    if (main_menu_custom_order_enabled && main_menu_order && Array.isArray(main_menu_order)) {
+        // Use custom order, but filter out unpinned entities
+        for (let itemId of main_menu_order) {
+            if (itemId.startsWith('pinned:')) {
+                // Only include if entity is still pinned
+                let entityId = itemId.substring(7);
+                if (pinnedEntities.indexOf(entityId) !== -1) {
+                    order.push(itemId);
+                }
+            } else {
+                order.push(itemId);
+            }
+        }
+
+        // Check for new built-in items that aren't in the custom order
+        for (let defaultItem of DEFAULT_MAIN_MENU_ORDER) {
+            if (order.indexOf(defaultItem) === -1) {
+                // New item not in custom order, append before settings
+                let settingsIndex = order.indexOf('settings');
+                if (settingsIndex > -1) {
+                    order.splice(settingsIndex, 0, defaultItem);
+                } else {
+                    order.push(defaultItem);
+                }
+            }
+        }
+
+        // Add any pinned entities that aren't in the order (at the top)
+        for (let entityId of pinnedEntities) {
+            let pinnedId = 'pinned:' + entityId;
+            if (order.indexOf(pinnedId) === -1) {
+                // New pinned entity, add at the very top
+                order.unshift(pinnedId);
+            }
+        }
+    } else {
+        // Use default order with pinned entities at the TOP (after assistant)
+        order = [];
+
+        // Add assistant first if it's in the default order
+        if (DEFAULT_MAIN_MENU_ORDER.indexOf('assistant') !== -1) {
+            order.push('assistant');
+        }
+
+        // Add pinned entities right after assistant (at the top)
+        for (let entityId of pinnedEntities) {
+            order.push('pinned:' + entityId);
+        }
+
+        // Add remaining default items (except assistant which is already added)
+        for (let defaultItem of DEFAULT_MAIN_MENU_ORDER) {
+            if (defaultItem !== 'assistant') {
+                order.push(defaultItem);
+            }
+        }
+    }
+
+    return order;
+}
+
 let mainMenu = null;
+let mainMenuSubscriptionId = null;
+let mainMenuPinnedEntityIndexes = {}; // Maps entity_id to menu index for pinned entities
+let mainMenuRelativeTimeUpdater = null; // RelativeTimeUpdater for pinned entities
+let mainMenuEntityStates = {}; // Local state cache for pinned entities
+
 function showMainMenu() {
     if(!mainMenu) {
         mainMenu = new UI.Menu({
@@ -535,76 +782,138 @@ function showMainMenu() {
 
         mainMenu.on('show', function(){
             mainMenu.items(0, []);
+            mainMenuPinnedEntityIndexes = {};
+            mainMenuEntityStates = {};
 
-            // add items to menu
+            // Unsubscribe from previous subscription if exists
+            if (mainMenuSubscriptionId) {
+                haws.unsubscribe(mainMenuSubscriptionId);
+                mainMenuSubscriptionId = null;
+            }
+
+            // Clear and recreate the RelativeTimeUpdater
+            if (mainMenuRelativeTimeUpdater) {
+                mainMenuRelativeTimeUpdater.destroy();
+            }
+            mainMenuRelativeTimeUpdater = new RelativeTimeUpdater(function(entity_id, lastChanged) {
+                // This callback is called when an entity's relative time display needs updating
+                updateMainMenuEntitySubtitle(entity_id);
+            });
+
+            // Helper to update just the subtitle of a pinned entity (for relative time updates)
+            function updateMainMenuEntitySubtitle(entity_id) {
+                if (mainMenuPinnedEntityIndexes[entity_id] === undefined) {
+                    return; // Entity not currently rendered
+                }
+
+                let entity = mainMenuEntityStates[entity_id];
+                if (!entity) {
+                    return;
+                }
+
+                updateEntityMenuItem(mainMenu, 0, mainMenuPinnedEntityIndexes[entity_id], entity);
+            }
+
+            // Get ordered list of menu items
+            let menuOrder = getMainMenuOrder();
             let i = 0;
-            if(voice_enabled) {
-                mainMenu.item(0, i++, {
-                    title: "Assistant",
-                    // subtitle: thisDevice.attributes[arr[i]],
-                    on_click: function(e) {
-                        showAssistMenu();
+            let pinnedEntityIds = [];
+
+            for (let itemId of menuOrder) {
+                let menuItem = getMainMenuItem(itemId);
+                if (menuItem) {
+                    mainMenu.item(0, i, menuItem);
+
+                    // Track pinned entity indexes for real-time updates
+                    if (itemId.startsWith('pinned:')) {
+                        let entityId = itemId.substring(7);
+                        mainMenuPinnedEntityIndexes[entityId] = i;
+                        pinnedEntityIds.push(entityId);
                     }
+                    i++;
+                }
+            }
+
+            // Subscribe to state changes for pinned entities
+            if (pinnedEntityIds.length > 0) {
+                log_message(`Main menu: subscribing to ${pinnedEntityIds.length} pinned entities`);
+
+                mainMenuSubscriptionId = haws.subscribeEntities(pinnedEntityIds, function(data) {
+                    let ev = data.event || {};
+
+                    // Handle added entities (initial snapshot) - update display
+                    if (ev.a) {
+                        for (let entity_id in ev.a) {
+                            if (mainMenuPinnedEntityIndexes[entity_id] !== undefined) {
+                                let entityData = {
+                                    entity_id: entity_id,
+                                    state: ev.a[entity_id].s,
+                                    attributes: ev.a[entity_id].a || {},
+                                    last_changed: ev.a[entity_id].lc ? new Date(ev.a[entity_id].lc * 1000).toISOString() : new Date().toISOString()
+                                };
+                                ha_state_dict[entity_id] = entityData;
+                                mainMenuEntityStates[entity_id] = entityData;
+                                updateEntityMenuItem(mainMenu, 0, mainMenuPinnedEntityIndexes[entity_id], entityData);
+
+                                // Register entity for relative time updates
+                                if (mainMenuRelativeTimeUpdater) {
+                                    mainMenuRelativeTimeUpdater.register(entity_id, entityData.last_changed);
+                                }
+                            }
+                        }
+                    }
+
+                    // Handle changed entities (updates)
+                    if (ev.c) {
+                        for (let entity_id in ev.c) {
+                            if (mainMenuPinnedEntityIndexes[entity_id] !== undefined) {
+                                let patch = ev.c[entity_id];
+                                let plus = patch["+"] || {};
+
+                                // Get existing state or create new one
+                                let cur = mainMenuEntityStates[entity_id] || ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
+
+                                // Merge the changes
+                                let entityData = {
+                                    entity_id: entity_id,
+                                    state: plus.s !== undefined ? plus.s : cur.state,
+                                    attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                                    last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
+                                };
+                                ha_state_dict[entity_id] = entityData;
+                                mainMenuEntityStates[entity_id] = entityData;
+
+                                log_message(`Main menu: entity update for ${entity_id}: ${entityData.state}`);
+                                updateEntityMenuItem(mainMenu, 0, mainMenuPinnedEntityIndexes[entity_id], entityData);
+
+                                // Update the relative time timer with the new last_changed timestamp
+                                if (mainMenuRelativeTimeUpdater) {
+                                    mainMenuRelativeTimeUpdater.update(entity_id, entityData.last_changed);
+                                }
+                            }
+                        }
+                    }
+                }, function(error) {
+                    log_message(`Main menu subscribeEntities ERROR: ` + JSON.stringify(error));
                 });
             }
-            let favoriteEntities = favoriteEntityStore.all();
-            if(favoriteEntities && favoriteEntities.length) {
-                mainMenu.item(0, i++, {
-                    title: "Favorites",
-                    // subtitle: thisDevice.attributes[arr[i]],
-                    on_click: function(e) {
-                        showFavorites();
-                    }
-                });
-            }
-            mainMenu.item(0, i++, {
-                title: "Areas",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    showAreaMenu();
-                }
-            });
-            mainMenu.item(0, i++, {
-                title: "Labels",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    showLabelMenu();
-                }
-            });
-            mainMenu.item(0, i++, {
-                title: "To-Do Lists",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    showToDoLists();
-                }
-            });
-            mainMenu.item(0, i++, {
-                title: "All Entities",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    const entityKeys = Object.keys(ha_state_dict);
-                    // Use the specific setting for All Entities
-                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_all_entities);
-
-                    if(shouldShowDomains) {
-                        showEntityDomainsFromList(entityKeys, "All Entities");
-                    } else {
-                        showEntityList("All Entities", false, true, true, true);
-                    }
-                }
-            });
-
-            // Add Settings menu item at the bottom
-            mainMenu.item(0, i++, {
-                title: "Settings",
-                on_click: function(e) {
-                    showSettingsMenu();
-                }
-            });
 
             // Restore the previously selected index after items are populated
             if (menuSelections.mainMenu > 0 && menuSelections.mainMenu < mainMenu.items(0).length) {
                 mainMenu.selection(0, menuSelections.mainMenu);
+            }
+        });
+
+        mainMenu.on('hide', function() {
+            // Unsubscribe from entity updates when menu is hidden
+            if (mainMenuSubscriptionId) {
+                haws.unsubscribe(mainMenuSubscriptionId);
+                mainMenuSubscriptionId = null;
+                log_message('Main menu: unsubscribed from entity updates');
+            }
+            // Pause relative time updates when menu is hidden
+            if (mainMenuRelativeTimeUpdater) {
+                mainMenuRelativeTimeUpdater.pause();
             }
         });
 
@@ -618,6 +927,13 @@ function showMainMenu() {
                 e.item.on_click(e);
             } else {
                 log_message("No click function for main menu item " + e.title);
+            }
+        });
+
+        // Long-press handler for pinned entities - uses global handleEntityLongPress function
+        mainMenu.on('longSelect', function(e) {
+            if (e.item && e.item.entity_id) {
+                handleEntityLongPress(e.item.entity_id);
             }
         });
     }
@@ -5326,6 +5642,17 @@ function showEntityMenu(entity_id) {
     }
     _renderFavoriteBtn();
 
+    function _renderPinnedBtn() {
+        showEntityMenu.item(2, 1, {
+            title: (pinnedEntityStore.has(entity.entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
+            on_click: function(e) {
+                togglePinned(entity);
+                _renderPinnedBtn();
+            }
+        });
+    }
+    _renderPinnedBtn();
+
     showEntityMenu.on('show', function(){
         msg_id = haws.subscribeTrigger({
             "type": "subscribe_trigger",
@@ -5511,6 +5838,227 @@ function showEntityDomainsFromList(entity_id_list, title) {
     });
 
     domainListMenu.show();
+}
+
+// ============================================================================
+// Entity Display Utility Functions
+// These functions provide reusable logic for displaying entity information
+// across different menus (Main Menu, Entity List, Favorites, etc.)
+// ============================================================================
+
+/**
+ * Get the display title for an entity
+ * @param {Object} entity - The entity object
+ * @returns {string} The friendly name or entity_id
+ */
+function getEntityTitle(entity) {
+    if (!entity) return 'Unknown';
+    return entity.attributes && entity.attributes.friendly_name
+        ? entity.attributes.friendly_name
+        : entity.entity_id;
+}
+
+/**
+ * Get the display subtitle for an entity (state + unit + relative time)
+ * @param {Object} entity - The entity object
+ * @param {boolean} [includeRelativeTime=true] - Whether to include relative time
+ * @returns {string} The formatted subtitle
+ */
+function getEntitySubtitle(entity, includeRelativeTime = true) {
+    if (!entity) return '';
+
+    let subtitle = entity.state;
+
+    // Add unit of measurement if available
+    if (entity.attributes && entity.attributes.unit_of_measurement) {
+        subtitle += ` ${entity.attributes.unit_of_measurement}`;
+    }
+
+    // Add relative time if requested and last_changed is available
+    if (includeRelativeTime && entity.last_changed) {
+        subtitle += ' > ' + humanDiff(new Date(), new Date(entity.last_changed));
+    }
+
+    return subtitle;
+}
+
+/**
+ * Get a complete menu item object for an entity
+ * @param {Object} entity - The entity object
+ * @param {Object} [options] - Optional configuration
+ * @param {boolean} [options.includeRelativeTime=true] - Include relative time in subtitle
+ * @param {boolean} [options.includeIcon=true] - Include icon
+ * @param {Function} [options.on_click] - Custom click handler (defaults to showEntity)
+ * @returns {Object} Menu item object with title, subtitle, entity_id, icon, and on_click
+ */
+function getEntityMenuItem(entity, options = {}) {
+    if (!entity) return null;
+
+    const includeRelativeTime = options.includeRelativeTime !== false;
+    const includeIcon = options.includeIcon !== false;
+
+    let menuItem = {
+        title: getEntityTitle(entity),
+        subtitle: getEntitySubtitle(entity, includeRelativeTime),
+        entity_id: entity.entity_id
+    };
+
+    if (includeIcon) {
+        menuItem.icon = getEntityIcon(entity);
+    }
+
+    if (options.on_click) {
+        menuItem.on_click = options.on_click;
+    } else {
+        // Default click handler
+        menuItem.on_click = function(e) {
+            showEntity(entity.entity_id);
+        };
+    }
+
+    return menuItem;
+}
+
+/**
+ * Update an entity's display in a menu
+ * @param {Object} menu - The UI.Menu object
+ * @param {number} sectionIndex - The section index
+ * @param {number} itemIndex - The item index
+ * @param {Object} entity - The entity object
+ * @param {Object} [options] - Optional configuration (same as getEntityMenuItem)
+ */
+function updateEntityMenuItem(menu, sectionIndex, itemIndex, entity, options = {}) {
+    if (!menu || !entity) return;
+
+    let menuItem = getEntityMenuItem(entity, options);
+    if (menuItem) {
+        menu.item(sectionIndex, itemIndex, menuItem);
+    }
+}
+
+/**
+ * Handle long-press action on an entity
+ * This provides consistent long-press behavior across all menus (Main Menu, Entity List, etc.)
+ * @param {string} entity_id - The entity ID that was long-pressed
+ */
+function handleEntityLongPress(entity_id) {
+    if (!entity_id) {
+        log_message('handleEntityLongPress: No entity_id provided');
+        return;
+    }
+
+    log_message(`handleEntityLongPress: ${entity_id}`);
+    let [domain] = entity_id.split('.');
+
+    if (domain === "automation") {
+        // Handle automation based on user setting
+        let service = automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
+        log_message(`Automation long-press: calling ${service} for ${entity_id}`);
+        haws.callService(
+            domain,
+            service,
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                log_message(JSON.stringify(data));
+                Vibe.vibrate('short');
+            },
+            function (error) {
+                log_message('no response');
+                Vibe.vibrate('double');
+            });
+    }
+    else if (
+        domain === "switch" ||
+        domain === "light" ||
+        domain === "input_boolean" ||
+        domain === "script" ||
+        domain === "cover"
+    ) {
+        haws.callService(
+            domain,
+            'toggle',
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                log_message(JSON.stringify(data));
+                Vibe.vibrate('short');
+            },
+            function (error) {
+                log_message('no response');
+                Vibe.vibrate('double');
+            });
+    }
+    else if (domain === "lock") {
+        let entity = ha_state_dict[entity_id];
+        if (!entity) {
+            log_message(`handleEntityLongPress: entity ${entity_id} not found in state dict`);
+            return;
+        }
+        haws.callService(
+            domain,
+            entity.state === "locked" ? "unlock" : "lock",
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                Vibe.vibrate('short');
+                log_message(JSON.stringify(data));
+            },
+            function (error) {
+                Vibe.vibrate('double');
+                log_message('no response');
+            });
+    }
+    else if (domain === "scene") {
+        haws.callService(
+            domain,
+            "apply",
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                Vibe.vibrate('short');
+                log_message(JSON.stringify(data));
+            },
+            function (error) {
+                Vibe.vibrate('double');
+                log_message('no response');
+            });
+    }
+    else if (domain === "vacuum") {
+        let entity = ha_state_dict[entity_id];
+        if (!entity) {
+            log_message(`handleEntityLongPress: entity ${entity_id} not found in state dict`);
+            return;
+        }
+        let state = entity.state;
+        let service = null;
+
+        // Determine which service to call based on state
+        if (state === "cleaning" || state === "returning") {
+            service = "pause";
+        } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
+            service = "start";
+        }
+
+        if (service) {
+            log_message('Calling vacuum.' + service + ' for ' + entity_id + ' (state: ' + state + ')');
+            haws.callService(
+                'vacuum',
+                service,
+                {},
+                {entity_id: entity_id},
+                function (data) {
+                    log_message('vacuum.' + service + ' success: ' + JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function (error) {
+                    log_message('vacuum.' + service + ' failed: ' + JSON.stringify(error));
+                    Vibe.vibrate('double');
+                });
+        } else {
+            log_message('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
+        }
+    }
 }
 
 function getEntityIcon(entity) {
@@ -6620,117 +7168,8 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
     let relativeTimeUpdater = null;
 
     entityListMenu.on('longSelect', function(e) {
-        log_message(`Entity ${e.item.entity_id} was long pressed!`);
-        let [domain] = e.item.entity_id.split('.');
-        if (domain === "automation") {
-            // Handle automation based on user setting
-            let service = automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
-            log_message(`Automation long-press: calling ${service} for ${e.item.entity_id}`);
-            haws.callService(
-                domain,
-                service,
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    log_message(JSON.stringify(data));
-                    Vibe.vibrate('short');
-                },
-                function (error) {
-                    log_message('no response');
-                    Vibe.vibrate('double');
-                });
-        }
-        else if (
-            domain === "switch" ||
-            domain === "light" ||
-            domain === "input_boolean" ||
-            domain === "script" ||
-            domain === "cover"
-        ) {
-            haws.callService(
-                domain,
-                'toggle',
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                    // Success!
-                    log_message(JSON.stringify(data));
-                    Vibe.vibrate('short');
-                },
-                function (error) {
-                    // Failure!
-                    log_message('no response');
-                    Vibe.vibrate('double');
-                });
-        }
-        else if (domain === "lock") {
-            let entity = ha_state_dict[e.item.entity_id];
-            haws.callService(
-                domain,
-                entity.state === "locked" ? "unlock" : "lock",
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                    // Success!
-                    Vibe.vibrate('short');
-                    log_message(JSON.stringify(data));
-                },
-                function (error) {
-                    // Failure!
-                    Vibe.vibrate('double');
-                    log_message('no response');
-                });
-        }
-        else if (domain === "scene") {
-            haws.callService(
-                domain,
-                "apply",
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                    // Success!
-                    Vibe.vibrate('short');
-                    log_message(JSON.stringify(data));
-                },
-                function (error) {
-                    // Failure!
-                    Vibe.vibrate('double');
-                    log_message('no response');
-                });
-        }
-        else if (domain === "vacuum") {
-            let entity = ha_state_dict[e.item.entity_id];
-            let state = entity.state;
-            let service = null;
-
-            // Determine which service to call based on state
-            if (state === "cleaning" || state === "returning") {
-                service = "pause";
-            } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
-                service = "start";
-            }
-
-            if (service) {
-                log_message('Calling vacuum.' + service + ' for ' + e.item.entity_id + ' (state: ' + state + ')');
-                haws.callService(
-                    'vacuum',
-                    service,
-                    {},
-                    {entity_id: e.item.entity_id},
-                    function (data) {
-                        log_message('vacuum.' + service + ' success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function (error) {
-                        log_message('vacuum.' + service + ' failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            } else {
-                log_message('Vacuum ' + e.item.entity_id + ' in state ' + state + ' - no action taken');
-            }
+        if (e.item && e.item.entity_id) {
+            handleEntityLongPress(e.item.entity_id);
         }
     });
 
