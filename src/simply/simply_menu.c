@@ -25,6 +25,8 @@
 
 #define SPINNER_MS 66
 
+#define RELOAD_DEBOUNCE_MS 50  // Wait 50ms after last section before reloading
+
 #if !defined(PBL_PLATFORM_APLITE)
 // Scrolling configuration
 #define SCROLL_WAIT_MS 1000  // Wait X ms before starting to scroll
@@ -113,6 +115,8 @@ static MenuIndex simply_menu_get_selection(SimplyMenu *self);
 static void simply_menu_set_selection(SimplyMenu *self, MenuIndex menu_index, MenuRowAlign align, bool animated);
 
 static void refresh_spinner_timer(SimplyMenu *self);
+
+static void reload_timer_callback(void *data);
 
 #if !defined(PBL_PLATFORM_APLITE)
 // Forward declarations for scroll timer callbacks
@@ -270,6 +274,24 @@ static void prv_reload_data(SimplyMenu *self) {
   }
 }
 
+static void reload_timer_callback(void *data) {
+  SimplyMenu *self = data;
+  self->reload_timer = NULL;
+  prv_reload_data(self);
+}
+
+static void prv_reload_data_debounced(SimplyMenu *self) {
+  // Cancel any existing reload timer
+  if (self->reload_timer) {
+    app_timer_cancel(self->reload_timer);
+    self->reload_timer = NULL;
+  }
+
+  // Schedule a new reload after a short delay
+  // This debounces multiple rapid section additions
+  self->reload_timer = app_timer_register(RELOAD_DEBOUNCE_MS, reload_timer_callback, self);
+}
+
 static void simply_menu_set_num_sections(SimplyMenu *self, uint16_t num_sections) {
   if (num_sections == 0) {
     num_sections = 1;
@@ -283,7 +305,7 @@ static void simply_menu_add_section(SimplyMenu *self, SimplyMenuSection *section
     section->title = EMPTY_TITLE;
   }
   prv_add_section(self, section);
-  prv_reload_data(self);
+  prv_reload_data_debounced(self);  // Use debounced reload instead of immediate
 }
 
 static void simply_menu_add_item(SimplyMenu *self, SimplyMenuItem *item) {
@@ -814,8 +836,11 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     GRect bounds = layer_get_bounds(cell_layer);
     const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
 
-    // Background - highlighted items have WHITE background
-    graphics_context_set_fill_color(ctx, is_highlighted ? GColorWhite : GColorBlack);
+    // Background - use configured highlight/normal colors
+    GColor8 bg_color = is_highlighted ?
+        self->menu_layer.highlight_background :
+        self->menu_layer.normal_background;
+    graphics_context_set_fill_color(ctx, gcolor8_get_or(bg_color, is_highlighted ? GColorBlack : GColorWhite));
     graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
 #if !defined(PBL_ROUND)
@@ -831,7 +856,11 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       text_x = 4 + icon_bounds.size.w + 4;
     }
 
-    graphics_context_set_text_color(ctx, is_highlighted ? GColorBlack : GColorWhite);
+    // Text color - use configured highlight/normal colors
+    GColor8 text_color = is_highlighted ?
+        self->menu_layer.highlight_foreground :
+        self->menu_layer.normal_foreground;
+    graphics_context_set_text_color(ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
 
     // Text with scroll offset
     const int16_t scroll_x = text_x - self->scroll_offset;
@@ -857,7 +886,11 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
 #else
     // ===== ROUND DISPLAY: Keep icon static, scroll text independently =====
-    graphics_context_set_text_color(ctx, is_highlighted ? GColorBlack : GColorWhite);
+    // Text color - use configured highlight/normal colors
+    GColor8 text_color = is_highlighted ?
+        self->menu_layer.highlight_foreground :
+        self->menu_layer.normal_foreground;
+    graphics_context_set_text_color(ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
 
     // Draw icon centered at top (static, no scroll)
     int16_t icon_y = 2;
@@ -1067,6 +1100,12 @@ static void prv_menu_window_disappear(Window *window) {
   stop_scroll_timer(self);
 #endif
 
+  // Cancel any pending reload timer
+  if (self->reload_timer) {
+    app_timer_cancel(self->reload_timer);
+    self->reload_timer = NULL;
+  }
+
   if (simply_window_disappear(&self->window)) {
     simply_res_clear(self->window.simply->res);
     simply_menu_clear(self);
@@ -1080,6 +1119,12 @@ static void prv_menu_window_unload(Window *window) {
   // Clean up scroll timer
   stop_scroll_timer(self);
 #endif
+
+  // Cancel any pending reload timer
+  if (self->reload_timer) {
+    app_timer_cancel(self->reload_timer);
+    self->reload_timer = NULL;
+  }
 
   menu_layer_destroy(self->menu_layer.menu_layer);
   self->menu_layer.menu_layer = NULL;
@@ -1218,6 +1263,7 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .window.status_bar_insets_bottom = true,
 #endif
     .menu_layer.num_sections = 1,
+    .reload_timer = NULL,
 #if !defined(PBL_PLATFORM_APLITE)
     .scroll_timer = NULL,
     .scroll_offset = 0,
