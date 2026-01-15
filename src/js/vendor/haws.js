@@ -463,6 +463,10 @@ class HAWS {
         return this.send({ type: 'config/area_registry/list'}, successCallback, errorCallback);
     }
 
+    getConfigFloors(successCallback, errorCallback) {
+        return this.send({ type: 'config/floor_registry/list'}, successCallback, errorCallback);
+    }
+
     getConfigDevices(successCallback, errorCallback) {
         return this.send({ type: 'config/device_registry/list'}, successCallback, errorCallback);
     }

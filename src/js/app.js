@@ -246,6 +246,7 @@ let haws = null,
     baseurl = null,
     baseheaders = null,
     area_registry_cache = null,
+    floor_registry_cache = null,
     device_registry_cache = null,
     entity_registry_cache = null,
     favoriteEntityStore = new FavoriteEntityStore(),
@@ -265,6 +266,7 @@ log_message('ha_url: ' + baseurl);
 const CACHE_KEYS = {
     STATES: 'ha_startup_cache_states',
     AREAS: 'ha_startup_cache_areas',
+    FLOORS: 'ha_startup_cache_floors',
     DEVICES: 'ha_startup_cache_devices',
     ENTITIES: 'ha_startup_cache_entities',
     LABELS: 'ha_startup_cache_labels',
@@ -284,6 +286,9 @@ function saveStartupCache() {
         }
         if (area_registry_cache) {
             localStorage.setItem(CACHE_KEYS.AREAS, JSON.stringify(area_registry_cache));
+        }
+        if (floor_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.FLOORS, JSON.stringify(floor_registry_cache));
         }
         if (device_registry_cache) {
             localStorage.setItem(CACHE_KEYS.DEVICES, JSON.stringify(device_registry_cache));
@@ -326,6 +331,7 @@ function loadStartupCache() {
         // Load each piece of data
         const statesStr = localStorage.getItem(CACHE_KEYS.STATES);
         const areasStr = localStorage.getItem(CACHE_KEYS.AREAS);
+        const floorsStr = localStorage.getItem(CACHE_KEYS.FLOORS);
         const devicesStr = localStorage.getItem(CACHE_KEYS.DEVICES);
         const entitiesStr = localStorage.getItem(CACHE_KEYS.ENTITIES);
         const labelsStr = localStorage.getItem(CACHE_KEYS.LABELS);
@@ -347,6 +353,10 @@ function loadStartupCache() {
 
         if (areasStr) {
             area_registry_cache = JSON.parse(areasStr);
+        }
+
+        if (floorsStr) {
+            floor_registry_cache = JSON.parse(floorsStr);
         }
 
         if (devicesStr) {
@@ -397,6 +407,7 @@ function clearStartupCache() {
         log_message('Clearing startup cache...');
         localStorage.removeItem(CACHE_KEYS.STATES);
         localStorage.removeItem(CACHE_KEYS.AREAS);
+        localStorage.removeItem(CACHE_KEYS.FLOORS);
         localStorage.removeItem(CACHE_KEYS.DEVICES);
         localStorage.removeItem(CACHE_KEYS.ENTITIES);
         localStorage.removeItem(CACHE_KEYS.LABELS);
@@ -443,12 +454,15 @@ function restartApp() {
 
     // Reset menu variables so they get recreated fresh
     mainMenu = null;
+    areaMenu = null;
+    areaMenuUsingFloors = null;
 
     // Reset state variables
     ha_state_cache = null;
     ha_state_dict = null;
     ha_state_cache_updated = null;
     area_registry_cache = null;
+    floor_registry_cache = null;
     device_registry_cache = null;
     entity_registry_cache = null;
     label_registry_cache = null;
@@ -2501,85 +2515,233 @@ function showFavorites() {
 }
 
 let areaMenu = null;
+let areaMenuUsingFloors = null;  // Track if current menu was built with floors
+
 function showAreaMenu() {
-    if(!areaMenu) {
-        areaMenu = new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: 'Areas'
-            }]
-        });
+    // Check if we should use floors (HA 2024.4+ with at least one floor configured)
+    const useFloors = floor_registry_cache && Object.keys(floor_registry_cache).length > 0;
 
-        areaMenu.on('show', function(e){
-            // Create an array of area entries to sort
-            let areaEntries = [];
-            for(let area_id in area_registry_cache) {
-                let area_name = area_registry_cache[area_id];
-                let display_name = area_name ? area_name : 'Unassigned';
-                let areaObjects = getEntitiesForArea(area_name ? area_id : null);
-                let areaObjectCount = Object.keys(areaObjects).length;
+    // Recreate menu if floor mode changed
+    if (areaMenu && areaMenuUsingFloors !== useFloors) {
+        areaMenu = null;
+    }
 
-                areaEntries.push({
-                    area_id: area_id,
-                    display_name: display_name,
-                    areaObjectCount: areaObjectCount,
-                    isUnassigned: !area_name
-                });
-            }
+    if (!areaMenu) {
+        areaMenuUsingFloors = useFloors;
 
-            // Sort areas by display_name, with Unassigned at the bottom
-            areaEntries.sort(function(a, b) {
-                // If one is Unassigned, it goes at the bottom
-                if (a.isUnassigned && !b.isUnassigned) return 1;
-                if (!a.isUnassigned && b.isUnassigned) return -1;
-
-                // Otherwise, sort alphabetically by display_name
-                if (a.display_name < b.display_name) return -1;
-                if (a.display_name > b.display_name) return 1;
-                return 0;
+        if (useFloors) {
+            // Show floors list - user navigates: Areas -> Floor -> Areas in that floor
+            areaMenu = new UI.Menu({
+                status: false,
+                backgroundColor: 'black',
+                textColor: 'white',
+                highlightBackgroundColor: 'white',
+                highlightTextColor: 'black',
+                sections: [{
+                    title: 'Floors'
+                }]
             });
 
-            // Add items to menu
-            for(let i = 0; i < areaEntries.length; i++) {
-                let entry = areaEntries[i];
+            areaMenu.on('show', function(e) {
+                // Build floors list sorted by level
+                let sortedFloors = Object.entries(floor_registry_cache)
+                    .sort((a, b) => (a[1].level || 0) - (b[1].level || 0));
 
-                areaMenu.item(0, i, {
-                    title: entry.display_name,
-                    subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
-                    on_click: function(e) {
-                        // Get area_id, considering special case for Unassigned
-                        let targetAreaId = entry.isUnassigned ? null : entry.area_id;
-                        let areaObjects = getEntitiesForArea(targetAreaId);
-                        const entityKeys = Object.keys(areaObjects);
-
-                        // Use the specific setting for Areas
-                        const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
-
-                        if(shouldShowDomains) {
-                            showEntityDomainsFromList(entityKeys, entry.display_name);
-                        } else {
-                            showEntityList(entry.display_name, entityKeys, true, true, true);
-                        }
-                    }
+                let floorEntries = sortedFloors.map(([floor_id, floor]) => {
+                    let areasInFloor = getAreasForFloor(floor_id);
+                    let areaCount = Object.keys(areasInFloor).length;
+                    return {
+                        floor_id: floor_id,
+                        name: floor.name,
+                        areaCount: areaCount
+                    };
                 });
-            }
-        });
+
+                // Check if there are any unassigned areas (areas without a floor)
+                let unassignedAreas = getAreasForFloor(null);
+                let hasUnassignedAreas = Object.keys(unassignedAreas).length > 0;
+
+                // Add floor items to menu
+                let itemIndex = 0;
+                for (let i = 0; i < floorEntries.length; i++) {
+                    let entry = floorEntries[i];
+                    areaMenu.item(0, itemIndex++, {
+                        title: entry.name,
+                        subtitle: `${entry.areaCount} ${(entry.areaCount > 1 || entry.areaCount === 0) ? 'areas' : 'area'}`,
+                        on_click: function(e) {
+                            showAreasForFloor(entry.floor_id, entry.name);
+                        }
+                    });
+                }
+
+                // Add "Other Areas" for unassigned areas at the bottom
+                if (hasUnassignedAreas) {
+                    let unassignedCount = Object.keys(unassignedAreas).length;
+                    areaMenu.item(0, itemIndex++, {
+                        title: 'Other Areas',
+                        subtitle: `${unassignedCount} ${(unassignedCount > 1 || unassignedCount === 0) ? 'areas' : 'area'}`,
+                        on_click: function(e) {
+                            showAreasForFloor(null, 'Other Areas');
+                        }
+                    });
+                }
+            });
+        } else {
+            // No floors - use flat list (original behavior)
+            areaMenu = new UI.Menu({
+                status: false,
+                backgroundColor: 'black',
+                textColor: 'white',
+                highlightBackgroundColor: 'white',
+                highlightTextColor: 'black',
+                sections: [{
+                    title: 'Areas'
+                }]
+            });
+
+            areaMenu.on('show', function(e) {
+                // Create an array of area entries to sort
+                let areaEntries = [];
+                for (let area_id in area_registry_cache) {
+                    let area = area_registry_cache[area_id];
+                    let area_name = area.name;
+                    let display_name = area_name ? area_name : 'Unassigned';
+                    let areaObjects = getEntitiesForArea(area_name ? area_id : null);
+                    let areaObjectCount = Object.keys(areaObjects).length;
+
+                    areaEntries.push({
+                        area_id: area_id,
+                        display_name: display_name,
+                        areaObjectCount: areaObjectCount,
+                        isUnassigned: !area_name
+                    });
+                }
+
+                // Sort areas by display_name, with Unassigned at the bottom
+                areaEntries.sort(function(a, b) {
+                    if (a.isUnassigned && !b.isUnassigned) return 1;
+                    if (!a.isUnassigned && b.isUnassigned) return -1;
+                    if (a.display_name < b.display_name) return -1;
+                    if (a.display_name > b.display_name) return 1;
+                    return 0;
+                });
+
+                // Add items to menu
+                for (let i = 0; i < areaEntries.length; i++) {
+                    let entry = areaEntries[i];
+
+                    areaMenu.item(0, i, {
+                        title: entry.display_name,
+                        subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
+                        on_click: function(e) {
+                            let targetAreaId = entry.isUnassigned ? null : entry.area_id;
+                            let areaObjects = getEntitiesForArea(targetAreaId);
+                            const entityKeys = Object.keys(areaObjects);
+
+                            const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
+
+                            if (shouldShowDomains) {
+                                showEntityDomainsFromList(entityKeys, entry.display_name);
+                            } else {
+                                showEntityList(entry.display_name, entityKeys, true, true, true);
+                            }
+                        }
+                    });
+                }
+            });
+        }
 
         // menu item pressed, if it has an event fn call it
         areaMenu.on('select', function(e) {
-            if(typeof e.item.on_click == 'function') {
+            if (typeof e.item.on_click == 'function') {
                 e.item.on_click(e);
             } else {
-                log_message("No click function for main menu item " + e.title);
+                log_message("No click function for area menu item " + e.title);
             }
         });
     }
 
     areaMenu.show();
+}
+
+/**
+ * Show areas for a specific floor
+ * @param {string|null} floor_id - The floor_id to show areas for, or null for unassigned areas
+ * @param {string} floor_name - Display name for the floor (used as menu title)
+ */
+function showAreasForFloor(floor_id, floor_name) {
+    let floorAreasMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: floor_name
+        }]
+    });
+
+    floorAreasMenu.on('show', function(e) {
+        let areasInFloor = getAreasForFloor(floor_id);
+
+        // Build area entries for this floor
+        let areaEntries = [];
+        for (let area_id in areasInFloor) {
+            let area = areasInFloor[area_id];
+            let area_name = area.name;
+            let display_name = area_name ? area_name : 'Unassigned';
+            let areaObjects = getEntitiesForArea(area_name ? area_id : null);
+            let areaObjectCount = Object.keys(areaObjects).length;
+
+            areaEntries.push({
+                area_id: area_id,
+                display_name: display_name,
+                areaObjectCount: areaObjectCount,
+                isUnassigned: !area_name
+            });
+        }
+
+        // Sort areas alphabetically, with unnamed areas at the bottom
+        areaEntries.sort((a, b) => {
+            if (a.isUnassigned && !b.isUnassigned) return 1;
+            if (!a.isUnassigned && b.isUnassigned) return -1;
+            if (a.display_name < b.display_name) return -1;
+            if (a.display_name > b.display_name) return 1;
+            return 0;
+        });
+
+        // Add items to menu
+        for (let i = 0; i < areaEntries.length; i++) {
+            let entry = areaEntries[i];
+            floorAreasMenu.item(0, i, {
+                title: entry.display_name,
+                subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
+                on_click: function(e) {
+                    let targetAreaId = entry.isUnassigned ? null : entry.area_id;
+                    let areaObjects = getEntitiesForArea(targetAreaId);
+                    const entityKeys = Object.keys(areaObjects);
+
+                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
+
+                    if (shouldShowDomains) {
+                        showEntityDomainsFromList(entityKeys, entry.display_name);
+                    } else {
+                        showEntityList(entry.display_name, entityKeys, true, true, true);
+                    }
+                }
+            });
+        }
+    });
+
+    floorAreasMenu.on('select', function(e) {
+        if (typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        } else {
+            log_message("No click function for floor areas menu item " + e.title);
+        }
+    });
+
+    floorAreasMenu.show();
 }
 
 function showLabelMenu() {
@@ -7658,6 +7820,27 @@ function getEntitiesWithoutArea() {
 }
 
 /**
+ * Get list of areas that belong to a specific floor
+ * @param {string|null} floor_id - The floor_id to filter by, or null for unassigned areas
+ * @returns {Object} Object mapping area_id to area object
+ */
+function getAreasForFloor(floor_id) {
+    if (!area_registry_cache) {
+        return {};
+    }
+
+    const results = {};
+    for (const area_id in area_registry_cache) {
+        const area = area_registry_cache[area_id];
+        // Match areas with the specified floor_id (null matches unassigned areas)
+        if (area.floor_id === floor_id) {
+            results[area_id] = area;
+        }
+    }
+    return results;
+}
+
+/**
  * auth_ok event callback
  * we use this to fetch whatever data we need and display the first menu in the app
  * @param evt
@@ -7790,6 +7973,7 @@ function on_auth_ok(evt) {
     let pipelines_loaded = false;
     let states_loaded = false;
     let areas_loaded = false;
+    let floors_loaded = false;
     let devices_loaded = false;
     let entities_loaded = false;
     let labels_loaded = false;
@@ -7800,7 +7984,7 @@ function on_auth_ok(evt) {
 
     let done_fetching = function(){
         // Check that all the things have finished fetching
-        if(states_loaded && areas_loaded && devices_loaded &&
+        if(states_loaded && areas_loaded && floors_loaded && devices_loaded &&
            entities_loaded && labels_loaded && pipelines_loaded) {
 
             // Calculate and log elapsed time
@@ -7861,16 +8045,14 @@ function on_auth_ok(evt) {
 
         area_registry_cache = {};
         for(let result of data.result) {
-            area_registry_cache[result.area_id] = result.name;                            // {
-            //     "id":1,
-            //     "type":"result",
-            //     "success":true,
-            //     "result":[
-            //     {
-            //         "area_id":"9f55b85d123043cb8dfc01088302d2c7",
-            //         "name":"",
-            //         "picture":null
-            //     },
+            // Store full area object to access floor_id for grouping
+            // {
+            //     "area_id":"9f55b85d123043cb8dfc01088302d2c7",
+            //     "floor_id": null or "main_floor",
+            //     "name":"",
+            //     "picture":null
+            // }
+            area_registry_cache[result.area_id] = result;
         }
         log_message("Config areas loaded.");
         areas_loaded = true;
@@ -7885,6 +8067,34 @@ function on_auth_ok(evt) {
         } else {
             loadingCard.subtitle("Fetching areas failed");
         }
+    });
+
+    // Fetch floors (HA 2024.4+) - gracefully handle older versions
+    haws.getConfigFloors(function(data) {
+        // log_message('config/floor_registry/list response: ' + JSON.stringify(data));
+
+        floor_registry_cache = {};
+        for(let result of data.result) {
+            // Store floor with name and level for sorting
+            // {
+            //     "floor_id": "main_floor",
+            //     "name": "Main Floor",
+            //     "level": 1
+            // }
+            floor_registry_cache[result.floor_id] = {
+                name: result.name,
+                level: result.level
+            };
+        }
+        log_message("Config floors loaded (" + Object.keys(floor_registry_cache).length + " floors).");
+        floors_loaded = true;
+        done_fetching();
+    }, function(error) {
+        // Floors API not available (HA < 2024.4) or failed - continue without floors
+        log_message("Floors not available or failed: " + error);
+        floor_registry_cache = {};  // Empty = no floors, will use flat area list
+        floors_loaded = true;
+        done_fetching();
     });
 
     haws.getConfigDevices(function(data) {
