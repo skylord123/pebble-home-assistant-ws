@@ -2543,11 +2543,8 @@ function showAreaMenu() {
             });
 
             areaMenu.on('show', function(e) {
-                // Build floors list sorted by level
-                let sortedFloors = Object.entries(floor_registry_cache)
-                    .sort((a, b) => (a[1].level || 0) - (b[1].level || 0));
-
-                let floorEntries = sortedFloors.map(([floor_id, floor]) => {
+                // Build floors list - preserve registry order (HA 2025.12+ supports manual ordering)
+                let floorEntries = Object.entries(floor_registry_cache).map(([floor_id, floor]) => {
                     let areasInFloor = getAreasForFloor(floor_id);
                     let areaCount = Object.keys(areasInFloor).length;
                     return {
@@ -2600,33 +2597,26 @@ function showAreaMenu() {
             });
 
             areaMenu.on('show', function(e) {
-                // Create an array of area entries to sort
+                // Create an array of area entries - preserve registry order (HA 2025.12+ supports manual ordering)
                 let areaEntries = [];
                 for (let area_id in area_registry_cache) {
                     let area = area_registry_cache[area_id];
                     let area_name = area.name;
-                    let display_name = area_name ? area_name : 'Unassigned';
-                    let areaObjects = getEntitiesForArea(area_name ? area_id : null);
+
+                    // Skip areas without a name
+                    if (!area_name) continue;
+
+                    let areaObjects = getEntitiesForArea(area_id);
                     let areaObjectCount = Object.keys(areaObjects).length;
 
                     areaEntries.push({
                         area_id: area_id,
-                        display_name: display_name,
-                        areaObjectCount: areaObjectCount,
-                        isUnassigned: !area_name
+                        display_name: area_name,
+                        areaObjectCount: areaObjectCount
                     });
                 }
 
-                // Sort areas by display_name, with Unassigned at the bottom
-                areaEntries.sort(function(a, b) {
-                    if (a.isUnassigned && !b.isUnassigned) return 1;
-                    if (!a.isUnassigned && b.isUnassigned) return -1;
-                    if (a.display_name < b.display_name) return -1;
-                    if (a.display_name > b.display_name) return 1;
-                    return 0;
-                });
-
-                // Add items to menu
+                // Add items to menu - preserve registry order (no sorting)
                 for (let i = 0; i < areaEntries.length; i++) {
                     let entry = areaEntries[i];
 
@@ -2634,8 +2624,7 @@ function showAreaMenu() {
                         title: entry.display_name,
                         subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
                         on_click: function(e) {
-                            let targetAreaId = entry.isUnassigned ? null : entry.area_id;
-                            let areaObjects = getEntitiesForArea(targetAreaId);
+                            let areaObjects = getEntitiesForArea(entry.area_id);
                             const entityKeys = Object.keys(areaObjects);
 
                             const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
@@ -2684,41 +2673,33 @@ function showAreasForFloor(floor_id, floor_name) {
     floorAreasMenu.on('show', function(e) {
         let areasInFloor = getAreasForFloor(floor_id);
 
-        // Build area entries for this floor
+        // Build area entries for this floor - preserve registry order (HA 2025.12+ supports manual ordering)
         let areaEntries = [];
         for (let area_id in areasInFloor) {
             let area = areasInFloor[area_id];
             let area_name = area.name;
-            let display_name = area_name ? area_name : 'Unassigned';
-            let areaObjects = getEntitiesForArea(area_name ? area_id : null);
+
+            // Skip areas without a name
+            if (!area_name) continue;
+
+            let areaObjects = getEntitiesForArea(area_id);
             let areaObjectCount = Object.keys(areaObjects).length;
 
             areaEntries.push({
                 area_id: area_id,
-                display_name: display_name,
-                areaObjectCount: areaObjectCount,
-                isUnassigned: !area_name
+                display_name: area_name,
+                areaObjectCount: areaObjectCount
             });
         }
 
-        // Sort areas alphabetically, with unnamed areas at the bottom
-        areaEntries.sort((a, b) => {
-            if (a.isUnassigned && !b.isUnassigned) return 1;
-            if (!a.isUnassigned && b.isUnassigned) return -1;
-            if (a.display_name < b.display_name) return -1;
-            if (a.display_name > b.display_name) return 1;
-            return 0;
-        });
-
-        // Add items to menu
+        // Add items to menu - preserve registry order (no sorting)
         for (let i = 0; i < areaEntries.length; i++) {
             let entry = areaEntries[i];
             floorAreasMenu.item(0, i, {
                 title: entry.display_name,
                 subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
                 on_click: function(e) {
-                    let targetAreaId = entry.isUnassigned ? null : entry.area_id;
-                    let areaObjects = getEntitiesForArea(targetAreaId);
+                    let areaObjects = getEntitiesForArea(entry.area_id);
                     const entityKeys = Object.keys(areaObjects);
 
                     const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
@@ -8075,7 +8056,7 @@ function on_auth_ok(evt) {
 
         floor_registry_cache = {};
         for(let result of data.result) {
-            // Store floor with name and level for sorting
+            // Store floor data - order is preserved from API (HA 2025.12+ supports manual ordering)
             // {
             //     "floor_id": "main_floor",
             //     "name": "Main Floor",
