@@ -609,6 +609,7 @@ const DEFAULT_MAIN_MENU_ORDER = [
     'areas',
     'labels',
     'todo_lists',
+    'people',
     'all_entities',
     'settings'
 ];
@@ -676,6 +677,18 @@ function getMainMenuItem(itemId) {
                 title: "To-Do Lists",
                 on_click: function(e) {
                     showToDoLists();
+                }
+            };
+        case 'people':
+            return {
+                id: 'people',
+                title: "People",
+                on_click: function(e) {
+                    // Get all person entities
+                    const personEntities = Object.keys(ha_state_dict).filter(function(entity_id) {
+                        return entity_id.startsWith('person.');
+                    });
+                    showEntityList("People", personEntities, true, true, true);
                 }
             };
         case 'all_entities':
@@ -1654,6 +1667,12 @@ function showQuickLaunchActionMenu(onSelect) {
             title: "To-Do Lists",
             subtitle: quick_launch_behavior === 'todo_lists' ? "Current" : "",
             value: 'todo_lists'
+        });
+
+        actionMenu.item(0, itemIndex++, {
+            title: "People",
+            subtitle: quick_launch_behavior === 'people' ? "Current" : "",
+            value: 'people'
         });
     }
 
@@ -7909,6 +7928,12 @@ function on_auth_ok(evt) {
                     break;
                 case 'todo_lists':
                     showToDoLists();
+                    break;
+                case 'people':
+                    const personEntities = Object.keys(ha_state_dict).filter(function(entity_id) {
+                        return entity_id.startsWith('person.');
+                    });
+                    showEntityList("People", personEntities, true, true, true);
                     break;
                 case 'main_menu':
                 default:
