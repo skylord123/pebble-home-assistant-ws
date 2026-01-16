@@ -40,6 +40,7 @@ struct SimplyMenu {
   SimplyWindow window;
   SimplyMenuLayer menu_layer;
   AppTimer *spinner_timer;
+  AppTimer *reload_timer;  // Timer for debounced reloads
 #if !defined(PBL_PLATFORM_APLITE)
   AppTimer *scroll_timer;
   MenuIndex scroll_index;

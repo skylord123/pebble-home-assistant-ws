@@ -4,8 +4,8 @@
  * Created by Skylord123 (https://skylar.tech)
  */
 
-const appVersion = '1.1', // displays in loading screen
-    confVersion = '1.0', // version of config page
+const appVersion = '1.2', // displays in loading screen
+    confVersion = '1.2', // version of config page
     configPageUrl = 'https://skylord123.github.io/pebble-home-assistant-ws/config/v' + confVersion + '.html',
     debugMode = true,
     debugHAWS = false,
@@ -17,6 +17,7 @@ const appVersion = '1.1', // displays in loading screen
     Voice = require('ui/voice'),
     HAWS = require('vendor/haws'),
     FavoriteEntityStore = require('vendor/FavoriteEntityStore'),
+    PinnedEntityStore = require('vendor/PinnedEntityStore'),
     Feature = require('platform/feature'),
     Vector = require('vector2'),
     sortJSON = require('vendor/sortjson'),
@@ -121,10 +122,13 @@ let ha_url = null,
     ignore_domains = null,
     ha_connected = false,
     quick_launch_behavior = null,
+    quick_launch_favorite_entity = null,
     quick_launch_exit_on_back = null,
     unavailable_entity_handling = null,
     unknown_entity_handling = null,
-    automation_longpress_action = null;
+    automation_longpress_action = null,
+    main_menu_custom_order_enabled = null,
+    main_menu_order = null;
 
 // Enable/disable coalesce_messages feature (set to true to enable, false to disable)
 const coalesce_messages_enabled = true;
@@ -148,6 +152,7 @@ function load_settings() {
     voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false; // Default to true
     voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
     quick_launch_behavior = Settings.option('quick_launch_behavior') || 'main_menu';
+    quick_launch_favorite_entity = Settings.option('quick_launch_favorite_entity') || null;
     quick_launch_exit_on_back = Settings.option('quick_launch_exit_on_back') === true;
 
     // Domain menu settings
@@ -209,6 +214,22 @@ function load_settings() {
     log_message('Entity handling - unavailable: ' + unavailable_entity_handling + ', unknown: ' + unknown_entity_handling);
     log_message('Automation long-press action: ' + automation_longpress_action);
 
+    // Main menu ordering settings
+    main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;
+    main_menu_order = Settings.option('main_menu_order');
+    if (!Array.isArray(main_menu_order)) {
+        main_menu_order = null;
+    }
+    log_message('Main menu custom order enabled: ' + main_menu_custom_order_enabled);
+
+    // Reload pinned entities from settings (in case they were changed via config page)
+    pinnedEntityStore.load();
+    log_message('Pinned entities reloaded: ' + JSON.stringify(pinnedEntityStore.all()));
+
+    // Reload favorite entities from settings (in case they were changed via config page)
+    favoriteEntityStore.load();
+    log_message('Favorite entities reloaded: ' + JSON.stringify(favoriteEntityStore.all()));
+
     // Update Voice Pipeline handling
     selected_pipeline = Settings.option('selected_pipeline');
 
@@ -225,9 +246,11 @@ let haws = null,
     baseurl = null,
     baseheaders = null,
     area_registry_cache = null,
+    floor_registry_cache = null,
     device_registry_cache = null,
     entity_registry_cache = null,
     favoriteEntityStore = new FavoriteEntityStore(),
+    pinnedEntityStore = new PinnedEntityStore(),
     label_registry_cache = null;
 
 let device_status,
@@ -243,6 +266,7 @@ log_message('ha_url: ' + baseurl);
 const CACHE_KEYS = {
     STATES: 'ha_startup_cache_states',
     AREAS: 'ha_startup_cache_areas',
+    FLOORS: 'ha_startup_cache_floors',
     DEVICES: 'ha_startup_cache_devices',
     ENTITIES: 'ha_startup_cache_entities',
     LABELS: 'ha_startup_cache_labels',
@@ -262,6 +286,9 @@ function saveStartupCache() {
         }
         if (area_registry_cache) {
             localStorage.setItem(CACHE_KEYS.AREAS, JSON.stringify(area_registry_cache));
+        }
+        if (floor_registry_cache) {
+            localStorage.setItem(CACHE_KEYS.FLOORS, JSON.stringify(floor_registry_cache));
         }
         if (device_registry_cache) {
             localStorage.setItem(CACHE_KEYS.DEVICES, JSON.stringify(device_registry_cache));
@@ -304,6 +331,7 @@ function loadStartupCache() {
         // Load each piece of data
         const statesStr = localStorage.getItem(CACHE_KEYS.STATES);
         const areasStr = localStorage.getItem(CACHE_KEYS.AREAS);
+        const floorsStr = localStorage.getItem(CACHE_KEYS.FLOORS);
         const devicesStr = localStorage.getItem(CACHE_KEYS.DEVICES);
         const entitiesStr = localStorage.getItem(CACHE_KEYS.ENTITIES);
         const labelsStr = localStorage.getItem(CACHE_KEYS.LABELS);
@@ -325,6 +353,10 @@ function loadStartupCache() {
 
         if (areasStr) {
             area_registry_cache = JSON.parse(areasStr);
+        }
+
+        if (floorsStr) {
+            floor_registry_cache = JSON.parse(floorsStr);
         }
 
         if (devicesStr) {
@@ -375,6 +407,7 @@ function clearStartupCache() {
         log_message('Clearing startup cache...');
         localStorage.removeItem(CACHE_KEYS.STATES);
         localStorage.removeItem(CACHE_KEYS.AREAS);
+        localStorage.removeItem(CACHE_KEYS.FLOORS);
         localStorage.removeItem(CACHE_KEYS.DEVICES);
         localStorage.removeItem(CACHE_KEYS.ENTITIES);
         localStorage.removeItem(CACHE_KEYS.LABELS);
@@ -421,12 +454,15 @@ function restartApp() {
 
     // Reset menu variables so they get recreated fresh
     mainMenu = null;
+    areaMenu = null;
+    areaMenuUsingFloors = null;
 
     // Reset state variables
     ha_state_cache = null;
     ha_state_dict = null;
     ha_state_cache_updated = null;
     area_registry_cache = null;
+    floor_registry_cache = null;
     device_registry_cache = null;
     entity_registry_cache = null;
     label_registry_cache = null;
@@ -446,13 +482,316 @@ function restartApp() {
     }, 500); // Small delay to ensure cleanup is complete
 }
 
+/**
+ * Toggle favorite status for an entity
+ * @param {Object} entity - The entity object with entity_id and attributes
+ * @returns {boolean} true if entity was added to favorites, false if removed
+ */
+function toggleFavorite(entity) {
+    if (!entity || !entity.entity_id) {
+        log_message('toggleFavorite: Invalid entity provided');
+        return false;
+    }
+
+    const entityId = entity.entity_id;
+    const wasAdded = !favoriteEntityStore.has(entityId);
+
+    if (wasAdded) {
+        log_message(`Adding ${entityId} to favorites`);
+        // Include friendly name when adding to favorites
+        let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
+        favoriteEntityStore.add(entityId, friendlyName);
+    } else {
+        log_message(`Removing ${entityId} from favorites`);
+        favoriteEntityStore.remove(entityId);
+
+        // If this entity was configured as the quick launch favorite entity, reset to main_menu
+        if (quick_launch_favorite_entity === entityId) {
+            log_message(`Removed entity ${entityId} was configured as quick launch target, resetting to main_menu`);
+            quick_launch_behavior = 'main_menu';
+            quick_launch_favorite_entity = null;
+            Settings.option('quick_launch_behavior', quick_launch_behavior);
+            Settings.option('quick_launch_favorite_entity', quick_launch_favorite_entity);
+        }
+    }
+
+    return wasAdded;
+}
+
+/**
+ * Toggle pinned status for an entity (pin/unpin from Main Menu)
+ * @param {Object} entity - The entity object with entity_id and attributes
+ * @returns {boolean} true if entity was pinned, false if unpinned
+ */
+function togglePinned(entity) {
+    if (!entity || !entity.entity_id) {
+        log_message('togglePinned: Invalid entity provided');
+        return false;
+    }
+
+    const entityId = entity.entity_id;
+    const pinnedId = 'pinned:' + entityId;
+    const wasPinned = !pinnedEntityStore.has(entityId);
+
+    if (wasPinned) {
+        log_message(`Pinning ${entityId} to Main Menu`);
+        // Include friendly name when pinning
+        let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
+        pinnedEntityStore.add(entityId, friendlyName);
+
+        // Also add to main_menu_order if custom ordering is enabled
+        if (main_menu_custom_order_enabled && main_menu_order && Array.isArray(main_menu_order)) {
+            // First check if it's already in the order (prevent duplicates)
+            if (main_menu_order.indexOf(pinnedId) === -1) {
+                // Add at the very top of the list
+                main_menu_order.unshift(pinnedId);
+                // Save updated order to settings
+                Settings.option('main_menu_order', main_menu_order);
+                log_message(`Added ${pinnedId} to top of main_menu_order`);
+            }
+        }
+    } else {
+        log_message(`Unpinning ${entityId} from Main Menu`);
+        pinnedEntityStore.remove(entityId);
+
+        // Also remove from main_menu_order if custom ordering is enabled
+        if (main_menu_custom_order_enabled && main_menu_order && Array.isArray(main_menu_order)) {
+            let index = main_menu_order.indexOf(pinnedId);
+            if (index > -1) {
+                main_menu_order.splice(index, 1);
+                // Save updated order to settings
+                Settings.option('main_menu_order', main_menu_order);
+                log_message(`Removed ${pinnedId} from main_menu_order`);
+            }
+        }
+    }
+
+    return wasPinned;
+}
+
+/**
+ * Show the appropriate entity menu based on the entity's domain
+ * @param {string} entity_id - The entity ID to show
+ */
+function showEntity(entity_id) {
+    if (!entity_id) {
+        log_message('showEntity: No entity_id provided');
+        return;
+    }
+
+    let [entity_domain] = entity_id.split('.');
+    switch(entity_domain) {
+        case 'media_player':
+            showMediaPlayerEntity(entity_id);
+            break;
+        case 'light':
+            showLightEntity(entity_id);
+            break;
+        case 'climate':
+            showClimateEntity(entity_id);
+            break;
+        default:
+            showEntityMenu(entity_id);
+            break;
+    }
+}
+
 // Initial screen
 let loadingCard = new UI.Card({
     title: 'Home Assistant WS',
     status: false
 });
 
+// Default order for main menu items (used when custom order is disabled)
+const DEFAULT_MAIN_MENU_ORDER = [
+    'assistant',
+    'favorites',
+    'areas',
+    'labels',
+    'todo_lists',
+    'people',
+    'all_entities',
+    'settings'
+];
+
+/**
+ * Get the menu item definition for a given item ID
+ * @param {string} itemId - The item identifier
+ * @returns {Object|null} Menu item definition or null if not available
+ */
+function getMainMenuItem(itemId) {
+    // Handle pinned entities (format: "pinned:entity_id")
+    if (itemId.startsWith('pinned:')) {
+        const entityId = itemId.substring(7);
+        const entity = ha_state_dict ? ha_state_dict[entityId] : null;
+        if (!entity) {
+            // Entity not found in state dict, skip it
+            return null;
+        }
+        // Use utility functions for consistent entity display
+        let menuItem = getEntityMenuItem(entity);
+        menuItem.id = itemId;
+        return menuItem;
+    }
+
+    // Built-in menu items
+    switch (itemId) {
+        case 'assistant':
+            if (!voice_enabled) return null;
+            return {
+                id: 'assistant',
+                title: "Assistant",
+                on_click: function(e) {
+                    showAssistMenu();
+                }
+            };
+        case 'favorites':
+            let favoriteEntities = favoriteEntityStore.all();
+            if (!favoriteEntities || !favoriteEntities.length) return null;
+            return {
+                id: 'favorites',
+                title: "Favorites",
+                on_click: function(e) {
+                    showFavorites();
+                }
+            };
+        case 'areas':
+            return {
+                id: 'areas',
+                title: "Areas",
+                on_click: function(e) {
+                    showAreaMenu();
+                }
+            };
+        case 'labels':
+            return {
+                id: 'labels',
+                title: "Labels",
+                on_click: function(e) {
+                    showLabelMenu();
+                }
+            };
+        case 'todo_lists':
+            return {
+                id: 'todo_lists',
+                title: "To-Do Lists",
+                on_click: function(e) {
+                    showToDoLists();
+                }
+            };
+        case 'people':
+            return {
+                id: 'people',
+                title: "People",
+                on_click: function(e) {
+                    // Get all person entities
+                    const personEntities = Object.keys(ha_state_dict).filter(function(entity_id) {
+                        return entity_id.startsWith('person.');
+                    });
+                    showEntityList("People", personEntities, true, true, true);
+                }
+            };
+        case 'all_entities':
+            return {
+                id: 'all_entities',
+                title: "All Entities",
+                on_click: function(e) {
+                    const entityKeys = Object.keys(ha_state_dict);
+                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_all_entities);
+                    if (shouldShowDomains) {
+                        showEntityDomainsFromList(entityKeys, "All Entities");
+                    } else {
+                        showEntityList("All Entities", false, true, true, true);
+                    }
+                }
+            };
+        case 'settings':
+            return {
+                id: 'settings',
+                title: "Settings",
+                on_click: function(e) {
+                    showSettingsMenu();
+                }
+            };
+        default:
+            return null;
+    }
+}
+
+/**
+ * Get the ordered list of main menu item IDs
+ * @returns {string[]} Array of item IDs in display order
+ */
+function getMainMenuOrder() {
+    let order = [];
+    let pinnedEntities = pinnedEntityStore.all();
+
+    if (main_menu_custom_order_enabled && main_menu_order && Array.isArray(main_menu_order)) {
+        // Use custom order, but filter out unpinned entities
+        for (let itemId of main_menu_order) {
+            if (itemId.startsWith('pinned:')) {
+                // Only include if entity is still pinned
+                let entityId = itemId.substring(7);
+                if (pinnedEntities.indexOf(entityId) !== -1) {
+                    order.push(itemId);
+                }
+            } else {
+                order.push(itemId);
+            }
+        }
+
+        // Check for new built-in items that aren't in the custom order
+        for (let defaultItem of DEFAULT_MAIN_MENU_ORDER) {
+            if (order.indexOf(defaultItem) === -1) {
+                // New item not in custom order, append before settings
+                let settingsIndex = order.indexOf('settings');
+                if (settingsIndex > -1) {
+                    order.splice(settingsIndex, 0, defaultItem);
+                } else {
+                    order.push(defaultItem);
+                }
+            }
+        }
+
+        // Add any pinned entities that aren't in the order (at the top)
+        for (let entityId of pinnedEntities) {
+            let pinnedId = 'pinned:' + entityId;
+            if (order.indexOf(pinnedId) === -1) {
+                // New pinned entity, add at the very top
+                order.unshift(pinnedId);
+            }
+        }
+    } else {
+        // Use default order with pinned entities at the TOP (after assistant)
+        order = [];
+
+        // Add assistant first if it's in the default order
+        if (DEFAULT_MAIN_MENU_ORDER.indexOf('assistant') !== -1) {
+            order.push('assistant');
+        }
+
+        // Add pinned entities right after assistant (at the top)
+        for (let entityId of pinnedEntities) {
+            order.push('pinned:' + entityId);
+        }
+
+        // Add remaining default items (except assistant which is already added)
+        for (let defaultItem of DEFAULT_MAIN_MENU_ORDER) {
+            if (defaultItem !== 'assistant') {
+                order.push(defaultItem);
+            }
+        }
+    }
+
+    return order;
+}
+
 let mainMenu = null;
+let mainMenuSubscriptionId = null;
+let mainMenuPinnedEntityIndexes = {}; // Maps entity_id to menu index for pinned entities
+let mainMenuRelativeTimeUpdater = null; // RelativeTimeUpdater for pinned entities
+let mainMenuEntityStates = {}; // Local state cache for pinned entities
+
 function showMainMenu() {
     if(!mainMenu) {
         mainMenu = new UI.Menu({
@@ -470,76 +809,138 @@ function showMainMenu() {
 
         mainMenu.on('show', function(){
             mainMenu.items(0, []);
+            mainMenuPinnedEntityIndexes = {};
+            mainMenuEntityStates = {};
 
-            // add items to menu
+            // Unsubscribe from previous subscription if exists
+            if (mainMenuSubscriptionId) {
+                haws.unsubscribe(mainMenuSubscriptionId);
+                mainMenuSubscriptionId = null;
+            }
+
+            // Clear and recreate the RelativeTimeUpdater
+            if (mainMenuRelativeTimeUpdater) {
+                mainMenuRelativeTimeUpdater.destroy();
+            }
+            mainMenuRelativeTimeUpdater = new RelativeTimeUpdater(function(entity_id, lastChanged) {
+                // This callback is called when an entity's relative time display needs updating
+                updateMainMenuEntitySubtitle(entity_id);
+            });
+
+            // Helper to update just the subtitle of a pinned entity (for relative time updates)
+            function updateMainMenuEntitySubtitle(entity_id) {
+                if (mainMenuPinnedEntityIndexes[entity_id] === undefined) {
+                    return; // Entity not currently rendered
+                }
+
+                let entity = mainMenuEntityStates[entity_id];
+                if (!entity) {
+                    return;
+                }
+
+                updateEntityMenuItem(mainMenu, 0, mainMenuPinnedEntityIndexes[entity_id], entity);
+            }
+
+            // Get ordered list of menu items
+            let menuOrder = getMainMenuOrder();
             let i = 0;
-            if(voice_enabled) {
-                mainMenu.item(0, i++, {
-                    title: "Assistant",
-                    // subtitle: thisDevice.attributes[arr[i]],
-                    on_click: function(e) {
-                        showAssistMenu();
+            let pinnedEntityIds = [];
+
+            for (let itemId of menuOrder) {
+                let menuItem = getMainMenuItem(itemId);
+                if (menuItem) {
+                    mainMenu.item(0, i, menuItem);
+
+                    // Track pinned entity indexes for real-time updates
+                    if (itemId.startsWith('pinned:')) {
+                        let entityId = itemId.substring(7);
+                        mainMenuPinnedEntityIndexes[entityId] = i;
+                        pinnedEntityIds.push(entityId);
                     }
+                    i++;
+                }
+            }
+
+            // Subscribe to state changes for pinned entities
+            if (pinnedEntityIds.length > 0) {
+                log_message(`Main menu: subscribing to ${pinnedEntityIds.length} pinned entities`);
+
+                mainMenuSubscriptionId = haws.subscribeEntities(pinnedEntityIds, function(data) {
+                    let ev = data.event || {};
+
+                    // Handle added entities (initial snapshot) - update display
+                    if (ev.a) {
+                        for (let entity_id in ev.a) {
+                            if (mainMenuPinnedEntityIndexes[entity_id] !== undefined) {
+                                let entityData = {
+                                    entity_id: entity_id,
+                                    state: ev.a[entity_id].s,
+                                    attributes: ev.a[entity_id].a || {},
+                                    last_changed: ev.a[entity_id].lc ? new Date(ev.a[entity_id].lc * 1000).toISOString() : new Date().toISOString()
+                                };
+                                ha_state_dict[entity_id] = entityData;
+                                mainMenuEntityStates[entity_id] = entityData;
+                                updateEntityMenuItem(mainMenu, 0, mainMenuPinnedEntityIndexes[entity_id], entityData);
+
+                                // Register entity for relative time updates
+                                if (mainMenuRelativeTimeUpdater) {
+                                    mainMenuRelativeTimeUpdater.register(entity_id, entityData.last_changed);
+                                }
+                            }
+                        }
+                    }
+
+                    // Handle changed entities (updates)
+                    if (ev.c) {
+                        for (let entity_id in ev.c) {
+                            if (mainMenuPinnedEntityIndexes[entity_id] !== undefined) {
+                                let patch = ev.c[entity_id];
+                                let plus = patch["+"] || {};
+
+                                // Get existing state or create new one
+                                let cur = mainMenuEntityStates[entity_id] || ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
+
+                                // Merge the changes
+                                let entityData = {
+                                    entity_id: entity_id,
+                                    state: plus.s !== undefined ? plus.s : cur.state,
+                                    attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                                    last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
+                                };
+                                ha_state_dict[entity_id] = entityData;
+                                mainMenuEntityStates[entity_id] = entityData;
+
+                                log_message(`Main menu: entity update for ${entity_id}: ${entityData.state}`);
+                                updateEntityMenuItem(mainMenu, 0, mainMenuPinnedEntityIndexes[entity_id], entityData);
+
+                                // Update the relative time timer with the new last_changed timestamp
+                                if (mainMenuRelativeTimeUpdater) {
+                                    mainMenuRelativeTimeUpdater.update(entity_id, entityData.last_changed);
+                                }
+                            }
+                        }
+                    }
+                }, function(error) {
+                    log_message(`Main menu subscribeEntities ERROR: ` + JSON.stringify(error));
                 });
             }
-            let favoriteEntities = favoriteEntityStore.all();
-            if(favoriteEntities && favoriteEntities.length) {
-                mainMenu.item(0, i++, {
-                    title: "Favorites",
-                    // subtitle: thisDevice.attributes[arr[i]],
-                    on_click: function(e) {
-                        showFavorites();
-                    }
-                });
-            }
-            mainMenu.item(0, i++, {
-                title: "Areas",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    showAreaMenu();
-                }
-            });
-            mainMenu.item(0, i++, {
-                title: "Labels",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    showLabelMenu();
-                }
-            });
-            mainMenu.item(0, i++, {
-                title: "To-Do Lists",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    showToDoLists();
-                }
-            });
-            mainMenu.item(0, i++, {
-                title: "All Entities",
-                // subtitle: thisDevice.attributes[arr[i]],
-                on_click: function(e) {
-                    const entityKeys = Object.keys(ha_state_dict);
-                    // Use the specific setting for All Entities
-                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_all_entities);
-
-                    if(shouldShowDomains) {
-                        showEntityDomainsFromList(entityKeys, "All Entities");
-                    } else {
-                        showEntityList("All Entities", false, true, true, true);
-                    }
-                }
-            });
-
-            // Add Settings menu item at the bottom
-            mainMenu.item(0, i++, {
-                title: "Settings",
-                on_click: function(e) {
-                    showSettingsMenu();
-                }
-            });
 
             // Restore the previously selected index after items are populated
             if (menuSelections.mainMenu > 0 && menuSelections.mainMenu < mainMenu.items(0).length) {
                 mainMenu.selection(0, menuSelections.mainMenu);
+            }
+        });
+
+        mainMenu.on('hide', function() {
+            // Unsubscribe from entity updates when menu is hidden
+            if (mainMenuSubscriptionId) {
+                haws.unsubscribe(mainMenuSubscriptionId);
+                mainMenuSubscriptionId = null;
+                log_message('Main menu: unsubscribed from entity updates');
+            }
+            // Pause relative time updates when menu is hidden
+            if (mainMenuRelativeTimeUpdater) {
+                mainMenuRelativeTimeUpdater.pause();
             }
         });
 
@@ -553,6 +954,13 @@ function showMainMenu() {
                 e.item.on_click(e);
             } else {
                 log_message("No click function for main menu item " + e.title);
+            }
+        });
+
+        // Long-press handler for pinned entities - uses global handleEntityLongPress function
+        mainMenu.on('longSelect', function(e) {
+            if (e.item && e.item.entity_id) {
+                handleEntityLongPress(e.item.entity_id);
             }
         });
     }
@@ -1119,6 +1527,16 @@ function showQuickLaunchSettings() {
             case 'main_menu': return 'Main Menu';
             case 'assistant': return 'Assistant';
             case 'favorites': return 'Favorites';
+            case 'favorite_entity':
+                // Get the friendly name of the configured favorite entity
+                if (quick_launch_favorite_entity) {
+                    let favorites = favoriteEntityStore.allWithNames();
+                    let fav = favorites.find(f => f.entity_id === quick_launch_favorite_entity);
+                    if (fav) {
+                        return fav.name || quick_launch_favorite_entity;
+                    }
+                }
+                return 'Favorite Entity';
             case 'areas': return 'Areas';
             case 'labels': return 'Labels';
             case 'todo_lists': return 'To-Do Lists';
@@ -1222,6 +1640,17 @@ function showQuickLaunchActionMenu(onSelect) {
             value: 'favorites'
         });
 
+        // Only show Favorite Entity option if there are favorites
+        let favoriteEntities = favoriteEntityStore.all();
+        if (favoriteEntities && favoriteEntities.length > 0) {
+            actionMenu.item(0, itemIndex++, {
+                title: "Favorite Entity",
+                subtitle: quick_launch_behavior === 'favorite_entity' ? "Current" : "",
+                value: 'favorite_entity',
+                action: 'select_favorite_entity'
+            });
+        }
+
         actionMenu.item(0, itemIndex++, {
             title: "Areas",
             subtitle: quick_launch_behavior === 'areas' ? "Current" : "",
@@ -1239,22 +1668,94 @@ function showQuickLaunchActionMenu(onSelect) {
             subtitle: quick_launch_behavior === 'todo_lists' ? "Current" : "",
             value: 'todo_lists'
         });
+
+        actionMenu.item(0, itemIndex++, {
+            title: "People",
+            subtitle: quick_launch_behavior === 'people' ? "Current" : "",
+            value: 'people'
+        });
     }
 
     actionMenu.on('show', updateMenuItems);
 
     actionMenu.on('select', function(e) {
         if (e.item.value) {
-            quick_launch_behavior = e.item.value;
-            Settings.option('quick_launch_behavior', quick_launch_behavior);
-            actionMenu.hide();
-            if (typeof onSelect === 'function') {
-                onSelect();
+            if (e.item.action === 'select_favorite_entity') {
+                // Show submenu to select which favorite entity
+                showFavoriteEntitySelectionMenu(function(selectedEntityId) {
+                    if (selectedEntityId) {
+                        quick_launch_behavior = 'favorite_entity';
+                        quick_launch_favorite_entity = selectedEntityId;
+                        Settings.option('quick_launch_behavior', quick_launch_behavior);
+                        Settings.option('quick_launch_favorite_entity', quick_launch_favorite_entity);
+                        actionMenu.hide();
+                        if (typeof onSelect === 'function') {
+                            onSelect();
+                        }
+                    }
+                });
+            } else {
+                quick_launch_behavior = e.item.value;
+                // Clear favorite entity if switching to a different behavior
+                if (e.item.value !== 'favorite_entity') {
+                    quick_launch_favorite_entity = null;
+                    Settings.option('quick_launch_favorite_entity', null);
+                }
+                Settings.option('quick_launch_behavior', quick_launch_behavior);
+                actionMenu.hide();
+                if (typeof onSelect === 'function') {
+                    onSelect();
+                }
             }
         }
     });
 
     actionMenu.show();
+}
+
+function showFavoriteEntitySelectionMenu(onSelect) {
+    // Create a submenu for selecting which favorite entity to quick launch to
+    let favoriteMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Select Favorite'
+        }]
+    });
+
+    function updateMenuItems() {
+        favoriteMenu.items(0, []);
+
+        let favorites = favoriteEntityStore.allWithNames();
+        let itemIndex = 0;
+
+        for (let fav of favorites) {
+            let displayName = fav.name || fav.entity_id;
+            let isCurrent = quick_launch_favorite_entity === fav.entity_id;
+
+            favoriteMenu.item(0, itemIndex++, {
+                title: displayName,
+                subtitle: isCurrent ? "Current" : "",
+                entity_id: fav.entity_id
+            });
+        }
+    }
+
+    favoriteMenu.on('show', updateMenuItems);
+
+    favoriteMenu.on('select', function(e) {
+        if (e.item.entity_id) {
+            favoriteMenu.hide();
+            if (typeof onSelect === 'function') {
+                onSelect(e.item.entity_id);
+            }
+        }
+    });
+
+    favoriteMenu.show();
 }
 
 function showVoicePipelineMenu() {
@@ -2033,85 +2534,214 @@ function showFavorites() {
 }
 
 let areaMenu = null;
+let areaMenuUsingFloors = null;  // Track if current menu was built with floors
+
 function showAreaMenu() {
-    if(!areaMenu) {
-        areaMenu = new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: 'Areas'
-            }]
-        });
+    // Check if we should use floors (HA 2024.4+ with at least one floor configured)
+    const useFloors = floor_registry_cache && Object.keys(floor_registry_cache).length > 0;
 
-        areaMenu.on('show', function(e){
-            // Create an array of area entries to sort
-            let areaEntries = [];
-            for(let area_id in area_registry_cache) {
-                let area_name = area_registry_cache[area_id];
-                let display_name = area_name ? area_name : 'Unassigned';
-                let areaObjects = getEntitiesForArea(area_name ? area_id : null);
-                let areaObjectCount = Object.keys(areaObjects).length;
+    // Recreate menu if floor mode changed
+    if (areaMenu && areaMenuUsingFloors !== useFloors) {
+        areaMenu = null;
+    }
 
-                areaEntries.push({
-                    area_id: area_id,
-                    display_name: display_name,
-                    areaObjectCount: areaObjectCount,
-                    isUnassigned: !area_name
-                });
-            }
+    if (!areaMenu) {
+        areaMenuUsingFloors = useFloors;
 
-            // Sort areas by display_name, with Unassigned at the bottom
-            areaEntries.sort(function(a, b) {
-                // If one is Unassigned, it goes at the bottom
-                if (a.isUnassigned && !b.isUnassigned) return 1;
-                if (!a.isUnassigned && b.isUnassigned) return -1;
-
-                // Otherwise, sort alphabetically by display_name
-                if (a.display_name < b.display_name) return -1;
-                if (a.display_name > b.display_name) return 1;
-                return 0;
+        if (useFloors) {
+            // Show floors list - user navigates: Areas -> Floor -> Areas in that floor
+            areaMenu = new UI.Menu({
+                status: false,
+                backgroundColor: 'black',
+                textColor: 'white',
+                highlightBackgroundColor: 'white',
+                highlightTextColor: 'black',
+                sections: [{
+                    title: 'Floors'
+                }]
             });
 
-            // Add items to menu
-            for(let i = 0; i < areaEntries.length; i++) {
-                let entry = areaEntries[i];
-
-                areaMenu.item(0, i, {
-                    title: entry.display_name,
-                    subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
-                    on_click: function(e) {
-                        // Get area_id, considering special case for Unassigned
-                        let targetAreaId = entry.isUnassigned ? null : entry.area_id;
-                        let areaObjects = getEntitiesForArea(targetAreaId);
-                        const entityKeys = Object.keys(areaObjects);
-
-                        // Use the specific setting for Areas
-                        const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
-
-                        if(shouldShowDomains) {
-                            showEntityDomainsFromList(entityKeys, entry.display_name);
-                        } else {
-                            showEntityList(entry.display_name, entityKeys, true, true, true);
-                        }
-                    }
+            areaMenu.on('show', function(e) {
+                // Build floors list - preserve registry order (HA 2025.12+ supports manual ordering)
+                let floorEntries = Object.entries(floor_registry_cache).map(([floor_id, floor]) => {
+                    let areasInFloor = getAreasForFloor(floor_id);
+                    let areaCount = Object.keys(areasInFloor).length;
+                    return {
+                        floor_id: floor_id,
+                        name: floor.name,
+                        areaCount: areaCount
+                    };
                 });
-            }
-        });
+
+                // Check if there are any unassigned areas (areas without a floor)
+                let unassignedAreas = getAreasForFloor(null);
+                let hasUnassignedAreas = Object.keys(unassignedAreas).length > 0;
+
+                // Add floor items to menu
+                let itemIndex = 0;
+                for (let i = 0; i < floorEntries.length; i++) {
+                    let entry = floorEntries[i];
+                    areaMenu.item(0, itemIndex++, {
+                        title: entry.name,
+                        subtitle: `${entry.areaCount} ${(entry.areaCount > 1 || entry.areaCount === 0) ? 'areas' : 'area'}`,
+                        on_click: function(e) {
+                            showAreasForFloor(entry.floor_id, entry.name);
+                        }
+                    });
+                }
+
+                // Add "Other Areas" for unassigned areas at the bottom
+                if (hasUnassignedAreas) {
+                    let unassignedCount = Object.keys(unassignedAreas).length;
+                    areaMenu.item(0, itemIndex++, {
+                        title: 'Other Areas',
+                        subtitle: `${unassignedCount} ${(unassignedCount > 1 || unassignedCount === 0) ? 'areas' : 'area'}`,
+                        on_click: function(e) {
+                            showAreasForFloor(null, 'Other Areas');
+                        }
+                    });
+                }
+            });
+        } else {
+            // No floors - use flat list (original behavior)
+            areaMenu = new UI.Menu({
+                status: false,
+                backgroundColor: 'black',
+                textColor: 'white',
+                highlightBackgroundColor: 'white',
+                highlightTextColor: 'black',
+                sections: [{
+                    title: 'Areas'
+                }]
+            });
+
+            areaMenu.on('show', function(e) {
+                // Create an array of area entries - preserve registry order (HA 2025.12+ supports manual ordering)
+                let areaEntries = [];
+                for (let area_id in area_registry_cache) {
+                    let area = area_registry_cache[area_id];
+                    let area_name = area.name;
+
+                    // Skip areas without a name
+                    if (!area_name) continue;
+
+                    let areaObjects = getEntitiesForArea(area_id);
+                    let areaObjectCount = Object.keys(areaObjects).length;
+
+                    areaEntries.push({
+                        area_id: area_id,
+                        display_name: area_name,
+                        areaObjectCount: areaObjectCount
+                    });
+                }
+
+                // Add items to menu - preserve registry order (no sorting)
+                for (let i = 0; i < areaEntries.length; i++) {
+                    let entry = areaEntries[i];
+
+                    areaMenu.item(0, i, {
+                        title: entry.display_name,
+                        subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
+                        on_click: function(e) {
+                            let areaObjects = getEntitiesForArea(entry.area_id);
+                            const entityKeys = Object.keys(areaObjects);
+
+                            const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
+
+                            if (shouldShowDomains) {
+                                showEntityDomainsFromList(entityKeys, entry.display_name);
+                            } else {
+                                showEntityList(entry.display_name, entityKeys, true, true, true);
+                            }
+                        }
+                    });
+                }
+            });
+        }
 
         // menu item pressed, if it has an event fn call it
         areaMenu.on('select', function(e) {
-            if(typeof e.item.on_click == 'function') {
+            if (typeof e.item.on_click == 'function') {
                 e.item.on_click(e);
             } else {
-                log_message("No click function for main menu item " + e.title);
+                log_message("No click function for area menu item " + e.title);
             }
         });
     }
 
     areaMenu.show();
+}
+
+/**
+ * Show areas for a specific floor
+ * @param {string|null} floor_id - The floor_id to show areas for, or null for unassigned areas
+ * @param {string} floor_name - Display name for the floor (used as menu title)
+ */
+function showAreasForFloor(floor_id, floor_name) {
+    let floorAreasMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: floor_name
+        }]
+    });
+
+    floorAreasMenu.on('show', function(e) {
+        let areasInFloor = getAreasForFloor(floor_id);
+
+        // Build area entries for this floor - preserve registry order (HA 2025.12+ supports manual ordering)
+        let areaEntries = [];
+        for (let area_id in areasInFloor) {
+            let area = areasInFloor[area_id];
+            let area_name = area.name;
+
+            // Skip areas without a name
+            if (!area_name) continue;
+
+            let areaObjects = getEntitiesForArea(area_id);
+            let areaObjectCount = Object.keys(areaObjects).length;
+
+            areaEntries.push({
+                area_id: area_id,
+                display_name: area_name,
+                areaObjectCount: areaObjectCount
+            });
+        }
+
+        // Add items to menu - preserve registry order (no sorting)
+        for (let i = 0; i < areaEntries.length; i++) {
+            let entry = areaEntries[i];
+            floorAreasMenu.item(0, i, {
+                title: entry.display_name,
+                subtitle: `${entry.areaObjectCount} ${(entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'}`,
+                on_click: function(e) {
+                    let areaObjects = getEntitiesForArea(entry.area_id);
+                    const entityKeys = Object.keys(areaObjects);
+
+                    const shouldShowDomains = shouldShowDomainMenu(entityKeys, domain_menu_areas);
+
+                    if (shouldShowDomains) {
+                        showEntityDomainsFromList(entityKeys, entry.display_name);
+                    } else {
+                        showEntityList(entry.display_name, entityKeys, true, true, true);
+                    }
+                }
+            });
+        }
+    });
+
+    floorAreasMenu.on('select', function(e) {
+        if (typeof e.item.on_click == 'function') {
+            e.item.on_click(e);
+        } else {
+            log_message("No click function for floor areas menu item " + e.title);
+        }
+    });
+
+    floorAreasMenu.show();
 }
 
 function showLabelMenu() {
@@ -4717,11 +5347,11 @@ function showEntityMenu(entity_id) {
         title: 'Entity ID',
         subtitle: entity.entity_id
     });
+    let stateIndex = i;
     showEntityMenu.item(0, i++, {
         title: 'State',
         subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '')
     });
-    let stateIndex = i;
     showEntityMenu.item(0, i++, {
         title: 'Last Changed',
         subtitle: entity.last_changed
@@ -5167,20 +5797,23 @@ function showEntityMenu(entity_id) {
         showEntityMenu.item(2, 0, {
             title: (favoriteEntityStore.has(entity.entity_id) ? 'Remove' : 'Add') + ' Favorite',
             on_click: function(e) {
-                if(!favoriteEntityStore.has(entity.entity_id)) {
-                    log_message(`Adding ${entity.entity_id} to favorites`);
-                    // Include friendly name when adding to favorites
-                    let friendlyName = entity.attributes && entity.attributes.friendly_name ? entity.attributes.friendly_name : null;
-                    favoriteEntityStore.add(entity.entity_id, friendlyName);
-                } else {
-                    log_message(`Removing ${entity.entity_id} from favorites`);
-                    favoriteEntityStore.remove(entity.entity_id);
-                }
+                toggleFavorite(entity);
                 _renderFavoriteBtn();
             }
         });
     }
     _renderFavoriteBtn();
+
+    function _renderPinnedBtn() {
+        showEntityMenu.item(2, 1, {
+            title: (pinnedEntityStore.has(entity.entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
+            on_click: function(e) {
+                togglePinned(entity);
+                _renderPinnedBtn();
+            }
+        });
+    }
+    _renderPinnedBtn();
 
     showEntityMenu.on('show', function(){
         msg_id = haws.subscribeTrigger({
@@ -5367,6 +6000,227 @@ function showEntityDomainsFromList(entity_id_list, title) {
     });
 
     domainListMenu.show();
+}
+
+// ============================================================================
+// Entity Display Utility Functions
+// These functions provide reusable logic for displaying entity information
+// across different menus (Main Menu, Entity List, Favorites, etc.)
+// ============================================================================
+
+/**
+ * Get the display title for an entity
+ * @param {Object} entity - The entity object
+ * @returns {string} The friendly name or entity_id
+ */
+function getEntityTitle(entity) {
+    if (!entity) return 'Unknown';
+    return entity.attributes && entity.attributes.friendly_name
+        ? entity.attributes.friendly_name
+        : entity.entity_id;
+}
+
+/**
+ * Get the display subtitle for an entity (state + unit + relative time)
+ * @param {Object} entity - The entity object
+ * @param {boolean} [includeRelativeTime=true] - Whether to include relative time
+ * @returns {string} The formatted subtitle
+ */
+function getEntitySubtitle(entity, includeRelativeTime = true) {
+    if (!entity) return '';
+
+    let subtitle = entity.state;
+
+    // Add unit of measurement if available
+    if (entity.attributes && entity.attributes.unit_of_measurement) {
+        subtitle += ` ${entity.attributes.unit_of_measurement}`;
+    }
+
+    // Add relative time if requested and last_changed is available
+    if (includeRelativeTime && entity.last_changed) {
+        subtitle += ' > ' + humanDiff(new Date(), new Date(entity.last_changed));
+    }
+
+    return subtitle;
+}
+
+/**
+ * Get a complete menu item object for an entity
+ * @param {Object} entity - The entity object
+ * @param {Object} [options] - Optional configuration
+ * @param {boolean} [options.includeRelativeTime=true] - Include relative time in subtitle
+ * @param {boolean} [options.includeIcon=true] - Include icon
+ * @param {Function} [options.on_click] - Custom click handler (defaults to showEntity)
+ * @returns {Object} Menu item object with title, subtitle, entity_id, icon, and on_click
+ */
+function getEntityMenuItem(entity, options = {}) {
+    if (!entity) return null;
+
+    const includeRelativeTime = options.includeRelativeTime !== false;
+    const includeIcon = options.includeIcon !== false;
+
+    let menuItem = {
+        title: getEntityTitle(entity),
+        subtitle: getEntitySubtitle(entity, includeRelativeTime),
+        entity_id: entity.entity_id
+    };
+
+    if (includeIcon) {
+        menuItem.icon = getEntityIcon(entity);
+    }
+
+    if (options.on_click) {
+        menuItem.on_click = options.on_click;
+    } else {
+        // Default click handler
+        menuItem.on_click = function(e) {
+            showEntity(entity.entity_id);
+        };
+    }
+
+    return menuItem;
+}
+
+/**
+ * Update an entity's display in a menu
+ * @param {Object} menu - The UI.Menu object
+ * @param {number} sectionIndex - The section index
+ * @param {number} itemIndex - The item index
+ * @param {Object} entity - The entity object
+ * @param {Object} [options] - Optional configuration (same as getEntityMenuItem)
+ */
+function updateEntityMenuItem(menu, sectionIndex, itemIndex, entity, options = {}) {
+    if (!menu || !entity) return;
+
+    let menuItem = getEntityMenuItem(entity, options);
+    if (menuItem) {
+        menu.item(sectionIndex, itemIndex, menuItem);
+    }
+}
+
+/**
+ * Handle long-press action on an entity
+ * This provides consistent long-press behavior across all menus (Main Menu, Entity List, etc.)
+ * @param {string} entity_id - The entity ID that was long-pressed
+ */
+function handleEntityLongPress(entity_id) {
+    if (!entity_id) {
+        log_message('handleEntityLongPress: No entity_id provided');
+        return;
+    }
+
+    log_message(`handleEntityLongPress: ${entity_id}`);
+    let [domain] = entity_id.split('.');
+
+    if (domain === "automation") {
+        // Handle automation based on user setting
+        let service = automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
+        log_message(`Automation long-press: calling ${service} for ${entity_id}`);
+        haws.callService(
+            domain,
+            service,
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                log_message(JSON.stringify(data));
+                Vibe.vibrate('short');
+            },
+            function (error) {
+                log_message('no response');
+                Vibe.vibrate('double');
+            });
+    }
+    else if (
+        domain === "switch" ||
+        domain === "light" ||
+        domain === "input_boolean" ||
+        domain === "script" ||
+        domain === "cover"
+    ) {
+        haws.callService(
+            domain,
+            'toggle',
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                log_message(JSON.stringify(data));
+                Vibe.vibrate('short');
+            },
+            function (error) {
+                log_message('no response');
+                Vibe.vibrate('double');
+            });
+    }
+    else if (domain === "lock") {
+        let entity = ha_state_dict[entity_id];
+        if (!entity) {
+            log_message(`handleEntityLongPress: entity ${entity_id} not found in state dict`);
+            return;
+        }
+        haws.callService(
+            domain,
+            entity.state === "locked" ? "unlock" : "lock",
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                Vibe.vibrate('short');
+                log_message(JSON.stringify(data));
+            },
+            function (error) {
+                Vibe.vibrate('double');
+                log_message('no response');
+            });
+    }
+    else if (domain === "scene") {
+        haws.callService(
+            domain,
+            "apply",
+            {},
+            {entity_id: entity_id},
+            function (data) {
+                Vibe.vibrate('short');
+                log_message(JSON.stringify(data));
+            },
+            function (error) {
+                Vibe.vibrate('double');
+                log_message('no response');
+            });
+    }
+    else if (domain === "vacuum") {
+        let entity = ha_state_dict[entity_id];
+        if (!entity) {
+            log_message(`handleEntityLongPress: entity ${entity_id} not found in state dict`);
+            return;
+        }
+        let state = entity.state;
+        let service = null;
+
+        // Determine which service to call based on state
+        if (state === "cleaning" || state === "returning") {
+            service = "pause";
+        } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
+            service = "start";
+        }
+
+        if (service) {
+            log_message('Calling vacuum.' + service + ' for ' + entity_id + ' (state: ' + state + ')');
+            haws.callService(
+                'vacuum',
+                service,
+                {},
+                {entity_id: entity_id},
+                function (data) {
+                    log_message('vacuum.' + service + ' success: ' + JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function (error) {
+                    log_message('vacuum.' + service + ' failed: ' + JSON.stringify(error));
+                    Vibe.vibrate('double');
+                });
+        } else {
+            log_message('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
+        }
+    }
 }
 
 function getEntityIcon(entity) {
@@ -6471,118 +7325,13 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
 
     entityListMenu.subscription_id = null;
     entityListMenu.current_page = null;
+
+    // Create a RelativeTimeUpdater to keep entity subtitles updated
+    let relativeTimeUpdater = null;
+
     entityListMenu.on('longSelect', function(e) {
-        log_message(`Entity ${e.item.entity_id} was long pressed!`);
-        let [domain] = e.item.entity_id.split('.');
-        if (domain === "automation") {
-            // Handle automation based on user setting
-            let service = automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
-            log_message(`Automation long-press: calling ${service} for ${e.item.entity_id}`);
-            haws.callService(
-                domain,
-                service,
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    log_message(JSON.stringify(data));
-                    Vibe.vibrate('short');
-                },
-                function (error) {
-                    log_message('no response');
-                    Vibe.vibrate('double');
-                });
-        }
-        else if (
-            domain === "switch" ||
-            domain === "light" ||
-            domain === "input_boolean" ||
-            domain === "script" ||
-            domain === "cover"
-        ) {
-            haws.callService(
-                domain,
-                'toggle',
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                    // Success!
-                    log_message(JSON.stringify(data));
-                    Vibe.vibrate('short');
-                },
-                function (error) {
-                    // Failure!
-                    log_message('no response');
-                    Vibe.vibrate('double');
-                });
-        }
-        else if (domain === "lock") {
-            let entity = ha_state_dict[e.item.entity_id];
-            haws.callService(
-                domain,
-                entity.state === "locked" ? "unlock" : "lock",
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                    // Success!
-                    Vibe.vibrate('short');
-                    log_message(JSON.stringify(data));
-                },
-                function (error) {
-                    // Failure!
-                    Vibe.vibrate('double');
-                    log_message('no response');
-                });
-        }
-        else if (domain === "scene") {
-            haws.callService(
-                domain,
-                "apply",
-                {},
-                {entity_id: e.item.entity_id},
-                function (data) {
-                    // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                    // Success!
-                    Vibe.vibrate('short');
-                    log_message(JSON.stringify(data));
-                },
-                function (error) {
-                    // Failure!
-                    Vibe.vibrate('double');
-                    log_message('no response');
-                });
-        }
-        else if (domain === "vacuum") {
-            let entity = ha_state_dict[e.item.entity_id];
-            let state = entity.state;
-            let service = null;
-
-            // Determine which service to call based on state
-            if (state === "cleaning" || state === "returning") {
-                service = "pause";
-            } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
-                service = "start";
-            }
-
-            if (service) {
-                log_message('Calling vacuum.' + service + ' for ' + e.item.entity_id + ' (state: ' + state + ')');
-                haws.callService(
-                    'vacuum',
-                    service,
-                    {},
-                    {entity_id: e.item.entity_id},
-                    function (data) {
-                        log_message('vacuum.' + service + ' success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function (error) {
-                        log_message('vacuum.' + service + ' failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            } else {
-                log_message('Vacuum ' + e.item.entity_id + ' in state ' + state + ' - no action taken');
-            }
+        if (e.item && e.item.entity_id) {
+            handleEntityLongPress(e.item.entity_id);
         }
     });
 
@@ -6590,6 +7339,10 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         log_message(`showEntityList (title=${title}): hide event called`);
         if(entityListMenu.subscription_id) {
             haws.unsubscribe(entityListMenu.subscription_id);
+        }
+        // Pause relative time updates when menu is hidden
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.pause();
         }
     });
 
@@ -6606,21 +7359,7 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         }
         log_message(`Entity ${entity_id} was short pressed! Index: ${e.itemIndex}`);
 
-        let [entity_domain] = entity_id.split('.');
-        switch(entity_domain) {
-            case 'media_player':
-                showMediaPlayerEntity(entity_id);
-                break;
-            case 'light':
-                showLightEntity(entity_id);
-                break;
-            case 'climate':
-                showClimateEntity(entity_id);
-                break;
-            default:
-                showEntityMenu(entity_id);
-                break;
-        }
+        showEntity(entity_id);
         /*showEntityMenu.item(0, 0, { //menuIndex
                   title: 'test',
                   subtitle: 'test2'
@@ -6670,6 +7409,35 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
         let entityStates = {};
         let renderedEntityIds = {};
         let initialSnapshotReceived = false;
+
+        // Clear and recreate the RelativeTimeUpdater for this page
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+        }
+        relativeTimeUpdater = new RelativeTimeUpdater(function(entity_id, lastChanged) {
+            // This callback is called when an entity's relative time display needs updating
+            log_message(`Relative time update for ${entity_id}`);
+            updateEntitySubtitle(entity_id);
+        });
+
+        // Helper to update just the subtitle of an entity (for relative time updates)
+        function updateEntitySubtitle(entity_id) {
+            if (renderedEntityIds[entity_id] === undefined) {
+                return; // Entity not currently rendered
+            }
+
+            let entity = entityStates[entity_id];
+            if (!entity) {
+                return;
+            }
+
+            entityListMenu.item(0, renderedEntityIds[entity_id], {
+                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
+                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ` ${entity.attributes.unit_of_measurement}` : '') + ' > ' + humanDiff(new Date(), new Date(entity.last_changed)),
+                entity_id: entity.entity_id,
+                icon: getEntityIcon(entity)
+            });
+        }
 
         // Helper to convert subscribeEntities format to standard entity format
         function convertEntityData(entity_id, data) {
@@ -6754,6 +7522,11 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
             // Clear renderedEntityIds for fresh mapping
             renderedEntityIds = {};
 
+            // Clear existing relative time timers before re-rendering
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.clear();
+            }
+
             entityListMenu.items(0, []); // clear items
             let menuIndex = 0;
 
@@ -6795,6 +7568,11 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                         icon: itemIcon
                     });
                     renderedEntityIds[data[i].entity_id] = menuId;
+
+                    // Register entity for relative time updates
+                    if (relativeTimeUpdater) {
+                        relativeTimeUpdater.register(data[i].entity_id, data[i].last_changed);
+                    }
                 } catch (err) {
                     log_message(`renderMenu: ERROR rendering entity ${data[i] ? data[i].entity_id : 'unknown'} at index ${i}: ${err.message}`);
                 }
@@ -6831,6 +7609,11 @@ function showEntityList(title, entity_id_list = false, ignoreEntityCache = true,
                 entity_id: entity.entity_id,
                 icon: getEntityIcon(entity)
             });
+
+            // Update the relative time timer with the new last_changed timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, entity.last_changed);
+            }
         }
 
         log_message(`Setting up subscribeEntities for ${entitiesToSubscribe.length} entities: ${entitiesToSubscribe.join(', ')}`);
@@ -7037,6 +7820,27 @@ function getEntitiesWithoutArea() {
 }
 
 /**
+ * Get list of areas that belong to a specific floor
+ * @param {string|null} floor_id - The floor_id to filter by, or null for unassigned areas
+ * @returns {Object} Object mapping area_id to area object
+ */
+function getAreasForFloor(floor_id) {
+    if (!area_registry_cache) {
+        return {};
+    }
+
+    const results = {};
+    for (const area_id in area_registry_cache) {
+        const area = area_registry_cache[area_id];
+        // Match areas with the specified floor_id (null matches unassigned areas)
+        if (area.floor_id === floor_id) {
+            results[area_id] = area;
+        }
+    }
+    return results;
+}
+
+/**
  * auth_ok event callback
  * we use this to fetch whatever data we need and display the first menu in the app
  * @param evt
@@ -7101,6 +7905,21 @@ function on_auth_ok(evt) {
                 case 'favorites':
                     showFavorites();
                     break;
+                case 'favorite_entity':
+                    // Check if the configured favorite entity still exists in favorites
+                    if (quick_launch_favorite_entity && favoriteEntityStore.has(quick_launch_favorite_entity)) {
+                        log_message('Quick launching to favorite entity: ' + quick_launch_favorite_entity);
+                        showEntity(quick_launch_favorite_entity);
+                    } else {
+                        // Entity was removed from favorites or not configured, reset to main_menu
+                        log_message('Configured favorite entity not found in favorites, resetting to main_menu');
+                        quick_launch_behavior = 'main_menu';
+                        quick_launch_favorite_entity = null;
+                        Settings.option('quick_launch_behavior', quick_launch_behavior);
+                        Settings.option('quick_launch_favorite_entity', quick_launch_favorite_entity);
+                        // Main menu is already shown above
+                    }
+                    break;
                 case 'areas':
                     showAreaMenu();
                     break;
@@ -7109,6 +7928,12 @@ function on_auth_ok(evt) {
                     break;
                 case 'todo_lists':
                     showToDoLists();
+                    break;
+                case 'people':
+                    const personEntities = Object.keys(ha_state_dict).filter(function(entity_id) {
+                        return entity_id.startsWith('person.');
+                    });
+                    showEntityList("People", personEntities, true, true, true);
                     break;
                 case 'main_menu':
                 default:
@@ -7154,6 +7979,7 @@ function on_auth_ok(evt) {
     let pipelines_loaded = false;
     let states_loaded = false;
     let areas_loaded = false;
+    let floors_loaded = false;
     let devices_loaded = false;
     let entities_loaded = false;
     let labels_loaded = false;
@@ -7164,7 +7990,7 @@ function on_auth_ok(evt) {
 
     let done_fetching = function(){
         // Check that all the things have finished fetching
-        if(states_loaded && areas_loaded && devices_loaded &&
+        if(states_loaded && areas_loaded && floors_loaded && devices_loaded &&
            entities_loaded && labels_loaded && pipelines_loaded) {
 
             // Calculate and log elapsed time
@@ -7225,16 +8051,14 @@ function on_auth_ok(evt) {
 
         area_registry_cache = {};
         for(let result of data.result) {
-            area_registry_cache[result.area_id] = result.name;                            // {
-            //     "id":1,
-            //     "type":"result",
-            //     "success":true,
-            //     "result":[
-            //     {
-            //         "area_id":"9f55b85d123043cb8dfc01088302d2c7",
-            //         "name":"",
-            //         "picture":null
-            //     },
+            // Store full area object to access floor_id for grouping
+            // {
+            //     "area_id":"9f55b85d123043cb8dfc01088302d2c7",
+            //     "floor_id": null or "main_floor",
+            //     "name":"",
+            //     "picture":null
+            // }
+            area_registry_cache[result.area_id] = result;
         }
         log_message("Config areas loaded.");
         areas_loaded = true;
@@ -7249,6 +8073,34 @@ function on_auth_ok(evt) {
         } else {
             loadingCard.subtitle("Fetching areas failed");
         }
+    });
+
+    // Fetch floors (HA 2024.4+) - gracefully handle older versions
+    haws.getConfigFloors(function(data) {
+        // log_message('config/floor_registry/list response: ' + JSON.stringify(data));
+
+        floor_registry_cache = {};
+        for(let result of data.result) {
+            // Store floor data - order is preserved from API (HA 2025.12+ supports manual ordering)
+            // {
+            //     "floor_id": "main_floor",
+            //     "name": "Main Floor",
+            //     "level": 1
+            // }
+            floor_registry_cache[result.floor_id] = {
+                name: result.name,
+                level: result.level
+            };
+        }
+        log_message("Config floors loaded (" + Object.keys(floor_registry_cache).length + " floors).");
+        floors_loaded = true;
+        done_fetching();
+    }, function(error) {
+        // Floors API not available (HA < 2024.4) or failed - continue without floors
+        log_message("Floors not available or failed: " + error);
+        floor_registry_cache = {};  // Empty = no floors, will use flat area list
+        floors_loaded = true;
+        done_fetching();
     });
 
     haws.getConfigDevices(function(data) {
@@ -7557,6 +8409,247 @@ function humanDiff(newestDate, oldestDate) {
 
     // Round properly and return a formatted string
     return prettyDate.diffDate + ' ' + prettyDate.diffUnit;
+}
+
+/**
+ * Calculate milliseconds until the humanDiff output will change for a given timestamp.
+ * This is useful for scheduling updates to relative time displays.
+ *
+ * @param {Date|string|number} lastChanged - The timestamp to calculate from
+ * @returns {number} Milliseconds until the humanDiff output will change, or -1 if no update needed (days old)
+ */
+function getNextHumanDiffChangeMs(lastChanged) {
+    const now = new Date();
+    const lastChangedDate = lastChanged instanceof Date ? lastChanged : new Date(lastChanged);
+
+    // If lastChanged is in the future, return 0 (update immediately when it becomes "now")
+    if (lastChangedDate > now) {
+        return lastChangedDate - now;
+    }
+
+    const diffMs = now - lastChangedDate;
+
+    // Time thresholds in milliseconds (matching humanDiff logic)
+    const SECOND = 1000;
+    const MINUTE = 60 * SECOND;
+    const HOUR = 60 * MINUTE;
+    const DAY = 24 * HOUR;
+
+    // Determine current unit and calculate time until next change
+    if (diffMs < SECOND) {
+        // Currently showing milliseconds, will change to seconds at 1 second
+        return SECOND - diffMs;
+    } else if (diffMs < MINUTE) {
+        // Currently showing seconds (e.g., "5 s")
+        // Will change when we hit the next second
+        const currentSeconds = Math.floor(diffMs / SECOND);
+        const nextSecondMs = (currentSeconds + 1) * SECOND;
+        return nextSecondMs - diffMs;
+    } else if (diffMs < HOUR) {
+        // Currently showing minutes (e.g., "5 m")
+        // Will change when we hit the next minute
+        const currentMinutes = Math.floor(diffMs / MINUTE);
+        const nextMinuteMs = (currentMinutes + 1) * MINUTE;
+        return nextMinuteMs - diffMs;
+    } else if (diffMs < DAY) {
+        // Currently showing hours (e.g., "5 h")
+        // Will change when we hit the next hour
+        const currentHours = Math.floor(diffMs / HOUR);
+        const nextHourMs = (currentHours + 1) * HOUR;
+        return nextHourMs - diffMs;
+    } else {
+        // Currently showing days (e.g., "5 d")
+        // Will change when we hit the next day
+        const currentDays = Math.floor(diffMs / DAY);
+        const nextDayMs = (currentDays + 1) * DAY;
+        return nextDayMs - diffMs;
+    }
+}
+
+/**
+ * RelativeTimeUpdater - Manages timers for updating relative time displays.
+ * This class handles scheduling updates based on when humanDiff output will change.
+ *
+ * Usage:
+ *   const updater = new RelativeTimeUpdater(function(id, lastChanged) {
+ *       // Update the display for the item with this id
+ *   });
+ *
+ *   // Register items to track
+ *   updater.register('entity_id_1', entity.last_changed);
+ *
+ *   // Update when an item's timestamp changes
+ *   updater.update('entity_id_1', newLastChanged);
+ *
+ *   // Remove an item
+ *   updater.unregister('entity_id_1');
+ *
+ *   // Pause all timers (e.g., when menu is hidden)
+ *   updater.pause();
+ *
+ *   // Resume all timers (e.g., when menu is shown)
+ *   updater.resume();
+ *
+ *   // Clean up all timers
+ *   updater.destroy();
+ */
+class RelativeTimeUpdater {
+    /**
+     * @param {function} updateCallback - Called when an item needs updating: function(id, lastChanged)
+     * @param {object} options - Optional configuration
+     * @param {number} options.minInterval - Minimum interval between updates in ms (default: 500)
+     * @param {number} options.maxInterval - Maximum interval for updates in ms (default: 24 hours)
+     */
+    constructor(updateCallback, options = {}) {
+        this.updateCallback = updateCallback;
+        this.timers = new Map(); // Map of id -> { timerId, lastChanged }
+        this.paused = false;
+        this.minInterval = options.minInterval || 500;
+        this.maxInterval = options.maxInterval || 24 * 60 * 60 * 1000; // 24 hours
+    }
+
+    /**
+     * Register an item to track for relative time updates
+     * @param {string} id - Unique identifier for the item
+     * @param {Date|string|number} lastChanged - The timestamp to track
+     */
+    register(id, lastChanged) {
+        // Clear any existing timer for this id
+        this._clearTimer(id);
+
+        // Store the lastChanged and schedule the update
+        this.timers.set(id, {
+            timerId: null,
+            lastChanged: lastChanged
+        });
+
+        if (!this.paused) {
+            this._scheduleUpdate(id);
+        }
+    }
+
+    /**
+     * Update an item's timestamp (e.g., when entity state changes)
+     * @param {string} id - Unique identifier for the item
+     * @param {Date|string|number} lastChanged - The new timestamp
+     */
+    update(id, lastChanged) {
+        const entry = this.timers.get(id);
+        if (entry) {
+            this._clearTimer(id);
+            entry.lastChanged = lastChanged;
+            if (!this.paused) {
+                this._scheduleUpdate(id);
+            }
+        } else {
+            // If not registered, register it
+            this.register(id, lastChanged);
+        }
+    }
+
+    /**
+     * Unregister an item and clear its timer
+     * @param {string} id - Unique identifier for the item
+     */
+    unregister(id) {
+        this._clearTimer(id);
+        this.timers.delete(id);
+    }
+
+    /**
+     * Pause all timers (e.g., when menu is hidden)
+     */
+    pause() {
+        this.paused = true;
+        // Clear all active timers
+        for (const [id] of this.timers) {
+            this._clearTimer(id);
+        }
+    }
+
+    /**
+     * Resume all timers (e.g., when menu is shown)
+     */
+    resume() {
+        this.paused = false;
+        // Reschedule all timers
+        for (const [id] of this.timers) {
+            this._scheduleUpdate(id);
+        }
+    }
+
+    /**
+     * Clear all items and timers
+     */
+    clear() {
+        for (const [id] of this.timers) {
+            this._clearTimer(id);
+        }
+        this.timers.clear();
+    }
+
+    /**
+     * Destroy the updater and clean up all resources
+     */
+    destroy() {
+        this.clear();
+        this.updateCallback = null;
+    }
+
+    /**
+     * Get the number of registered items
+     * @returns {number}
+     */
+    size() {
+        return this.timers.size;
+    }
+
+    /**
+     * Clear a specific timer
+     * @private
+     */
+    _clearTimer(id) {
+        const entry = this.timers.get(id);
+        if (entry && entry.timerId !== null) {
+            clearTimeout(entry.timerId);
+            entry.timerId = null;
+        }
+    }
+
+    /**
+     * Schedule the next update for an item
+     * @private
+     */
+    _scheduleUpdate(id) {
+        const entry = this.timers.get(id);
+        if (!entry || this.paused) {
+            return;
+        }
+
+        // Calculate when the next update should occur
+        let intervalMs = getNextHumanDiffChangeMs(entry.lastChanged);
+
+        // Clamp to min/max intervals
+        intervalMs = Math.max(this.minInterval, Math.min(intervalMs, this.maxInterval));
+
+        // Add a small buffer (50ms) to ensure we're past the threshold
+        intervalMs += 50;
+
+        const self = this;
+        entry.timerId = setTimeout(function() {
+            if (self.paused || !self.timers.has(id)) {
+                return;
+            }
+
+            // Call the update callback
+            if (self.updateCallback) {
+                self.updateCallback(id, entry.lastChanged);
+            }
+
+            // Schedule the next update
+            self._scheduleUpdate(id);
+        }, intervalMs);
+    }
 }
 
 // the below method is just here for reference on the REST API
