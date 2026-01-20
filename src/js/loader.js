@@ -8,7 +8,7 @@ loader.packagesLinenoOrder = [{ filename: 'loader.js', lineno: 0 }];
 
 loader.extpaths = ['?', '?.js', '?.json', '?/index.js'];
 
-loader.paths = ['/', 'lib', 'vendor'];
+loader.paths = ['/', 'lib', 'vendor', 'app'];
 
 loader.basepath = function(path) {
   return path.replace(/[^\/]*$/, '');
