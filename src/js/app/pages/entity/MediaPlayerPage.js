@@ -135,7 +135,7 @@ class MediaPlayerPage extends BaseEntityPage {
 
         this.mediaName = new UI.Text({
             text: mediaPlayer.attributes.friendly_name,
-            color: Feature.color(appState.colour.highlight, "black"),
+            color: Feature.color(Constants.colour.highlight, "black"),
             font: titleFont,
             position: Feature.round(new Vector(10, titleY), new Vector(5, titleY)),
             size: new Vector(availableWidth, 30),
