@@ -16,6 +16,7 @@ var Feature = require('platform/feature');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 
 // Feature constants
