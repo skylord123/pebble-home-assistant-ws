@@ -55,6 +55,7 @@ class MainMenuPage extends BasePage {
 
     onShow() {
         var self = this;
+        helpers.log_message('Main menu: onShow fired, rebuilding menu');
         this.menu.items(0, []);
         this.pinnedEntityIndexes = {};
         this.entityStates = {};
@@ -229,6 +230,7 @@ class MainMenuPage extends BasePage {
                 };
             case 'favorites':
                 var favoriteEntities = this.appState.favoriteEntityStore.all();
+                helpers.log_message('Main menu: favorites check, count=' + (favoriteEntities ? favoriteEntities.length : 0));
                 if (!favoriteEntities || !favoriteEntities.length) return null;
                 return {
                     id: 'favorites',

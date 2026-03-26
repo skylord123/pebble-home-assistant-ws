@@ -411,11 +411,11 @@ static void voice_window_load(Window *window) {
 
 static bool send_voice_stop_notification(void) {
   // Tell JS the native voice window closed so it can re-show the menu
-  VoiceDataPacket packet = {
-    .packet.type = CommandVoiceStop,
-    .packet.length = sizeof(Packet),
+  Packet packet = {
+    .type = CommandVoiceStop,
+    .length = sizeof(Packet),
   };
-  return simply_msg_send_packet(&packet.packet);
+  return simply_msg_send_packet(&packet);
 }
 
 static void voice_window_unload(Window *window) {

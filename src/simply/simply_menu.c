@@ -1171,8 +1171,16 @@ static void simply_menu_clear(SimplyMenu *self) {
   prv_reload_data(self);
 }
 
+static void simply_menu_flush_pending_clear(SimplyMenu *self) {
+  if (self->pending_clear) {
+    self->pending_clear = false;
+    simply_menu_clear(self);
+  }
+}
+
 static void prv_handle_menu_clear_packet(Simply *simply, Packet *data) {
-  simply_menu_clear(simply->menu);
+  // Defer the clear — keep old content visible until new content arrives
+  simply->menu->pending_clear = true;
 }
 
 static void prv_handle_menu_clear_section_packet(Simply *simply, Packet *data) {
@@ -1183,6 +1191,9 @@ static void prv_handle_menu_clear_section_packet(Simply *simply, Packet *data) {
 static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
   MenuPropsPacket *packet = (MenuPropsPacket *)data;
   SimplyMenu *self = simply->menu;
+
+  // Flush deferred clear now that new content is arriving
+  simply_menu_flush_pending_clear(self);
 
   simply_menu_set_num_sections(self, packet->num_sections);
 
@@ -1208,6 +1219,7 @@ static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
 }
 
 static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
+  simply_menu_flush_pending_clear(simply->menu);
   MenuSectionPacket *packet = (MenuSectionPacket *)data;
   SimplyMenuSection *section = malloc(sizeof(*section));
   *section = (SimplyMenuSection) {
@@ -1221,6 +1233,7 @@ static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
 }
 
 static void prv_handle_menu_item_packet(Simply *simply, Packet *data) {
+  simply_menu_flush_pending_clear(simply->menu);
   MenuItemPacket *packet = (MenuItemPacket *)data;
   SimplyMenuItem *item = malloc(sizeof(*item));
   *item = (SimplyMenuItem) {

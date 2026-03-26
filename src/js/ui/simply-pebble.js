@@ -1336,7 +1336,6 @@ SimplyPebble.nativeVoiceCallHA = function(text) {
 };
 
 SimplyPebble.onNativeVoiceClosed = function() {
-  // Native C voice window was closed — re-show the main menu
   nativeVoiceConversationId = null;
   var MainMenuPage = require('app/pages/MainMenuPage');
   MainMenuPage.showMainMenu();
@@ -1776,7 +1775,6 @@ SimplyPebble.onPacket = function(buffer, offset) {
       StageElement.emitAnimateDone(packet.id());
       break;
     case VoiceDictationStopPacket:
-      // Native voice window closed — re-show main menu
       SimplyPebble.onNativeVoiceClosed();
       break;
     case VoiceDictationDataPacket:

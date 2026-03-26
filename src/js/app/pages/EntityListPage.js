@@ -93,6 +93,13 @@ class EntityListPage extends BasePage {
         // Refresh entity list from provider if available
         if (this.entityIdListProvider) {
             this.entityIdList = this.entityIdListProvider();
+
+            // If the list is now empty (e.g. last favorite removed), go back
+            if (!this.entityIdList || this.entityIdList.length === 0) {
+                helpers.log_message('Entity list is empty, navigating back');
+                this.menu.hide();
+                return;
+            }
         }
 
         // Unsubscribe from previous subscription
