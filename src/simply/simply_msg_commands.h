@@ -58,6 +58,7 @@ enum Command {
   CommandVoiceStart,
   CommandVoiceStop,
   CommandVoiceData,
+  CommandVoiceResponse,
   CommandCalculateTextSize,
   CommandCalculateTextSizeResponse,
   CommandEntitySync,

@@ -750,6 +750,7 @@ var CalculateTextSizeResponsePacket = new struct([
 var VoiceDictationStartPacket = new struct([
   [Packet, 'packet'],
   ['bool', 'enableConfirmation'],
+  ['uint8', 'fontSize'],
 ]);
 
 var VoiceDictationStopPacket = new struct([
@@ -760,6 +761,11 @@ var VoiceDictationDataPacket = new struct([
   [Packet, 'packet'],
   ['int8', 'status'],
   ['cstring', 'transcription'],
+]);
+
+var VoiceResponsePacket = new struct([
+  [Packet, 'packet'],
+  ['cstring', 'response'],
 ]);
 
 var EntitySyncPacket = new struct([
@@ -860,6 +866,7 @@ var CommandPackets = [
   VoiceDictationStartPacket,
   VoiceDictationStopPacket,
   VoiceDictationDataPacket,
+  VoiceResponsePacket,
   CalculateTextSizePacket,
   CalculateTextSizeResponsePacket,
   EntitySyncPacket,
@@ -1232,25 +1239,122 @@ SimplyPebble.voiceDictationStart = function(callback, enableConfirmation) {
   SimplyPebble.sendPacket(VoiceDictationStartPacket.enableConfirmation(enableConfirmation));
 };
 
+// Start native C voice UI — no JS callback, C handles window and rendering
+SimplyPebble.voiceNativeStart = function() {
+  if (Platform.version() === 'aplite') return;
+  if (state.dictationCallback) return;
+  var Settings = require('settings');
+  var fontSize = Settings.option('voice_font_size') || 18;
+  SimplyPebble.sendPacket(VoiceDictationStartPacket.enableConfirmation(true).fontSize(fontSize));
+};
+
 SimplyPebble.voiceDictationStop = function() {
   // Send the message and delete the callback
   SimplyPebble.sendPacket(VoiceDictationStopPacket);
   delete state.dictationCallback;
 };
 
+SimplyPebble.sendVoiceResponse = function(text) {
+  if (!text) text = 'No response';
+  text = text.substring(0, 127);
+  // Write directly into the struct's DataView to avoid sequential access issues
+  var headerSize = Packet._size; // 4 bytes (type u16 + length u16)
+  var totalSize = headerSize + text.length + 1;
+  VoiceResponsePacket._view = new DataView(new ArrayBuffer(totalSize));
+  VoiceResponsePacket._cursor = totalSize;
+  // Write string bytes after the header
+  for (var i = 0; i < text.length; i++) {
+    VoiceResponsePacket._view.setUint8(headerSize + i, text.charCodeAt(i));
+  }
+  VoiceResponsePacket._view.setUint8(headerSize + text.length, 0);
+  SimplyPebble.sendPacket(VoiceResponsePacket);
+};
+
+// Conversation ID for multi-turn native voice
+var nativeVoiceConversationId = null;
+
+SimplyPebble.nativeVoiceCallHA = function(text) {
+  var AppState = require('app/AppState');
+  var appState = AppState.getInstance();
+  var helpers = require('app/helpers');
+
+  if (!appState.haws || !appState.haws.isConnected()) {
+    SimplyPebble.sendVoiceResponse('Error: Not connected to Home Assistant');
+    return;
+  }
+
+  var body = {
+    start_stage: 'intent',
+    end_stage: 'intent',
+    input: { text: text },
+    timeout: 30
+  };
+
+  if (appState.selected_pipeline) {
+    body.pipeline = appState.selected_pipeline;
+  }
+  if (nativeVoiceConversationId) {
+    body.conversation_id = nativeVoiceConversationId;
+  }
+
+  helpers.log_message('Native voice: sending to HA pipeline: ' + text);
+
+  appState.haws.runPipeline(body,
+    function(data) {
+      if (!data.success) {
+        SimplyPebble.sendVoiceResponse('Error: Request failed');
+        return;
+      }
+      try {
+        var reply = data.response.speech.plain.speech;
+        if (data.conversation_id) {
+          nativeVoiceConversationId = data.conversation_id;
+        }
+        helpers.log_message('Native voice: got response: ' + reply);
+        SimplyPebble.sendVoiceResponse(reply);
+      } catch (err) {
+        helpers.log_message('Native voice: response parse error: ' + err);
+        SimplyPebble.sendVoiceResponse('Error: Invalid response');
+      }
+    },
+    function(error) {
+      helpers.log_message('Native voice: pipeline error: ' + JSON.stringify(error));
+      var msg = 'Error: ';
+      if (error && error.code) {
+        switch (error.code) {
+          case 'stt-provider-missing': msg += 'No speech provider'; break;
+          case 'intent-not-supported': msg += 'Agent not available'; break;
+          case 'intent-failed': msg += 'Intent failed'; break;
+          default: msg += error.error || error.code; break;
+        }
+      } else {
+        msg += (error && error.error) ? error.error : 'Connection error';
+      }
+      SimplyPebble.sendVoiceResponse(msg);
+    }
+  );
+};
+
+SimplyPebble.onNativeVoiceClosed = function() {
+  // Native C voice window was closed — re-show the main menu
+  nativeVoiceConversationId = null;
+  var MainMenuPage = require('app/pages/MainMenuPage');
+  MainMenuPage.showMainMenu();
+};
+
 SimplyPebble.onVoiceData = function(packet) {
-  if (!state.dictationCallback) {
-    // Something bad happened
-    console.log("No callback specified for dictation session");
-  } else {
+  if (state.dictationCallback) {
+    // JS-initiated voice (AssistPage fallback path)
     var e = {
       'err': DictationSessionStatus[packet.status()],
       'failed': packet.status() !== 0,
       'transcription': packet.transcription(),
     };
-    // Invoke and delete the callback
     state.dictationCallback(e);
     delete state.dictationCallback;
+  } else if (packet.status() === 0) {
+    // C-initiated native voice — send transcription to HA pipeline
+    SimplyPebble.nativeVoiceCallHA(packet.transcription());
   }
 };
 
@@ -1670,6 +1774,10 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case ElementAnimateDonePacket:
       StageElement.emitAnimateDone(packet.id());
+      break;
+    case VoiceDictationStopPacket:
+      // Native voice window closed — re-show main menu
+      SimplyPebble.onNativeVoiceClosed();
       break;
     case VoiceDictationDataPacket:
       SimplyPebble.onVoiceData(packet);

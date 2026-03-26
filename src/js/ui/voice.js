@@ -21,4 +21,9 @@ Voice.dictate = function(type, confirm, callback) {
   }
 };
 
+// Start native C voice UI (no JS callback, C owns the window)
+Voice.nativeStart = function() {
+  simply.impl.voiceNativeStart();
+};
+
 module.exports = Voice;

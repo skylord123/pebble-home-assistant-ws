@@ -223,7 +223,8 @@ class MainMenuPage extends BasePage {
                     id: 'assistant',
                     title: "Assistant",
                     on_click: function(e) {
-                        getAssistPage().showAssistMenu();
+                        var Voice = require('ui/voice');
+                        Voice.nativeStart();
                     }
                 };
             case 'favorites':
