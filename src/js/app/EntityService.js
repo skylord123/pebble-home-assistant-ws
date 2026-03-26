@@ -111,6 +111,9 @@ var EntityService = {
             case 'vacuum':
                 return 'images/icon_vacuum.png';
 
+            case 'weather':
+                return 'images/icon_temp.png';
+
             default:
                 return 'images/icon_unknown.png';
         }
@@ -196,6 +199,9 @@ var EntityService = {
                 break;
             case 'climate':
                 require('app/pages/entity/ClimatePage').showClimateEntity(entity_id);
+                break;
+            case 'weather':
+                require('app/pages/entity/WeatherPage').showWeatherEntity(entity_id);
                 break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);

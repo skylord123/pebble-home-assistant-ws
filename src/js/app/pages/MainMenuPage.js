@@ -26,6 +26,7 @@ var DEFAULT_MAIN_MENU_ORDER = [
     'labels',
     'todo_lists',
     'people',
+    'weather',
     'all_entities',
     'refresh',
     'settings'
@@ -272,6 +273,31 @@ class MainMenuPage extends BasePage {
                             return entity_id.indexOf('person.') === 0;
                         });
                         EntityListPage.showEntityList("People", personEntities, true, true, true);
+                    }
+                };
+            case 'weather':
+                var weatherEntities = Object.keys(self.appState.ha_state_dict).filter(function(id) {
+                    return id.indexOf('weather.') === 0;
+                });
+                if (!weatherEntities.length) return null;
+                var WeatherPage = require('app/pages/entity/WeatherPage');
+                var weatherSubtitle = WeatherPage.getWeatherSubtitle(weatherEntities[0]);
+                if (weatherEntities.length === 1) {
+                    return {
+                        id: 'weather',
+                        title: "Weather",
+                        subtitle: weatherSubtitle,
+                        on_click: function(e) {
+                            WeatherPage.showWeatherEntity(weatherEntities[0]);
+                        }
+                    };
+                }
+                return {
+                    id: 'weather',
+                    title: "Weather",
+                    subtitle: weatherSubtitle,
+                    on_click: function(e) {
+                        EntityListPage.showEntityList("Weather", weatherEntities, true, true, false);
                     }
                 };
             case 'all_entities':
