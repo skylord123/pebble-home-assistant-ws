@@ -8,6 +8,7 @@ var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
+var simply = require('ui/simply');
 
 // Module-level menu reference
 var entityListMenu = null;
@@ -164,9 +165,18 @@ class EntityListPage extends BasePage {
 
         // Helper to render the menu from entityStates
         function renderMenu() {
+            // Refresh entity list from provider if available
+            if (self.entityIdListProvider) {
+                self.entityIdList = self.entityIdListProvider();
+            }
+
             // Convert entityStates to array for sorting/pagination
             var data = [];
             for (var entity_id in entityStates) {
+                // If we have a specific entity list, only include entities in it
+                if (self.entityIdList && self.entityIdList.indexOf(entity_id) === -1) {
+                    continue;
+                }
                 data.push(entityStates[entity_id]);
             }
 
@@ -239,6 +249,9 @@ class EntityListPage extends BasePage {
             }
 
             self.menu.items(0, []); // clear items
+            if (simply.impl && simply.impl.entityClear) {
+                simply.impl.entityClear();
+            }
             var menuIndex = 0;
 
             if (pageNumber > 1) {
@@ -280,6 +293,16 @@ class EntityListPage extends BasePage {
                     });
                     renderedEntityIds[data[j].entity_id] = menuId;
 
+                    if (simply.impl && simply.impl.entitySync) {
+                        var domain = data[j].entity_id.split('.')[0];
+                        simply.impl.entitySync(0, menuId, {
+                            name: itemTitle,
+                            state: itemSubtitle,
+                            domain: domain,
+                            icon: itemIcon
+                        });
+                    }
+
                     // Register entity for relative time updates
                     if (self.relativeTimeUpdater) {
                         self.relativeTimeUpdater.register(data[j].entity_id, data[j].last_changed);
@@ -313,12 +336,27 @@ class EntityListPage extends BasePage {
                 return;
             }
 
-            self.menu.item(0, renderedEntityIds[entity_id], {
-                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ' ' + entity.attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed)),
+            var updatedTitle = entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id;
+            var updatedSubtitle = entity.state + (entity.attributes.unit_of_measurement ? ' ' + entity.attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed));
+            var updatedIcon = EntityService.getIcon(entity);
+            var updatedMenuId = renderedEntityIds[entity_id];
+
+            self.menu.item(0, updatedMenuId, {
+                title: updatedTitle,
+                subtitle: updatedSubtitle,
                 entity_id: entity.entity_id,
-                icon: EntityService.getIcon(entity)
+                icon: updatedIcon
             });
+
+            if (simply.impl && simply.impl.entitySync) {
+                var domain = entity.entity_id.split('.')[0];
+                simply.impl.entitySync(0, updatedMenuId, {
+                    name: updatedTitle,
+                    state: updatedSubtitle,
+                    domain: domain,
+                    icon: updatedIcon
+                });
+            }
 
             // Update the relative time timer
             if (self.relativeTimeUpdater) {

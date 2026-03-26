@@ -27,6 +27,7 @@ var DEFAULT_MAIN_MENU_ORDER = [
     'todo_lists',
     'people',
     'all_entities',
+    'refresh',
     'settings'
 ];
 
@@ -289,6 +290,85 @@ class MainMenuPage extends BasePage {
                         } else {
                             EntityListPage.showEntityList("All Entities", false, true, true, true);
                         }
+                    }
+                };
+            case 'refresh':
+                return {
+                    id: 'refresh',
+                    title: "Refresh Entities",
+                    on_click: function(e) {
+                        var Vibe = require('ui/vibe');
+                        var StateService = require('app/StateService');
+                        var RegistryService = require('app/RegistryService');
+                        var CacheManager = require('app/CacheManager');
+
+                        self.menu.item(0, e.itemIndex, { title: "Refreshing..." });
+
+                        StateService.getStates(function(states) {
+                            // Re-fetch registries
+                            var appState = self.appState;
+                            var done = { areas: false, floors: false, devices: false, entities: false, labels: false };
+
+                            function checkDone() {
+                                if (done.areas && done.floors && done.devices && done.entities && done.labels) {
+                                    CacheManager.save();
+                                    self.menu.item(0, e.itemIndex, { title: "Refresh Entities" });
+                                    Vibe.vibrate('short');
+                                    helpers.log_message('Refresh complete');
+                                }
+                            }
+
+                            appState.haws.getConfigAreas(function(data) {
+                                appState.area_registry_cache = {};
+                                if (data.result) {
+                                    for (var i = 0; i < data.result.length; i++) {
+                                        appState.area_registry_cache[data.result[i].area_id] = data.result[i];
+                                    }
+                                }
+                                done.areas = true; checkDone();
+                            }, function() { done.areas = true; checkDone(); });
+
+                            appState.haws.getConfigFloors(function(data) {
+                                appState.floor_registry_cache = {};
+                                if (data.result) {
+                                    for (var i = 0; i < data.result.length; i++) {
+                                        appState.floor_registry_cache[data.result[i].floor_id] = data.result[i];
+                                    }
+                                }
+                                done.floors = true; checkDone();
+                            }, function() { done.floors = true; checkDone(); });
+
+                            appState.haws.getConfigDevices(function(data) {
+                                appState.device_registry_cache = {};
+                                if (data.result) {
+                                    for (var i = 0; i < data.result.length; i++) {
+                                        appState.device_registry_cache[data.result[i].id] = data.result[i];
+                                    }
+                                }
+                                done.devices = true; checkDone();
+                            }, function() { done.devices = true; checkDone(); });
+
+                            appState.haws.getConfigEntities(function(data) {
+                                appState.entity_registry_cache = {};
+                                if (data.result) {
+                                    for (var i = 0; i < data.result.length; i++) {
+                                        appState.entity_registry_cache[data.result[i].entity_id] = data.result[i];
+                                    }
+                                }
+                                done.entities = true; checkDone();
+                            }, function() { done.entities = true; checkDone(); });
+
+                            appState.haws.getConfigLabels(function(data) {
+                                appState.label_registry_cache = {};
+                                if (data.result) {
+                                    for (var i = 0; i < data.result.length; i++) {
+                                        appState.label_registry_cache[data.result[i].label_id] = data.result[i];
+                                    }
+                                }
+                                done.labels = true; checkDone();
+                            }, function() { done.labels = true; checkDone(); });
+
+                        }, null, true);
                     }
                 };
             case 'settings':

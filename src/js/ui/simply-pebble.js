@@ -762,6 +762,47 @@ var VoiceDictationDataPacket = new struct([
   ['cstring', 'transcription'],
 ]);
 
+var EntitySyncPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'section'],
+  ['uint16', 'index'],
+  ['uint32', 'icon', ImageType],
+  ['uint16', 'nameLength', StringLengthType],
+  ['uint16', 'stateLength', StringLengthType],
+  ['uint16', 'domainLength', StringLengthType],
+  ['cstring', 'name', StringType],
+  ['cstring', 'state', StringType],
+  ['cstring', 'domain', StringType],
+]);
+
+var EntityClearPacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var EntityCountPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'count'],
+]);
+
+var EntityActionPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'section'],
+  ['uint16', 'index'],
+  ['uint8', 'action'],
+]);
+
+var WatchDataPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'battery'],
+  ['uint8', 'charging'],
+  ['int32', 'steps'],
+]);
+
+var WatchDataEnablePacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'enabled'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -821,6 +862,12 @@ var CommandPackets = [
   VoiceDictationDataPacket,
   CalculateTextSizePacket,
   CalculateTextSizeResponsePacket,
+  EntitySyncPacket,
+  EntityClearPacket,
+  EntityCountPacket,
+  EntityActionPacket,
+  WatchDataPacket,
+  WatchDataEnablePacket,
 ];
 
 var accelAxes = [
@@ -1253,6 +1300,32 @@ SimplyPebble.menuSelection = function(section, item, align) {
   SimplyPebble.sendPacket(MenuSelectionPacket.section(section).item(item).align(align || 'center'));
 };
 
+SimplyPebble.entitySync = function(section, index, def) {
+  EntitySyncPacket
+    .section(section)
+    .index(index)
+    .icon(def.icon || 0)
+    .nameLength(def.name || '')
+    .stateLength(def.state || '')
+    .domainLength(def.domain || '')
+    .name(def.name || '')
+    .state(def.state || '')
+    .domain(def.domain || '');
+  SimplyPebble.sendPacket(EntitySyncPacket);
+};
+
+SimplyPebble.watchDataEnable = function(enabled) {
+  SimplyPebble.sendPacket(WatchDataEnablePacket.enabled(enabled ? 1 : 0));
+};
+
+SimplyPebble.entityClear = function() {
+  SimplyPebble.sendPacket(EntityClearPacket);
+};
+
+SimplyPebble.entityCount = function(count) {
+  SimplyPebble.sendPacket(EntityCountPacket.count(count));
+};
+
 SimplyPebble.menu = function(def, clear, pushing) {
   if (typeof pushing === 'boolean') {
     SimplyPebble.windowShow({ type: 'menu', pushing: pushing });
@@ -1609,6 +1682,16 @@ SimplyPebble.onPacket = function(buffer, offset) {
           height: packet.height()
         });
         delete state.calculateTextSizeCallback;
+      }
+      break;
+    case EntityActionPacket:
+      if (state.entityActionCallback) {
+        state.entityActionCallback(packet.section(), packet.index(), packet.action());
+      }
+      break;
+    case WatchDataPacket:
+      if (state.watchDataCallback) {
+        state.watchDataCallback(packet.battery(), packet.charging(), packet.steps());
       }
       break;
   }

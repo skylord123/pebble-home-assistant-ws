@@ -105,6 +105,14 @@ var SettingsManager = {
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
 
+        // Auto-favorite by label
+        appState.auto_favorite_label = Settings.option('auto_favorite_label') || null;
+        log('Auto-favorite label: ' + appState.auto_favorite_label);
+
+        // Watch data sync
+        appState.watch_data_sync = Settings.option('watch_data_sync') === true;
+        log('Watch data sync: ' + appState.watch_data_sync);
+
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;
         appState.main_menu_order = Settings.option('main_menu_order');

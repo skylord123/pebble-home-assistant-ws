@@ -260,6 +260,91 @@ function showEntityMenu(entity_id) {
         });
     }
 
+    if(domain === "cover") {
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Open',
+            on_click: function(){
+                appState.haws.callService('cover', 'open_cover', {}, {entity_id: entity.entity_id},
+                    function() { Vibe.vibrate('short'); },
+                    function() { Vibe.vibrate('double'); });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Close',
+            on_click: function(){
+                appState.haws.callService('cover', 'close_cover', {}, {entity_id: entity.entity_id},
+                    function() { Vibe.vibrate('short'); },
+                    function() { Vibe.vibrate('double'); });
+            }
+        });
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Stop',
+            on_click: function(){
+                appState.haws.callService('cover', 'stop_cover', {}, {entity_id: entity.entity_id},
+                    function() { Vibe.vibrate('short'); },
+                    function() { Vibe.vibrate('double'); });
+            }
+        });
+
+        if (entity.attributes.current_position !== undefined) {
+            showEntityMenu.item(1, servicesCount++, {
+                title: 'Set Position',
+                subtitle: entity.attributes.current_position + '%',
+                on_click: function(){
+                    var posMenu = new UI.Menu({
+                        status: false,
+                        backgroundColor: 'black',
+                        textColor: 'white',
+                        highlightBackgroundColor: 'white',
+                        highlightTextColor: 'black',
+                        sections: [{ title: 'Set Position' }]
+                    });
+
+                    var positions = [];
+                    for (var p = 100; p >= 0; p -= 10) {
+                        positions.push(p);
+                    }
+
+                    var currentPos = entity.attributes.current_position;
+                    var currentIndex = 0;
+                    for (var i = 0; i < positions.length; i++) {
+                        if (positions[i] <= currentPos) {
+                            currentIndex = i;
+                            break;
+                        }
+                    }
+
+                    for (var j = 0; j < positions.length; j++) {
+                        (function(pos) {
+                            posMenu.item(0, j, {
+                                title: pos + '%',
+                                subtitle: pos === currentPos ? 'Current' : (pos === 100 ? 'Open' : (pos === 0 ? 'Closed' : '')),
+                                on_click: function() {
+                                    appState.haws.callService('cover', 'set_cover_position',
+                                        { position: pos },
+                                        { entity_id: entity.entity_id },
+                                        function() { Vibe.vibrate('short'); posMenu.hide(); },
+                                        function() { Vibe.vibrate('double'); });
+                                }
+                            });
+                        })(positions[j]);
+                    }
+
+                    posMenu.on('select', function(e) {
+                        if (typeof e.item.on_click === 'function') {
+                            e.item.on_click(e);
+                        }
+                    });
+
+                    posMenu.show();
+                    if (currentIndex > 0) {
+                        posMenu.selection(0, currentIndex);
+                    }
+                }
+            });
+        }
+    }
+
     if(domain === "scene") {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',
@@ -344,6 +429,77 @@ function showEntityMenu(entity_id) {
                         Vibe.vibrate('double');
                         helpers.log_message('no response');
                     });
+            }
+        });
+    }
+
+    if(domain === "input_number" || domain === "number") {
+        showEntityMenu.item(1, servicesCount++, {
+            title: 'Set Value',
+            on_click: function(){
+                var min = entity.attributes.min !== undefined ? entity.attributes.min : 0;
+                var max = entity.attributes.max !== undefined ? entity.attributes.max : 100;
+                var step = entity.attributes.step !== undefined ? entity.attributes.step : 1;
+                var current = parseFloat(entity.state) || 0;
+
+                var valueMenu = new UI.Menu({
+                    status: false,
+                    backgroundColor: 'black',
+                    textColor: 'white',
+                    highlightBackgroundColor: 'white',
+                    highlightTextColor: 'black',
+                    sections: [{ title: 'Set Value' }]
+                });
+
+                var values = [];
+                for (var v = max; v >= min; v -= step) {
+                    values.push(Math.round(v * 1000) / 1000);
+                }
+
+                var currentIndex = 0;
+                var roundedCurrent = Math.round(current / step) * step;
+                for (var i = 0; i < values.length; i++) {
+                    if (Math.abs(values[i] - roundedCurrent) < 0.001) {
+                        currentIndex = i;
+                        break;
+                    }
+                }
+
+                for (var j = 0; j < values.length; j++) {
+                    (function(val) {
+                        var isCurrent = Math.abs(val - roundedCurrent) < 0.001;
+                        var unit = entity.attributes.unit_of_measurement || '';
+                        valueMenu.item(0, j, {
+                            title: val + (unit ? ' ' + unit : ''),
+                            subtitle: isCurrent ? 'Current' : '',
+                            on_click: function() {
+                                appState.haws.callService(
+                                    domain,
+                                    'set_value',
+                                    { value: val },
+                                    { entity_id: entity.entity_id },
+                                    function() {
+                                        Vibe.vibrate('short');
+                                        valueMenu.hide();
+                                    },
+                                    function() {
+                                        Vibe.vibrate('double');
+                                    });
+                            }
+                        });
+                    })(values[j]);
+                }
+
+                valueMenu.on('select', function(e) {
+                    if (typeof e.item.on_click === 'function') {
+                        e.item.on_click(e);
+                    }
+                });
+
+                valueMenu.show();
+                if (currentIndex > 0) {
+                    valueMenu.selection(0, currentIndex);
+                }
             }
         });
     }

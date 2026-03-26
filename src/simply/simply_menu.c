@@ -1,5 +1,6 @@
 #include "simply_menu.h"
 
+#include "simply_entities.h"
 #include "simply_res.h"
 #include "simply_msg.h"
 #include "simply_window_stack.h"
@@ -253,6 +254,23 @@ static void prv_request_menu_section(SimplyMenu *self, uint16_t section_index) {
 static void prv_request_menu_item(SimplyMenu *self, uint16_t section_index, uint16_t item_index) {
   SimplyMenuItem *item = prv_get_menu_item(self, section_index, item_index);
   if (item) { return; }
+
+  SimplyEntities *entities = self->window.simply->entities;
+  SimplyEntity *entity = simply_entities_get(entities, section_index, item_index);
+  if (entity) {
+    item = malloc(sizeof(*item));
+    if (!item) { return; }
+    *item = (SimplyMenuItem) {
+      .section = section_index,
+      .item = item_index,
+      .icon = entity->icon_id,
+    };
+    item->title = strdup2(entity->name);
+    item->subtitle = strdup2(entity->state);
+    prv_add_item(self, item);
+    return;
+  }
+
   item = malloc(sizeof(*item));
   *item = (SimplyMenuItem) {
     .section = section_index,

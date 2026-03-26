@@ -60,5 +60,11 @@ enum Command {
   CommandVoiceData,
   CommandCalculateTextSize,
   CommandCalculateTextSizeResponse,
+  CommandEntitySync,
+  CommandEntityClear,
+  CommandEntityCount,
+  CommandEntityAction,
+  CommandWatchData,
+  CommandWatchDataEnable,
   NumCommands,
 };

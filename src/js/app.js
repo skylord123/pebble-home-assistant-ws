@@ -23,6 +23,7 @@ var CacheManager = require('app/CacheManager');
 var StateService = require('app/StateService');
 var ConnectionService = require('app/ConnectionService');
 var EntityService = require('app/EntityService');
+var WatchDataService = require('app/WatchDataService');
 
 // === Page Imports ===
 var MainMenuPage = require('app/pages/MainMenuPage');
@@ -168,6 +169,39 @@ function on_auth_ok(evt) {
             log("Data fetch complete in " + elapsed + "ms");
 
             CacheManager.save();
+
+            // Auto-favorite entities by label
+            if (appState.auto_favorite_label && appState.entity_registry_cache && appState.label_registry_cache) {
+                var labelId = null;
+                for (var lid in appState.label_registry_cache) {
+                    if (appState.label_registry_cache[lid].name === appState.auto_favorite_label ||
+                        lid === appState.auto_favorite_label) {
+                        labelId = lid;
+                        break;
+                    }
+                }
+                if (labelId) {
+                    var RegistryService = require('app/RegistryService');
+                    var labelEntities = RegistryService.getEntitiesForLabel(labelId);
+                    var addedCount = 0;
+                    for (var entityId in labelEntities) {
+                        if (!appState.favoriteEntityStore.has(entityId)) {
+                            var friendlyName = null;
+                            if (appState.ha_state_dict && appState.ha_state_dict[entityId]) {
+                                friendlyName = appState.ha_state_dict[entityId].attributes.friendly_name;
+                            }
+                            appState.favoriteEntityStore.add(entityId, friendlyName);
+                            addedCount++;
+                        }
+                    }
+                    if (addedCount > 0) {
+                        log('Auto-favorited ' + addedCount + ' entities from label "' + appState.auto_favorite_label + '"');
+                    }
+                }
+            }
+
+            // Initialize watch data sync (battery/steps to HA)
+            WatchDataService.init();
 
             if (isFetchingInBackground && fetchFailed) {
                 log("Background fetch failed: " + fetchError);

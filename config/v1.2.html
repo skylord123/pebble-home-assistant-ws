@@ -878,6 +878,31 @@
 			</div>
 		</div>
 
+		<!-- PebHA Integration -->
+		<div class="section">
+			<div class="section-header">PebHA Integration</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-auto-favorite-label">Auto-Favorite Label</label>
+						<input type="text" class="form-control" id="ha-auto-favorite-label" placeholder="e.g. pebble">
+						<small class="form-text">Entities with this HA label will be automatically added to favorites</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<div class="form-check form-switch">
+							<input class="form-check-input" type="checkbox" id="ha-watch-data-sync">
+							<label class="form-check-label" for="ha-watch-data-sync">
+								Sync Watch Data to HA
+							</label>
+						</div>
+						<small class="form-text">Send battery level, charging state, and step count as HA sensors</small>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- Entity Domain Grouping -->
 		<div class="section">
 			<div class="section-header">Entity Domain Grouping</div>
@@ -1226,7 +1251,9 @@
 				mainMenuOrderContainer = $('#main-menu-order-container'),
 				mainMenuSortable = $('#main-menu-sortable'),
 				pinnedContainer = $('#pinned-container'),
-				pinnedSortable = $('#pinned-sortable');
+				pinnedSortable = $('#pinned-sortable'),
+				autoFavoriteLabel = $('#ha-auto-favorite-label'),
+				watchDataSync = $('#ha-watch-data-sync');
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -1295,6 +1322,9 @@
 				'unknown_entity_handling': unknownHandling.val(),
 				// Automation long-press action
 				'automation_longpress_action': automationLongpress.val(),
+				// PebHA integration
+				'auto_favorite_label': autoFavoriteLabel.val() || null,
+				'watch_data_sync': watchDataSync.is(':checked'),
 				// Main menu order settings
 				'main_menu_custom_order_enabled': mainMenuCustomOrderEnabled.is(':checked'),
 				'main_menu_order': $("#main-menu-sortable li").map(function(a,b){
@@ -1520,6 +1550,12 @@
 			} else {
 				automationLongpress.val('toggle'); // Default
 			}
+
+			// PebHA integration settings
+			if (watch_config['auto_favorite_label']) {
+				autoFavoriteLabel.val(watch_config['auto_favorite_label']);
+			}
+			watchDataSync.attr('checked', watch_config['watch_data_sync'] === true);
 
 			if(watch_config['favorite_entities']) {
 				let html = '';
