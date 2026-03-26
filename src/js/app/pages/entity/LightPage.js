@@ -15,6 +15,7 @@ var Vibe = require('ui/vibe');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
@@ -175,6 +176,8 @@ function showLightEntity(entity_id) {
         highlightTextColor: 'black',
         sections: [{
             title: lightData.friendly_name
+        }, {
+            title: 'Extra'
         }]
     });
 
@@ -1182,6 +1185,32 @@ function showLightEntity(entity_id) {
             relativeTimeUpdater = null;
         }
     });
+
+    // Favorite/Pin buttons
+    var favoriteEntityStore = appState.favoriteEntityStore;
+    var pinnedEntityStore = appState.pinnedEntityStore;
+
+    function _renderFavoriteBtn() {
+        lightMenu.item(1, 0, {
+            title: (favoriteEntityStore.has(entity_id) ? 'Remove from' : 'Add to') + ' Favorites',
+            on_click: function() {
+                EntityService.toggleFavorite(appState.ha_state_dict[entity_id]);
+                _renderFavoriteBtn();
+            }
+        });
+    }
+    _renderFavoriteBtn();
+
+    function _renderPinnedBtn() {
+        lightMenu.item(1, 1, {
+            title: (pinnedEntityStore.has(entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
+            on_click: function() {
+                EntityService.togglePinned(appState.ha_state_dict[entity_id]);
+                _renderPinnedBtn();
+            }
+        });
+    }
+    _renderPinnedBtn();
 
     // Show the menu
     lightMenu.show();

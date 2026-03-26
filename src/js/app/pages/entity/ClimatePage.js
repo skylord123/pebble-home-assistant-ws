@@ -14,6 +14,7 @@ var Vibe = require('ui/vibe');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 
 // Menu selection tracking
@@ -86,6 +87,8 @@ function showClimateEntity(entity_id) {
         highlightTextColor: 'black',
         sections: [{
             title: climate.attributes.friendly_name ? climate.attributes.friendly_name : entity_id
+        }, {
+            title: 'Extra'
         }]
     });
 
@@ -998,6 +1001,32 @@ function showClimateEntity(entity_id) {
 
         modeMenu.show();
     }
+
+    // Favorite/Pin buttons
+    var favoriteEntityStore = appState.favoriteEntityStore;
+    var pinnedEntityStore = appState.pinnedEntityStore;
+
+    function _renderFavoriteBtn() {
+        climateMenu.item(1, 0, {
+            title: (favoriteEntityStore.has(entity_id) ? 'Remove from' : 'Add to') + ' Favorites',
+            on_click: function() {
+                EntityService.toggleFavorite(appState.ha_state_dict[entity_id]);
+                _renderFavoriteBtn();
+            }
+        });
+    }
+    _renderFavoriteBtn();
+
+    function _renderPinnedBtn() {
+        climateMenu.item(1, 1, {
+            title: (pinnedEntityStore.has(entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
+            on_click: function() {
+                EntityService.togglePinned(appState.ha_state_dict[entity_id]);
+                _renderPinnedBtn();
+            }
+        });
+    }
+    _renderPinnedBtn();
 
     climateMenu.show();
 }
