@@ -12,6 +12,7 @@
 #include "simply_voice.h"
 #include "simply_entities.h"
 #include "simply_watchdata.h"
+#include "simply_native.h"
 
 #include <pebble.h>
 
@@ -21,6 +22,7 @@ Simply *simply_init(void) {
   simply->voice = simply_voice_create(simply);
   simply->entities = simply_entities_create(simply);
   simply->watchdata = simply_watchdata_create(simply);
+  simply->native = simply_native_create(simply);
   simply->res = simply_res_create(simply);
   simply->splash = simply_splash_create(simply);
   simply->stage = simply_stage_create(simply);
@@ -48,5 +50,6 @@ void simply_deinit(Simply *simply) {
   simply_watchdata_destroy(simply->watchdata);
   simply_entities_destroy(simply->entities);
   simply_voice_destroy(simply->voice);
+  simply_native_destroy(simply->native);
   free(simply);
 }

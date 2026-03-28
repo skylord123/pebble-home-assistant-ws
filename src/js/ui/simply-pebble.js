@@ -809,6 +809,67 @@ var WatchDataEnablePacket = new struct([
   ['uint8', 'enabled'],
 ]);
 
+// Native bridge packets
+var NativeMenuPushPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'screenId'],
+  ['uint8', 'numSections'],
+  ['uint8', 'numItems'],
+  ['cstring', 'title'],
+]);
+
+var NativeMenuUpdatePacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'screenId'],
+  ['uint16', 'section'],
+  ['uint16', 'index'],
+  ['uint32', 'icon', ImageType],
+  ['uint16', 'titleLen', StringLengthType],
+  ['uint16', 'subtitleLen', StringLengthType],
+  ['cstring', 'title', StringType],
+  ['cstring', 'subtitle', StringType],
+]);
+
+var NativeMenuPopPacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var NativeMenuSelectPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'screenId'],
+  ['uint16', 'section'],
+  ['uint16', 'index'],
+]);
+
+var NativeMenuLongSelectPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'screenId'],
+  ['uint16', 'section'],
+  ['uint16', 'index'],
+]);
+
+var NativeMenuBackPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'screenId'],
+]);
+
+var NativeCardPushPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'screenId'],
+  ['uint16', 'titleLen', StringLengthType],
+  ['uint16', 'subtitleLen', StringLengthType],
+  ['uint16', 'bodyLen', StringLengthType],
+  ['cstring', 'title', StringType],
+  ['cstring', 'subtitle', StringType],
+  ['cstring', 'body', StringType],
+]);
+
+var NativeToastPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'type'],
+  ['cstring', 'text'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -875,6 +936,14 @@ var CommandPackets = [
   EntityActionPacket,
   WatchDataPacket,
   WatchDataEnablePacket,
+  NativeMenuPushPacket,
+  NativeMenuUpdatePacket,
+  NativeMenuPopPacket,
+  NativeMenuSelectPacket,
+  NativeMenuLongSelectPacket,
+  NativeMenuBackPacket,
+  NativeCardPushPacket,
+  NativeToastPacket,
 ];
 
 var accelAxes = [
@@ -1421,6 +1490,93 @@ SimplyPebble.watchDataEnable = function(enabled) {
   SimplyPebble.sendPacket(WatchDataEnablePacket.enabled(enabled ? 1 : 0));
 };
 
+// ============================================================
+// Native bridge API
+// ============================================================
+
+// Callbacks registered by screen ID
+var nativeCallbacks = {};
+
+SimplyPebble.nativeMenuPush = function(screenId, title, numSections, callbacks) {
+  nativeCallbacks[screenId] = callbacks;
+  NativeMenuPushPacket.screenId(screenId).numSections(numSections || 1).numItems(0).title(title || '');
+  SimplyPebble.sendPacket(NativeMenuPushPacket);
+};
+
+SimplyPebble.nativeMenuUpdate = function(screenId, section, index, title, subtitle, icon) {
+  NativeMenuUpdatePacket
+    .screenId(screenId)
+    .section(section)
+    .index(index)
+    .icon(icon || 0)
+    .titleLen(title || '')
+    .subtitleLen(subtitle || '')
+    .title(title || '')
+    .subtitle(subtitle || '');
+  SimplyPebble.sendPacket(NativeMenuUpdatePacket);
+};
+
+SimplyPebble.nativeMenuSectionTitle = function(screenId, section, title) {
+  SimplyPebble.nativeMenuUpdate(screenId, section, 0xFFFF, title, '', 0);
+};
+
+SimplyPebble.nativeMenuPop = function() {
+  SimplyPebble.sendPacket(NativeMenuPopPacket);
+};
+
+SimplyPebble.nativeToast = function(text, type) {
+  // type: 0=sending, 1=success, 2=error
+  // Build manually to avoid cstring sequential access issues
+  var headerSize = Packet._size; // 4 bytes
+  var totalSize = headerSize + 1 + text.length + 1; // header + type byte + string + null
+  NativeToastPacket._view = new DataView(new ArrayBuffer(totalSize));
+  NativeToastPacket._cursor = totalSize;
+  NativeToastPacket._view.setUint8(headerSize, type || 0);
+  for (var i = 0; i < text.length; i++) {
+    NativeToastPacket._view.setUint8(headerSize + 1 + i, text.charCodeAt(i));
+  }
+  NativeToastPacket._view.setUint8(headerSize + 1 + text.length, 0);
+  SimplyPebble.sendPacket(NativeToastPacket);
+};
+
+SimplyPebble.nativeCardPush = function(screenId, title, subtitle, body, callbacks) {
+  nativeCallbacks[screenId] = callbacks;
+  NativeCardPushPacket
+    .screenId(screenId)
+    .titleLen(title || '')
+    .subtitleLen(subtitle || '')
+    .bodyLen(body || '')
+    .title(title || '')
+    .subtitle(subtitle || '')
+    .body(body || '');
+  SimplyPebble.sendPacket(NativeCardPushPacket);
+};
+
+SimplyPebble.onNativeSelect = function(packet) {
+  var id = packet.screenId();
+  var cb = nativeCallbacks[id];
+  if (cb && cb.onSelect) {
+    cb.onSelect(packet.section(), packet.index());
+  }
+};
+
+SimplyPebble.onNativeLongSelect = function(packet) {
+  var id = packet.screenId();
+  var cb = nativeCallbacks[id];
+  if (cb && cb.onLongSelect) {
+    cb.onLongSelect(packet.section(), packet.index());
+  }
+};
+
+SimplyPebble.onNativeBack = function(packet) {
+  var id = packet.screenId();
+  var cb = nativeCallbacks[id];
+  if (cb && cb.onBack) {
+    cb.onBack();
+  }
+  delete nativeCallbacks[id];
+};
+
 SimplyPebble.entityClear = function() {
   SimplyPebble.sendPacket(EntityClearPacket);
 };
@@ -1799,6 +1955,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
       if (state.watchDataCallback) {
         state.watchDataCallback(packet.battery(), packet.charging(), packet.steps());
       }
+      break;
+    case NativeMenuSelectPacket:
+      SimplyPebble.onNativeSelect(packet);
+      break;
+    case NativeMenuLongSelectPacket:
+      SimplyPebble.onNativeLongSelect(packet);
+      break;
+    case NativeMenuBackPacket:
+      SimplyPebble.onNativeBack(packet);
       break;
   }
 };

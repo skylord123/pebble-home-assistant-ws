@@ -1,555 +1,348 @@
 /**
- * EntityListPage - Entity list display with real-time updates
+ * EntityListPage - Entity list display with real-time updates (Native Bridge)
  */
-var UI = require('ui');
 var sortJSON = require('vendor/sortjson');
-var BasePage = require('app/pages/BasePage');
+var simply = require('ui/simply');
 var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
-var simply = require('ui/simply');
 
-// Module-level menu reference
-var entityListMenu = null;
+var nextScreenId = 10; // Start at 10 to avoid conflicts with main menu
 
-class EntityListPage extends BasePage {
-    constructor(title, entityIdList, options) {
-        super();
-        this.title = title || "Entities";
-        this.entityIdList = entityIdList || false;
-        this.entityIdListProvider = options && options.entityIdListProvider ? options.entityIdListProvider : null;
-        this.ignoreEntityCache = options && options.ignoreEntityCache !== undefined ? options.ignoreEntityCache : true;
-        this.sortItems = options && options.sortItems !== undefined ? options.sortItems : true;
-        this.skipIgnoredDomains = options && options.skipIgnoredDomains !== undefined ? options.skipIgnoredDomains : false;
-        this.subscriptionId = null;
-        this.currentPage = null;
-        this.relativeTimeUpdater = null;
+/**
+ * Show a list of entities using the native bridge
+ */
+function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipIgnoredDomains, entityIdListProvider) {
+    var appState = AppState.getInstance();
+    var screenId = nextScreenId++;
+    var subscriptionId = null;
+    var relativeTimeUpdater = null;
+    var renderedEntityIds = {};
+    var entityStates = {};
+    var menuItems = []; // [{entity_id, title, subtitle, icon, on_click}, ...]
+    var currentPage = 1;
+    var maxPageItems = 20;
+
+    sortItems = sortItems !== undefined ? sortItems : true;
+    skipIgnoredDomains = skipIgnoredDomains !== undefined ? skipIgnoredDomains : false;
+
+    function cleanup() {
+        if (subscriptionId && appState.haws) {
+            appState.haws.unsubscribe(subscriptionId);
+            subscriptionId = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
     }
 
-    createMenu() {
-        return new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: this.title
-            }]
-        });
+    function getEntitySubtitle(entity) {
+        var sub = entity.state;
+        if (entity.attributes.unit_of_measurement) {
+            sub += ' ' + entity.attributes.unit_of_measurement;
+        }
+        sub += ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed));
+        return sub;
     }
 
-    show() {
-        var self = this;
-        this.menu = this.createMenu();
-
-        this.menu.on('show', function(e) {
-            helpers.log_message('showEntityList (title=' + self.title + '): show event called');
-            self.updateStates(self.currentPage);
-        });
-
-        this.menu.on('hide', function(e) {
-            helpers.log_message('showEntityList (title=' + self.title + '): hide event called');
-            self.unsubscribe();
-            if (self.relativeTimeUpdater) {
-                self.relativeTimeUpdater.pause();
-            }
-        });
-
-        this.menu.on('select', function(e) {
-            helpers.log_message('showEntityList (title=' + self.title + '): select event called');
-            self.appState.menuSelections.entityListMenu = e.itemIndex;
-
-            var entity_id = e.item.entity_id;
-            if (typeof e.item.on_click === 'function') {
-                e.item.on_click(e);
-                return;
-            }
-            helpers.log_message('Entity ' + entity_id + ' was short pressed! Index: ' + e.itemIndex);
-            EntityService.show(entity_id);
-        });
-
-        this.menu.on('longSelect', function(e) {
-            if (e.item && e.item.entity_id) {
-                EntityService.handleLongPress(e.item.entity_id);
-            }
-        });
-
-        this.menu.show();
+    function convertEntityData(entity_id, data) {
+        return {
+            entity_id: entity_id,
+            state: data.s,
+            attributes: data.a || {},
+            context: data.c,
+            last_changed: data.lc ? new Date(data.lc * 1000).toISOString() : new Date().toISOString()
+        };
     }
 
-    updateStates(pageNumber) {
-        var self = this;
-        var appState = this.appState;
-        var maxPageItems = 20;
-        var paginated = false;
-        var paginateMore = false;
+    function renderMenu(pageNumber) {
+        if (!pageNumber) pageNumber = 1;
+        currentPage = pageNumber;
 
-        if (!pageNumber) {
-            pageNumber = 1;
-        }
-
-        // Refresh entity list from provider if available
-        if (this.entityIdListProvider) {
-            this.entityIdList = this.entityIdListProvider();
-
-            // If the list is now empty (e.g. last favorite removed), go back
-            if (!this.entityIdList || this.entityIdList.length === 0) {
-                helpers.log_message('Entity list is empty, navigating back');
-                this.menu.hide();
+        // Refresh from provider
+        if (entityIdListProvider) {
+            entityIdList = entityIdListProvider();
+            if (!entityIdList || entityIdList.length === 0) {
+                simply.impl.nativeMenuPop();
                 return;
             }
         }
 
-        // Unsubscribe from previous subscription
-        this.unsubscribe();
-
-        // Determine which entity IDs to subscribe to
-        var entitiesToSubscribe = this.entityIdList ? this.entityIdList.slice() : [];
-
-        // Filter out ignored domains if skipIgnoredDomains is true
-        if (this.skipIgnoredDomains && appState.ignore_domains && appState.ignore_domains.length > 0) {
-            entitiesToSubscribe = entitiesToSubscribe.filter(function(entity_id) {
-                var parts = entity_id.split('.');
-                var domain = parts[0];
-                return appState.ignore_domains.indexOf(domain) === -1;
-            });
+        // Build data array
+        var data = [];
+        for (var eid in entityStates) {
+            if (entityIdList && entityIdList.indexOf(eid) === -1) continue;
+            data.push(entityStates[eid]);
         }
 
-        if (entitiesToSubscribe.length === 0) {
-            helpers.log_message('No entities to subscribe to');
-            this.menu.section(0).title = 'No entities';
-            return;
-        }
-
-        var prevTitle = this.menu.section(0).title;
-        this.menu.section(0).title = 'updating ...';
-
-        // Local state cache for this subscription
-        var entityStates = {};
-        var renderedEntityIds = {};
-        var initialSnapshotReceived = false;
-
-        // Clear and recreate the RelativeTimeUpdater
-        if (this.relativeTimeUpdater) {
-            this.relativeTimeUpdater.destroy();
-        }
-        this.relativeTimeUpdater = new RelativeTimeUpdater(function(entity_id, lastChanged) {
-            helpers.log_message('Relative time update for ' + entity_id);
-            updateEntitySubtitle(entity_id);
+        // Filter
+        data = data.filter(function(entity) {
+            if (entity.state === 'unavailable' && appState.unavailable_entity_handling === 'hide') return false;
+            if (entity.state === 'unknown' && appState.unknown_entity_handling === 'hide') return false;
+            return true;
         });
 
-        // Helper to update just the subtitle of an entity
-        function updateEntitySubtitle(entity_id) {
-            if (renderedEntityIds[entity_id] === undefined) {
-                return;
-            }
-
-            var entity = entityStates[entity_id];
-            if (!entity) {
-                return;
-            }
-
-            self.menu.item(0, renderedEntityIds[entity_id], {
-                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ' ' + entity.attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed)),
-                entity_id: entity.entity_id,
-                icon: EntityService.getIcon(entity)
-            });
+        // Separate and sort
+        var normal = [], unavail = [], unknown = [];
+        for (var i = 0; i < data.length; i++) {
+            var s = data[i].state;
+            if (s === 'unavailable' && appState.unavailable_entity_handling === 'sort_to_end') unavail.push(data[i]);
+            else if (s === 'unknown' && appState.unknown_entity_handling === 'sort_to_end') unknown.push(data[i]);
+            else normal.push(data[i]);
         }
 
-        // Helper to convert subscribeEntities format to standard entity format
-        function convertEntityData(entity_id, data) {
-            return {
-                entity_id: entity_id,
-                state: data.s,
-                attributes: data.a || {},
-                context: data.c,
-                last_changed: data.lc ? new Date(data.lc * 1000).toISOString() : new Date().toISOString()
+        if (sortItems) {
+            normal = sortJSON(normal, appState.ha_order_by, appState.ha_order_dir);
+            unavail = sortJSON(unavail, appState.ha_order_by, appState.ha_order_dir);
+            unknown = sortJSON(unknown, appState.ha_order_by, appState.ha_order_dir);
+        } else if (entityIdList) {
+            var sortByList = function(a, b) {
+                return entityIdList.indexOf(a.entity_id) - entityIdList.indexOf(b.entity_id);
             };
+            normal.sort(sortByList);
+            unavail.sort(sortByList);
+            unknown.sort(sortByList);
         }
 
-        // Helper to render the menu from entityStates
-        function renderMenu() {
-            // Refresh entity list from provider if available
-            if (self.entityIdListProvider) {
-                self.entityIdList = self.entityIdListProvider();
-            }
+        data = normal.concat(unavail).concat(unknown);
+        var totalCount = data.length;
 
-            // Convert entityStates to array for sorting/pagination
-            var data = [];
-            for (var entity_id in entityStates) {
-                // If we have a specific entity list, only include entities in it
-                if (self.entityIdList && self.entityIdList.indexOf(entity_id) === -1) {
-                    continue;
-                }
-                data.push(entityStates[entity_id]);
-            }
+        // Paginate
+        var paginated = false, paginateMore = false;
+        if (data.length > maxPageItems) {
+            data = data.slice((pageNumber - 1) * maxPageItems, pageNumber * maxPageItems);
+            paginated = true;
+            paginateMore = (maxPageItems * pageNumber) < totalCount;
+        }
 
-            // Filter and sort based on unavailable/unknown entity handling settings
-            data = data.filter(function(entity) {
-                var state = entity.state;
-                if (state === 'unavailable' && appState.unavailable_entity_handling === 'hide') {
-                    return false;
-                }
-                if (state === 'unknown' && appState.unknown_entity_handling === 'hide') {
-                    return false;
-                }
-                return true;
+        // Reset
+        renderedEntityIds = {};
+        menuItems = [];
+        if (relativeTimeUpdater) relativeTimeUpdater.clear();
+
+        var menuIndex = 0;
+
+        // Prev page
+        if (pageNumber > 1) {
+            menuItems.push({
+                title: "Prev Page",
+                on_click: function() { renderMenu(pageNumber - 1); }
             });
+            simply.impl.nativeMenuUpdate(screenId, 0, menuIndex, "Prev Page", "", 0);
+            menuIndex++;
+        }
 
-            // Separate entities into groups based on their state and handling settings
-            var normalEntities = [];
-            var unavailableToEnd = [];
-            var unknownToEnd = [];
+        // Entity items
+        for (var j = 0; j < data.length; j++) {
+            try {
+                if (data[j].attributes.hidden) continue;
 
-            for (var i = 0; i < data.length; i++) {
-                var entity = data[i];
-                var state = entity.state;
-                if (state === 'unavailable' && appState.unavailable_entity_handling === 'sort_to_end') {
-                    unavailableToEnd.push(entity);
-                } else if (state === 'unknown' && appState.unknown_entity_handling === 'sort_to_end') {
-                    unknownToEnd.push(entity);
-                } else {
-                    normalEntities.push(entity);
-                }
-            }
+                var itemTitle = data[j].attributes.friendly_name || data[j].entity_id;
+                var itemSubtitle = getEntitySubtitle(data[j]);
+                var itemIcon;
+                try { itemIcon = EntityService.getIcon(data[j]); }
+                catch (e) { itemIcon = 'images/icon_unknown.png'; }
 
-            // Sort each group
-            if (self.sortItems) {
-                normalEntities = sortJSON(normalEntities, appState.ha_order_by, appState.ha_order_dir);
-                unavailableToEnd = sortJSON(unavailableToEnd, appState.ha_order_by, appState.ha_order_dir);
-                unknownToEnd = sortJSON(unknownToEnd, appState.ha_order_by, appState.ha_order_dir);
-            } else if (self.entityIdList) {
-                // Sort items in same order as they appear in entity_id_list
-                var sortByList = function(a, b) {
-                    return self.entityIdList.indexOf(a.entity_id) - self.entityIdList.indexOf(b.entity_id);
-                };
-                normalEntities.sort(sortByList);
-                unavailableToEnd.sort(sortByList);
-                unknownToEnd.sort(sortByList);
-            }
-
-            // Combine: normal entities first, then unavailable, then unknown
-            data = normalEntities.concat(unavailableToEnd).concat(unknownToEnd);
-
-            var dataLength = data.length;
-
-            function paginate(array, pageSize, pageNum) {
-                return array.slice((pageNum - 1) * pageSize, pageNum * pageSize);
-            }
-
-            if (data.length > maxPageItems) {
-                data = paginate(data, maxPageItems, pageNumber);
-                paginated = true;
-                paginateMore = (maxPageItems * pageNumber) < dataLength;
-                helpers.log_message('maxPageItems:' + maxPageItems + ' pageNumber:' + pageNumber + ' dataLength:' + dataLength + ' paginateMore:' + (paginateMore ? 1 : 0));
-            }
-
-            // Clear renderedEntityIds for fresh mapping
-            renderedEntityIds = {};
-
-            // Clear existing relative time timers before re-rendering
-            if (self.relativeTimeUpdater) {
-                self.relativeTimeUpdater.clear();
-            }
-
-            self.menu.items(0, []); // clear items
-            if (simply.impl && simply.impl.entityClear) {
-                simply.impl.entityClear();
-            }
-            var menuIndex = 0;
-
-            if (pageNumber > 1) {
-                self.menu.item(0, menuIndex, {
-                    title: "Prev Page",
-                    on_click: function(e) {
-                        self.updateStates(pageNumber - 1);
-                    }
+                menuItems.push({
+                    entity_id: data[j].entity_id,
+                    title: itemTitle,
+                    subtitle: itemSubtitle,
+                    icon: itemIcon
                 });
+                renderedEntityIds[data[j].entity_id] = menuIndex;
+
+                simply.impl.nativeMenuUpdate(screenId, 0, menuIndex, itemTitle, itemSubtitle, itemIcon);
+
+                if (relativeTimeUpdater) {
+                    relativeTimeUpdater.register(data[j].entity_id, data[j].last_changed);
+                }
                 menuIndex++;
+            } catch (err) {
+                helpers.log_message('renderMenu: ERROR ' + err.message);
             }
-
-            helpers.log_message('renderMenu: about to render ' + data.length + ' items to menu');
-            for (var j = 0; j < data.length; j++) {
-                try {
-                    if (data[j].attributes.hidden) {
-                        helpers.log_message('renderMenu: skipping hidden entity ' + data[j].entity_id);
-                        continue;
-                    }
-
-                    var menuId = menuIndex++;
-                    var itemTitle = data[j].attributes.friendly_name ? data[j].attributes.friendly_name : data[j].entity_id;
-                    var itemSubtitle = data[j].state + (data[j].attributes.unit_of_measurement ? ' ' + data[j].attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(data[j].last_changed));
-
-                    // Get icon path
-                    var itemIcon;
-                    try {
-                        itemIcon = EntityService.getIcon(data[j]);
-                    } catch (iconErr) {
-                        helpers.log_message('renderMenu: icon error for ' + data[j].entity_id + ': ' + iconErr.message);
-                        itemIcon = 'images/icon_unknown.png';
-                    }
-
-                    self.menu.item(0, menuId, {
-                        title: itemTitle,
-                        subtitle: itemSubtitle,
-                        entity_id: data[j].entity_id,
-                        icon: itemIcon
-                    });
-                    renderedEntityIds[data[j].entity_id] = menuId;
-
-                    if (simply.impl && simply.impl.entitySync) {
-                        var domain = data[j].entity_id.split('.')[0];
-                        simply.impl.entitySync(0, menuId, {
-                            name: itemTitle,
-                            state: itemSubtitle,
-                            domain: domain,
-                            icon: itemIcon
-                        });
-                    }
-
-                    // Register entity for relative time updates
-                    if (self.relativeTimeUpdater) {
-                        self.relativeTimeUpdater.register(data[j].entity_id, data[j].last_changed);
-                    }
-                } catch (err) {
-                    helpers.log_message('renderMenu: ERROR rendering entity ' + (data[j] ? data[j].entity_id : 'unknown') + ' at index ' + j + ': ' + err.message);
-                }
-            }
-            helpers.log_message('renderMenu: rendered ' + menuIndex + ' items total');
-
-            if (paginateMore) {
-                self.menu.item(0, menuIndex, {
-                    title: "Next Page",
-                    on_click: function(e) {
-                        self.updateStates(pageNumber + 1);
-                    }
-                });
-            }
-
-            self.currentPage = pageNumber;
         }
 
-        // Helper to update a single entity in the menu
-        function updateEntityInMenu(entity_id) {
-            if (renderedEntityIds[entity_id] === undefined) {
-                return;
-            }
-
-            var entity = entityStates[entity_id];
-            if (!entity) {
-                return;
-            }
-
-            var updatedTitle = entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id;
-            var updatedSubtitle = entity.state + (entity.attributes.unit_of_measurement ? ' ' + entity.attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed));
-            var updatedIcon = EntityService.getIcon(entity);
-            var updatedMenuId = renderedEntityIds[entity_id];
-
-            self.menu.item(0, updatedMenuId, {
-                title: updatedTitle,
-                subtitle: updatedSubtitle,
-                entity_id: entity.entity_id,
-                icon: updatedIcon
+        // Next page
+        if (paginateMore) {
+            menuItems.push({
+                title: "Next Page",
+                on_click: function() { renderMenu(pageNumber + 1); }
             });
-
-            if (simply.impl && simply.impl.entitySync) {
-                var domain = entity.entity_id.split('.')[0];
-                simply.impl.entitySync(0, updatedMenuId, {
-                    name: updatedTitle,
-                    state: updatedSubtitle,
-                    domain: domain,
-                    icon: updatedIcon
-                });
-            }
-
-            // Update the relative time timer
-            if (self.relativeTimeUpdater) {
-                self.relativeTimeUpdater.update(entity_id, entity.last_changed);
-            }
+            simply.impl.nativeMenuUpdate(screenId, 0, menuIndex, "Next Page", "", 0);
         }
+    }
 
-        helpers.log_message('Setting up subscribeEntities for ' + entitiesToSubscribe.length + ' entities');
+    function updateEntityInMenu(entity_id) {
+        var idx = renderedEntityIds[entity_id];
+        if (idx === undefined) return;
+        var entity = entityStates[entity_id];
+        if (!entity) return;
 
-        this.subscribe(entitiesToSubscribe, function(data) {
+        var updatedTitle = entity.attributes.friendly_name || entity.entity_id;
+        var updatedSubtitle = getEntitySubtitle(entity);
+        var updatedIcon;
+        try { updatedIcon = EntityService.getIcon(entity); }
+        catch (e) { updatedIcon = 'images/icon_unknown.png'; }
+
+        simply.impl.nativeMenuUpdate(screenId, 0, idx, updatedTitle, updatedSubtitle, updatedIcon);
+    }
+
+    // Create relative time updater
+    relativeTimeUpdater = new RelativeTimeUpdater(function(entity_id) {
+        updateEntityInMenu(entity_id);
+    });
+
+    // Push native menu
+    simply.impl.nativeMenuPush(screenId, title || 'Entities', 1, {
+        onSelect: function(section, index) {
+            var item = menuItems[index];
+            if (!item) return;
+            if (typeof item.on_click === 'function') {
+                item.on_click();
+                return;
+            }
+            if (item.entity_id) {
+                EntityService.show(item.entity_id);
+            }
+        },
+        onLongSelect: function(section, index) {
+            var item = menuItems[index];
+            if (item && item.entity_id) {
+                EntityService.handleLongPress(item.entity_id);
+            }
+        },
+        onBack: function() {
+            cleanup();
+        }
+    });
+
+    // Determine entities to subscribe to
+    var entitiesToSubscribe = entityIdList ? entityIdList.slice() : [];
+    if (skipIgnoredDomains && appState.ignore_domains && appState.ignore_domains.length > 0) {
+        entitiesToSubscribe = entitiesToSubscribe.filter(function(id) {
+            return appState.ignore_domains.indexOf(id.split('.')[0]) === -1;
+        });
+    }
+
+    if (entitiesToSubscribe.length === 0 && !entityIdList) {
+        // Subscribe to all entities
+        entitiesToSubscribe = Object.keys(appState.ha_state_dict);
+    }
+
+    if (entitiesToSubscribe.length === 0) {
+        simply.impl.nativeMenuUpdate(screenId, 0, 0, "No entities", "", 0);
+        menuItems.push({ title: "No entities" });
+        return;
+    }
+
+    // Subscribe
+    var initialSnapshotReceived = false;
+    subscriptionId = appState.haws.subscribeEntities(
+        entitiesToSubscribe,
+        function(data) {
             var ev = data.event || {};
 
-            if (ev.a) {
-                helpers.log_message('subscribeEntities: received ' + Object.keys(ev.a).length + ' added entities');
-            }
-            if (ev.c) {
-                helpers.log_message('subscribeEntities: received ' + Object.keys(ev.c).length + ' changed entities');
-            }
-            if (ev.r) {
-                helpers.log_message('subscribeEntities: received ' + Object.keys(ev.r).length + ' removed entities');
-            }
-
-            // Handle added entities (initial snapshot)
             if (ev.a) {
                 for (var entity_id in ev.a) {
                     var entityData = convertEntityData(entity_id, ev.a[entity_id]);
                     entityStates[entity_id] = entityData;
                     appState.setEntity(entity_id, entityData);
                 }
-
-                // On initial snapshot, render the full menu
                 if (!initialSnapshotReceived) {
                     initialSnapshotReceived = true;
-                    self.menu.section(0).title = prevTitle;
-                    renderMenu();
+                    renderMenu(1);
                 }
             }
 
-            // Handle changed entities (updates)
             if (ev.c) {
-                for (var changedId in ev.c) {
-                    var patch = ev.c[changedId];
+                for (var cid in ev.c) {
+                    var patch = ev.c[cid];
                     var plus = patch["+"] || {};
-
-                    // Get existing state or create new one
-                    var cur = entityStates[changedId] || { entity_id: changedId, state: '', attributes: {} };
-
-                    // Merge the changes
-                    entityStates[changedId] = {
-                        entity_id: changedId,
+                    var cur = entityStates[cid] || { entity_id: cid, state: '', attributes: {} };
+                    entityStates[cid] = {
+                        entity_id: cid,
                         state: plus.s !== undefined ? plus.s : cur.state,
                         attributes: plus.a !== undefined ? plus.a : cur.attributes,
                         context: plus.c !== undefined ? plus.c : cur.context,
                         last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
                     };
-                    appState.setEntity(changedId, entityStates[changedId]);
-
-                    helpers.log_message('Entity update for ' + changedId + ': ' + entityStates[changedId].state);
-                    updateEntityInMenu(changedId);
+                    appState.setEntity(cid, entityStates[cid]);
+                    updateEntityInMenu(cid);
                 }
             }
 
-            // Handle removed entities
             if (ev.r) {
-                for (var removedId in ev.r) {
-                    delete entityStates[removedId];
-                    helpers.log_message('Entity removed: ' + removedId);
-                    // Re-render menu if an entity was removed
-                    if (initialSnapshotReceived) {
-                        renderMenu();
-                    }
+                for (var rid in ev.r) {
+                    delete entityStates[rid];
+                    if (initialSnapshotReceived) renderMenu(currentPage);
                 }
             }
-        }, function(error) {
+        },
+        function(error) {
             helpers.log_message('subscribeEntities ERROR: ' + JSON.stringify(error));
-            self.menu.section(0).title = 'HAWS - failed updating';
-        });
-    }
+        }
+    );
 }
 
 /**
- * Show entity domains list from a list of entity IDs
- * @param {string[]} entityIdList - List of entity IDs
- * @param {string} title - Menu title
+ * Show entity domains list using native bridge
  */
 function showEntityDomainsFromList(entityIdList, title) {
     var appState = AppState.getInstance();
+    var screenId = nextScreenId++;
+    var menuItems = [];
 
-    var domainListMenu = new UI.Menu({
-        status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
-        sections: [{
-            title: title ? title : "Home Assistant"
-        }]
+    // Build domain map
+    var domainEntities = {};
+    for (var i = 0; i < entityIdList.length; i++) {
+        var entity_id = entityIdList[i];
+        var entity = appState.getEntity(entity_id);
+        if (!entity) continue;
+
+        var domain = entity_id.split('.')[0];
+        if (appState.ignore_domains && appState.ignore_domains.indexOf(domain) !== -1) continue;
+
+        if (domain in domainEntities) {
+            domainEntities[domain].push(entity_id);
+        } else {
+            domainEntities[domain] = [entity_id];
+        }
+    }
+
+    domainEntities = helpers.sortObjectByKeys(domainEntities);
+
+    // Push native menu
+    simply.impl.nativeMenuPush(screenId, title || 'Domains', 1, {
+        onSelect: function(section, index) {
+            var item = menuItems[index];
+            if (item && typeof item.on_click === 'function') {
+                item.on_click();
+            }
+        },
+        onLongSelect: function() {},
+        onBack: function() {}
     });
 
-    domainListMenu.on('show', function() {
-        helpers.log_message('showEntityDomainsFromList: building domain list from ' + entityIdList.length + ' entities');
-
-        // Loop over entity id list and index them by their domain
-        var domainEntities = {};
-        var missingEntities = [];
-        for (var i = 0; i < entityIdList.length; i++) {
-            var entity_id = entityIdList[i];
-            var entity = appState.getEntity(entity_id);
-            if (!entity) {
-                missingEntities.push(entity_id);
-                continue;
-            }
-
-            var parts = entity_id.split('.');
-            var domain = parts[0];
-
-            // Skip domains that should be ignored
-            if (appState.ignore_domains && appState.ignore_domains.indexOf(domain) !== -1) {
-                continue;
-            }
-
-            if (domain in domainEntities) {
-                domainEntities[domain].push(entity_id);
-            } else {
-                domainEntities[domain] = [entity_id];
-            }
-        }
-
-        if (missingEntities.length > 0) {
-            helpers.log_message('showEntityDomainsFromList: WARNING - ' + missingEntities.length + ' entities missing from ha_state_dict');
-        }
-
-        // Sort domain list
-        domainEntities = helpers.sortObjectByKeys(domainEntities);
-
-        // Log domain counts
-        for (var d in domainEntities) {
-            helpers.log_message('showEntityDomainsFromList: domain \'' + d + '\' has ' + domainEntities[d].length + ' entities');
-        }
-
-        // Add domain entries into menu
-        var menuIdx = 0;
-        for (var domainName in domainEntities) {
-            (function(dom, entities) {
-                var displayName = helpers.ucwords(dom.replace('_', ' '));
-                domainListMenu.item(0, menuIdx++, {
-                    title: displayName,
-                    subtitle: entities.length + ' ' + (entities.length > 1 ? 'entities' : 'entity'),
-                    on_click: function(e) {
-                        helpers.log_message('showEntityDomainsFromList: clicked domain \'' + dom + '\' with ' + entities.length + ' entities');
-                        showEntityList(displayName, entities);
-                    }
-                });
-            })(domainName, domainEntities[domainName]);
-        }
-    });
-
-    domainListMenu.on('select', function(e) {
-        helpers.log_message('Domain list item ' + e.item.title + ' was short pressed!');
-        if (typeof e.item.on_click === 'function') {
-            e.item.on_click(e);
-        }
-    });
-
-    domainListMenu.show();
+    // Send domain items
+    var menuIndex = 0;
+    for (var domainName in domainEntities) {
+        (function(dom, entities) {
+            var displayName = helpers.ucwords(dom.replace('_', ' '));
+            var subtitle = entities.length + ' ' + (entities.length > 1 ? 'entities' : 'entity');
+            menuItems.push({
+                title: displayName,
+                on_click: function() {
+                    showEntityList(displayName, entities);
+                }
+            });
+            simply.impl.nativeMenuUpdate(screenId, 0, menuIndex, displayName, subtitle, 0);
+            menuIndex++;
+        })(domainName, domainEntities[domainName]);
+    }
 }
 
-/**
- * Show entity list (convenience function)
- * @param {string} title - Menu title
- * @param {string[]|boolean} entityIdList - List of entity IDs, or false for all entities
- * @param {boolean} ignoreEntityCache - Whether to ignore entity cache
- * @param {boolean} sortItems - Whether to sort items
- * @param {boolean} skipIgnoredDomains - Whether to skip ignored domains
- * @param {Function} [entityIdListProvider] - Optional function that returns fresh entity IDs on each show
- */
-function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipIgnoredDomains, entityIdListProvider) {
-    var page = new EntityListPage(title, entityIdList, {
-        ignoreEntityCache: ignoreEntityCache !== undefined ? ignoreEntityCache : true,
-        sortItems: sortItems !== undefined ? sortItems : true,
-        skipIgnoredDomains: skipIgnoredDomains !== undefined ? skipIgnoredDomains : false,
-        entityIdListProvider: entityIdListProvider || null
-    });
-    page.show();
-}
-
-module.exports = EntityListPage;
+module.exports = {};
 module.exports.showEntityList = showEntityList;
 module.exports.showEntityDomainsFromList = showEntityDomainsFromList;

@@ -9,6 +9,7 @@ struct Simply {
   struct SimplyVoice *voice;
   struct SimplyEntities *entities;
   struct SimplyWatchData *watchdata;
+  struct SimplyNative *native;
   struct SimplyRes *res;
   struct SimplyMsg *msg;
   struct SimplyWindowStack *window_stack;

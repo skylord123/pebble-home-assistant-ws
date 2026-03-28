@@ -8,6 +8,7 @@
  * - Effect selection
  * - Real-time state subscription
  */
+var simply = require('ui/simply');
 var UI = require('ui');
 var Vector = require('vector2');
 var Feature = require('platform/feature');
@@ -25,6 +26,10 @@ var menuSelections = {
 };
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
+
+// Screen ID range for LightPage: 3000-3099
+var _lightScreenId = 3000;
+function nextLightScreenId() { return _lightScreenId++; }
 
 function showLightEntity(entity_id) {
     var appState = AppState.getInstance();
@@ -165,21 +170,12 @@ function showLightEntity(entity_id) {
 
     // Get initial light data
     let lightData = getLightData(light);
-    let features = supported_features(light);
+    let feats = supported_features(light);
 
-    // Create the light menu
-    let lightMenu = new UI.Menu({
-        status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
-        sections: [{
-            title: lightData.friendly_name
-        }, {
-            title: 'Extra'
-        }]
-    });
+    // Create the light menu via native bridge
+    var lightScreenId = nextLightScreenId();
+    // Callback map for section 0 and section 1
+    var lightCallbacks = {};
 
     // Function to update menu items based on current light state
     function updateLightMenuItems(updatedLight) {
@@ -188,95 +184,101 @@ function showLightEntity(entity_id) {
         let menuIndex = 0;
 
         // Update main status item
-        lightMenu.item(0, menuIndex++, {
-            title: updatedData.friendly_name,
-            subtitle: `${updatedData.is_on ? 'on' : 'off'} > ${updatedData.last_changed_time}`,
-            icon: updatedData.is_on ? 'images/icon_bulb_on.png' : 'images/icon_bulb.png',
-            on_click: function() {
-                // Toggle light on/off
-                appState.haws.callService(
-                    "light",
-                    "toggle",
-                    {},
-                    { entity_id: updatedData.entity_id },
-                    function(data) {
-                        Vibe.vibrate('short');
-                        helpers.log_message(`Toggled light: ${updatedData.entity_id}`);
-                    },
-                    function(error) {
-                        Vibe.vibrate('double');
-                        helpers.log_message(`Error toggling light: ${error}`);
-                    }
-                );
-            }
-        });
+        lightCallbacks['0_' + menuIndex] = function() {
+            // Toggle light on/off
+            simply.impl.nativeToast('Sending...', 0);
+            appState.haws.callService(
+                "light",
+                "toggle",
+                {},
+                { entity_id: updatedData.entity_id },
+                function(data) {
+                    Vibe.vibrate('short');
+                    simply.impl.nativeToast('Done', 1);
+                    helpers.log_message(`Toggled light: ${updatedData.entity_id}`);
+                },
+                function(error) {
+                    Vibe.vibrate('double');
+                    helpers.log_message(`Error toggling light: ${error}`);
+                }
+            );
+        };
+        simply.impl.nativeMenuUpdate(lightScreenId, 0, menuIndex,
+            updatedData.friendly_name,
+            `${updatedData.is_on ? 'on' : 'off'} > ${updatedData.last_changed_time}`,
+            updatedData.is_on ? 'images/icon_bulb_on.png' : 'images/icon_bulb.png');
+        menuIndex++;
 
         // Update brightness item if supported
-        if (features.brightness) {
-            lightMenu.item(0, menuIndex++, {
-                title: 'Brightness',
-                subtitle: updatedData.is_on ? `${updatedData.brightnessPerc}%` : 'NA',
-                on_click: function() {
-                    showBrightnessMenu(updatedData.entity_id, updatedData.brightnessPerc);
-                }
-            });
+        if (feats.brightness) {
+            lightCallbacks['0_' + menuIndex] = function() {
+                showBrightnessMenu(updatedData.entity_id, updatedData.brightnessPerc);
+            };
+            simply.impl.nativeMenuUpdate(lightScreenId, 0, menuIndex,
+                'Brightness',
+                updatedData.is_on ? `${updatedData.brightnessPerc}%` : 'NA',
+                null);
+            menuIndex++;
         }
 
         // Update color temperature item if supported
-        if (features.color_temp) {
-            lightMenu.item(0, menuIndex++, {
-                title: 'Color Temperature',
-                subtitle: updatedData.is_on && updatedData.color_temp_kelvin ?
-                          `${updatedData.color_temp_kelvin}K` : 'NA',
-                on_click: function() {
-                    showColorTempMenu(
-                        updatedData.entity_id,
-                        updatedData.color_temp_kelvin,
-                        updatedData.min_color_temp_kelvin,
-                        updatedData.max_color_temp_kelvin
-                    );
-                }
-            });
+        if (feats.color_temp) {
+            lightCallbacks['0_' + menuIndex] = function() {
+                showColorTempMenu(
+                    updatedData.entity_id,
+                    updatedData.color_temp_kelvin,
+                    updatedData.min_color_temp_kelvin,
+                    updatedData.max_color_temp_kelvin
+                );
+            };
+            simply.impl.nativeMenuUpdate(lightScreenId, 0, menuIndex,
+                'Color Temperature',
+                updatedData.is_on && updatedData.color_temp_kelvin ?
+                    `${updatedData.color_temp_kelvin}K` : 'NA',
+                null);
+            menuIndex++;
         }
 
         // Update color item if supported
-        if (features.color) {
+        if (feats.color) {
             let colorText = 'NA';
             if (updatedData.is_on && updatedData.rgb_color) {
                 colorText = `RGB(${updatedData.rgb_color.join(',')})`;
                 helpers.log_message(`Color menu item updated with: ${colorText}`);
             }
 
-            lightMenu.item(0, menuIndex++, {
-                title: 'Color',
-                subtitle: colorText,
-                on_click: function() {
-                    // Make sure we pass the RGB color array correctly
-                    let rgbColor = updatedData.rgb_color || [255, 255, 255];
-                    helpers.log_message(`Opening color menu with color: ${JSON.stringify(rgbColor)}`);
-                    showColorMenu(updatedData.entity_id, rgbColor);
-                }
-            });
+            lightCallbacks['0_' + menuIndex] = function() {
+                // Make sure we pass the RGB color array correctly
+                let rgbColor = updatedData.rgb_color || [255, 255, 255];
+                helpers.log_message(`Opening color menu with color: ${JSON.stringify(rgbColor)}`);
+                showColorMenu(updatedData.entity_id, rgbColor);
+            };
+            simply.impl.nativeMenuUpdate(lightScreenId, 0, menuIndex,
+                'Color',
+                colorText,
+                null);
+            menuIndex++;
         }
 
         // Update effect item if supported
-        if (features.effect && updatedData.effect_list && updatedData.effect_list.length > 0) {
-            lightMenu.item(0, menuIndex++, {
-                title: 'Effect',
-                subtitle: updatedData.effect || 'None',
-                on_click: function() {
-                    showEffectMenu(updatedData.entity_id, updatedData.effect, updatedData.effect_list);
-                }
-            });
+        if (feats.effect && updatedData.effect_list && updatedData.effect_list.length > 0) {
+            lightCallbacks['0_' + menuIndex] = function() {
+                showEffectMenu(updatedData.entity_id, updatedData.effect, updatedData.effect_list);
+            };
+            simply.impl.nativeMenuUpdate(lightScreenId, 0, menuIndex,
+                'Effect',
+                updatedData.effect || 'None',
+                null);
+            menuIndex++;
         }
 
         // Add More option
-        lightMenu.item(0, menuIndex++, {
-            title: 'More',
-            on_click: function() {
-                GenericEntityPage.showEntityMenu(updatedData.entity_id);
-            }
-        });
+        lightCallbacks['0_' + menuIndex] = function() {
+            GenericEntityPage.showEntityMenu(updatedData.entity_id);
+        };
+        simply.impl.nativeMenuUpdate(lightScreenId, 0, menuIndex,
+            'More', '', null);
+        menuIndex++;
     }
 
     // Helper function to show brightness selection menu
@@ -378,6 +380,7 @@ function showLightEntity(entity_id) {
         brightnessWindow.on('click', 'select', function() {
             // Set the brightness
             let brightness = Math.round((255 / 100) * current_brightness);
+            simply.impl.nativeToast('Sending...', 0);
             appState.haws.callService(
                 "light",
                 "turn_on",
@@ -385,6 +388,7 @@ function showLightEntity(entity_id) {
                 { entity_id: entity_id },
                 function(data) {
                     Vibe.vibrate('short');
+                    simply.impl.nativeToast('Done', 1);
                     helpers.log_message(`Set brightness to ${current_brightness}%`);
                     brightnessWindow.hide();
                 },
@@ -551,6 +555,7 @@ function showLightEntity(entity_id) {
 
         tempWindow.on('click', 'select', function() {
             // Set the color temperature
+            simply.impl.nativeToast('Sending...', 0);
             appState.haws.callService(
                 "light",
                 "turn_on",
@@ -558,6 +563,7 @@ function showLightEntity(entity_id) {
                 { entity_id: entity_id },
                 function(data) {
                     Vibe.vibrate('short');
+                    simply.impl.nativeToast('Done', 1);
                     helpers.log_message(`Set color temperature to ${current_temp}K`);
                     tempWindow.hide();
                 },
@@ -616,7 +622,7 @@ function showLightEntity(entity_id) {
         tempWindow.show();
     }
 
-    // Helper function to show color selection menu with a colorful slider
+    // Helper function to show color selection menu
     function showColorMenu(entity_id, current_color) {
         // Get the latest light data
         let light = appState.ha_state_dict[entity_id];
@@ -644,47 +650,33 @@ function showLightEntity(entity_id) {
             { name: "White", rgb: [255, 255, 255] }
         ];
 
-        // Create a window for the color slider
-        let colorWindow = new UI.Window({
-            backgroundColor: 'white',
-            status: {
-                color: 'black',
-                backgroundColor: 'white',
-                seperator: "dotted"
+        // Helper function to calculate color distance
+        function colorDistance(color1, color2) {
+            return Math.sqrt(
+                Math.pow(color1[0] - color2[0], 2) +
+                Math.pow(color1[1] - color2[1], 2) +
+                Math.pow(color1[2] - color2[2], 2)
+            );
+        }
+
+        // Helper function to convert RGB to hex
+        function rgbToHex(rgb) {
+            return '#' + rgb.map(x => {
+                const hex = x.toString(16);
+                return hex.length === 1 ? '0' + hex : hex;
+            }).join('');
+        }
+
+        // Helper function to compare arrays
+        function arraysEqual(a, b) {
+            if (!a || !b) return false;
+            if (a.length !== b.length) return false;
+            for (let i = 0; i < a.length; i++) {
+                // Use approximate comparison for RGB values (they might be slightly different)
+                if (Math.abs(a[i] - b[i]) > 5) return false;
             }
-        });
-
-        // Create a menu for color selection
-        let colorMenu = new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: 'Select Color'
-            }]
-        });
-
-        // Add title
-        let title = new UI.Text({
-            text: "Color",
-            color: "black",
-            font: "gothic_24_bold",
-            position: new Vector(0, 0),
-            size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
-        });
-
-        // Add current color name text
-        let colorName = new UI.Text({
-            text: "Red", // Will be updated
-            color: "black",
-            font: "gothic_24",
-            position: new Vector(0, 35),
-            size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
-        });
+            return true;
+        }
 
         // Find closest color match and set initial color index
         let colorIndex = 0;
@@ -698,50 +690,18 @@ function showLightEntity(entity_id) {
             }
         }
 
-        // Update color name text
-        colorName.text(colors[colorIndex].name);
+        // --- Color picker menu via native bridge ---
+        var colorScreenId = nextLightScreenId();
+        var colorCallbacks = {};
 
-        // Helper function to compare arrays
-        function arraysEqual(a, b) {
-            if (!a || !b) return false;
-            if (a.length !== b.length) return false;
-            for (let i = 0; i < a.length; i++) {
-                // Use approximate comparison for RGB values (they might be slightly different)
-                if (Math.abs(a[i] - b[i]) > 5) return false;
-            }
-            return true;
-        }
-
-        // Helper function to calculate color distance
-        function colorDistance(color1, color2) {
-            return Math.sqrt(
-                Math.pow(color1[0] - color2[0], 2) +
-                Math.pow(color1[1] - color2[1], 2) +
-                Math.pow(color1[2] - color2[2], 2)
-            );
-        }
-
-        // Helper function to convert RGB to hex
-        function rgbToHex(rgb) {
-            return '#' + rgb.map(x => {
-                const hex = x.toString(16);
-                return hex.length === 1 ? '0' + hex : hex;
-            }).join('');
-        }
-
-        // Add color options to the menu
         for (let i = 0; i < colors.length; i++) {
-            let color = colors[i];
-            let isCurrentColor = arraysEqual(color.rgb, current_color);
-
-            colorMenu.item(0, i, {
-                title: color.name,
-                subtitle: isCurrentColor ? 'Current' : '',
-                on_click: function() {
+            (function(idx) {
+                var color = colors[idx];
+                var isCurrentColor = arraysEqual(color.rgb, current_color);
+                colorCallbacks['0_' + idx] = function() {
                     // Set the selected color
-                    let selectedColor = colors[i].rgb;
-
-                    // Send command to Home Assistant
+                    var selectedColor = colors[idx].rgb;
+                    simply.impl.nativeToast('Sending...', 0);
                     appState.haws.callService(
                         "light",
                         "turn_on",
@@ -749,20 +709,94 @@ function showLightEntity(entity_id) {
                         { entity_id: entity_id },
                         function(data) {
                             Vibe.vibrate('short');
-                            helpers.log_message(`Set color to ${colors[i].name}`);
-                            colorMenu.hide();
+                            simply.impl.nativeToast('Done', 1);
+                            helpers.log_message(`Set color to ${colors[idx].name}`);
+                            simply.impl.nativeMenuPop();
                         },
                         function(error) {
                             Vibe.vibrate('double');
                             helpers.log_message(`Error setting color: ${error}`);
                         }
                     );
-                }
-            });
+                };
+                simply.impl.nativeMenuUpdate(colorScreenId, 0, idx,
+                    color.name,
+                    isCurrentColor ? 'Current' : '',
+                    null);
+            })(i);
         }
 
-        // Set the initial selection to the closest color match
-        colorMenu.selection(0, colorIndex);
+        // Subscribe to entity updates for the color menu
+        let color_subscription_msg_id = appState.haws.subscribeTrigger({
+            "type": "subscribe_trigger",
+            "trigger": {
+                "platform": "state",
+                "entity_id": entity_id,
+            },
+        }, function(data) {
+            helpers.log_message(`Light entity update for color menu ${entity_id}`);
+            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                let updatedLight = data.event.variables.trigger.to_state;
+                appState.ha_state_dict[entity_id] = updatedLight;
+                let updatedData = getLightData(updatedLight);
+
+                helpers.log_message(`Updating color menu with RGB color: ${JSON.stringify(updatedData.rgb_color)}`);
+
+                if (updatedData.is_on && updatedData.rgb_color) {
+                    let newColorIndex = 0;
+                    let newClosestDistance = 999999;
+                    for (let i = 0; i < colors.length; i++) {
+                        let distance = colorDistance(colors[i].rgb, updatedData.rgb_color);
+                        if (distance < newClosestDistance) {
+                            newClosestDistance = distance;
+                            newColorIndex = i;
+                        }
+                    }
+                    for (let i = 0; i < colors.length; i++) {
+                        var isCurrentColor = i === newColorIndex;
+                        if (isCurrentColor) {
+                            helpers.log_message(`Current color matched: ${colors[i].name}`);
+                        }
+                        simply.impl.nativeMenuUpdate(colorScreenId, 0, i,
+                            colors[i].name,
+                            isCurrentColor ? 'Current' : '',
+                            null);
+                    }
+                }
+            }
+        }, function(error) {
+            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        });
+
+        // --- Color window with slider (for color-capable devices) ---
+        let colorWindow = new UI.Window({
+            backgroundColor: 'white',
+            status: {
+                color: 'black',
+                backgroundColor: 'white',
+                seperator: "dotted"
+            }
+        });
+
+        // Add title
+        let titleText = new UI.Text({
+            text: "Color",
+            color: "black",
+            font: "gothic_24_bold",
+            position: new Vector(0, 0),
+            size: new Vector(Feature.resolution().x, 30),
+            textAlign: "center"
+        });
+
+        // Add current color name text
+        let colorName = new UI.Text({
+            text: colors[colorIndex].name,
+            color: "black",
+            font: "gothic_24",
+            position: new Vector(0, 35),
+            size: new Vector(Feature.resolution().x, 30),
+            textAlign: "center"
+        });
 
         // Create color bars for the spectrum
         let colorBars = [];
@@ -770,23 +804,18 @@ function showLightEntity(entity_id) {
         let barX = 15;
 
         for (let i = 0; i < colors.length - 1; i++) {
-            // Get colors for gradient
             let startColor = colors[i].rgb;
-            let endColor = colors[i+1].rgb;
-
-            // Create color bar
             colorBars[i] = new UI.Line({
                 position: new Vector(barX, 80),
                 position2: new Vector(barX + barWidth, 80),
                 strokeColor: Feature.color(rgbToHex(startColor), "black"),
                 strokeWidth: 6
             });
-
             colorWindow.add(colorBars[i]);
             barX += barWidth;
         }
 
-        // Add slider indicator (position will be updated)
+        // Add slider indicator
         let sliderIndicator = new UI.Rect({
             position: new Vector(15 + (colorIndex * barWidth) - 3, 70),
             size: new Vector(6, 20),
@@ -794,7 +823,7 @@ function showLightEntity(entity_id) {
         });
 
         // Add instructions
-        let instructions = new UI.Text({
+        let colorInstructions = new UI.Text({
             text: "UP/DOWN: Change | SELECT: Set",
             color: "black",
             font: "gothic_14",
@@ -803,47 +832,25 @@ function showLightEntity(entity_id) {
             textAlign: "center"
         });
 
-        // Add elements to window
-        colorWindow.add(title);
+        colorWindow.add(titleText);
         colorWindow.add(colorName);
         colorWindow.add(sliderIndicator);
-        colorWindow.add(instructions);
+        colorWindow.add(colorInstructions);
 
-        // Helper function to calculate color distance
-        function colorDistance(color1, color2) {
-            return Math.sqrt(
-                Math.pow(color1[0] - color2[0], 2) +
-                Math.pow(color1[1] - color2[1], 2) +
-                Math.pow(color1[2] - color2[2], 2)
-            );
-        }
-
-        // Helper function to convert RGB to hex
-        function rgbToHex(rgb) {
-            return '#' + rgb.map(x => {
-                const hex = x.toString(16);
-                return hex.length === 1 ? '0' + hex : hex;
-            }).join('');
-        }
-
-        // Handle button events
+        // Handle button events for color window
         colorWindow.on('click', 'up', function() {
-            // Move to next color
             colorIndex = (colorIndex + 1) % colors.length;
             updateColorUI();
         });
 
         colorWindow.on('click', 'down', function() {
-            // Move to previous color
             colorIndex = (colorIndex - 1 + colors.length) % colors.length;
             updateColorUI();
         });
 
         colorWindow.on('click', 'select', function() {
-            // Set the selected color
-            let selectedColor = colors[colorIndex].rgb;
-
-            // Send command to Home Assistant
+            var selectedColor = colors[colorIndex].rgb;
+            simply.impl.nativeToast('Sending...', 0);
             appState.haws.callService(
                 "light",
                 "turn_on",
@@ -851,6 +858,7 @@ function showLightEntity(entity_id) {
                 { entity_id: entity_id },
                 function(data) {
                     Vibe.vibrate('short');
+                    simply.impl.nativeToast('Done', 1);
                     helpers.log_message(`Set color to ${colors[colorIndex].name}`);
                     colorWindow.hide();
                 },
@@ -861,96 +869,14 @@ function showLightEntity(entity_id) {
             );
         });
 
-        // Function to update the UI based on current color selection
         function updateColorUI() {
-            // Update color name
             colorName.text(colors[colorIndex].name);
-
-            // Update slider position
             sliderIndicator.animate({
                 position: new Vector(15 + (colorIndex * barWidth) - 3, 70)
             }, 100);
         }
 
-        // Handle hide event to restore selection in parent menu
         colorWindow.on('hide', function() {
-            // Restore the selection in the parent menu
-            selectedIndex = returnToIndex;
-        });
-
-        // Show the color window
-        colorWindow.show();
-
-        // Helper function to update color menu items
-        function updateColorMenuItems(updatedLight) {
-            // Get updated light data
-            let updatedData = getLightData(updatedLight);
-
-            // Log the current RGB color for debugging
-            helpers.log_message(`Updating color menu with RGB color: ${JSON.stringify(updatedData.rgb_color)}`);
-
-            if (updatedData.is_on && updatedData.rgb_color) {
-                // Find closest color match
-                let newColorIndex = 0;
-                let newClosestDistance = 999999;
-
-                for (let i = 0; i < colors.length; i++) {
-                    let distance = colorDistance(colors[i].rgb, updatedData.rgb_color);
-                    if (distance < newClosestDistance) {
-                        newClosestDistance = distance;
-                        newColorIndex = i;
-                    }
-                }
-
-                // Update menu items to reflect current state
-                for (let i = 0; i < colors.length; i++) {
-                    let color = colors[i];
-                    let isCurrentColor = i === newColorIndex;
-
-                    if (isCurrentColor) {
-                        helpers.log_message(`Current color matched: ${color.name}`);
-                    }
-
-                    colorMenu.item(0, i, {
-                        title: color.name,
-                        subtitle: isCurrentColor ? 'Current' : '',
-                        on_click: colorMenu.items(0)[i].on_click
-                    });
-                }
-
-                // Update the selection
-                colorMenu.selection(0, newColorIndex);
-            }
-        }
-
-        // Subscribe to entity updates
-        let color_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Light entity update for color menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
-
-                // Update menu items directly
-                updateColorMenuItems(updatedLight);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
-        });
-
-        colorMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (color_subscription_msg_id) {
-                appState.haws.unsubscribe(color_subscription_msg_id);
-            }
-
-            // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
         });
 
@@ -959,8 +885,31 @@ function showLightEntity(entity_id) {
             // Show the color window with slider for devices that support color
             colorWindow.show();
         } else {
-            // Show the simple menu for devices with limited color support
-            colorMenu.show();
+            // Show the native bridge color picker menu for devices with limited color support
+            simply.impl.nativeMenuPush(colorScreenId, 'Select Color', 1, {
+                onSelect: function(section, index) {
+                    var key = section + '_' + index;
+                    if (colorCallbacks[key]) {
+                        colorCallbacks[key]();
+                    }
+                },
+                onBack: function() {
+                    // Unsubscribe from entity updates
+                    if (color_subscription_msg_id) {
+                        appState.haws.unsubscribe(color_subscription_msg_id);
+                    }
+                    selectedIndex = returnToIndex;
+                }
+            });
+            simply.impl.nativeMenuSectionTitle(colorScreenId, 0, 'Select Color');
+            // Re-populate items after push
+            for (let i = 0; i < colors.length; i++) {
+                var isCurrentColor = arraysEqual(colors[i].rgb, current_color);
+                simply.impl.nativeMenuUpdate(colorScreenId, 0, i,
+                    colors[i].name,
+                    isCurrentColor ? 'Current' : '',
+                    null);
+            }
         }
     }
 
@@ -973,51 +922,35 @@ function showLightEntity(entity_id) {
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
 
-        // Create effect selection menu
-        let effectMenu = new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: 'Select Effect'
-            }]
-        });
+        var effectScreenId = nextLightScreenId();
+        var effectCallbacks = {};
 
         // Add "None" option
-        effectMenu.item(0, 0, {
-            title: "None",
-            subtitle: !current_effect ? 'Current' : '',
-            on_click: function() {
-                // Turn off effect
-                appState.haws.callService(
-                    "light",
-                    "turn_on",
-                    { effect: "none" },
-                    { entity_id: entity_id },
-                    function(data) {
-                        Vibe.vibrate('short');
-                        helpers.log_message(`Effect set to none`);
-                    },
-                    function(error) {
-                        Vibe.vibrate('double');
-                        helpers.log_message(`Error setting effect: ${error}`);
-                    }
-                );
-            }
-        });
+        effectCallbacks['0_0'] = function() {
+            simply.impl.nativeToast('Sending...', 0);
+            appState.haws.callService(
+                "light",
+                "turn_on",
+                { effect: "none" },
+                { entity_id: entity_id },
+                function(data) {
+                    Vibe.vibrate('short');
+                    simply.impl.nativeToast('Done', 1);
+                    helpers.log_message(`Effect set to none`);
+                },
+                function(error) {
+                    Vibe.vibrate('double');
+                    helpers.log_message(`Error setting effect: ${error}`);
+                }
+            );
+        };
 
-        // Add effect options to menu
+        // Add effect options
         for (let i = 0; i < effect_list.length; i++) {
-            let effect = effect_list[i];
-            let isCurrentEffect = effect === current_effect;
-
-            effectMenu.item(0, i + 1, {
-                title: effect,
-                subtitle: isCurrentEffect ? 'Current' : '',
-                on_click: function() {
-                    // Set the effect
+            (function(idx) {
+                var effect = effect_list[idx];
+                effectCallbacks['0_' + (idx + 1)] = function() {
+                    simply.impl.nativeToast('Sending...', 0);
                     appState.haws.callService(
                         "light",
                         "turn_on",
@@ -1025,6 +958,7 @@ function showLightEntity(entity_id) {
                         { entity_id: entity_id },
                         function(data) {
                             Vibe.vibrate('short');
+                            simply.impl.nativeToast('Done', 1);
                             helpers.log_message(`Effect set to ${effect}`);
                         },
                         function(error) {
@@ -1032,33 +966,8 @@ function showLightEntity(entity_id) {
                             helpers.log_message(`Error setting effect: ${error}`);
                         }
                     );
-                }
-            });
-        }
-
-        // Helper function to update effect menu items
-        function updateEffectMenuItems(updatedLight) {
-            // Get updated light data
-            let updatedData = getLightData(updatedLight);
-
-            // Update "None" option
-            effectMenu.item(0, 0, {
-                title: "None",
-                subtitle: !updatedData.effect ? 'Current' : '',
-                on_click: effectMenu.items(0)[0].on_click
-            });
-
-            // Update effect options
-            for (let i = 0; i < effect_list.length; i++) {
-                let effect = effect_list[i];
-                let isCurrentEffect = effect === updatedData.effect;
-
-                effectMenu.item(0, i + 1, {
-                    title: effect,
-                    subtitle: isCurrentEffect ? 'Current' : '',
-                    on_click: effectMenu.items(0)[i + 1].on_click
-                });
-            }
+                };
+            })(i);
         }
 
         // Subscribe to entity updates
@@ -1070,150 +979,157 @@ function showLightEntity(entity_id) {
             },
         }, function(data) {
             helpers.log_message(`Light entity update for effect menu ${entity_id}`);
-            // Update the light entity in the cache
             if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
                 let updatedLight = data.event.variables.trigger.to_state;
                 appState.ha_state_dict[entity_id] = updatedLight;
+                let updatedData = getLightData(updatedLight);
 
-                // Update menu items directly
-                updateEffectMenuItems(updatedLight);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
-        });
+                // Update "None" option
+                simply.impl.nativeMenuUpdate(effectScreenId, 0, 0,
+                    "None",
+                    !updatedData.effect ? 'Current' : '',
+                    null);
 
-        effectMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (effect_subscription_msg_id) {
-                appState.haws.unsubscribe(effect_subscription_msg_id);
-            }
-
-            // Restore the selection in the parent menu
-            selectedIndex = returnToIndex;
-        });
-
-        effectMenu.show();
-    }
-
-    // Track the selected index to restore it when returning from submenus
-    let selectedIndex = 0;
-
-    // Store the selected index when navigating to a submenu
-    lightMenu.on('select', function(e) {
-        // Store the current selection index
-        selectedIndex = e.itemIndex;
-        menuSelections.lightMenu = e.itemIndex;
-
-        helpers.log_message(`Light menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
-        if(typeof e.item.on_click === 'function') {
-            e.item.on_click(e);
-        }
-    });
-
-    // Set up event handlers for the light menu
-    lightMenu.on('show', function() {
-        // Clear the menu
-        lightMenu.items(0, []);
-
-        // Get the latest light data
-        light = appState.ha_state_dict[entity_id];
-        lightData = getLightData(light);
-        features = supported_features(light);
-
-        // Update menu items
-        updateLightMenuItems(light);
-
-        // Create RelativeTimeUpdater for live time updates
-        relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            // Get current light and update the menu
-            let currentLight = appState.ha_state_dict[entity_id];
-            if (currentLight) {
-                updateLightMenuItems(currentLight);
-            }
-        });
-        relativeTimeUpdater.register(entity_id, light.last_changed);
-
-        // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Light entity update for ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
-
-                // Update the menu items directly without redrawing the entire menu
-                updateLightMenuItems(updatedLight);
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedLight.last_changed);
+                // Update effect options
+                for (let i = 0; i < effect_list.length; i++) {
+                    var effect = effect_list[i];
+                    var isCurrentEffect = effect === updatedData.effect;
+                    simply.impl.nativeMenuUpdate(effectScreenId, 0, i + 1,
+                        effect,
+                        isCurrentEffect ? 'Current' : '',
+                        null);
                 }
             }
         }, function(error) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
-        // Restore the previously selected index
-        setTimeout(function() {
-            // First try to use the global menu selection
-            if (menuSelections.lightMenu > 0 && menuSelections.lightMenu < lightMenu.items(0).length) {
-                lightMenu.selection(0, menuSelections.lightMenu);
-                selectedIndex = menuSelections.lightMenu;
+        simply.impl.nativeMenuPush(effectScreenId, 'Select Effect', 1, {
+            onSelect: function(section, index) {
+                var key = section + '_' + index;
+                if (effectCallbacks[key]) {
+                    effectCallbacks[key]();
+                }
+            },
+            onBack: function() {
+                if (effect_subscription_msg_id) {
+                    appState.haws.unsubscribe(effect_subscription_msg_id);
+                }
+                selectedIndex = returnToIndex;
             }
-            // Fall back to the local selectedIndex if needed
-            else if (selectedIndex > 0 && selectedIndex < lightMenu.items(0).length) {
-                lightMenu.selection(0, selectedIndex);
-            }
-        }, 100);
-    });
+        });
+        simply.impl.nativeMenuSectionTitle(effectScreenId, 0, 'Select Effect');
 
-    lightMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
+        // Populate items
+        simply.impl.nativeMenuUpdate(effectScreenId, 0, 0,
+            "None",
+            !current_effect ? 'Current' : '',
+            null);
 
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
+        for (let i = 0; i < effect_list.length; i++) {
+            var effect = effect_list[i];
+            var isCurrentEffect = effect === current_effect;
+            simply.impl.nativeMenuUpdate(effectScreenId, 0, i + 1,
+                effect,
+                isCurrentEffect ? 'Current' : '',
+                null);
         }
-    });
+    }
+
+    // Track the selected index to restore it when returning from submenus
+    let selectedIndex = 0;
 
     // Favorite/Pin buttons
     var favoriteEntityStore = appState.favoriteEntityStore;
     var pinnedEntityStore = appState.pinnedEntityStore;
 
     function _renderFavoriteBtn() {
-        lightMenu.item(1, 0, {
-            title: (favoriteEntityStore.has(entity_id) ? 'Remove from' : 'Add to') + ' Favorites',
-            on_click: function() {
-                EntityService.toggleFavorite(appState.ha_state_dict[entity_id]);
-                _renderFavoriteBtn();
-            }
-        });
+        lightCallbacks['1_0'] = function() {
+            EntityService.toggleFavorite(appState.ha_state_dict[entity_id]);
+            _renderFavoriteBtn();
+        };
+        simply.impl.nativeMenuUpdate(lightScreenId, 1, 0,
+            (favoriteEntityStore.has(entity_id) ? 'Remove from' : 'Add to') + ' Favorites',
+            '', null);
     }
-    _renderFavoriteBtn();
 
     function _renderPinnedBtn() {
-        lightMenu.item(1, 1, {
-            title: (pinnedEntityStore.has(entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
-            on_click: function() {
-                EntityService.togglePinned(appState.ha_state_dict[entity_id]);
-                _renderPinnedBtn();
-            }
-        });
+        lightCallbacks['1_1'] = function() {
+            EntityService.togglePinned(appState.ha_state_dict[entity_id]);
+            _renderPinnedBtn();
+        };
+        simply.impl.nativeMenuUpdate(lightScreenId, 1, 1,
+            (pinnedEntityStore.has(entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
+            '', null);
     }
+
+    // Push the native menu
+    simply.impl.nativeMenuPush(lightScreenId, lightData.friendly_name, 2, {
+        onSelect: function(section, index) {
+            selectedIndex = index;
+            menuSelections.lightMenu = index;
+            var key = section + '_' + index;
+            helpers.log_message(`Light menu item selected! Section: ${section}, Index: ${index}`);
+            if (lightCallbacks[key]) {
+                lightCallbacks[key]();
+            }
+        },
+        onBack: function() {
+            // Unsubscribe from entity updates
+            if (subscription_msg_id) {
+                appState.haws.unsubscribe(subscription_msg_id);
+            }
+            // Destroy the RelativeTimeUpdater
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.destroy();
+                relativeTimeUpdater = null;
+            }
+        }
+    });
+
+    // Set section titles
+    simply.impl.nativeMenuSectionTitle(lightScreenId, 0, lightData.friendly_name);
+    simply.impl.nativeMenuSectionTitle(lightScreenId, 1, 'Extra');
+
+    // Get the latest light data and populate
+    light = appState.ha_state_dict[entity_id];
+    lightData = getLightData(light);
+    feats = supported_features(light);
+    updateLightMenuItems(light);
+
+    // Render favorite/pin buttons
+    _renderFavoriteBtn();
     _renderPinnedBtn();
 
-    // Show the menu
-    lightMenu.show();
+    // Create RelativeTimeUpdater for live time updates
+    relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
+        let currentLight = appState.ha_state_dict[entity_id];
+        if (currentLight) {
+            updateLightMenuItems(currentLight);
+        }
+    });
+    relativeTimeUpdater.register(entity_id, light.last_changed);
+
+    // Subscribe to entity updates
+    subscription_msg_id = appState.haws.subscribeTrigger({
+        "type": "subscribe_trigger",
+        "trigger": {
+            "platform": "state",
+            "entity_id": entity_id,
+        },
+    }, function(data) {
+        helpers.log_message(`Light entity update for ${entity_id}`);
+        if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+            let updatedLight = data.event.variables.trigger.to_state;
+            appState.ha_state_dict[entity_id] = updatedLight;
+            updateLightMenuItems(updatedLight);
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedLight.last_changed);
+            }
+        }
+    }, function(error) {
+        helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+    });
 }
 
 module.exports.showLightEntity = showLightEntity;

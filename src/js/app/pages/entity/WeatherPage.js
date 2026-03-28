@@ -1,39 +1,20 @@
 /**
- * WeatherPage - Weather entity detail page
- *
- * Features:
- * - Current conditions (temp, humidity, wind, pressure)
- * - Forecast display (daily)
- * - Real-time state subscription
+ * WeatherPage - Weather entity detail page (Native Bridge)
  */
-var UI = require('ui');
-var Vibe = require('ui/vibe');
-
+var simply = require('ui/simply');
 var ajax = require('lib/ajax');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
 
-// Menu selection tracking
-var menuSelections = {
-    weatherMenu: 0
-};
+var nextScreenId = 400;
 
 function conditionText(state) {
     var conditions = {
-        'clear-night': 'Clear',
-        'cloudy': 'Cloudy',
-        'exceptional': 'Exceptional',
-        'fog': 'Foggy',
-        'hail': 'Hail',
-        'lightning': 'Lightning',
-        'lightning-rainy': 'Thunderstorm',
-        'partlycloudy': 'Partly Cloudy',
-        'pouring': 'Pouring',
-        'rainy': 'Rainy',
-        'snowy': 'Snowy',
-        'snowy-rainy': 'Sleet',
-        'sunny': 'Sunny',
-        'windy': 'Windy',
+        'clear-night': 'Clear', 'cloudy': 'Cloudy', 'exceptional': 'Exceptional',
+        'fog': 'Foggy', 'hail': 'Hail', 'lightning': 'Lightning',
+        'lightning-rainy': 'Thunderstorm', 'partlycloudy': 'Partly Cloudy',
+        'pouring': 'Pouring', 'rainy': 'Rainy', 'snowy': 'Snowy',
+        'snowy-rainy': 'Sleet', 'sunny': 'Sunny', 'windy': 'Windy',
         'windy-variant': 'Windy'
     };
     return conditions[state] || state;
@@ -47,50 +28,41 @@ function formatTemp(temp, unit) {
 function showWeatherEntity(entity_id) {
     var appState = AppState.getInstance();
     var weather = appState.ha_state_dict[entity_id];
-    if (!weather) {
-        throw new Error("Weather entity " + entity_id + " not found");
-    }
+    if (!weather) throw new Error("Weather entity " + entity_id + " not found");
 
     var attrs = weather.attributes;
     var unit = attrs.temperature_unit || '\u00B0';
     var friendlyName = attrs.friendly_name || entity_id;
+    var screenId = nextScreenId++;
+    var subscriptionId = null;
 
-    var weatherMenu = new UI.Menu({
-        status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
-        sections: [{
-            title: friendlyName
-        }, {
-            title: 'Forecast'
-        }]
+    simply.impl.nativeMenuPush(screenId, friendlyName, 2, {
+        onSelect: function() {},
+        onLongSelect: function() {},
+        onBack: function() {
+            if (subscriptionId && appState.haws) {
+                appState.haws.unsubscribe(subscriptionId);
+            }
+        }
     });
+
+    simply.impl.nativeMenuSectionTitle(screenId, 1, 'Forecast');
 
     // Current conditions
     var i = 0;
     var locationIndex = i;
-    weatherMenu.item(0, i++, {
-        title: 'Location',
-        subtitle: friendlyName
-    });
+    simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Location', friendlyName, 0);
 
-    // Reverse geocode from HA config lat/lng (cached)
+    // Reverse geocode (cached)
     var Settings = require('settings');
     var cachedLocation = Settings.option('weather_location_name');
     if (cachedLocation) {
-        weatherMenu.item(0, locationIndex, {
-            title: 'Location',
-            subtitle: cachedLocation
-        });
+        simply.impl.nativeMenuUpdate(screenId, 0, locationIndex, 'Location', cachedLocation, 0);
     } else {
         appState.haws.getConfig(function(data) {
             if (data && data.result && data.result.latitude && data.result.longitude) {
-                var lat = data.result.latitude;
-                var lon = data.result.longitude;
                 ajax({
-                    url: 'https://nominatim.openstreetmap.org/reverse?lat=' + lat + '&lon=' + lon + '&format=json',
+                    url: 'https://nominatim.openstreetmap.org/reverse?lat=' + data.result.latitude + '&lon=' + data.result.longitude + '&format=json',
                     type: 'json',
                     headers: { 'User-Agent': 'PebbleHomeAssistant/2.0' }
                 }, function(response) {
@@ -99,57 +71,29 @@ function showWeatherEntity(entity_id) {
                         var state = response.address.state || '';
                         var loc = city && state ? city + ', ' + state : (city || state || friendlyName);
                         Settings.option('weather_location_name', loc);
-                        weatherMenu.item(0, locationIndex, {
-                            title: 'Location',
-                            subtitle: loc
-                        });
+                        simply.impl.nativeMenuUpdate(screenId, 0, locationIndex, 'Location', loc, 0);
                     }
                 }, function() {});
             }
         }, function() {});
     }
 
-    weatherMenu.item(0, i++, {
-        title: 'Condition',
-        subtitle: conditionText(weather.state)
-    });
+    var condIndex = i;
+    simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Condition', conditionText(weather.state), 0);
+    var tempIndex = i;
+    simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Temperature', formatTemp(attrs.temperature, unit), 0);
 
-    weatherMenu.item(0, i++, {
-        title: 'Temperature',
-        subtitle: formatTemp(attrs.temperature, unit)
-    });
-
-    if (attrs.humidity !== undefined) {
-        weatherMenu.item(0, i++, {
-            title: 'Humidity',
-            subtitle: attrs.humidity + '%'
-        });
-    }
-
+    if (attrs.humidity !== undefined)
+        simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Humidity', attrs.humidity + '%', 0);
     if (attrs.wind_speed !== undefined) {
-        var windText = attrs.wind_speed + (attrs.wind_speed_unit || '') ;
-        if (attrs.wind_bearing !== undefined) {
-            windText += ' ' + attrs.wind_bearing + '\u00B0';
-        }
-        weatherMenu.item(0, i++, {
-            title: 'Wind',
-            subtitle: windText
-        });
+        var windText = attrs.wind_speed + (attrs.wind_speed_unit || '');
+        if (attrs.wind_bearing !== undefined) windText += ' ' + attrs.wind_bearing + '\u00B0';
+        simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Wind', windText, 0);
     }
-
-    if (attrs.pressure !== undefined) {
-        weatherMenu.item(0, i++, {
-            title: 'Pressure',
-            subtitle: attrs.pressure + (attrs.pressure_unit || '')
-        });
-    }
-
-    if (attrs.visibility !== undefined) {
-        weatherMenu.item(0, i++, {
-            title: 'Visibility',
-            subtitle: attrs.visibility + (attrs.visibility_unit || '')
-        });
-    }
+    if (attrs.pressure !== undefined)
+        simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Pressure', attrs.pressure + (attrs.pressure_unit || ''), 0);
+    if (attrs.visibility !== undefined)
+        simply.impl.nativeMenuUpdate(screenId, 0, i++, 'Visibility', attrs.visibility + (attrs.visibility_unit || ''), 0);
 
     // Forecast
     var forecast = attrs.forecast || [];
@@ -158,58 +102,27 @@ function showWeatherEntity(entity_id) {
         var date = new Date(day.datetime);
         var dayName = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
         var tempRange = formatTemp(day.templow) + ' / ' + formatTemp(day.temperature, unit);
-        weatherMenu.item(1, f, {
-            title: dayName + ' - ' + conditionText(day.condition),
-            subtitle: tempRange + (day.precipitation_probability !== undefined ? '  ' + day.precipitation_probability + '%' : '')
-        });
+        var sub = tempRange + (day.precipitation_probability !== undefined ? '  ' + day.precipitation_probability + '%' : '');
+        simply.impl.nativeMenuUpdate(screenId, 1, f, dayName + ' - ' + conditionText(day.condition), sub, 0);
     }
-
     if (forecast.length === 0) {
-        weatherMenu.item(1, 0, {
-            title: 'No forecast data',
-            subtitle: 'Check HA weather integration'
-        });
+        simply.impl.nativeMenuUpdate(screenId, 1, 0, 'No forecast data', 'Check HA weather integration', 0);
     }
-
-    // Select handler
-    weatherMenu.on('select', function(e) {
-        menuSelections.weatherMenu = e.itemIndex;
-        if (typeof e.item.on_click === 'function') {
-            e.item.on_click(e);
-        }
-    });
 
     // Real-time updates
-    var subscription_msg_id = null;
-
-    weatherMenu.on('show', function() {
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                var updated = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updated;
-
-                // Update current conditions
-                weatherMenu.item(0, 0, { title: 'Condition', subtitle: conditionText(updated.state) });
-                weatherMenu.item(0, 1, { title: 'Temperature', subtitle: formatTemp(updated.attributes.temperature, unit) });
-            }
-        }, function(error) {
-            helpers.log_message("WEATHER UPDATE ERROR [" + entity_id + "]: " + JSON.stringify(error));
-        });
-    });
-
-    weatherMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
+    subscriptionId = appState.haws.subscribeTrigger({
+        type: 'subscribe_trigger',
+        trigger: { platform: 'state', entity_id: entity_id }
+    }, function(data) {
+        if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+            var updated = data.event.variables.trigger.to_state;
+            appState.ha_state_dict[entity_id] = updated;
+            simply.impl.nativeMenuUpdate(screenId, 0, condIndex, 'Condition', conditionText(updated.state), 0);
+            simply.impl.nativeMenuUpdate(screenId, 0, tempIndex, 'Temperature', formatTemp(updated.attributes.temperature, unit), 0);
         }
+    }, function(error) {
+        helpers.log_message("WEATHER UPDATE ERROR: " + JSON.stringify(error));
     });
-
-    weatherMenu.show();
 }
 
 function getWeatherSubtitle(entity_id) {

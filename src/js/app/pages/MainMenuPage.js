@@ -1,8 +1,7 @@
 /**
- * MainMenuPage - Home Assistant main menu
+ * MainMenuPage - Home Assistant main menu (Native Bridge)
  */
-var UI = require('ui');
-var BasePage = require('app/pages/BasePage');
+var simply = require('ui/simply');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var EntityService = require('app/EntityService');
@@ -32,401 +31,383 @@ var DEFAULT_MAIN_MENU_ORDER = [
     'settings'
 ];
 
-class MainMenuPage extends BasePage {
-    constructor() {
-        super();
-        this.pinnedEntityIndexes = {};
-        this.entityStates = {};
-    }
+var SCREEN_ID = 1;
 
-    createMenu() {
-        return new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: 'Home Assistant',
-                backgroundColor: Constants.colour.highlight,
-                textColor: Constants.colour.highlight_text
-            }]
-        });
-    }
+// Singleton state
+var mainMenuInstance = null;
+var menuItems = [];       // [{title, subtitle, icon, on_click, entity_id}, ...]
+var pinnedEntityIndexes = {};
+var entityStates = {};
+var subscriptionId = null;
+var relativeTimeUpdater = null;
+var isShowing = false;
 
-    onShow() {
-        var self = this;
-        helpers.log_message('Main menu: onShow fired, rebuilding menu');
-        this.menu.items(0, []);
-        this.pinnedEntityIndexes = {};
-        this.entityStates = {};
+function getAppState() {
+    return AppState.getInstance();
+}
 
-        // Unsubscribe from previous subscription
-        this.unsubscribe();
+/**
+ * Get the ordered list of main menu item IDs
+ */
+function getMenuOrder() {
+    var appState = getAppState();
+    var order = [];
+    var pinnedEntities = appState.pinnedEntityStore.all();
 
-        // Clear and recreate the RelativeTimeUpdater
-        if (this.relativeTimeUpdater) {
-            this.relativeTimeUpdater.destroy();
-        }
-        this.relativeTimeUpdater = new RelativeTimeUpdater(function(entity_id, lastChanged) {
-            self.updateEntitySubtitle(entity_id);
-        });
-
-        // Get ordered list of menu items
-        var menuOrder = this.getMenuOrder();
-        var i = 0;
-        var pinnedEntityIds = [];
-
-        for (var idx = 0; idx < menuOrder.length; idx++) {
-            var itemId = menuOrder[idx];
-            var menuItem = this.getMenuItem(itemId);
-            if (menuItem) {
-                this.menu.item(0, i, menuItem);
-
-                // Track pinned entity indexes for real-time updates
-                if (itemId.indexOf('pinned:') === 0) {
-                    var entityId = itemId.substring(7);
-                    this.pinnedEntityIndexes[entityId] = i;
-                    pinnedEntityIds.push(entityId);
-                }
-                i++;
-            }
-        }
-
-        // Subscribe to state changes for pinned entities
-        if (pinnedEntityIds.length > 0) {
-            this.subscribeToEntities(pinnedEntityIds);
-        }
-
-        // Restore the previously selected index
-        if (this.appState.menuSelections.mainMenu > 0 &&
-            this.appState.menuSelections.mainMenu < this.menu.items(0).length) {
-            this.menu.selection(0, this.appState.menuSelections.mainMenu);
-        }
-    }
-
-    onHide() {
-        super.onHide();
-        helpers.log_message('Main menu: unsubscribed from entity updates');
-    }
-
-    onSelect(e) {
-        // Store the current selection index
-        this.appState.menuSelections.mainMenu = e.itemIndex;
-
-        helpers.log_message("Main menu click: " + e.item.title + " Index: " + e.itemIndex);
-        if (typeof e.item.on_click === 'function') {
-            e.item.on_click(e);
-        }
-    }
-
-    onSelection(e) {
-        if (typeof e.itemIndex === 'number' && e.itemIndex >= 0) {
-            this.appState.menuSelections.mainMenu = e.itemIndex;
-        }
-    }
-
-    onLongSelect(e) {
-        if (e.item && e.item.entity_id) {
-            EntityService.handleLongPress(e.item.entity_id);
-        }
-    }
-
-    /**
-     * Get the ordered list of main menu item IDs
-     */
-    getMenuOrder() {
-        var order = [];
-        var pinnedEntities = this.appState.pinnedEntityStore.all();
-
-        if (this.appState.main_menu_custom_order_enabled &&
-            this.appState.main_menu_order &&
-            Array.isArray(this.appState.main_menu_order)) {
-            // Use custom order, but filter out unpinned entities
-            for (var i = 0; i < this.appState.main_menu_order.length; i++) {
-                var itemId = this.appState.main_menu_order[i];
-                if (itemId.indexOf('pinned:') === 0) {
-                    var entityId = itemId.substring(7);
-                    if (pinnedEntities.indexOf(entityId) !== -1) {
-                        order.push(itemId);
-                    }
-                } else {
+    if (appState.main_menu_custom_order_enabled &&
+        appState.main_menu_order &&
+        Array.isArray(appState.main_menu_order)) {
+        for (var i = 0; i < appState.main_menu_order.length; i++) {
+            var itemId = appState.main_menu_order[i];
+            if (itemId.indexOf('pinned:') === 0) {
+                var entityId = itemId.substring(7);
+                if (pinnedEntities.indexOf(entityId) !== -1) {
                     order.push(itemId);
                 }
+            } else {
+                order.push(itemId);
             }
+        }
 
-            // Check for new built-in items not in the custom order
-            for (var j = 0; j < DEFAULT_MAIN_MENU_ORDER.length; j++) {
-                var defaultItem = DEFAULT_MAIN_MENU_ORDER[j];
-                if (order.indexOf(defaultItem) === -1) {
-                    var settingsIndex = order.indexOf('settings');
-                    if (settingsIndex > -1) {
-                        order.splice(settingsIndex, 0, defaultItem);
-                    } else {
-                        order.push(defaultItem);
-                    }
-                }
-            }
-
-            // Add any pinned entities not in the order (at the top)
-            for (var k = 0; k < pinnedEntities.length; k++) {
-                var pinnedId = 'pinned:' + pinnedEntities[k];
-                if (order.indexOf(pinnedId) === -1) {
-                    order.unshift(pinnedId);
-                }
-            }
-        } else {
-            // Use default order with pinned entities at the TOP (after assistant)
-            order = [];
-
-            if (DEFAULT_MAIN_MENU_ORDER.indexOf('assistant') !== -1) {
-                order.push('assistant');
-            }
-
-            // Add pinned entities right after assistant
-            for (var m = 0; m < pinnedEntities.length; m++) {
-                order.push('pinned:' + pinnedEntities[m]);
-            }
-
-            // Add remaining default items (except assistant)
-            for (var n = 0; n < DEFAULT_MAIN_MENU_ORDER.length; n++) {
-                if (DEFAULT_MAIN_MENU_ORDER[n] !== 'assistant') {
-                    order.push(DEFAULT_MAIN_MENU_ORDER[n]);
+        for (var j = 0; j < DEFAULT_MAIN_MENU_ORDER.length; j++) {
+            var defaultItem = DEFAULT_MAIN_MENU_ORDER[j];
+            if (order.indexOf(defaultItem) === -1) {
+                var settingsIndex = order.indexOf('settings');
+                if (settingsIndex > -1) {
+                    order.splice(settingsIndex, 0, defaultItem);
+                } else {
+                    order.push(defaultItem);
                 }
             }
         }
 
-        return order;
+        for (var k = 0; k < pinnedEntities.length; k++) {
+            var pinnedId = 'pinned:' + pinnedEntities[k];
+            if (order.indexOf(pinnedId) === -1) {
+                order.unshift(pinnedId);
+            }
+        }
+    } else {
+        order = [];
+        if (DEFAULT_MAIN_MENU_ORDER.indexOf('assistant') !== -1) {
+            order.push('assistant');
+        }
+        for (var m = 0; m < pinnedEntities.length; m++) {
+            order.push('pinned:' + pinnedEntities[m]);
+        }
+        for (var n = 0; n < DEFAULT_MAIN_MENU_ORDER.length; n++) {
+            if (DEFAULT_MAIN_MENU_ORDER[n] !== 'assistant') {
+                order.push(DEFAULT_MAIN_MENU_ORDER[n]);
+            }
+        }
     }
 
-    /**
-     * Get the menu item definition for a given item ID
-     */
-    getMenuItem(itemId) {
-        var self = this;
+    return order;
+}
 
-        // Handle pinned entities (format: "pinned:entity_id")
-        if (itemId.indexOf('pinned:') === 0) {
-            var entityId = itemId.substring(7);
-            var entity = this.appState.getEntity(entityId);
-            if (!entity) {
-                return null;
-            }
-            var menuItem = EntityService.getMenuItem(entity);
-            menuItem.id = itemId;
-            return menuItem;
-        }
+/**
+ * Get the menu item definition for a given item ID
+ */
+function getMenuItem(itemId) {
+    var appState = getAppState();
 
-        // Built-in menu items
-        switch (itemId) {
-            case 'assistant':
-                if (!this.appState.voice_enabled) return null;
-                return {
-                    id: 'assistant',
-                    title: "Assistant",
-                    on_click: function(e) {
-                        var Voice = require('ui/voice');
-                        Voice.nativeStart();
-                    }
-                };
-            case 'favorites':
-                var favoriteEntities = this.appState.favoriteEntityStore.all();
-                helpers.log_message('Main menu: favorites check, count=' + (favoriteEntities ? favoriteEntities.length : 0));
-                if (!favoriteEntities || !favoriteEntities.length) return null;
-                return {
-                    id: 'favorites',
-                    title: "Favorites",
-                    on_click: function(e) {
-                        getFavoritesPage().showFavorites();
-                    }
-                };
-            case 'areas':
-                return {
-                    id: 'areas',
-                    title: "Areas",
-                    on_click: function(e) {
-                        getAreaMenuPage().showAreaMenu();
-                    }
-                };
-            case 'labels':
-                return {
-                    id: 'labels',
-                    title: "Labels",
-                    on_click: function(e) {
-                        getLabelMenuPage().showLabelMenu();
-                    }
-                };
-            case 'todo_lists':
-                return {
-                    id: 'todo_lists',
-                    title: "To-Do Lists",
-                    on_click: function(e) {
-                        getToDoListPage().showToDoLists();
-                    }
-                };
-            case 'people':
-                return {
-                    id: 'people',
-                    title: "People",
-                    on_click: function(e) {
-                        var personEntities = Object.keys(self.appState.ha_state_dict).filter(function(entity_id) {
-                            return entity_id.indexOf('person.') === 0;
-                        });
-                        EntityListPage.showEntityList("People", personEntities, true, true, true);
-                    }
-                };
-            case 'weather':
-                var weatherEntities = Object.keys(self.appState.ha_state_dict).filter(function(id) {
-                    return id.indexOf('weather.') === 0;
-                });
-                if (!weatherEntities.length) return null;
-                var WeatherPage = require('app/pages/entity/WeatherPage');
-                var weatherSubtitle = WeatherPage.getWeatherSubtitle(weatherEntities[0]);
-                if (weatherEntities.length === 1) {
-                    return {
-                        id: 'weather',
-                        title: "Weather",
-                        subtitle: weatherSubtitle,
-                        on_click: function(e) {
-                            WeatherPage.showWeatherEntity(weatherEntities[0]);
-                        }
-                    };
+    if (itemId.indexOf('pinned:') === 0) {
+        var entityId = itemId.substring(7);
+        var entity = appState.getEntity(entityId);
+        if (!entity) return null;
+        var menuItem = EntityService.getMenuItem(entity);
+        menuItem.id = itemId;
+        menuItem.entity_id = entityId;
+        return menuItem;
+    }
+
+    switch (itemId) {
+        case 'assistant':
+            if (!appState.voice_enabled) return null;
+            return {
+                id: 'assistant',
+                title: "Assistant",
+                on_click: function() {
+                    var Voice = require('ui/voice');
+                    Voice.nativeStart();
                 }
+            };
+        case 'favorites':
+            var favoriteEntities = appState.favoriteEntityStore.all();
+            helpers.log_message('Main menu: favorites check, count=' + (favoriteEntities ? favoriteEntities.length : 0));
+            if (!favoriteEntities || !favoriteEntities.length) return null;
+            return {
+                id: 'favorites',
+                title: "Favorites",
+                on_click: function() { getFavoritesPage().showFavorites(); }
+            };
+        case 'areas':
+            return {
+                id: 'areas',
+                title: "Areas",
+                on_click: function() { getAreaMenuPage().showAreaMenu(); }
+            };
+        case 'labels':
+            return {
+                id: 'labels',
+                title: "Labels",
+                on_click: function() { getLabelMenuPage().showLabelMenu(); }
+            };
+        case 'todo_lists':
+            return {
+                id: 'todo_lists',
+                title: "To-Do Lists",
+                on_click: function() { getToDoListPage().showToDoLists(); }
+            };
+        case 'people':
+            return {
+                id: 'people',
+                title: "People",
+                on_click: function() {
+                    var personEntities = Object.keys(appState.ha_state_dict).filter(function(id) {
+                        return id.indexOf('person.') === 0;
+                    });
+                    EntityListPage.showEntityList("People", personEntities, true, true, true);
+                }
+            };
+        case 'weather':
+            var weatherEntities = Object.keys(appState.ha_state_dict).filter(function(id) {
+                return id.indexOf('weather.') === 0;
+            });
+            if (!weatherEntities.length) return null;
+            var WeatherPage = require('app/pages/entity/WeatherPage');
+            var weatherSubtitle = WeatherPage.getWeatherSubtitle(weatherEntities[0]);
+            if (weatherEntities.length === 1) {
                 return {
                     id: 'weather',
                     title: "Weather",
                     subtitle: weatherSubtitle,
-                    on_click: function(e) {
-                        EntityListPage.showEntityList("Weather", weatherEntities, true, true, false);
-                    }
+                    on_click: function() { WeatherPage.showWeatherEntity(weatherEntities[0]); }
                 };
-            case 'all_entities':
-                return {
-                    id: 'all_entities',
-                    title: "All Entities",
-                    on_click: function(e) {
-                        var entityKeys = Object.keys(self.appState.ha_state_dict);
-                        var shouldShowDomains = helpers.shouldShowDomainMenu(
-                            entityKeys,
-                            self.appState.domain_menu_all_entities,
-                            {
-                                minEntities: self.appState.domain_menu_min_entities,
-                                minDomains: self.appState.domain_menu_min_domains
-                            }
-                        );
-                        if (shouldShowDomains) {
-                            EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
-                        } else {
-                            EntityListPage.showEntityList("All Entities", false, true, true, true);
+            }
+            return {
+                id: 'weather',
+                title: "Weather",
+                subtitle: weatherSubtitle,
+                on_click: function() {
+                    EntityListPage.showEntityList("Weather", weatherEntities, true, true, false);
+                }
+            };
+        case 'all_entities':
+            return {
+                id: 'all_entities',
+                title: "All Entities",
+                on_click: function() {
+                    var entityKeys = Object.keys(appState.ha_state_dict);
+                    var shouldShowDomains = helpers.shouldShowDomainMenu(
+                        entityKeys,
+                        appState.domain_menu_all_entities,
+                        {
+                            minEntities: appState.domain_menu_min_entities,
+                            minDomains: appState.domain_menu_min_domains
                         }
+                    );
+                    if (shouldShowDomains) {
+                        EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
+                    } else {
+                        EntityListPage.showEntityList("All Entities", false, true, true, true);
                     }
-                };
-            case 'refresh':
-                return {
-                    id: 'refresh',
-                    title: "Refresh Entities",
-                    on_click: function(e) {
-                        var Vibe = require('ui/vibe');
-                        var StateService = require('app/StateService');
-                        var RegistryService = require('app/RegistryService');
-                        var CacheManager = require('app/CacheManager');
+                }
+            };
+        case 'refresh':
+            return {
+                id: 'refresh',
+                title: "Refresh Entities",
+                on_click: function(itemIndex) {
+                    var Vibe = require('ui/vibe');
+                    var StateService = require('app/StateService');
+                    var CacheManager = require('app/CacheManager');
 
-                        self.menu.item(0, e.itemIndex, { title: "Refreshing..." });
+                    simply.impl.nativeMenuUpdate(SCREEN_ID, 0, itemIndex, "Refreshing...", "", 0);
 
-                        StateService.getStates(function(states) {
-                            // Re-fetch registries
-                            var appState = self.appState;
-                            var done = { areas: false, floors: false, devices: false, entities: false, labels: false };
+                    StateService.getStates(function(states) {
+                        var appState = getAppState();
+                        var done = { areas: false, floors: false, devices: false, entities: false, labels: false };
 
-                            function checkDone() {
-                                if (done.areas && done.floors && done.devices && done.entities && done.labels) {
-                                    CacheManager.save();
-                                    self.menu.item(0, e.itemIndex, { title: "Refresh Entities" });
-                                    Vibe.vibrate('short');
-                                    helpers.log_message('Refresh complete');
+                        function checkDone() {
+                            if (done.areas && done.floors && done.devices && done.entities && done.labels) {
+                                CacheManager.save();
+                                simply.impl.nativeMenuUpdate(SCREEN_ID, 0, itemIndex, "Refresh Entities", "", 0);
+                                Vibe.vibrate('short');
+                            }
+                        }
+
+                        appState.haws.getConfigAreas(function(data) {
+                            appState.area_registry_cache = {};
+                            if (data.result) {
+                                for (var i = 0; i < data.result.length; i++) {
+                                    appState.area_registry_cache[data.result[i].area_id] = data.result[i];
                                 }
                             }
+                            done.areas = true; checkDone();
+                        }, function() { done.areas = true; checkDone(); });
 
-                            appState.haws.getConfigAreas(function(data) {
-                                appState.area_registry_cache = {};
-                                if (data.result) {
-                                    for (var i = 0; i < data.result.length; i++) {
-                                        appState.area_registry_cache[data.result[i].area_id] = data.result[i];
-                                    }
+                        appState.haws.getConfigFloors(function(data) {
+                            appState.floor_registry_cache = {};
+                            if (data.result) {
+                                for (var i = 0; i < data.result.length; i++) {
+                                    appState.floor_registry_cache[data.result[i].floor_id] = data.result[i];
                                 }
-                                done.areas = true; checkDone();
-                            }, function() { done.areas = true; checkDone(); });
+                            }
+                            done.floors = true; checkDone();
+                        }, function() { done.floors = true; checkDone(); });
 
-                            appState.haws.getConfigFloors(function(data) {
-                                appState.floor_registry_cache = {};
-                                if (data.result) {
-                                    for (var i = 0; i < data.result.length; i++) {
-                                        appState.floor_registry_cache[data.result[i].floor_id] = data.result[i];
-                                    }
+                        appState.haws.getConfigDevices(function(data) {
+                            appState.device_registry_cache = {};
+                            if (data.result) {
+                                for (var i = 0; i < data.result.length; i++) {
+                                    appState.device_registry_cache[data.result[i].id] = data.result[i];
                                 }
-                                done.floors = true; checkDone();
-                            }, function() { done.floors = true; checkDone(); });
+                            }
+                            done.devices = true; checkDone();
+                        }, function() { done.devices = true; checkDone(); });
 
-                            appState.haws.getConfigDevices(function(data) {
-                                appState.device_registry_cache = {};
-                                if (data.result) {
-                                    for (var i = 0; i < data.result.length; i++) {
-                                        appState.device_registry_cache[data.result[i].id] = data.result[i];
-                                    }
+                        appState.haws.getConfigEntities(function(data) {
+                            appState.entity_registry_cache = {};
+                            if (data.result) {
+                                for (var i = 0; i < data.result.length; i++) {
+                                    appState.entity_registry_cache[data.result[i].entity_id] = data.result[i];
                                 }
-                                done.devices = true; checkDone();
-                            }, function() { done.devices = true; checkDone(); });
+                            }
+                            done.entities = true; checkDone();
+                        }, function() { done.entities = true; checkDone(); });
 
-                            appState.haws.getConfigEntities(function(data) {
-                                appState.entity_registry_cache = {};
-                                if (data.result) {
-                                    for (var i = 0; i < data.result.length; i++) {
-                                        appState.entity_registry_cache[data.result[i].entity_id] = data.result[i];
-                                    }
+                        appState.haws.getConfigLabels(function(data) {
+                            appState.label_registry_cache = {};
+                            if (data.result) {
+                                for (var i = 0; i < data.result.length; i++) {
+                                    appState.label_registry_cache[data.result[i].label_id] = data.result[i];
                                 }
-                                done.entities = true; checkDone();
-                            }, function() { done.entities = true; checkDone(); });
+                            }
+                            done.labels = true; checkDone();
+                        }, function() { done.labels = true; checkDone(); });
+                    }, null, true);
+                }
+            };
+        case 'settings':
+            return {
+                id: 'settings',
+                title: "Settings",
+                on_click: function() { getSettingsMenuPage().showSettingsMenu(); }
+            };
+        default:
+            return null;
+    }
+}
 
-                            appState.haws.getConfigLabels(function(data) {
-                                appState.label_registry_cache = {};
-                                if (data.result) {
-                                    for (var i = 0; i < data.result.length; i++) {
-                                        appState.label_registry_cache[data.result[i].label_id] = data.result[i];
-                                    }
-                                }
-                                done.labels = true; checkDone();
-                            }, function() { done.labels = true; checkDone(); });
+/**
+ * Build and push the main menu via native bridge
+ */
+function buildMenu() {
+    var appState = getAppState();
+    helpers.log_message('Main menu: building via native bridge');
 
-                        }, null, true);
-                    }
-                };
-            case 'settings':
-                return {
-                    id: 'settings',
-                    title: "Settings",
-                    on_click: function(e) {
-                        getSettingsMenuPage().showSettingsMenu();
-                    }
-                };
-            default:
-                return null;
+    // Reset state
+    menuItems = [];
+    pinnedEntityIndexes = {};
+    entityStates = {};
+
+    // Unsubscribe previous
+    if (subscriptionId && appState.haws) {
+        appState.haws.unsubscribe(subscriptionId);
+        subscriptionId = null;
+    }
+
+    if (relativeTimeUpdater) {
+        relativeTimeUpdater.destroy();
+    }
+    relativeTimeUpdater = new RelativeTimeUpdater(function(entity_id) {
+        updateEntitySubtitle(entity_id);
+    });
+
+    // Build item list
+    var menuOrder = getMenuOrder();
+    var pinnedEntityIds = [];
+
+    for (var idx = 0; idx < menuOrder.length; idx++) {
+        var itemId = menuOrder[idx];
+        var item = getMenuItem(itemId);
+        if (item) {
+            var menuIndex = menuItems.length;
+            menuItems.push(item);
+
+            if (itemId.indexOf('pinned:') === 0) {
+                var entityId = itemId.substring(7);
+                pinnedEntityIndexes[entityId] = menuIndex;
+                pinnedEntityIds.push(entityId);
+            }
         }
     }
 
-    /**
-     * Subscribe to entity state updates for pinned entities
-     */
-    subscribeToEntities(entityIds) {
-        var self = this;
-        helpers.log_message('Main menu: subscribing to ' + entityIds.length + ' pinned entities');
+    // Push menu to C
+    simply.impl.nativeMenuPush(SCREEN_ID, 'Home Assistant', 1, {
+        onSelect: function(section, index) {
+            helpers.log_message('Main menu native select: section=' + section + ' index=' + index);
+            appState.menuSelections.mainMenu = index;
+            var item = menuItems[index];
+            if (item && typeof item.on_click === 'function') {
+                item.on_click(index);
+            }
+        },
+        onLongSelect: function(section, index) {
+            var item = menuItems[index];
+            if (item && item.entity_id) {
+                EntityService.handleLongPress(item.entity_id);
+            }
+        },
+        onBack: function() {
+            helpers.log_message('Main menu: back pressed, cleaning up');
+            isShowing = false;
+            if (subscriptionId && appState.haws) {
+                appState.haws.unsubscribe(subscriptionId);
+                subscriptionId = null;
+            }
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.destroy();
+                relativeTimeUpdater = null;
+            }
+        }
+    });
 
-        this.subscribe(entityIds, function(data) {
+    // Send all items to C
+    for (var i = 0; i < menuItems.length; i++) {
+        var mi = menuItems[i];
+        simply.impl.nativeMenuUpdate(
+            SCREEN_ID, 0, i,
+            mi.title || '',
+            mi.subtitle || '',
+            mi.icon || 0
+        );
+    }
+
+    // Subscribe to pinned entity updates
+    if (pinnedEntityIds.length > 0) {
+        subscribeToEntities(pinnedEntityIds);
+    }
+
+    isShowing = true;
+}
+
+/**
+ * Subscribe to entity state updates for pinned entities
+ */
+function subscribeToEntities(entityIds) {
+    var appState = getAppState();
+    helpers.log_message('Main menu: subscribing to ' + entityIds.length + ' pinned entities');
+
+    subscriptionId = appState.haws.subscribeEntities(
+        entityIds,
+        function(data) {
             var ev = data.event || {};
 
-            // Handle added entities (initial snapshot)
             if (ev.a) {
                 for (var entity_id in ev.a) {
-                    if (self.pinnedEntityIndexes[entity_id] !== undefined) {
+                    if (pinnedEntityIndexes[entity_id] !== undefined) {
                         var entityData = {
                             entity_id: entity_id,
                             state: ev.a[entity_id].s,
@@ -435,91 +416,84 @@ class MainMenuPage extends BasePage {
                                 ? new Date(ev.a[entity_id].lc * 1000).toISOString()
                                 : new Date().toISOString()
                         };
-                        self.appState.setEntity(entity_id, entityData);
-                        self.entityStates[entity_id] = entityData;
-                        EntityService.updateMenuItem(
-                            self.menu, 0,
-                            self.pinnedEntityIndexes[entity_id],
-                            entityData
-                        );
+                        appState.setEntity(entity_id, entityData);
+                        entityStates[entity_id] = entityData;
+                        updatePinnedEntity(entity_id, entityData);
 
-                        if (self.relativeTimeUpdater) {
-                            self.relativeTimeUpdater.register(entity_id, entityData.last_changed);
+                        if (relativeTimeUpdater) {
+                            relativeTimeUpdater.register(entity_id, entityData.last_changed);
                         }
                     }
                 }
             }
 
-            // Handle changed entities (updates)
             if (ev.c) {
-                for (var entity_id in ev.c) {
-                    if (self.pinnedEntityIndexes[entity_id] !== undefined) {
-                        var patch = ev.c[entity_id];
+                for (var cid in ev.c) {
+                    if (pinnedEntityIndexes[cid] !== undefined) {
+                        var patch = ev.c[cid];
                         var plus = patch["+"] || {};
-                        var cur = self.entityStates[entity_id] ||
-                                  self.appState.getEntity(entity_id) ||
-                                  { entity_id: entity_id, state: '', attributes: {} };
+                        var cur = entityStates[cid] ||
+                                  appState.getEntity(cid) ||
+                                  { entity_id: cid, state: '', attributes: {} };
 
                         var entityData = {
-                            entity_id: entity_id,
+                            entity_id: cid,
                             state: plus.s !== undefined ? plus.s : cur.state,
                             attributes: plus.a !== undefined ? plus.a : cur.attributes,
                             last_changed: plus.lc !== undefined
                                 ? new Date(plus.lc * 1000).toISOString()
                                 : cur.last_changed
                         };
-                        self.appState.setEntity(entity_id, entityData);
-                        self.entityStates[entity_id] = entityData;
+                        appState.setEntity(cid, entityData);
+                        entityStates[cid] = entityData;
+                        updatePinnedEntity(cid, entityData);
 
-                        helpers.log_message('Main menu: entity update for ' + entity_id + ': ' + entityData.state);
-                        EntityService.updateMenuItem(
-                            self.menu, 0,
-                            self.pinnedEntityIndexes[entity_id],
-                            entityData
-                        );
-
-                        if (self.relativeTimeUpdater) {
-                            self.relativeTimeUpdater.update(entity_id, entityData.last_changed);
+                        if (relativeTimeUpdater) {
+                            relativeTimeUpdater.update(cid, entityData.last_changed);
                         }
                     }
                 }
             }
-        });
-    }
-
-    /**
-     * Update just the subtitle of a pinned entity (for relative time updates)
-     */
-    updateEntitySubtitle(entity_id) {
-        if (this.pinnedEntityIndexes[entity_id] === undefined) {
-            return;
+        },
+        function(error) {
+            helpers.log_message('Main menu subscription error: ' + JSON.stringify(error));
         }
-
-        var entity = this.entityStates[entity_id];
-        if (!entity) {
-            return;
-        }
-
-        EntityService.updateMenuItem(
-            this.menu, 0,
-            this.pinnedEntityIndexes[entity_id],
-            entity
-        );
-    }
+    );
 }
-
-// Singleton instance
-var mainMenuPageInstance = null;
 
 /**
- * Show the main menu (singleton pattern)
+ * Update a pinned entity's display in the native menu
  */
-function showMainMenu() {
-    if (!mainMenuPageInstance) {
-        mainMenuPageInstance = new MainMenuPage();
+function updatePinnedEntity(entity_id, entity) {
+    var idx = pinnedEntityIndexes[entity_id];
+    if (idx === undefined || !isShowing) return;
+
+    var title = entity.attributes.friendly_name || entity.entity_id;
+    var subtitle = entity.state;
+    if (entity.attributes.unit_of_measurement) {
+        subtitle += ' ' + entity.attributes.unit_of_measurement;
     }
-    mainMenuPageInstance.show();
+    subtitle += ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed));
+    var icon = EntityService.getIcon(entity);
+
+    simply.impl.nativeMenuUpdate(SCREEN_ID, 0, idx, title, subtitle, icon);
 }
 
-module.exports = MainMenuPage;
+/**
+ * Update subtitle for relative time
+ */
+function updateEntitySubtitle(entity_id) {
+    var entity = entityStates[entity_id];
+    if (!entity) return;
+    updatePinnedEntity(entity_id, entity);
+}
+
+/**
+ * Show the main menu
+ */
+function showMainMenu() {
+    buildMenu();
+}
+
+module.exports = {};
 module.exports.showMainMenu = showMainMenu;

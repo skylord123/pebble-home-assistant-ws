@@ -67,5 +67,16 @@ enum Command {
   CommandEntityAction,
   CommandWatchData,
   CommandWatchDataEnable,
+
+  // Native bridge commands
+  CommandNativeMenuPush,      // JS → C: push a new native menu screen
+  CommandNativeMenuUpdate,    // JS → C: update item in current native menu
+  CommandNativeMenuPop,       // JS → C: pop current native screen
+  CommandNativeMenuSelect,    // C → JS: user selected an item
+  CommandNativeMenuLongSelect,// C → JS: user long-selected an item
+  CommandNativeMenuBack,      // C → JS: user pressed back
+  CommandNativeCardPush,      // JS → C: push a card (title/subtitle/body)
+  CommandNativeToast,         // JS → C: show brief overlay (Sending.../Done/Error)
+
   NumCommands,
 };

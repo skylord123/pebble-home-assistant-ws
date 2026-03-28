@@ -4,6 +4,7 @@
 #include "simply_voice.h"
 #include "simply_entities.h"
 #include "simply_watchdata.h"
+#include "simply_native.h"
 #include "simply_res.h"
 #include "simply_stage.h"
 #include "simply_menu.h"
@@ -318,6 +319,7 @@ static void handle_packet(Simply *simply, Packet *packet) {
   if (simply_voice_handle_packet(simply, packet)) { return; }
   if (simply_entities_handle_packet(simply, packet)) { return; }
   if (simply_watchdata_handle_packet(simply, packet)) { return; }
+  if (simply_native_handle_packet(simply, packet)) { return; }
   if (simply_menu_handle_packet(simply, packet)) { return; }
   if (simply_stage_handle_packet(simply, packet)) { return; }
 }
