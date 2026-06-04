@@ -280,7 +280,7 @@ var EntityService = {
         } else if (domain === "scene") {
             appState.haws.callService(
                 domain,
-                "apply",
+                "turn_on",
                 {},
                 { entity_id: entity_id },
                 function(data) {
