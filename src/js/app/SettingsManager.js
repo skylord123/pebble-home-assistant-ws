@@ -177,17 +177,23 @@ var SettingsManager = {
         },
         function(e) {
             log('closed configurable');
-            log('returned_settings: ' + JSON.stringify(e.options));
-            Settings.option(e.options);
 
+            // Android fires an extra "cancelled" webviewclosed event after a
+            // normal close, and the user can also genuinely cancel. In both
+            // cases the underlying options weren't touched, so we must not
+            // reload or restart — doing so during a flaky connection just
+            // adds churn.
             if (e.failed) {
-                log(e.response);
+                log('Config close failed/cancelled, ignoring: ' + e.response);
+                return;
             }
 
-            // Reload settings
+            log('returned_settings: ' + JSON.stringify(e.options));
+            // Settings.onCloseConfig has already merged and persisted the new
+            // options via autoSave, so no second Settings.option() call here.
+
             self.load();
 
-            // Call the callback if provided
             if (options.onSettingsChanged) {
                 options.onSettingsChanged();
             }
