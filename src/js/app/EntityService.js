@@ -327,6 +327,21 @@ var EntityService = {
             } else {
                 log('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
             }
+        } else if (domain === "button" || domain === "input_button") {
+            appState.haws.callService(
+                domain,
+                'press',
+                {},
+                { entity_id: entity_id },
+                function(data) {
+                    log(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function(error) {
+                    log('no response');
+                    Vibe.vibrate('double');
+                }
+            );
         }
     },
 
