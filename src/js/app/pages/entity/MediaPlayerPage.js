@@ -16,6 +16,7 @@ var Feature = require('platform/feature');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 
 // Feature constants
@@ -135,7 +136,7 @@ class MediaPlayerPage extends BaseEntityPage {
 
         this.mediaName = new UI.Text({
             text: mediaPlayer.attributes.friendly_name,
-            color: Feature.color(appState.colour.highlight, "black"),
+            color: Feature.color(Constants.colour.highlight, "black"),
             font: titleFont,
             position: Feature.round(new Vector(10, titleY), new Vector(5, titleY)),
             size: new Vector(availableWidth, 30),
