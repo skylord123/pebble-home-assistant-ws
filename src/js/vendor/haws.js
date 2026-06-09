@@ -24,6 +24,22 @@ class HAWS {
         return this.connected;
     }
 
+    /**
+     * Build a human-readable description of a WebSocket CloseEvent.
+     * The native onclose event is a CloseEvent (code/reason/wasClean),
+     * NOT a CustomEvent, so evt.detail is always undefined.
+     */
+    static _describeCloseEvent(evt) {
+        if (!evt || typeof evt.code === 'undefined') {
+            // Not a standard CloseEvent - dump whatever we got so it isn't just "undefined"
+            return JSON.stringify(evt, null, 4);
+        }
+
+        let meaning = HAWS.CLOSE_CODES[evt.code] || 'Unknown close code';
+        let reason = evt.reason ? ` reason="${evt.reason}"` : '';
+        return `code=${evt.code} (${meaning})${reason} wasClean=${!!evt.wasClean}`;
+    }
+
     connect() {
         if(this.connected) {
             return false;
@@ -33,10 +49,10 @@ class HAWS {
             ws_url = this.ha_url.replace('http','ws').replace(/\/+$/, '') + '/api/websocket';
         this.ws = new WebSocket(ws_url);
         this.ws.onclose = (evt) => {
-            that.events.dispatchEvent(new CustomEvent("close", {detail: evt.detail}));
+            that.events.dispatchEvent(new CustomEvent("close", {detail: evt}));
             this.connected = false;
             if (!this.selfDisconnect) {
-                console.log(`[HAWS] WebSocket closed: ${JSON.stringify(evt.detail, null, 4)}`);
+                console.log(`[HAWS] WebSocket closed: ${HAWS._describeCloseEvent(evt)}`);
                 this.startAttemptingToEstablishConnection();
             }
         }
@@ -581,5 +597,27 @@ class HAWS {
         return subscriptionId;
     }
 }
+
+/**
+ * Standard WebSocket close codes (RFC 6455) plus common reasons,
+ * used to turn an opaque close code into something actionable in the logs.
+ */
+HAWS.CLOSE_CODES = {
+    1000: 'Normal closure',
+    1001: 'Going away (server shutting down or browser navigating away)',
+    1002: 'Protocol error',
+    1003: 'Unsupported data',
+    1005: 'No status received (connection closed without a close frame - often network drop or wrong URL/port)',
+    1006: 'Abnormal closure (connection failed - check HA URL, that HA is reachable, and TLS/SSL settings)',
+    1007: 'Invalid frame payload data',
+    1008: 'Policy violation',
+    1009: 'Message too big',
+    1010: 'Missing extension',
+    1011: 'Internal server error',
+    1012: 'Service restart',
+    1013: 'Try again later',
+    1014: 'Bad gateway',
+    1015: 'TLS handshake failure (HTTPS/SSL problem - verify the certificate and that the URL scheme matches)'
+};
 
 module.exports = HAWS;
