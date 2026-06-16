@@ -879,12 +879,10 @@
 					<div class="form-group">
 						<label class="form-label" for="ha-entity-press-behaviour">Entity Press</label>
 						<select class="form-select" id="ha-entity-press-behaviour">
-							<option value="false">Normal</option>
-							<option value="true">Swapped</option>
+							<option value="false">Open Details</option>
+							<option value="true">Trigger Action</option>
 						</select>
-						<small class="form-text">Behavior for pressing/long pressing entities in favorites and pinned in main menu.<br>
-						Normal: Press &rarr; Show Details, Long-Press &rarr; Trigger Action.<br>
-						Swapped: Press &rarr; Trigger Action, Long-Press &rarr; Show Details.</small>
+						<small class="form-text" id="ha-entity-press-behaviour-help"></small>
 					</div>
 				</div>
 			</div>
@@ -1462,6 +1460,17 @@
 
 			// Update visibility when quick launch behavior changes
 			quickLaunchBehavior.on('change', updateFavoriteEntityVisibility);
+
+			// Update entity press behavior help text
+			function updateEntityPressBehaviorHelp() {
+				const value = entityPressBehavior.val();
+				const helpText = value === 'true'
+					? 'Press triggers the entity action. Long press opens entity details.'
+					: 'Press opens entity details. Long press triggers the entity action.';
+				$('#ha-entity-press-behaviour-help').text(helpText);
+			}
+			entityPressBehavior.on('change', updateEntityPressBehaviorHelp);
+			updateEntityPressBehaviorHelp();
 
 			// Handle quick launch exit on back
 			if (watch_config['quick_launch_exit_on_back']) {
