@@ -61,6 +61,66 @@ SettingsManager.initConfigHandler({
     }
 });
 
+// === Startup cache state (module-scope so on_auth_ok can read them) ===
+var startupCacheLoaded = false;
+var uiShownFromCache = false;
+
+// === Quick launch handler (module-scope so it can be called before auth) ===
+function handleQuickLaunch(retryCount) {
+    retryCount = retryCount || 0;
+    var launchReason = simply.impl.state.launchReason;
+    helpers.log_message('Launch reason: ' + launchReason);
+
+    if (!launchReason && retryCount < 10) {
+        setTimeout(function() { handleQuickLaunch(retryCount + 1); }, 10);
+        return;
+    }
+
+    var skipMainMenu = launchReason === 'quickLaunch' &&
+        appState.quick_launch_behavior !== 'main_menu' &&
+        appState.quick_launch_exit_on_back;
+
+    if (!skipMainMenu) {
+        MainMenuPage.showMainMenu();
+    }
+    loadingCard.hide();
+
+    if (launchReason === 'quickLaunch') {
+        helpers.log_message('Quick launch behavior: ' + appState.quick_launch_behavior);
+        switch (appState.quick_launch_behavior) {
+            case 'assistant':
+                if (appState.voice_enabled) AssistPage.showAssistMenu();
+                break;
+            case 'favorites':
+                FavoritesPage.showFavorites();
+                break;
+            case 'favorite_entity':
+                if (appState.quick_launch_favorite_entity &&
+                    appState.favoriteEntityStore.has(appState.quick_launch_favorite_entity)) {
+                    EntityService.show(appState.quick_launch_favorite_entity);
+                }
+                break;
+            case 'areas':
+                AreaMenuPage.showAreaMenu();
+                break;
+            case 'labels':
+                LabelMenuPage.showLabelMenu();
+                break;
+            case 'todo_lists':
+                ToDoListPage.showToDoLists();
+                break;
+            case 'people':
+                if (appState.ha_state_dict) {
+                    var personEntities = Object.keys(appState.ha_state_dict).filter(function(id) {
+                        return id.startsWith('person.');
+                    });
+                    EntityListPage.showEntityList("People", personEntities, true, true, true);
+                }
+                break;
+        }
+    }
+}
+
 // === Post-Authentication Handler ===
 function on_auth_ok(evt) {
     var log = helpers.log_message;
@@ -70,66 +130,17 @@ function on_auth_ok(evt) {
     appState.ha_connected = true;
     Settings.option('ha_connected', true);
 
-    // Try to load from cache first
-    var cacheLoaded = CacheManager.load();
-    var isFetchingInBackground = cacheLoaded;
+    var isRestarting = ConnectionService.getIsRestarting();
 
-    // Quick launch handler
-    function handleQuickLaunch(retryCount) {
-        retryCount = retryCount || 0;
-        var launchReason = simply.impl.state.launchReason;
-        log('Launch reason: ' + launchReason);
+    // After a settings restart AppState is wiped, so we must reload from localStorage.
+    // Otherwise trust the cache that was already loaded at startup.
+    var cacheLoaded = (startupCacheLoaded && !isRestarting) ? true : CacheManager.load();
 
-        if (!launchReason && retryCount < 10) {
-            setTimeout(function() { handleQuickLaunch(retryCount + 1); }, 10);
-            return;
-        }
-
-        var skipMainMenu = launchReason === 'quickLaunch' &&
-            appState.quick_launch_behavior !== 'main_menu' &&
-            appState.quick_launch_exit_on_back;
-
-        if (!skipMainMenu) {
-            MainMenuPage.showMainMenu();
-        }
-        loadingCard.hide();
-
-        if (launchReason === 'quickLaunch') {
-            log('Quick launch behavior: ' + appState.quick_launch_behavior);
-            switch (appState.quick_launch_behavior) {
-                case 'assistant':
-                    if (appState.voice_enabled) AssistPage.showAssistMenu();
-                    break;
-                case 'favorites':
-                    FavoritesPage.showFavorites();
-                    break;
-                case 'favorite_entity':
-                    if (appState.quick_launch_favorite_entity &&
-                        appState.favoriteEntityStore.has(appState.quick_launch_favorite_entity)) {
-                        EntityService.show(appState.quick_launch_favorite_entity);
-                    }
-                    break;
-                case 'areas':
-                    AreaMenuPage.showAreaMenu();
-                    break;
-                case 'labels':
-                    LabelMenuPage.showLabelMenu();
-                    break;
-                case 'todo_lists':
-                    ToDoListPage.showToDoLists();
-                    break;
-                case 'people':
-                    var personEntities = Object.keys(appState.ha_state_dict).filter(function(id) {
-                        return id.startsWith('person.');
-                    });
-                    EntityListPage.showEntityList("People", personEntities, true, true, true);
-                    break;
-            }
-        }
-    }
+    // Fetch happens in background when the UI is already visible
+    var isFetchingInBackground = (uiShownFromCache && !isRestarting) || cacheLoaded;
 
     function showUIAfterAuth() {
-        if (ConnectionService.getIsRestarting()) {
+        if (isRestarting) {
             log('Skipping quick launch - app is restarting');
             ConnectionService.setIsRestarting(false);
             ConnectionService.clearReconnectState();
@@ -145,10 +156,13 @@ function on_auth_ok(evt) {
         }
     }
 
-    if (cacheLoaded) {
+    // Show UI now if cache is available but hasn't been shown yet
+    // (covers: post-restart, reconnect after disconnect, etc.)
+    var needsUIShow = !uiShownFromCache || isRestarting || ConnectionService.shouldResumePreviousPage();
+    if (cacheLoaded && needsUIShow) {
         log("Cache loaded, showing UI immediately");
         showUIAfterAuth();
-    } else {
+    } else if (!cacheLoaded) {
         loadingCard.subtitle("Fetching data...");
     }
 
@@ -265,5 +279,17 @@ ConnectionService.init({
 
 // === Start App ===
 SettingsManager.load();
-loadingCard.show();
+
+// Load cache before connecting — if successful, show UI immediately
+// and let the WS connection happen in the background.
+startupCacheLoaded = CacheManager.load();
+
+if (startupCacheLoaded) {
+    helpers.log_message('Startup cache loaded, showing UI before connection');
+    uiShownFromCache = true;
+    handleQuickLaunch();
+} else {
+    loadingCard.show();
+}
+
 ConnectionService.connect();

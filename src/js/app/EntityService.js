@@ -216,6 +216,12 @@ var EntityService = {
         var appState = AppState.getInstance();
         var log = helpers.log_message;
 
+        if (!appState.ha_connected) {
+            log('handleEntityLongPress: not connected yet, ignoring action for ' + entity_id);
+            Vibe.vibrate('double');
+            return;
+        }
+
         log('handleEntityLongPress: ' + entity_id);
         var domain = entity_id.split('.')[0];
 
