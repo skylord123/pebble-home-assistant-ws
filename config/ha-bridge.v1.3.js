@@ -344,7 +344,7 @@ function initEntityPicker() {
 		status.text(totalShown + ' of ' + totalMatches + ' shown.');
 
 		if (remaining > 0) {
-			status.text(status.text() + ' Type more to filter.');
+			status.text(status.text() + ' Limited to 500 per group.');
 		}
 	}
 
