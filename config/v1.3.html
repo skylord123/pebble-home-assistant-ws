@@ -654,7 +654,7 @@
 	<form id="watch-config-form">
 		<!-- Header -->
 		<div class="page-header">
-			<p class="author-link">Created by <a href="https://skylar.tech" target="_blank">Skylar Sadlier</a> <span style="color:var(--color-text-muted);font-size:0.8em;">v1.3 build 5</span></p>
+			<p class="author-link">Created by <a href="https://skylar.tech" target="_blank">Skylar Sadlier</a> <span style="color:var(--color-text-muted);font-size:0.8em;">v1.3 build 6</span></p>
 		</div>
 
 		<div id="alert-container"></div>
@@ -1033,10 +1033,16 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
-<script src="bridge-shim.v1.3.js?b=5"></script>
-<script src="ha-bridge.v1.3.js?b=5"></script>
-<script src="common.v1.3.js?b=5"></script>
+<script src="bridge-shim.v1.3.js?b=6"></script>
+<script src="ha-bridge.v1.3.js?b=6"></script>
+<script src="common.v1.3.js?b=6"></script>
 <script type="text/javascript">
+	window.onerror = function(msg, url, line, col, err) {
+		var alertEl = document.getElementById('alert-container');
+		if (alertEl) {
+			alertEl.innerHTML = '<div class="alert alert-danger" role="alert">JS Error: ' + msg + ' (' + url + ':' + line + ')</div>';
+		}
+	};
 	// Functions for Timeline Token
 	function selectTimelineToken() {
 		const tokenElement = document.getElementById('timeline-token-display');
@@ -1908,7 +1914,11 @@
 			console.error("Error in restoreFormValues", e);
 			window.watch_config = {};
 		}
-		initEntityPicker();
+		try {
+			initEntityPicker();
+		} catch(e) {
+			display_alert('danger', 'initEntityPicker error: ' + e.message);
+		}
 
 		addDomainBtn.click(function(e) {
 			e.preventDefault();
