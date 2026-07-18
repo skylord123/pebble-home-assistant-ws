@@ -1992,11 +1992,15 @@
 			localStorage.setItem("watch_config", JSON.stringify(watch_config));
 
 			// If PebbleBridge is available, use its close() method
+			console.log('[Save] window.pebbleBridge:', typeof window.pebbleBridge);
+			console.log('[Save] window.PebbleBridgeNative:', typeof window.PebbleBridgeNative);
 			if (window.pebbleBridge && window.pebbleBridge.close) {
 				console.log('[Save] Using PebbleBridge.close()');
 				window.pebbleBridge.close(watch_config);
 				return;
 			}
+
+			console.log('[Save] PebbleBridge not available, falling back to URL scheme');
 
 			// Get return_to parameter if it exists, otherwise use default close URL
 			const urlParams = new URLSearchParams(window.location.search);
