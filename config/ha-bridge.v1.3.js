@@ -258,7 +258,6 @@ function initEntityPicker() {
 	const container = $('#entity-picker-container');
 	const listEl = $('#entity-picker-list');
 	const searchInput = $('#entity-picker-search');
-	const domainSelect = $('#entity-picker-domain');
 	const status = $('#entity-picker-status');
 	const selection = $('#entity-picker-selection');
 
@@ -291,13 +290,6 @@ function initEntityPicker() {
 	}
 	const domains = Object.keys(byDomain).sort();
 
-	// Populate domain filter
-	let domainOptions = '<option value="">All domains</option>';
-	for (const domain of domains) {
-		domainOptions += '<option value="' + domain + '">' + domain + ' (' + byDomain[domain].length + ')</option>';
-	}
-	domainSelect.html(domainOptions);
-
 	let selectedEntity = null;
 
 	function escapeHtml(text) {
@@ -306,15 +298,12 @@ function initEntityPicker() {
 
 	function renderList() {
 		const query = searchInput.val().trim().toLowerCase();
-		const selectedDomain = domainSelect.val();
 		const maxMatches = 200;
 		let totalMatches = 0;
 		let remaining = 0;
 
 		let html = '';
 		for (const domain of domains) {
-			if (selectedDomain && domain !== selectedDomain) continue;
-
 			const matched = [];
 			for (const entity of byDomain[domain]) {
 				const hay = ((entity.name || '') + ' ' + (entity.entity_id || '')).toLowerCase();
@@ -352,7 +341,7 @@ function initEntityPicker() {
 		listEl.html(html);
 
 		const shown = Math.min(totalMatches, maxMatches);
-		status.text(shown + ' of ' + totalMatches + ' shown. ' + (selectedDomain ? '' : 'Select a domain to narrow results.'));
+		status.text(shown + ' of ' + totalMatches + ' shown.');
 
 		if (remaining > 0 || totalMatches > maxMatches) {
 			status.text(status.text() + ' Type more to filter.');
@@ -375,7 +364,6 @@ function initEntityPicker() {
 		filterTimeout = setTimeout(renderList, 150);
 	}
 	searchInput.on('input', scheduleRender);
-	domainSelect.on('change', renderList);
 
 	renderList();
 
