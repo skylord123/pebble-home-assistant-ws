@@ -298,8 +298,9 @@ function initEntityPicker() {
 
 	function renderList() {
 		const query = searchInput.val().trim().toLowerCase();
-		const maxMatches = 200;
+		const maxPerDomain = 50;
 		let totalMatches = 0;
+		let totalShown = 0;
 		let remaining = 0;
 
 		let html = '';
@@ -314,8 +315,10 @@ function initEntityPicker() {
 			if (matched.length === 0) continue;
 
 			totalMatches += matched.length;
-			const show = matched.slice(0, maxMatches - (totalMatches - matched.length));
-			remaining = matched.length - show.length;
+			const show = matched.slice(0, maxPerDomain);
+			const domainRemaining = matched.length - show.length;
+			remaining += domainRemaining;
+			totalShown += show.length;
 
 			html += '<details class="entity-domain-group" style="margin:0.25rem 0;" data-domain="' + escapeHtml(domain) + '">';
 			html += '<summary style="cursor:pointer;font-weight:bold;padding:0.25rem;">' + escapeHtml(domain) + ' (' + matched.length + ')</summary>';
@@ -327,12 +330,10 @@ function initEntityPicker() {
 				html += '<div class="entity-id" style="font-size:0.8rem;color:var(--color-text-muted);">' + escapeHtml(entity.entity_id) + '</div>';
 				html += '</button>';
 			}
-			if (remaining > 0) {
-				html += '<div style="font-size:0.8rem;color:var(--color-text-muted);padding:0.25rem;">and ' + remaining + ' more</div>';
+			if (domainRemaining > 0) {
+				html += '<div style="font-size:0.8rem;color:var(--color-text-muted);padding:0.25rem;">and ' + domainRemaining + ' more</div>';
 			}
 			html += '</div></details>';
-
-			if (totalMatches >= maxMatches) break;
 		}
 
 		if (!html) {
@@ -340,10 +341,9 @@ function initEntityPicker() {
 		}
 		listEl.html(html);
 
-		const shown = Math.min(totalMatches, maxMatches);
-		status.text(shown + ' of ' + totalMatches + ' shown.');
+		status.text(totalShown + ' of ' + totalMatches + ' shown.');
 
-		if (remaining > 0 || totalMatches > maxMatches) {
+		if (remaining > 0) {
 			status.text(status.text() + ' Type more to filter.');
 		}
 	}
