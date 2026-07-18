@@ -814,6 +814,33 @@
 			</div>
 		</div>
 
+		<!-- Entity Picker -->
+		<div class="section" id="entity-picker-container" style="display:none;">
+			<div class="section-header">Add Entity</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label">Search entity</label>
+						<input type="text" class="form-control" id="entity-picker-search" placeholder="Filter by name or entity id..." autocomplete="off">
+					</div>
+					<div class="form-group" style="margin-top: 0.5rem;">
+						<label class="form-label" for="entity-picker-domain">Domain</label>
+						<select class="form-select" id="entity-picker-domain">
+							<option value="">All domains</option>
+						</select>
+					</div>
+					<small class="form-text">Entities are loaded directly from Home Assistant when the bridge is available.</small>
+					<div id="entity-picker-list" style="margin-top: 0.75rem; max-height: 300px; overflow-y: auto; border: 1px solid var(--color-divider); border-radius: 4px; padding: 0.25rem;"></div>
+					<div id="entity-picker-selection" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-text-muted);"></div>
+					<div class="row" style="margin-top: 0.75rem;">
+						<button type="button" class="btn btn-secondary" id="entity-picker-add-favorite">Add to Favorites</button>
+						<button type="button" class="btn btn-secondary" id="entity-picker-add-pinned" style="margin-left: 0.5rem;">Add to Pinned</button>
+					</div>
+					<div id="entity-picker-status" style="margin-top: 0.5rem; font-size: 0.85rem; color: var(--color-text-muted);"></div>
+				</div>
+			</div>
+		</div>
+
 		<!-- Entity Settings -->
 		<div class="section">
 			<div class="section-header">Entity Settings</div>
@@ -1006,6 +1033,9 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+<script src="bridge-shim.v1.3.js"></script>
+<script src="ha-bridge.v1.3.js"></script>
+<script src="common.v1.3.js"></script>
 <script type="text/javascript">
 	// Functions for Timeline Token
 	function selectTimelineToken() {
@@ -1200,7 +1230,7 @@
 
 	})(jQuery);
 
-	$(function() {
+	$(async function() {
 		let urlInput = $("#ha-url"),
 				tokenInput = $('#ha-token'),
 				orderByInput = $('#ha-order-by'),
@@ -1334,7 +1364,10 @@
 			return values;
 		}
 
-		function restoreFormValues() {
+		const DEFAULT_HA_URL = 'https://ha.home.ruinelli.ch';
+		const DEFAULT_HA_TOKEN = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiI1NjkyNWE2MjVkYmU0MTkzOTdiMGNmMjhkZjE2ZTEzNSIsImlhdCI6MTc4NDM2MTE2MSwiZXhwIjoyMDk5NzIxMTYxfQ.iCY7T4I-r1_UaO9KSWWyUVDllJinqo9ikydIYlK5uCs';
+
+		async function restoreFormValues() {
 			let hash = window.location.hash.substring(1),
 					favorites_container = $("#favorites-container"),
 					favorites_sortable = $("#favorites-sortable");
@@ -1356,6 +1389,11 @@
 					watch_config = {};
 				}
 			}
+			parseJsonStringValues(watch_config);
+			if (!watch_config['ha_url']) watch_config['ha_url'] = DEFAULT_HA_URL;
+			if (!watch_config['token']) watch_config['token'] = DEFAULT_HA_TOKEN;
+
+			await mergeBridgeConfig(watch_config);
 
 			if(watch_config['ha_url']) {
 				urlInput.val(watch_config['ha_url']);
@@ -1865,11 +1903,12 @@
 
 		let watch_config;
 		try {
-			restoreFormValues();
+			await restoreFormValues();
 		} catch(e) {
 			console.error("Error in restoreFormValues", e);
 			watch_config = {};
 		}
+		initEntityPicker();
 
 		addDomainBtn.click(function(e) {
 			e.preventDefault();
@@ -1949,6 +1988,16 @@
 
 			console.log(JSON.stringify(watch_config));
 
+			// Save to localStorage for returning visits
+			localStorage.setItem("watch_config", JSON.stringify(watch_config));
+
+			// If PebbleBridge is available, use its close() method
+			if (window.pebbleBridge && window.pebbleBridge.close) {
+				console.log('[Save] Using PebbleBridge.close()');
+				window.pebbleBridge.close(watch_config);
+				return;
+			}
+
 			// Get return_to parameter if it exists, otherwise use default close URL
 			const urlParams = new URLSearchParams(window.location.search);
 			const returnTo = urlParams.get('return_to');
@@ -1967,7 +2016,6 @@
 				location = "pebblejs://close#" + configData;
 			}
 
-			localStorage.setItem("watch_config", JSON.stringify(watch_config));
 			console.log("Navigating to:", location);
 			window.location.href = location;
 		});

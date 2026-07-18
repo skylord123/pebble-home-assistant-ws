@@ -1,6 +1,7 @@
 {
   "appKeys": {},
   "capabilities": [
+    "config_network_bridge",
     "configurable"
   ],
   "companyName": "skylar.tech",
