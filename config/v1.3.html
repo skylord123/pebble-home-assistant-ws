@@ -1901,12 +1901,12 @@
 					.show();
 		}
 
-		let watch_config;
+		window.watch_config = undefined;
 		try {
 			await restoreFormValues();
 		} catch(e) {
 			console.error("Error in restoreFormValues", e);
-			watch_config = {};
+			window.watch_config = {};
 		}
 		initEntityPicker();
 
@@ -1992,12 +1992,6 @@
 			localStorage.setItem("watch_config", JSON.stringify(watch_config));
 
 			// If PebbleBridge is available, use its close() method
-			var bridgeType = typeof window.pebbleBridge;
-			var nativeType = typeof window.PebbleBridgeNative;
-			var debugMsg = '[Save] pebbleBridge=' + bridgeType + ' PebbleBridgeNative=' + nativeType;
-			console.log(debugMsg);
-			display_alert('info', debugMsg);
-
 			if (window.pebbleBridge && window.pebbleBridge.close) {
 				console.log('[Save] Using PebbleBridge.close()');
 				window.pebbleBridge.close(watch_config);
