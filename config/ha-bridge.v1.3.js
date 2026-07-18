@@ -309,6 +309,7 @@ function initEntityPicker() {
 		const selectedDomain = domainSelect.val();
 		const maxMatches = 200;
 		let totalMatches = 0;
+		let remaining = 0;
 
 		let html = '';
 		for (const domain of domains) {
@@ -325,7 +326,7 @@ function initEntityPicker() {
 
 			totalMatches += matched.length;
 			const show = matched.slice(0, maxMatches - (totalMatches - matched.length));
-			const remaining = matched.length - show.length;
+			remaining = matched.length - show.length;
 
 			html += '<details class="entity-domain-group" style="margin:0.25rem 0;" data-domain="' + escapeHtml(domain) + '">';
 			html += '<summary style="cursor:pointer;font-weight:bold;padding:0.25rem;">' + escapeHtml(domain) + ' (' + matched.length + ')</summary>';
