@@ -1992,8 +1992,12 @@
 			localStorage.setItem("watch_config", JSON.stringify(watch_config));
 
 			// If PebbleBridge is available, use its close() method
-			console.log('[Save] window.pebbleBridge:', typeof window.pebbleBridge);
-			console.log('[Save] window.PebbleBridgeNative:', typeof window.PebbleBridgeNative);
+			var bridgeType = typeof window.pebbleBridge;
+			var nativeType = typeof window.PebbleBridgeNative;
+			var debugMsg = '[Save] pebbleBridge=' + bridgeType + ' PebbleBridgeNative=' + nativeType;
+			console.log(debugMsg);
+			display_alert('info', debugMsg);
+
 			if (window.pebbleBridge && window.pebbleBridge.close) {
 				console.log('[Save] Using PebbleBridge.close()');
 				window.pebbleBridge.close(watch_config);
