@@ -298,7 +298,7 @@ function initEntityPicker() {
 
 	function renderList() {
 		const query = searchInput.val().trim().toLowerCase();
-		const maxPerDomain = 50;
+		const maxPerDomain = 500;
 		let totalMatches = 0;
 		let totalShown = 0;
 		let remaining = 0;
