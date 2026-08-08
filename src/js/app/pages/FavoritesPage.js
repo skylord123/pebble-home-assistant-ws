@@ -7,20 +7,6 @@ var EntityService = require('app/EntityService');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
 
-var ACCENT_COLORS = [
-  'red', 'green', 'blue', 'orange', 'magenta', 'yellow', 'purple',
-  'cyan', 'electricBlue', 'darkGreen', 'tiffanyBlue', 'vividCerulean',
-  'brass', 'rajah', 'mintGreen', 'kellyGreen', 'jazzberryJam'
-];
-
-function colorForId(id) {
-  var sum = 0;
-  for (var i = 0; i < id.length; i++) {
-    sum += id.charCodeAt(i);
-  }
-  return ACCENT_COLORS[sum % ACCENT_COLORS.length];
-}
-
 class FavoritesPage extends BasePage {
   constructor() {
     super();
@@ -30,7 +16,7 @@ class FavoritesPage extends BasePage {
     this._entityIndex = {};
     this._scrollOffset = 0;
     this._visibleCount = 4;
-    this._titleHeight = 40;
+    this._titleHeight = 30;
   }
 
   show() {
@@ -239,7 +225,7 @@ class FavoritesPage extends BasePage {
     });
     win.add(highlight);
 
-    var color = this.appState.favoriteEntityStore.getColor(item.id) || colorForId(item.id);
+    var color = this.appState.favoriteEntityStore.getColor(item.id) || 'blue';
 
     var border = new UI.Rect({
       position: new UI.Vector2(2, y + 9),
@@ -431,3 +417,4 @@ function showFavorites() {
 
 module.exports = FavoritesPage;
 module.exports.showFavorites = showFavorites;
+

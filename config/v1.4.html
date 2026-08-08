@@ -529,6 +529,17 @@
 		flex-shrink: 0;
 	}
 
+	.list-group-item .color-swatch {
+		display: inline-block;
+		width: 1rem;
+		height: 1rem;
+		border-radius: 0.2rem;
+		border: 1px solid var(--color-input-border);
+		vertical-align: middle;
+		margin-left: 0.5rem;
+		flex-shrink: 0;
+	}
+
 	/* Timeline Token */
 		.timeline-token {
 			word-break: break-all;
@@ -1375,15 +1386,48 @@
 			'brass', 'rajah', 'mintGreen', 'kellyGreen', 'jazzberryJam'
 		];
 
+		const FAVORITE_COLOR_CSS = {
+			'red': '#FF0000',
+			'green': '#00AA00',
+			'blue': '#0000FF',
+			'orange': '#FFAA00',
+			'magenta': '#FF00FF',
+			'yellow': '#FFFF00',
+			'purple': '#800080',
+			'cyan': '#00FFFF',
+			'electricBlue': '#2C75FF',
+			'darkGreen': '#006400',
+			'tiffanyBlue': '#0ABAB5',
+			'vividCerulean': '#00B7EB',
+			'brass': '#B5A642',
+			'rajah': '#FBAB60',
+			'mintGreen': '#98FF98',
+			'kellyGreen': '#4CBB17',
+			'jazzberryJam': '#A50B5E'
+		};
+
+		function getCssColor(color) {
+			return FAVORITE_COLOR_CSS[color] || color;
+		}
+
 		function buildColorSelect(selectedColor) {
-			let html = '<select class="form-select favorite-color-select">';
-			html += '<option value=""' + (!selectedColor ? ' selected' : '') + '>Automatic</option>';
-			for (let color of FAVORITE_COLORS) {
-				html += '<option value="' + color + '"' + (selectedColor === color ? ' selected' : '') + '>' + color + '</option>';
+			let color = selectedColor || 'blue';
+			if (FAVORITE_COLORS.indexOf(color) === -1) {
+				color = 'blue';
+			}
+			let html = '<span class="color-swatch" style="background-color: ' + getCssColor(color) + ';" title="' + color + '"></span>';
+			html += '<select class="form-select favorite-color-select">';
+			for (let c of FAVORITE_COLORS) {
+				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '>' + c + '</option>';
 			}
 			html += '</select>';
 			return html;
 		}
+
+		favorites_sortable.on('change', '.favorite-color-select', function() {
+			let val = $(this).val();
+			$(this).prev('.color-swatch').css('background-color', getCssColor(val)).attr('title', val);
+		});
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -1437,13 +1481,10 @@
 					let entityId = $item.data('entity-id');
 					let friendlyName = $item.data('friendly-name');
 					let color = $item.find('.favorite-color-select').val();
-					// Save as object with entity_id, name (if available), and color (if set)
-					let entry = { entity_id: entityId };
+					// Save as object with entity_id, name (if available), and color
+					let entry = { entity_id: entityId, color: color };
 					if (friendlyName) {
 						entry.name = friendlyName;
-					}
-					if (color) {
-						entry.color = color;
 					}
 					return entry;
 				}).toArray(),
