@@ -3,3 +3,4 @@
 build
 .lock-waf_linux2_build
 /.lock-waf_linux_build
+*.pyc

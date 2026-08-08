@@ -182,6 +182,11 @@
         "file": "images/icon_script.png",
         "name": "IMAGE_ICON_SCRIPT",
         "type": "bitmap"
+      },
+      {
+        "file": "images/appicon_blue.png",
+        "name": "IMAGE_APPICON_BLUE",
+        "type": "bitmap"
       }
     ]
   },
