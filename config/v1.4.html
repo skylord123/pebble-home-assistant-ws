@@ -759,7 +759,7 @@
 	<form id="watch-config-form">
 		<!-- Header -->
 		<div class="page-header">
-			<p class="author-link">Created by <a href="https://skylar.tech" target="_blank">CaCO3</a> <span style="color:var(--color-text-muted);font-size:0.8em;">v1.4 build 14</span></p>
+			<p class="author-link">Created by CaCO3, based on the work of Skylor S <span style="color:var(--color-text-muted);font-size:0.8em;">v1.4 build 14</span></p>
 		</div>
 
 		<div id="alert-container"></div>
@@ -1428,7 +1428,7 @@
 			return html;
 		}
 
-		favorites_sortable.on('change', '.favorite-color-select', function() {
+		$(document).on('change', '.favorite-color-select', function() {
 			let val = $(this).val();
 			let css = getCssColor(val);
 			$(this).prev('.color-swatch').css('background-color', css).attr('title', val);
