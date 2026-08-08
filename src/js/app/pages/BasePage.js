@@ -1,3 +1,4 @@
+
 /**
  * BasePage - Abstract base class for all page types
  * Provides common patterns for menu creation, event handling, and subscriptions
