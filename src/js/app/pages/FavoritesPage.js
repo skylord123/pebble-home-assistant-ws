@@ -30,7 +30,7 @@ class FavoritesPage extends BasePage {
     this._entityIndex = {};
     this._scrollOffset = 0;
     this._visibleCount = 4;
-    this._titleHeight = 30;
+    this._titleHeight = 32;
   }
 
   show() {
@@ -79,6 +79,7 @@ class FavoritesPage extends BasePage {
     this._elements = [];
     this._entityIndex = {};
 
+
     this.unsubscribe();
     if (this.relativeTimeUpdater) {
       this.relativeTimeUpdater.destroy();
@@ -102,6 +103,13 @@ class FavoritesPage extends BasePage {
       });
     });
 
+    this._selectedIndex = 0;
+    if (this.appState.menuSelections &&
+        typeof this.appState.menuSelections.favoritesMenu === 'number' &&
+        this.appState.menuSelections.favoritesMenu < favoriteEntities.length) {
+      this._selectedIndex = this.appState.menuSelections.favoritesMenu;
+    }
+
     for (var i = 0; i < favoriteEntities.length; i++) {
       var entityId = favoriteEntities[i];
       var entity = appState.ha_state_dict[entityId];
@@ -109,33 +117,28 @@ class FavoritesPage extends BasePage {
       var titleText = entity && entity.attributes && entity.attributes.friendly_name
         ? entity.attributes.friendly_name
         : entityId;
+      var friendlyName = titleText;
+      var state = (entity && entity.state !== undefined) ? entity.state : '?';
+      var unit = (entity && entity.attributes && entity.attributes.unit_of_measurement) ? entity.attributes.unit_of_measurement : '';
+      var lastChanged = (entity && entity.last_changed) ? entity.last_changed : new Date().toISOString();
+      var subtitle = state + (unit ? ' ' + unit : '') + ' > ' + helpers.humanDiff(new Date(), new Date(lastChanged));
       var item = {
         id: entityId,
-        title: titleText,
-        subtitle: '',
+        title: friendlyName,
+        subtitle: subtitle,
         icon: EntityService.getIcon(entity),
         entity_id: entityId,
-        friendlyName: titleText,
-        state: '?',
-        unit: '',
-        lastChanged: new Date().toISOString()
+        friendlyName: friendlyName,
+        state: state,
+        unit: unit,
+        lastChanged: lastChanged
       };
       this._addRow(win, item, i);
       this._rows.push(item);
-      this._updateEntityRow(i, entity || {
-        entity_id: entityId,
-        state: '?',
-        attributes: { friendly_name: titleText },
-        last_changed: new Date().toISOString()
-      });
     }
 
-    this._selectedIndex = 0;
-    if (this.appState.menuSelections &&
-        typeof this.appState.menuSelections.favoritesMenu === 'number' &&
-        this.appState.menuSelections.favoritesMenu < this._rows.length) {
-      this._selectedIndex = this.appState.menuSelections.favoritesMenu;
-    }
+
+
     this._moveSelection(0);
 
     var headerBg = new UI.Rect({
@@ -181,20 +184,9 @@ class FavoritesPage extends BasePage {
     });
     win.add(time);
 
+
     this.subscribe(favoriteEntities, function(data) {
       var ev = data.event || {};
-
-      if (ev.a) {
-        for (var entity_id in ev.a) {
-          var entityData = self._convertEntityData(entity_id, ev.a[entity_id]);
-          appState.setEntity(entity_id, entityData);
-          var idx = self._entityIndex[entity_id];
-          if (idx !== undefined) {
-            self._updateEntityRow(idx, entityData);
-            self.relativeTimeUpdater.update(entity_id, entityData.last_changed);
-          }
-        }
-      }
 
       if (ev.c) {
         for (var changedId in ev.c) {
@@ -237,15 +229,18 @@ class FavoritesPage extends BasePage {
 
   _addRow(win, item, index) {
     var y = this._titleHeight + (index * 44);
+    var selected = (index === this._selectedIndex);
+    var textColor = selected ? 'black' : 'white';
+    var highlightColor = selected ? 'white' : 'clear';
 
     var highlight = new UI.Rect({
       position: new UI.Vector2(0, y),
       size: new UI.Vector2(200, 44),
-      backgroundColor: 'clear'
+      backgroundColor: highlightColor
     });
     win.add(highlight);
 
-    var color = colorForId(item.id);
+    var color = this.appState.favoriteEntityStore.getColor(item.id) || colorForId(item.id);
 
     var border = new UI.Rect({
       position: new UI.Vector2(2, y + 9),
@@ -268,9 +263,9 @@ class FavoritesPage extends BasePage {
 
     var title = new UI.Text({
       text: item.title || '',
-      position: new UI.Vector2(32, y - 2),
+      position: new UI.Vector2(32, y),
       size: new UI.Vector2(168, 26),
-      color: 'white',
+      color: textColor,
       font: 'gothic_24_bold',
       textAlign: 'left',
       textOverflow: 'ellipsis'
@@ -281,7 +276,7 @@ class FavoritesPage extends BasePage {
       text: item.subtitle,
       position: new UI.Vector2(32, y + 19),
       size: new UI.Vector2(168, 18),
-      color: 'white',
+      color: textColor,
       font: 'gothic_18',
       textAlign: 'left',
       textOverflow: 'ellipsis'
@@ -291,6 +286,7 @@ class FavoritesPage extends BasePage {
     item.baseY = y;
     this._elements[index] = { highlight: highlight, border: border, icon: icon, title: title, subtitle: subtitle };
   }
+
 
   _updateEntityRow(index, entity) {
     var item = this._rows[index];
@@ -351,7 +347,7 @@ class FavoritesPage extends BasePage {
       el.highlight.position(new UI.Vector2(0, baseY - offset));
       el.border.position(new UI.Vector2(2, baseY + 9 - offset));
       if (el.icon) { el.icon.position(new UI.Vector2(3, baseY + 10 - offset)); }
-      el.title.position(new UI.Vector2(32, baseY - 2 - offset));
+      el.title.position(new UI.Vector2(32, baseY - offset));
       el.subtitle.position(new UI.Vector2(32, baseY + 19 - offset));
     }
   }
