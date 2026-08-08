@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="en">
 <head>
-	<title>Home Assistant WS Config</title>
+	<title>Home Assistant WS Config v1.4</title>
 	<script src="https://use.fontawesome.com/3a291b24ff.js"></script>
 	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 	<meta name="color-scheme" content="light dark">
@@ -519,7 +519,17 @@
 			flex-shrink: 0;
 		}
 
-		/* Timeline Token */
+		.list-group-item .favorite-color-select {
+		width: auto;
+		margin-left: 0.5rem;
+		font-size: 0.85rem;
+		padding: 0.25rem 1.5rem 0.25rem 0.5rem;
+		background-position: right 0.4rem center;
+		background-size: 12px 9px;
+		flex-shrink: 0;
+	}
+
+	/* Timeline Token */
 		.timeline-token {
 			word-break: break-all;
 			background-color: var(--color-input-bg);
@@ -1359,6 +1369,22 @@
 				pinnedContainer = $('#pinned-container'),
 				pinnedSortable = $('#pinned-sortable');
 
+		const FAVORITE_COLORS = [
+			'red', 'green', 'blue', 'orange', 'magenta', 'yellow', 'purple',
+			'cyan', 'electricBlue', 'darkGreen', 'tiffanyBlue', 'vividCerulean',
+			'brass', 'rajah', 'mintGreen', 'kellyGreen', 'jazzberryJam'
+		];
+
+		function buildColorSelect(selectedColor) {
+			let html = '<select class="form-select favorite-color-select">';
+			html += '<option value=""' + (!selectedColor ? ' selected' : '') + '>Automatic</option>';
+			for (let color of FAVORITE_COLORS) {
+				html += '<option value="' + color + '"' + (selectedColor === color ? ' selected' : '') + '>' + color + '</option>';
+			}
+			html += '</select>';
+			return html;
+		}
+
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
 			e.preventDefault();
@@ -1410,13 +1436,16 @@
 					let $item = $(b);
 					let entityId = $item.data('entity-id');
 					let friendlyName = $item.data('friendly-name');
-					// Save as object with entity_id and name (if available)
+					let color = $item.find('.favorite-color-select').val();
+					// Save as object with entity_id, name (if available), and color (if set)
+					let entry = { entity_id: entityId };
 					if (friendlyName) {
-						return { entity_id: entityId, name: friendlyName };
-					} else {
-						// If no friendly name, still save as object for consistency
-						return { entity_id: entityId };
+						entry.name = friendlyName;
 					}
+					if (color) {
+						entry.color = color;
+					}
+					return entry;
 				}).toArray(),
 				'ignore_domains': $("#ignore-domains-list li").map(function(a,b){
 					return $(b).data('domain');
@@ -1680,13 +1709,15 @@
 				let html = '';
 				for(let fav of watch_config['favorite_entities']) {
 					// Handle both old format (string) and new format (object with entity_id and name)
-					let entity_id, friendly_name;
+					let entity_id, friendly_name, color;
 					if (typeof fav === 'string') {
 						entity_id = fav;
 						friendly_name = null;
+						color = '';
 					} else {
 						entity_id = fav.entity_id;
 						friendly_name = fav.name || null;
+						color = fav.color || '';
 					}
 
 					// Build the display HTML
@@ -1708,6 +1739,7 @@
 						<li class="list-group-item" data-entity-id="${entity_id}" data-friendly-name="${friendly_name || ''}">
 							<i class="fa fa-bars"></i>
 							${displayHtml}
+							${buildColorSelect(color)}
 							<a href="javascript:void(0)" class="remove-favorite"><i class="fa fa-trash"></i></a>
 						</li>`;
 				}

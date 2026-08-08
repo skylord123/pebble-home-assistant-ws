@@ -75,10 +75,23 @@ class FavoriteEntityStore {
 
     /**
      * Get all favorites with full data (entity_id and name)
-     * @returns {Array<{entity_id: string, name?: string}>}
+     * @returns {Array<{entity_id: string, name?: string, color?: string}>}
      */
     allWithNames() {
         return this.favoriteEntities;
+    }
+
+    /**
+     * Get the configured color for a favorite entity
+     * @param {string} id - The entity_id
+     * @returns {string|null} The configured color, or null if not set
+     */
+    getColor(id) {
+        let index = this._findIndex(id);
+        if (index > -1 && this.favoriteEntities[index].color) {
+            return this.favoriteEntities[index].color;
+        }
+        return null;
     }
 
     /**
