@@ -540,6 +540,11 @@
 		flex-shrink: 0;
 	}
 
+	select.favorite-color-select,
+	select.favorite-color-select option {
+		color: transparent;
+	}
+
 	/* Timeline Token */
 		.timeline-token {
 			word-break: break-all;
@@ -1381,44 +1386,43 @@
 				pinnedSortable = $('#pinned-sortable');
 
 		const FAVORITE_COLORS = [
-			'red', 'green', 'blue', 'orange', 'magenta', 'yellow', 'purple',
-			'cyan', 'electricBlue', 'darkGreen', 'tiffanyBlue', 'vividCerulean',
-			'brass', 'rajah', 'mintGreen', 'kellyGreen', 'jazzberryJam'
+			'red', 'green', 'blue', 'yellow', 'magenta', 'cyan', 'white', 'black'
 		];
 
 		const FAVORITE_COLOR_CSS = {
 			'red': '#FF0000',
 			'green': '#00AA00',
 			'blue': '#0000FF',
-			'orange': '#FFAA00',
-			'magenta': '#FF00FF',
 			'yellow': '#FFFF00',
-			'purple': '#800080',
+			'magenta': '#FF00FF',
 			'cyan': '#00FFFF',
-			'electricBlue': '#2C75FF',
-			'darkGreen': '#006400',
-			'tiffanyBlue': '#0ABAB5',
-			'vividCerulean': '#00B7EB',
-			'brass': '#B5A642',
-			'rajah': '#FBAB60',
-			'mintGreen': '#98FF98',
-			'kellyGreen': '#4CBB17',
-			'jazzberryJam': '#A50B5E'
+			'white': '#FFFFFF',
+			'black': '#000000'
 		};
 
 		function getCssColor(color) {
 			return FAVORITE_COLOR_CSS[color] || color;
 		}
 
+		// Style each dropdown option with its color
+		let colorStyle = $('<style></style>');
+		let colorCss = '';
+		for (let c of FAVORITE_COLORS) {
+			colorCss += 'select.favorite-color-select option[value="' + c + '"] { background-color: ' + getCssColor(c) + '; }\n';
+		}
+		colorStyle.text(colorCss);
+		$('head').append(colorStyle);
+
 		function buildColorSelect(selectedColor) {
 			let color = selectedColor || 'blue';
 			if (FAVORITE_COLORS.indexOf(color) === -1) {
 				color = 'blue';
 			}
-			let html = '<span class="color-swatch" style="background-color: ' + getCssColor(color) + ';" title="' + color + '"></span>';
-			html += '<select class="form-select favorite-color-select">';
+			let bg = getCssColor(color);
+			let html = '<span class="color-swatch" style="background-color: ' + bg + ';" title="' + color + '"></span>';
+			html += '<select class="form-select favorite-color-select" style="background-color: ' + bg + ';">';
 			for (let c of FAVORITE_COLORS) {
-				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '>' + c + '</option>';
+				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '></option>';
 			}
 			html += '</select>';
 			return html;
@@ -1426,7 +1430,9 @@
 
 		favorites_sortable.on('change', '.favorite-color-select', function() {
 			let val = $(this).val();
-			$(this).prev('.color-swatch').css('background-color', getCssColor(val)).attr('title', val);
+			let css = getCssColor(val);
+			$(this).prev('.color-swatch').css('background-color', css).attr('title', val);
+			$(this).css('background-color', css);
 		});
 
 		// Toggle token visibility
