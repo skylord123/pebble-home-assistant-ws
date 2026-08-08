@@ -30,7 +30,7 @@ class FavoritesPage extends BasePage {
     this._entityIndex = {};
     this._scrollOffset = 0;
     this._visibleCount = 4;
-    this._titleHeight = 32;
+    this._titleHeight = 40;
   }
 
   show() {
@@ -49,8 +49,8 @@ class FavoritesPage extends BasePage {
       this.menu = this.createMenu();
       this.setupEventHandlers();
     }
-    this.onShow();
     this.menu.show();
+    this.onShow();
   }
 
   createMenu() {
@@ -110,6 +110,7 @@ class FavoritesPage extends BasePage {
       this._selectedIndex = this.appState.menuSelections.favoritesMenu;
     }
 
+
     for (var i = 0; i < favoriteEntities.length; i++) {
       var entityId = favoriteEntities[i];
       var entity = appState.ha_state_dict[entityId];
@@ -136,10 +137,6 @@ class FavoritesPage extends BasePage {
       this._addRow(win, item, i);
       this._rows.push(item);
     }
-
-
-
-    this._moveSelection(0);
 
     var headerBg = new UI.Rect({
       position: new UI.Vector2(0, 0),
@@ -183,6 +180,8 @@ class FavoritesPage extends BasePage {
       textAlign: 'right'
     });
     win.add(time);
+
+
 
 
     this.subscribe(favoriteEntities, function(data) {
