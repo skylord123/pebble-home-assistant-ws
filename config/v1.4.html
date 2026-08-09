@@ -519,15 +519,28 @@
 			flex-shrink: 0;
 		}
 
-		.list-group-item .favorite-color-picker {
-		width: 3.5rem;
-		height: 2rem;
+		.color-palette {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.25rem;
 		margin-left: 0.5rem;
-		padding: 0.2rem;
-		border: 1px solid var(--color-input-border);
-		border-radius: 0.25rem;
-		background-color: var(--color-input-bg);
 		flex-shrink: 0;
+		max-width: 8rem;
+	}
+
+	.color-btn {
+		width: 1.5rem;
+		height: 1.5rem;
+		border: 2px solid var(--color-input-border);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		padding: 0;
+		background-color: transparent;
+	}
+
+	.color-btn.selected {
+		border-color: var(--color-accent);
+		box-shadow: 0 0 0 1px var(--color-accent);
 	}
 
 	/* Timeline Token */
@@ -1394,8 +1407,25 @@
 			if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
 				color = '#0000FF';
 			}
-			return '<input type="color" class="form-control favorite-color-picker" value="' + color + '">';
+			color = color.toLowerCase();
+			let html = '<input type="hidden" class="favorite-color" value="' + color + '">';
+			html += '<div class="color-palette">';
+			for (let c of Object.keys(PEBBLE_COLOR_CSS)) {
+				let hex = PEBBLE_COLOR_CSS[c].toLowerCase();
+				let selected = (hex === color) ? ' selected' : '';
+				html += '<button type="button" class="color-btn' + selected + '" data-color="' + hex + '" style="background-color: ' + hex + ';"></button>';
+			}
+			html += '</div>';
+			return html;
 		}
+
+		$(document).on('click', '.color-btn', function() {
+			let hex = $(this).data('color');
+			let palette = $(this).closest('.color-palette');
+			palette.find('.color-btn').removeClass('selected');
+			$(this).addClass('selected');
+			palette.siblings('.favorite-color').val(hex);
+		});
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -1448,7 +1478,7 @@
 					let $item = $(b);
 					let entityId = $item.data('entity-id');
 					let friendlyName = $item.data('friendly-name');
-					let color = $item.find('.favorite-color-picker').val();
+					let color = $item.find('.favorite-color').val();
 					// Save as object with entity_id, name (if available), and color
 					let entry = { entity_id: entityId, color: color };
 					if (friendlyName) {
