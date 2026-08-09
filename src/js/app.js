@@ -43,6 +43,12 @@ appState.pinnedEntityStore = new PinnedEntityStore();
 // === Loading Card ===
 var loadingCard = new UI.Card({
     title: 'Home Assistant WS',
+    banner: 'images/ha_logo_splash.png',
+    titleColor: 'blue',
+    subtitleColor: 'blue',
+    bodyColor: 'blue',
+    backgroundColor: 'white',
+    style: 'large',
     status: false
 });
 

@@ -187,6 +187,16 @@
         "file": "images/appicon_blue.png",
         "name": "IMAGE_APPICON_BLUE",
         "type": "bitmap"
+      },
+      {
+        "file": "images/ha_logo.png",
+        "name": "IMAGE_HA_LOGO",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/ha_logo_splash.png",
+        "name": "IMAGE_HA_LOGO_SPLASH",
+        "type": "bitmap"
       }
     ]
   },

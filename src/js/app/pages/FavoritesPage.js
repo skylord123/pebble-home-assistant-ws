@@ -127,7 +127,7 @@ class FavoritesPage extends BasePage {
     var headerBg = new UI.Rect({
       position: new UI.Vector2(0, 0),
       size: new UI.Vector2(200, this._titleHeight),
-      backgroundColor: 'blue'
+      backgroundColor: 'vividCerulean'
     });
     win.add(headerBg);
 
@@ -139,19 +139,19 @@ class FavoritesPage extends BasePage {
     win.add(headerIconBg);
 
     var headerIcon = new UI.Image({
-      image: 'images/appicon_blue.png',
-      position: new UI.Vector2(2, 2),
-      size: new UI.Vector2(24, 24),
+      image: 'images/ha_logo.png',
+      position: new UI.Vector2(4, 4),
+      size: new UI.Vector2(20, 20),
       backgroundColor: 'clear',
       compositing: 'set'
     });
     win.add(headerIcon);
 
     var titleHeader = new UI.Text({
-      text: 'Homeassistant',
+      text: 'Home Assistant',
       position: new UI.Vector2(32, -2),
       size: new UI.Vector2(116, this._titleHeight),
-      color: 'white',
+      color: 'black',
       font: 'gothic_24_bold',
       textAlign: 'left'
     });
@@ -161,7 +161,7 @@ class FavoritesPage extends BasePage {
       text: '%H:%M',
       position: new UI.Vector2(150, -2),
       size: new UI.Vector2(48, this._titleHeight),
-      color: 'white',
+      color: 'black',
       font: 'gothic_24_bold',
       textAlign: 'right'
     });
