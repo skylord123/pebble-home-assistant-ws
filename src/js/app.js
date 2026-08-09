@@ -13,6 +13,7 @@ var Settings = require('settings');
 var FavoriteEntityStore = require('vendor/FavoriteEntityStore');
 var PinnedEntityStore = require('vendor/PinnedEntityStore');
 var simply = require('ui/simply');
+var Feature = require('platform/feature');
 
 // === Module Imports ===
 var AppState = require('app/AppState');
@@ -41,16 +42,62 @@ appState.favoriteEntityStore = new FavoriteEntityStore();
 appState.pinnedEntityStore = new PinnedEntityStore();
 
 // === Loading Card ===
-var loadingCard = new UI.Card({
-    title: 'Home Assistant WS',
-    banner: 'images/ha_logo_splash.png',
-    titleColor: 'blue',
-    subtitleColor: 'blue',
-    bodyColor: 'blue',
+var res = Feature.resolution();
+var screenW = res.x;
+var screenH = res.y;
+var logoSize = 60;
+var logoX = Math.floor((screenW - logoSize) / 2);
+
+var loadingCard = new UI.Window({
+    status: false,
     backgroundColor: 'white',
-    style: 'large',
-    status: false
+    scrollable: false
 });
+
+var splashTitle = new UI.Text({
+    text: 'Home Assistant WS',
+    position: new UI.Vector2(0, 15),
+    size: new UI.Vector2(screenW, 64),
+    color: 'blue',
+    font: 'gothic_28_bold',
+    textAlign: 'center',
+    textOverflow: 'wrap'
+});
+
+var splashLogo = new UI.Image({
+    image: 'images/ha_logo_splash.png',
+    position: new UI.Vector2(logoX, 77),
+    size: new UI.Vector2(logoSize, logoSize),
+    backgroundColor: 'clear',
+    compositing: 'set'
+});
+
+var splashStatus = new UI.Text({
+    text: '',
+    position: new UI.Vector2(0, 158),
+    size: new UI.Vector2(screenW, 24),
+    color: 'blue',
+    font: 'gothic_24_bold',
+    textAlign: 'center'
+});
+
+var splashBody = new UI.Text({
+    text: '',
+    position: new UI.Vector2(0, 170),
+    size: new UI.Vector2(screenW, 18),
+    color: 'blue',
+    font: 'gothic_18',
+    textAlign: 'center'
+});
+
+loadingCard.add(splashTitle);
+loadingCard.add(splashLogo);
+loadingCard.add(splashStatus);
+loadingCard.add(splashBody);
+
+loadingCard.title = function(text) { splashTitle.text(text); return this; };
+loadingCard.subtitle = function(text) { splashStatus.text(text); return this; };
+loadingCard.body = function(text) { splashBody.text(text); return this; };
 
 // === Logging ===
 helpers.log_message('Started! v' + Constants.appVersion);
