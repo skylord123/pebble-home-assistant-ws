@@ -9,12 +9,10 @@ typedef struct SimplySplash SimplySplash;
 struct SimplySplash {
   Simply *simply;
   Window *window;
-#if defined(SPLASH_TEXT)
   TextLayer *title_layer;
   TextLayer *subtitle_layer;
-#else
+  BitmapLayer *logo_layer;
   GBitmap *image;
-#endif
 };
 
 SimplySplash *simply_splash_create(Simply *simply);

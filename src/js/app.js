@@ -65,7 +65,7 @@ var splashTitle = new UI.Text({
 });
 
 var splashLogo = new UI.Image({
-    image: 'images/ha_logo_splash.png',
+    image: 'images/logo_splash.png',
     position: new UI.Vector2(logoX, 77),
     size: new UI.Vector2(logoSize, logoSize),
     backgroundColor: 'clear',

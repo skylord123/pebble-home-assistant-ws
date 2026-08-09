@@ -192,11 +192,6 @@
         "file": "images/ha_logo.png",
         "name": "IMAGE_HA_LOGO",
         "type": "bitmap"
-      },
-      {
-        "file": "images/ha_logo_splash.png",
-        "name": "IMAGE_HA_LOGO_SPLASH",
-        "type": "bitmap"
       }
     ]
   },
