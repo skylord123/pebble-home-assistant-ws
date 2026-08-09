@@ -46,8 +46,8 @@ class MainMenuPage extends BasePage {
             highlightTextColor: 'black',
             sections: [{
                 title: 'Home Assistant',
-                backgroundColor: Constants.colour.highlight,
-                textColor: Constants.colour.highlight_text
+                backgroundColor: 'black',
+                textColor: 'white'
             }]
         });
     }

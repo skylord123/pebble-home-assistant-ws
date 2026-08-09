@@ -31,12 +31,17 @@ class FavoritesPage extends BasePage {
       return;
     }
 
+    var self = this;
     if (!this.menu) {
       this.menu = this.createMenu();
       this.setupEventHandlers();
     }
     this.onShow();
     this.menu.show();
+    this.menu.buttonConfig({ back: true });
+    this.menu.on('click', 'back', function() {
+        self.menu.hide();
+    });
   }
 
   createMenu() {

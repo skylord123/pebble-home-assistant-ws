@@ -116,10 +116,28 @@ static void show_window_sdk_3(SimplyWindowStack *self, SimplyWindow *window, boo
     return;
   }
 
+  // If the target window is already in the stack, pop to it instead of
+  // pushing it again. This keeps an underlying menu window alive while a
+  // Window/Card is on top, and makes the back button simply pop.
+  if (window_stack_contains_window(window->window)) {
+    while (window_stack_get_top_window() != window->window) {
+      window_stack_pop(animated);
+    }
+    return;
+  }
+
+  // Keep the previous menu behind a window/card so the back button works,
+  // but remove the previous window/card when returning to a menu.
+  SimplyWindow *prev_simply = simply_window_stack_get_top_window(self->simply);
+  bool keep_prev = (prev_simply == self->simply->windows[WindowTypeMenu]) &&
+                   (window != self->simply->windows[WindowTypeMenu]);
+
   window_stack_push(window->window, animated);
 
   if (IF_APLITE_ELSE(true, animated)) {
-    window_stack_remove(prev_window, animated);
+    if (!keep_prev) {
+      window_stack_remove(prev_window, animated);
+    }
   }
 }
 #endif
