@@ -519,18 +519,15 @@
 			flex-shrink: 0;
 		}
 
-		.list-group-item .favorite-color-select {
-		width: auto;
+		.list-group-item .favorite-color-picker {
+		width: 3.5rem;
+		height: 2rem;
 		margin-left: 0.5rem;
-		font-size: 0.85rem;
-		padding: 0.25rem 1.5rem 0.25rem 0.5rem;
-		background-position: right 0.4rem center;
-		background-size: 12px 9px;
+		padding: 0.2rem;
+		border: 1px solid var(--color-input-border);
+		border-radius: 0.25rem;
+		background-color: var(--color-input-bg);
 		flex-shrink: 0;
-	}
-
-	select.favorite-color-select {
-		color: transparent;
 	}
 
 	/* Timeline Token */
@@ -1373,13 +1370,7 @@
 				pinnedContainer = $('#pinned-container'),
 				pinnedSortable = $('#pinned-sortable');
 
-		const FAVORITE_COLORS = [
-			'red', 'green', 'blue', 'yellow', 'magenta', 'cyan',
-			'orange', 'purple', 'windsorTan', 'lightGray',
-			'white', 'black'
-		];
-
-		const FAVORITE_COLOR_CSS = {
+		const PEBBLE_COLOR_CSS = {
 			'red': '#FF0000',
 			'green': '#00AA00',
 			'blue': '#0000FF',
@@ -1394,44 +1385,17 @@
 			'black': '#000000'
 		};
 
-		const FAVORITE_COLOR_LABELS = {
-			'windsorTan': 'Brown',
-			'lightGray': 'Gray'
-		};
-
 		function getCssColor(color) {
-			return FAVORITE_COLOR_CSS[color] || color;
+			return PEBBLE_COLOR_CSS[color] || color;
 		}
 
-		// Style each dropdown option with its color
-		let colorStyle = $('<style></style>');
-		let colorCss = '';
-		for (let c of FAVORITE_COLORS) {
-			colorCss += 'select.favorite-color-select option[value="' + c + '"] { background-color: ' + getCssColor(c) + '; }\n';
-		}
-		colorStyle.text(colorCss);
-		$('head').append(colorStyle);
-
-		function buildColorSelect(selectedColor) {
-			let color = selectedColor || 'blue';
-			if (FAVORITE_COLORS.indexOf(color) === -1) {
-				color = 'blue';
+		function buildColorPicker(selectedColor) {
+			let color = getCssColor(selectedColor) || '#0000FF';
+			if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+				color = '#0000FF';
 			}
-			let bg = getCssColor(color);
-			let html = '<select class="form-select favorite-color-select" style="background-color: ' + bg + ';">';
-			for (let c of FAVORITE_COLORS) {
-				let label = FAVORITE_COLOR_LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1);
-				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '>' + label + '</option>';
-			}
-			html += '</select>';
-			return html;
+			return '<input type="color" class="form-control favorite-color-picker" value="' + color + '">';
 		}
-
-		$(document).on('change', '.favorite-color-select', function() {
-			let val = $(this).val();
-			let css = getCssColor(val);
-			$(this).css('background-color', css);
-		});
 
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
@@ -1484,7 +1448,7 @@
 					let $item = $(b);
 					let entityId = $item.data('entity-id');
 					let friendlyName = $item.data('friendly-name');
-					let color = $item.find('.favorite-color-select').val();
+					let color = $item.find('.favorite-color-picker').val();
 					// Save as object with entity_id, name (if available), and color
 					let entry = { entity_id: entityId, color: color };
 					if (friendlyName) {
@@ -1784,7 +1748,7 @@
 						<li class="list-group-item" data-entity-id="${entity_id}" data-friendly-name="${friendly_name || ''}">
 							<i class="fa fa-bars"></i>
 							${displayHtml}
-							${buildColorSelect(color)}
+							${buildColorPicker(color)}
 							<a href="javascript:void(0)" class="remove-favorite"><i class="fa fa-trash"></i></a>
 						</li>`;
 				}
