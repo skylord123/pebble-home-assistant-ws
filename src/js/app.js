@@ -145,7 +145,6 @@ function on_auth_ok(evt) {
         if (!skipMainMenu) {
             MainMenuPage.showMainMenu();
         }
-        loadingCard.hide();
 
         if (launchReason === 'quickLaunch') {
             log('Quick launch behavior: ' + appState.quick_launch_behavior);
@@ -179,6 +178,8 @@ function on_auth_ok(evt) {
                     break;
             }
         }
+
+        loadingCard.hide();
     }
 
     function showUIAfterAuth() {

@@ -35,15 +35,15 @@ class FavoritesPage extends BasePage {
       this.menu = this.createMenu();
       this.setupEventHandlers();
     }
-    this.menu.show();
     this.onShow();
+    this.menu.show();
   }
 
   createMenu() {
     var self = this;
     var win = new UI.Window({
       status: false,
-      backgroundColor: 'black',
+      backgroundColor: 'vividCerulean',
       scrollable: false
     });
 
@@ -216,7 +216,7 @@ class FavoritesPage extends BasePage {
     var y = this._titleHeight + (index * 44);
     var selected = (index === this._selectedIndex);
     var textColor = selected ? 'black' : 'white';
-    var highlightColor = selected ? 'white' : 'clear';
+    var highlightColor = selected ? 'white' : 'black';
 
     var highlight = new UI.Rect({
       position: new UI.Vector2(0, y),
