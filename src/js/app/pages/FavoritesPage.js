@@ -43,7 +43,7 @@ class FavoritesPage extends BasePage {
     var self = this;
     var win = new UI.Window({
       status: false,
-      backgroundColor: 'vividCerulean',
+      backgroundColor: 'black',
       scrollable: false
     });
 
