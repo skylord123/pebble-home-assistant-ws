@@ -362,10 +362,14 @@ class MainMenuPage extends BasePage {
                                   self.appState.getEntity(entity_id) ||
                                   { entity_id: entity_id, state: '', attributes: {} };
 
+                        var mergedAttrs = {};
+                        for (var k in cur.attributes) { mergedAttrs[k] = cur.attributes[k]; }
+                        if (plus.a) { for (var k in plus.a) { mergedAttrs[k] = plus.a[k]; } }
+
                         var entityData = {
                             entity_id: entity_id,
                             state: plus.s !== undefined ? plus.s : cur.state,
-                            attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                            attributes: mergedAttrs,
                             last_changed: plus.lc !== undefined
                                 ? new Date(plus.lc * 1000).toISOString()
                                 : cur.last_changed

@@ -381,10 +381,14 @@ class EntityListPage extends BasePage {
                     var cur = entityStates[changedId] || { entity_id: changedId, state: '', attributes: {} };
 
                     // Merge the changes
+                    var mergedAttrs = {};
+                    for (var k in cur.attributes) { mergedAttrs[k] = cur.attributes[k]; }
+                    if (plus.a) { for (var k in plus.a) { mergedAttrs[k] = plus.a[k]; } }
+
                     entityStates[changedId] = {
                         entity_id: changedId,
                         state: plus.s !== undefined ? plus.s : cur.state,
-                        attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                        attributes: mergedAttrs,
                         context: plus.c !== undefined ? plus.c : cur.context,
                         last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
                     };
