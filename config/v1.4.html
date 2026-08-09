@@ -523,9 +523,7 @@
 		display: flex;
 		flex-wrap: wrap;
 		gap: 0.25rem;
-		margin-left: 0.5rem;
-		flex-shrink: 0;
-		max-width: 8rem;
+		justify-content: center;
 	}
 
 	.color-btn {
@@ -541,6 +539,30 @@
 	.color-btn.selected {
 		border-color: var(--color-accent);
 		box-shadow: 0 0 0 1px var(--color-accent);
+	}
+
+	.color-preview {
+		width: 2rem;
+		height: 2rem;
+		margin-left: 0.5rem;
+		border: 2px solid var(--color-input-border);
+		border-radius: 0.25rem;
+		cursor: pointer;
+		flex-shrink: 0;
+	}
+
+	.overlay {
+		position: fixed;
+		top: 0;
+		left: 0;
+		right: 0;
+		bottom: 0;
+		background: rgba(0,0,0,0.5);
+		z-index: 1000;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1rem;
 	}
 
 	/* Timeline Token */
@@ -1142,6 +1164,21 @@
 				</div>
 			</div>
 		</div>
+		<!-- Color Picker Overlay -->
+		<div id="color-picker-overlay" class="overlay" style="display:none;">
+			<div class="section" style="max-width: 280px; margin: 0 auto;">
+				<div class="section-header">Choose Color</div>
+				<div class="section-body">
+					<div class="component">
+						<div id="color-picker-palette" class="color-palette" style="margin: 0 auto; justify-content: center;"></div>
+					</div>
+					<div class="component" style="text-align: center;">
+						<button type="button" class="btn btn-secondary" id="color-picker-cancel">Cancel</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
 	</form>
 </div>
 
@@ -1402,29 +1439,55 @@
 			return PEBBLE_COLOR_CSS[color] || color;
 		}
 
+		let colorPickerOverlay = $('#color-picker-overlay'),
+			colorPickerPalette = $('#color-picker-palette'),
+			colorPickerCancel = $('#color-picker-cancel');
+		let activeColorTarget = null;
+
 		function buildColorPicker(selectedColor) {
 			let color = getCssColor(selectedColor) || '#0000FF';
 			if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
 				color = '#0000FF';
 			}
 			color = color.toLowerCase();
-			let html = '<input type="hidden" class="favorite-color" value="' + color + '">';
-			html += '<div class="color-palette">';
+			return '<input type="hidden" class="favorite-color" value="' + color + '">' +
+				'<button type="button" class="color-preview" data-color="' + color + '" style="background-color: ' + color + ';"></button>';
+		}
+
+		function buildColorPalette(selectedColor) {
+			let color = (getCssColor(selectedColor) || '#0000FF').toLowerCase();
+			if (!/^#[0-9A-Fa-f]{6}$/.test(color)) {
+				color = '#0000FF';
+			}
+			let html = '';
 			for (let c of Object.keys(PEBBLE_COLOR_CSS)) {
 				let hex = PEBBLE_COLOR_CSS[c].toLowerCase();
 				let selected = (hex === color) ? ' selected' : '';
 				html += '<button type="button" class="color-btn' + selected + '" data-color="' + hex + '" style="background-color: ' + hex + ';"></button>';
 			}
-			html += '</div>';
-			return html;
+			colorPickerPalette.html(html);
 		}
 
-		$(document).on('click', '.color-btn', function() {
+		$(document).on('click', '.color-preview', function() {
+			activeColorTarget = $(this).closest('li');
+			let currentColor = activeColorTarget.find('.favorite-color').val();
+			buildColorPalette(currentColor);
+			colorPickerOverlay.css('display', 'flex');
+		});
+
+		colorPickerPalette.on('click', '.color-btn', function() {
 			let hex = $(this).data('color');
-			let palette = $(this).closest('.color-palette');
-			palette.find('.color-btn').removeClass('selected');
-			$(this).addClass('selected');
-			palette.siblings('.favorite-color').val(hex);
+			if (activeColorTarget) {
+				activeColorTarget.find('.favorite-color').val(hex);
+				activeColorTarget.find('.color-preview').css('background-color', hex);
+			}
+			colorPickerOverlay.hide();
+			activeColorTarget = null;
+		});
+
+		colorPickerCancel.click(function() {
+			colorPickerOverlay.hide();
+			activeColorTarget = null;
 		});
 
 		// Toggle token visibility
