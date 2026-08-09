@@ -1375,7 +1375,7 @@
 
 		const FAVORITE_COLORS = [
 			'red', 'green', 'blue', 'yellow', 'magenta', 'cyan',
-			'orange', 'purple', 'brown', 'gray',
+			'orange', 'purple', 'windsorTan', 'lightGray',
 			'white', 'black'
 		];
 
@@ -1388,10 +1388,15 @@
 			'cyan': '#00FFFF',
 			'orange': '#FFAA00',
 			'purple': '#AA00FF',
-			'brown': '#AA5500',
-			'gray': '#AAAAAA',
+			'windsorTan': '#AA5500',
+			'lightGray': '#AAAAAA',
 			'white': '#FFFFFF',
 			'black': '#000000'
+		};
+
+		const FAVORITE_COLOR_LABELS = {
+			'windsorTan': 'Brown',
+			'lightGray': 'Gray'
 		};
 
 		function getCssColor(color) {
@@ -1415,7 +1420,7 @@
 			let bg = getCssColor(color);
 			let html = '<select class="form-select favorite-color-select" style="background-color: ' + bg + ';">';
 			for (let c of FAVORITE_COLORS) {
-				let label = c.charAt(0).toUpperCase() + c.slice(1);
+				let label = FAVORITE_COLOR_LABELS[c] || c.charAt(0).toUpperCase() + c.slice(1);
 				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '>' + label + '</option>';
 			}
 			html += '</select>';
