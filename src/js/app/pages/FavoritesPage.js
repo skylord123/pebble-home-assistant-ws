@@ -200,6 +200,10 @@ class FavoritesPage extends BasePage {
     for (var j = 0; j < this._rows.length; j++) {
       this.relativeTimeUpdater.register(this._rows[j].entity_id, this._rows[j].lastChanged);
     }
+
+    this._scrollOffset = Math.max(0, this._selectedIndex - (this._visibleCount - 1)) * 44;
+    this._applyScroll(this._scrollOffset);
+    this._updateSelection();
   }
 
   _convertEntityData(entity_id, data) {
@@ -298,7 +302,9 @@ class FavoritesPage extends BasePage {
     item.subtitle = state + (unit ? ' ' + unit : '') + ' > ' + helpers.humanDiff(new Date(), new Date(lastChanged));
 
     this._elements[index].title.text(item.title);
-    this._elements[index].subtitle.text(item.subtitle);
+    if (index === this._selectedIndex) {
+      this._elements[index].subtitle.text(item.subtitle);
+    }
 
     var iconImage = EntityService.getIcon(entity);
     if (iconImage !== item.icon) {
@@ -329,10 +335,12 @@ class FavoritesPage extends BasePage {
       var baseY = this._rows[i].baseY;
       var el = this._elements[i];
       if (!el) { continue; }
+      var selected = (i === this._selectedIndex);
+      var titleY = baseY + (selected ? -4 : 9) - offset;
       el.highlight.position(new UI.Vector2(0, baseY - offset));
       el.border.position(new UI.Vector2(2, baseY + 5 - offset));
       if (el.icon) { el.icon.position(new UI.Vector2(3, baseY + 10 - offset)); }
-      el.title.position(new UI.Vector2(32, baseY - 4 - offset));
+      el.title.position(new UI.Vector2(32, titleY));
       el.subtitle.position(new UI.Vector2(32, baseY + 20 - offset));
     }
   }
@@ -355,9 +363,10 @@ class FavoritesPage extends BasePage {
     for (var i = 0; i < this._elements.length; i++) {
       var selected = (i === this._selectedIndex);
       var el = this._elements[i];
-      el.highlight.backgroundColor(selected ? 'white' : 'clear');
+      el.highlight.backgroundColor(selected ? 'white' : 'black');
       el.title.color(selected ? 'black' : 'white');
       el.subtitle.color(selected ? 'black' : 'white');
+      el.subtitle.text(selected ? this._rows[i].subtitle : '');
     }
   }
 
