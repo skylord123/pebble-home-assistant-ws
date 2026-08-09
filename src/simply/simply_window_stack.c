@@ -126,16 +126,18 @@ static void show_window_sdk_3(SimplyWindowStack *self, SimplyWindow *window, boo
     return;
   }
 
-  // Keep the previous menu behind a window/card so the back button works,
-  // but remove the previous window/card when returning to a menu.
+  // Keep the previous menu behind a window/card only on a forward push
+  // (is_push). On back/replace, the menu should be removed so the stack
+  // stays consistent and we don't leave an empty menu behind.
   SimplyWindow *prev_simply = simply_window_stack_get_top_window(self->simply);
-  bool keep_prev = (prev_simply == self->simply->windows[WindowTypeMenu]) &&
+  bool keep_prev = is_push &&
+                   (prev_simply == self->simply->windows[WindowTypeMenu]) &&
                    (window != self->simply->windows[WindowTypeMenu]);
 
   window_stack_push(window->window, animated);
 
   if (IF_APLITE_ELSE(true, animated)) {
-    if (!keep_prev) {
+    if (!keep_prev && prev_window) {
       window_stack_remove(prev_window, animated);
     }
   }

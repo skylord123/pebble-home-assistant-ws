@@ -3,6 +3,7 @@
  */
 var UI = require('ui');
 var BasePage = require('app/pages/BasePage');
+var MainMenuPage = require('app/pages/MainMenuPage');
 var EntityService = require('app/EntityService');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
@@ -129,6 +130,24 @@ class FavoritesPage extends BasePage {
       this._rows.push(item);
     }
 
+    var mainMenuIndex = favoriteEntities.length;
+    var mainMenuItem = {
+      is_main_menu: true,
+      title: 'Main Menu',
+      subtitle: '',
+      icon: null,
+      entity_id: null,
+      id: '__main_menu__',
+      friendlyName: 'Main Menu',
+      state: '',
+      unit: '',
+      lastChanged: ''
+    };
+    this._entityIndex['__main_menu__'] = mainMenuIndex;
+    this._addRow(win, mainMenuItem, mainMenuIndex);
+    this._rows.push(mainMenuItem);
+    this._selectedIndex = Math.min(this._selectedIndex, this._rows.length - 1);
+
     var headerBg = new UI.Rect({
       position: new UI.Vector2(0, 0),
       size: new UI.Vector2(200, this._titleHeight),
@@ -203,7 +222,9 @@ class FavoritesPage extends BasePage {
     });
 
     for (var j = 0; j < this._rows.length; j++) {
-      this.relativeTimeUpdater.register(this._rows[j].entity_id, this._rows[j].lastChanged);
+      if (this._rows[j].entity_id) {
+        this.relativeTimeUpdater.register(this._rows[j].entity_id, this._rows[j].lastChanged);
+      }
     }
 
     this._scrollOffset = Math.max(0, this._selectedIndex - (this._visibleCount - 1)) * 44;
@@ -234,7 +255,7 @@ class FavoritesPage extends BasePage {
     });
     win.add(highlight);
 
-    var color = this.appState.favoriteEntityStore.getColor(item.id) || 'blue';
+    var color = item.is_main_menu ? 'white' : (this.appState.favoriteEntityStore.getColor(item.id) || 'blue');
 
     var border = new UI.Rect({
       position: new UI.Vector2(2, y + 5),
@@ -401,6 +422,10 @@ class FavoritesPage extends BasePage {
   onSelect(e) {
     this.appState.menuSelections = this.appState.menuSelections || {};
     this.appState.menuSelections.favoritesMenu = e.itemIndex;
+    if (e.item && e.item.is_main_menu) {
+      MainMenuPage.showMainMenu();
+      return;
+    }
     var entityPressBehavior = this.appState.entity_press_behavior !== false;
     if (e.item && e.item.entity_id && entityPressBehavior) {
       EntityService.handleLongPress(e.item.entity_id);
