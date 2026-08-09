@@ -228,8 +228,8 @@ class FavoritesPage extends BasePage {
     var color = this.appState.favoriteEntityStore.getColor(item.id) || 'blue';
 
     var border = new UI.Rect({
-      position: new UI.Vector2(2, y + 8),
-      size: new UI.Vector2(26, 28),
+      position: new UI.Vector2(2, y + 5),
+      size: new UI.Vector2(26, 34),
       backgroundColor: color
     });
     win.add(border);
@@ -330,7 +330,7 @@ class FavoritesPage extends BasePage {
       var el = this._elements[i];
       if (!el) { continue; }
       el.highlight.position(new UI.Vector2(0, baseY - offset));
-      el.border.position(new UI.Vector2(2, baseY + 8 - offset));
+      el.border.position(new UI.Vector2(2, baseY + 5 - offset));
       if (el.icon) { el.icon.position(new UI.Vector2(3, baseY + 10 - offset)); }
       el.title.position(new UI.Vector2(32, baseY - 4 - offset));
       el.subtitle.position(new UI.Vector2(32, baseY + 20 - offset));
