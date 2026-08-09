@@ -5,6 +5,7 @@ var UI = require('ui');
 var BasePage = require('app/pages/BasePage');
 var MainMenuPage = require('app/pages/MainMenuPage');
 var EntityService = require('app/EntityService');
+var simply = require('ui/simply');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
 
@@ -130,23 +131,25 @@ class FavoritesPage extends BasePage {
       this._rows.push(item);
     }
 
-    var mainMenuIndex = favoriteEntities.length;
-    var mainMenuItem = {
-      is_main_menu: true,
-      title: 'Main Menu',
-      subtitle: '',
-      icon: null,
-      entity_id: null,
-      id: '__main_menu__',
-      friendlyName: 'Main Menu',
-      state: '',
-      unit: '',
-      lastChanged: ''
-    };
-    this._entityIndex['__main_menu__'] = mainMenuIndex;
-    this._addRow(win, mainMenuItem, mainMenuIndex);
-    this._rows.push(mainMenuItem);
-    this._selectedIndex = Math.min(this._selectedIndex, this._rows.length - 1);
+    if (simply.impl.state.launchReason === 'quickLaunch') {
+      var mainMenuIndex = favoriteEntities.length;
+      var mainMenuItem = {
+        is_main_menu: true,
+        title: 'Main Menu',
+        subtitle: '',
+        icon: 'images/icon_arrow_left.png',
+        entity_id: null,
+        id: '__main_menu__',
+        friendlyName: 'Main Menu',
+        state: '',
+        unit: '',
+        lastChanged: ''
+      };
+      this._entityIndex['__main_menu__'] = mainMenuIndex;
+      this._addRow(win, mainMenuItem, mainMenuIndex);
+      this._rows.push(mainMenuItem);
+      this._selectedIndex = Math.min(this._selectedIndex, this._rows.length - 1);
+    }
 
     var headerBg = new UI.Rect({
       position: new UI.Vector2(0, 0),
@@ -255,7 +258,7 @@ class FavoritesPage extends BasePage {
     });
     win.add(highlight);
 
-    var color = item.is_main_menu ? 'white' : (this.appState.favoriteEntityStore.getColor(item.id) || 'blue');
+    var color = item.is_main_menu ? 'black' : (this.appState.favoriteEntityStore.getColor(item.id) || 'blue');
 
     var border = new UI.Rect({
       position: new UI.Vector2(2, y + 5),
@@ -278,7 +281,7 @@ class FavoritesPage extends BasePage {
 
     var title = new UI.Text({
       text: item.title || '',
-      position: new UI.Vector2(32, y - 4),
+      position: new UI.Vector2(32, item.is_main_menu ? y + 5 : (selected ? y - 4 : y + 4)),
       size: new UI.Vector2(168, 26),
       color: textColor,
       font: 'gothic_24_bold',
@@ -358,11 +361,14 @@ class FavoritesPage extends BasePage {
 
   _applyScroll(offset) {
     for (var i = 0; i < this._rows.length; i++) {
-      var baseY = this._rows[i].baseY;
+      var item = this._rows[i];
+      var baseY = item.baseY;
       var el = this._elements[i];
       if (!el) { continue; }
       var selected = (i === this._selectedIndex);
-      var titleY = baseY + (selected ? -4 : 9) - offset;
+      var titleY = item.is_main_menu
+        ? baseY + 5 - offset
+        : baseY + (selected ? -4 : 4) - offset;
       el.highlight.position(new UI.Vector2(0, baseY - offset));
       el.border.position(new UI.Vector2(2, baseY + 5 - offset));
       if (el.icon) { el.icon.position(new UI.Vector2(3, baseY + 10 - offset)); }

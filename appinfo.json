@@ -184,6 +184,11 @@
         "type": "bitmap"
       },
       {
+        "file": "images/icon_arrow_left.png",
+        "name": "IMAGE_ICON_ARROW_LEFT",
+        "type": "bitmap"
+      },
+      {
         "file": "images/appicon_blue.png",
         "name": "IMAGE_APPICON_BLUE",
         "type": "bitmap"
