@@ -83,10 +83,10 @@ var splashStatus = new UI.Text({
 
 var splashBody = new UI.Text({
     text: '',
-    position: new UI.Vector2(0, 170),
-    size: new UI.Vector2(screenW, 18),
+    position: new UI.Vector2(0, 190),
+    size: new UI.Vector2(screenW, 28),
     color: 'blue',
-    font: 'gothic_18',
+    font: 'gothic_24_bold',
     textAlign: 'center'
 });
 
