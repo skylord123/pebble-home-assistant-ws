@@ -529,19 +529,7 @@
 		flex-shrink: 0;
 	}
 
-	.list-group-item .color-swatch {
-		display: inline-block;
-		width: 1rem;
-		height: 1rem;
-		border-radius: 0.2rem;
-		border: 1px solid var(--color-input-border);
-		vertical-align: middle;
-		margin-left: 0.5rem;
-		flex-shrink: 0;
-	}
-
-	select.favorite-color-select,
-	select.favorite-color-select option {
+	select.favorite-color-select {
 		color: transparent;
 	}
 
@@ -1419,10 +1407,10 @@
 				color = 'blue';
 			}
 			let bg = getCssColor(color);
-			let html = '<span class="color-swatch" style="background-color: ' + bg + ';" title="' + color + '"></span>';
-			html += '<select class="form-select favorite-color-select" style="background-color: ' + bg + ';">';
+			let html = '<select class="form-select favorite-color-select" style="background-color: ' + bg + ';">';
 			for (let c of FAVORITE_COLORS) {
-				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '></option>';
+				let label = c.charAt(0).toUpperCase() + c.slice(1);
+				html += '<option value="' + c + '"' + (color === c ? ' selected' : '') + '>' + label + '</option>';
 			}
 			html += '</select>';
 			return html;
@@ -1431,7 +1419,6 @@
 		$(document).on('change', '.favorite-color-select', function() {
 			let val = $(this).val();
 			let css = getCssColor(val);
-			$(this).prev('.color-swatch').css('background-color', css).attr('title', val);
 			$(this).css('background-color', css);
 		});
 
