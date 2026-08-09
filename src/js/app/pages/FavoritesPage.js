@@ -228,8 +228,8 @@ class FavoritesPage extends BasePage {
     var color = this.appState.favoriteEntityStore.getColor(item.id) || 'blue';
 
     var border = new UI.Rect({
-      position: new UI.Vector2(2, y + 9),
-      size: new UI.Vector2(26, 26),
+      position: new UI.Vector2(2, y + 8),
+      size: new UI.Vector2(26, 28),
       backgroundColor: color
     });
     win.add(border);
@@ -248,7 +248,7 @@ class FavoritesPage extends BasePage {
 
     var title = new UI.Text({
       text: item.title || '',
-      position: new UI.Vector2(32, y),
+      position: new UI.Vector2(32, y - 4),
       size: new UI.Vector2(168, 26),
       color: textColor,
       font: 'gothic_24_bold',
@@ -259,7 +259,7 @@ class FavoritesPage extends BasePage {
 
     var subtitle = new UI.Text({
       text: item.subtitle,
-      position: new UI.Vector2(32, y + 19),
+      position: new UI.Vector2(32, y + 20),
       size: new UI.Vector2(168, 18),
       color: textColor,
       font: 'gothic_18',
@@ -330,10 +330,10 @@ class FavoritesPage extends BasePage {
       var el = this._elements[i];
       if (!el) { continue; }
       el.highlight.position(new UI.Vector2(0, baseY - offset));
-      el.border.position(new UI.Vector2(2, baseY + 9 - offset));
+      el.border.position(new UI.Vector2(2, baseY + 8 - offset));
       if (el.icon) { el.icon.position(new UI.Vector2(3, baseY + 10 - offset)); }
-      el.title.position(new UI.Vector2(32, baseY - offset));
-      el.subtitle.position(new UI.Vector2(32, baseY + 19 - offset));
+      el.title.position(new UI.Vector2(32, baseY - 4 - offset));
+      el.subtitle.position(new UI.Vector2(32, baseY + 20 - offset));
     }
   }
 
