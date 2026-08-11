@@ -7,6 +7,7 @@ var Wakeup = require('wakeup');
 var Timeline = require('timeline');
 var Resource = require('ui/resource');
 var Accel = require('ui/accel');
+var Touch = require('ui/touch');
 var Voice = require('ui/voice');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
@@ -555,6 +556,19 @@ var AccelTapPacket = new struct([
   ['int8', 'direction'],
 ]);
 
+var TouchConfigPacket = new struct([
+  [Packet, 'packet'],
+  ['bool', 'subscribed', BoolType],
+  ['bool', 'wantsMoves', BoolType],
+]);
+
+var TouchDataPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'type'],
+  ['int16', 'x'],
+  ['int16', 'y'],
+]);
+
 var MenuClearPacket = new struct([
   [Packet, 'packet'],
 ]);
@@ -821,6 +835,16 @@ var CommandPackets = [
   VoiceDictationDataPacket,
   CalculateTextSizePacket,
   CalculateTextSizeResponsePacket,
+  TouchConfigPacket,
+  TouchDataPacket,
+];
+
+// Mirrors TouchEventType in the SDK. Position updates are only sent when a
+// window opts into them via touchConfig({ wantsMoves: true }).
+var touchEventTypes = [
+  'down',
+  'up',
+  'move',
 ];
 
 var accelAxes = [
@@ -1159,6 +1183,10 @@ SimplyPebble.accelPeek = function(callback) {
 
 SimplyPebble.accelConfig = function(def) {
   SimplyPebble.sendPacket(AccelConfigPacket.prop(def));
+};
+
+SimplyPebble.touchConfig = function(def) {
+  SimplyPebble.sendPacket(TouchConfigPacket.prop(def));
 };
 
 SimplyPebble.voiceDictationStart = function(callback, enableConfirmation) {
@@ -1579,6 +1607,9 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case AccelTapPacket:
       Accel.emitAccelTap(accelAxes[packet.axis()], packet.direction());
+      break;
+    case TouchDataPacket:
+      Touch.emitTouchData(touchEventTypes[packet.type()], packet.x(), packet.y());
       break;
     case MenuGetSectionPacket:
       Menu.emitSection(packet.section());

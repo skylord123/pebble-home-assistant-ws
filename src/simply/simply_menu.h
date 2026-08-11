@@ -106,4 +106,15 @@ struct SimplyMenuItem {
 SimplyMenu *simply_menu_create(Simply *simply);
 void simply_menu_destroy(SimplyMenu *self);
 
+//! Select and activate whatever row is under a screen point.
+//!
+//! Menus are drawn entirely in C by a MenuLayer, so the JS side cannot
+//! hit-test them the way it can hit-test the elements of a stage window. That
+//! is why tapping a menu row has to be resolved here.
+//! @return true if a row was hit and activated.
+bool simply_menu_handle_tap(SimplyMenu *self, int16_t x, int16_t y);
+
+//! Move the selection by whole rows, for swipe scrolling.
+void simply_menu_scroll_by(SimplyMenu *self, int rows);
+
 bool simply_menu_handle_packet(Simply *simply, Packet *packet);

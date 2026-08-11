@@ -60,5 +60,7 @@ enum Command {
   CommandVoiceData,
   CommandCalculateTextSize,
   CommandCalculateTextSizeResponse,
+  CommandTouchConfig,
+  CommandTouchData,
   NumCommands,
 };
