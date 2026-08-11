@@ -66,5 +66,7 @@ enum Command {
   CommandSplashStatus,
   CommandSplashMode,
   CommandSplashReveal,
+  CommandTouchConfig,
+  CommandTouchData,
   NumCommands,
 };

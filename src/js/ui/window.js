@@ -98,9 +98,20 @@ Window.prototype._prop = function(def, clear, pushing) {
   Stage.prototype._prop.call(this, def, clear, pushing);
 };
 
+// Required lazily rather than at the top of the file: ui/touch requires
+// ui/window straight back, and window.js does not assign module.exports until
+// its last line, so a top-level require here would hand ui/touch a half-built
+// module depending on which of the two node loaded first.
+Window.prototype._touchAutoConfig = function() {
+  require('ui/touch').autoSubscribe();
+};
+
 Window.prototype._hide = function(broadcast) {
   if (broadcast === false) { return; }
   simply.impl.windowHide(this._id());
+  // This window is going away, so the window below it decides whether the
+  // digitizer stays powered.
+  this._touchAutoConfig();
 };
 
 Window.prototype.hide = function() {
@@ -114,6 +125,7 @@ Window.prototype._show = function(pushing) {
   if (this._dynamic) {
     Stage.prototype._show.call(this, pushing);
   }
+  this._touchAutoConfig();
 };
 
 Window.prototype.show = function() {
@@ -166,6 +178,13 @@ Window.prototype._status = function(statusDef) {
   }
 };
 
+// Registering any of these on a window is what powers the touch digitizer on.
+var touchEvents = [
+  'tap',
+  'swipe',
+  'touch',
+];
+
 var isBackEvent = function(type, subtype) {
   return ((type === 'click' || type === 'longClick') && subtype === 'back');
 };
@@ -177,6 +196,9 @@ Window.prototype.onAddHandler = function(type, subtype) {
   if (type === 'accelData') {
     Accel.autoSubscribe();
   }
+  if (touchEvents.indexOf(type) !== -1) {
+    this._touchAutoConfig();
+  }
 };
 
 Window.prototype.onRemoveHandler = function(type, subtype) {
@@ -185,6 +207,9 @@ Window.prototype.onRemoveHandler = function(type, subtype) {
   }
   if (!type || type === 'accelData') {
     Accel.autoSubscribe();
+  }
+  if (!type || touchEvents.indexOf(type) !== -1) {
+    this._touchAutoConfig();
   }
 };
 
@@ -269,6 +294,39 @@ Window.prototype.size = function() {
     size.x -= Feature.actionBarWidth();
   }
   return size;
+};
+
+/**
+ * Finds the topmost element whose box contains a point, which is how a tap
+ * coordinate becomes "the tile the user meant".
+ *
+ * Elements are hit-tested in reverse insertion order because that is the order
+ * they are drawn in: the last one inserted is painted last and therefore sits
+ * on top.
+ *
+ * The point is in window coordinates. On a scrollable window those are NOT
+ * element coordinates once the content has been scrolled, and Pebble.js does
+ * not report the content offset back to JS, so callers that need reliable hit
+ * testing should use a non-scrolling window.
+ *
+ * @param {Vector2} pos - The point to test, typically a tap event's position.
+ * @param {function} [filter] - Optional predicate; only elements it returns
+ *   true for are considered, so a tile grid can ignore its own background.
+ * @returns {StageElement|null}
+ */
+Window.prototype.elementAt = function(pos, filter) {
+  if (!pos) { return null; }
+  for (var i = this._items.length - 1; i >= 0; --i) {
+    var element = this._items[i];
+    var position = element.state.position;
+    var size = element.state.size;
+    if (!position || !size) { continue; }
+    if (pos.x < position.x || pos.x >= position.x + size.x) { continue; }
+    if (pos.y < position.y || pos.y >= position.y + size.y) { continue; }
+    if (filter && !filter(element)) { continue; }
+    return element;
+  }
+  return null;
 };
 
 Window.prototype._toString = function() {
