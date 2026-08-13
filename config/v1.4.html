@@ -20,8 +20,8 @@
 		/* Clay-inspired CSS Variables */
 		:root {
 			/* Light mode (default) */
-			--color-accent: #ff4700;
-			--color-accent-dark: #cc3900;
+			--color-accent: #00a4e4;
+			--color-accent-dark: #0077b3;
 			--color-background: #f2f2f2;
 			--color-section-bg: #ffffff;
 			--color-section-header: #e8e8e8;
@@ -31,7 +31,7 @@
 			--color-divider: #e0e0e0;
 			--color-input-bg: #ffffff;
 			--color-input-border: #cccccc;
-			--color-input-focus: #ff4700;
+			--color-input-focus: var(--color-accent);
 			--color-success: #28a745;
 			--color-warning: #ffc107;
 			--color-danger: #dc3545;
@@ -42,8 +42,8 @@
 
 		@media (prefers-color-scheme: dark) {
 			:root {
-				--color-accent: #ff4700;
-				--color-accent-dark: #993d19;
+				--color-accent: #00a4e4;
+				--color-accent-dark: #005a8a;
 				--color-background: #333333;
 				--color-section-bg: #484848;
 				--color-section-header: #414141;
@@ -53,7 +53,7 @@
 				--color-divider: #666666;
 				--color-input-bg: #5b5b5b;
 				--color-input-border: #666666;
-				--color-input-focus: #ff4700;
+				--color-input-focus: var(--color-accent);
 				--color-success: #28a745;
 				--color-warning: #ffc107;
 				--color-danger: #ff6b6b;
@@ -135,6 +135,8 @@
 		.section-header.collapsible {
 			cursor: pointer;
 			user-select: none;
+			background: var(--color-accent);
+			color: #ffffff;
 		}
 
 		.section-header.collapsible::after {
@@ -786,7 +788,7 @@
 
 		<!-- Connection Settings -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Connection Settings</div>
+			<div class="section-header collapsible collapsed">🔗 Connection Settings</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="form-group">
@@ -815,7 +817,7 @@
 
 		<!-- Voice Assistant Settings -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Voice Assistant Settings</div>
+			<div class="section-header collapsible collapsed">🎤 Voice Assistant Settings</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="form-switch">
@@ -865,7 +867,7 @@
 
 		<!-- Quick Launch Settings -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Quick Launch Settings</div>
+			<div class="section-header collapsible collapsed">⚡ Quick Launch Settings</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="form-group">
@@ -904,7 +906,7 @@
 
 		<!-- Main Menu Order -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Main Menu Order</div>
+			<div class="section-header collapsible collapsed">📋 Main Menu Order</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="form-switch">
@@ -926,7 +928,7 @@
 
 		<!-- Pinned Entities -->
 		<div class="section" id="pinned-container" style="display:none;">
-			<div class="section-header collapsible">Pinned Entities</div>
+			<div class="section-header collapsible">📌 Pinned Entities</div>
 			<div class="section-body">
 				<div class="component">
 					<div class="alert alert-info" role="alert">
@@ -941,7 +943,7 @@
 
 		<!-- Entity Picker -->
 		<div class="section" id="entity-picker-container" style="display:none;">
-			<div class="section-header collapsible collapsed">Add Entity</div>
+			<div class="section-header collapsible collapsed">➕ Add Entity</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="form-group">
@@ -961,7 +963,7 @@
 
 		<!-- Entity Settings -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Entity Settings</div>
+			<div class="section-header collapsible collapsed">⚙️ Entity Settings</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="row">
@@ -1035,7 +1037,7 @@
 
 		<!-- Entity Domain Grouping -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Entity Domain Grouping</div>
+			<div class="section-header collapsible collapsed">🗂️ Entity Domain Grouping</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<p class="form-text mb-2" style="margin-top:0;">Group entities by domain when viewing:</p>
@@ -1092,7 +1094,7 @@
 
 		<!-- Favorite Entities -->
 		<div class="section" id="favorites-container" style="display:none;">
-			<div class="section-header collapsible collapsed">Favorite Entities</div>
+			<div class="section-header collapsible collapsed">⭐ Favorite Entities</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="alert alert-info" role="alert">
@@ -1107,7 +1109,7 @@
 
 		<!-- Domain Filters -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Domain Filters</div>
+			<div class="section-header collapsible collapsed">🚫 Domain Filters</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<p class="form-text" style="margin-top:0;">Domains listed here will be hidden from the interface</p>
@@ -1130,7 +1132,7 @@
 
 		<!-- Timeline Section -->
 		<div class="section" id="timeline-section" style="display:none;">
-			<div class="section-header collapsible collapsed">Timeline</div>
+			<div class="section-header collapsible collapsed">🕐 Timeline</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<label class="form-label" for="timeline-token-display">Timeline Token</label>
@@ -1149,7 +1151,7 @@
 
 		<!-- Export / Import Settings -->
 		<div class="section">
-			<div class="section-header collapsible collapsed">Settings Import/Export</div>
+			<div class="section-header collapsible collapsed">💾 Settings Import/Export</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<p class="form-text" style="margin-top:0;">Export generates an encrypted, compressed backup string. Paste it back to import.</p>
