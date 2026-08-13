@@ -1166,6 +1166,23 @@
 				</div>
 			</div>
 		</div>
+		<!-- Diagnostics -->
+		<div class="section" id="diagnostics-section">
+			<div class="section-header collapsible collapsed">🩺 Diagnostics</div>
+			<div class="section-body collapsed">
+				<div class="component">
+					<p id="config-size-display" style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">
+						URL: ~0.0 KB | Favorites: 0 | Pinned: 0 | Total Entities: 0
+					</p>
+				</div>
+				<div class="component">
+					<label class="form-label" for="config-diagnostics-url">Full save URL</label>
+					<textarea id="config-diagnostics-url" class="form-control" rows="4" readonly style="font-size:0.75rem;font-family:monospace;resize:vertical;"></textarea>
+					<button type="button" class="btn btn-sm btn-secondary" id="copy-diagnostics-url" style="margin-top:0.5rem;">Copy URL</button>
+				</div>
+			</div>
+		</div>
+
 		<!-- Color Picker Overlay -->
 		<div id="color-picker-overlay" class="overlay" style="display:none;">
 			<div class="section" style="max-width: 280px; margin: 0 auto;">
@@ -2322,6 +2339,54 @@
 
 			console.log("Navigating to:", location);
 			window.location.href = location;
+		});
+
+		function updateSizeDisplay() {
+			try {
+				const openUrl = window.location.href;
+				const kb = (openUrl.length / 1024).toFixed(1);
+				const favCount = (watch_config && Array.isArray(watch_config.favorite_entities) ? watch_config.favorite_entities.length : 0);
+				const pinnedCount = (watch_config && Array.isArray(watch_config.pinned_entities) ? watch_config.pinned_entities.length : 0);
+				const allCount = (watch_config && Array.isArray(watch_config.all_entities) ? watch_config.all_entities.length : 0);
+				const display = document.getElementById('config-size-display');
+				if (display) {
+					display.textContent = 'Received: ~' + kb + ' KB | Favorites: ' + favCount + ' | Pinned: ' + pinnedCount + ' | Total Entities: ' + allCount;
+					if (openUrl.length > 100000) {
+						display.style.color = 'var(--color-danger)';
+					} else if (openUrl.length > 80000) {
+						display.style.color = 'var(--color-warning)';
+					} else {
+						display.style.color = 'var(--color-text-muted)';
+					}
+				}
+
+				const urlTa = document.getElementById('config-diagnostics-url');
+				if (urlTa) {
+					urlTa.value = openUrl;
+				}
+			} catch (e) {
+				console.error('updateSizeDisplay failed', e);
+			}
+		}
+
+		updateSizeDisplay();
+
+		$('#copy-diagnostics-url').click(async function() {
+			const text = $('#config-diagnostics-url').val();
+			if (!text) return;
+			let copied = false;
+			try {
+				await navigator.clipboard.writeText(text);
+				copied = true;
+			} catch (e) {
+				const ta = document.getElementById('config-diagnostics-url');
+				ta.select();
+				try { copied = document.execCommand('copy'); } catch (e2) {}
+			}
+			const btn = $('#copy-diagnostics-url');
+			const orig = btn.text();
+			btn.text(copied ? 'Copied!' : 'Copy failed');
+			setTimeout(function() { btn.text(orig); }, 2000);
 		});
 	});
 </script>
