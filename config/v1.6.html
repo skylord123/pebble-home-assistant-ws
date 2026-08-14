@@ -1175,6 +1175,9 @@
 					<p id="config-size-display" style="font-size: 0.85rem; color: var(--color-text-muted); margin: 0;">
 						URL: ~0.0 KB | Favorites: 0 | Pinned: 0 | Total Entities: 0
 					</p>
+					<p id="config-git-hash" style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0.25rem 0 0;">
+						Git hash: {{GIT_HASH}}
+					</p>
 				</div>
 				<div class="component">
 					<label class="form-label" for="config-diagnostics-url">Full save URL</label>
@@ -1612,7 +1615,7 @@
 				if (entity && entity.e !== undefined) {
 					let entity_id = entity.e;
 					let name = entity.n !== undefined ? entity.n : entity_id;
-					let domain = entity.d !== undefined ? entity.d : 'unknown';
+					let domain = entity.d !== undefined ? entity.d : (entity_id.split('.')[0] || 'unknown');
 					return { entity_id: entity_id, name: name, domain: domain };
 				}
 				return {
