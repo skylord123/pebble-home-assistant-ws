@@ -166,7 +166,7 @@ class FavoritesPage extends BasePage {
     win.add(headerIconBg);
 
     var headerIcon = new UI.Image({
-      image: 'images/ha_logo.png',
+      image: 'images/logo_large.png',
       position: new UI.Vector2(4, 4),
       size: new UI.Vector2(20, 20),
       backgroundColor: 'clear',
