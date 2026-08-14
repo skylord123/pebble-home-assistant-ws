@@ -203,10 +203,6 @@
   "sdkVersion": "3",
   "shortName": "HA on Wrist",
   "targetPlatforms": [
-    "aplite",
-    "basalt",
-    "chalk",
-    "diorite",
     "emery"
   ],
   "uuid": "20c52dca-957d-4a85-ad2f-5ad00f0b438b",
