@@ -67,7 +67,7 @@ def configure_platform(ctx, platform=None):
                    '-Wno-type-limits',
                    '-Wno-missing-field-initializers',
                    '-DSPLASH_LOGO',
-                   '-DSPLASH_TEXT_TITLE="Home Assistant WS"',
+                   '-DSPLASH_TEXT_TITLE="Home Assistant on your Wrist"',
                    '-DSPLASH_TEXT_SUBTITLE=""'])
 
     ctx.env.CFLAGS = cflags

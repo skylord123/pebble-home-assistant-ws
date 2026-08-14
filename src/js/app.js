@@ -55,8 +55,8 @@ var loadingCard = new UI.Window({
 });
 
 var splashTitle = new UI.Text({
-    text: 'Home Assistant WS',
-    position: new UI.Vector2(0, 15),
+    text: 'Home Assistant on your Wrist',
+    position: new UI.Vector2(0, 5),
     size: new UI.Vector2(screenW, 64),
     color: 'blue',
     font: 'gothic_28_bold',
