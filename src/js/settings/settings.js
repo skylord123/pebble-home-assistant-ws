@@ -63,7 +63,7 @@ Settings.getBaseOptions = function() {
 
 Settings._getDataKey = function(path, field) {
   path = path || appinfo.uuid;
-  return field + ':' + path;
+  return field + ':' + path + ':v2';
 };
 
 Settings._saveData = function(path, field, data) {
