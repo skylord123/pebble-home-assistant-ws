@@ -7,7 +7,7 @@ const Constants = {
     // App versioning
     appVersion: '1.0',
     confVersion: '1.0',
-    configPageUrl: 'https://caco3.github.io/pebble-home-assistant-ws/config/v1.0.html',
+    configPageUrl: 'https://caco3.github.io/pebble-home-assistant-on-your-wrist/config/v1.0.html',
 
     // Debug settings
     debugMode: true,
