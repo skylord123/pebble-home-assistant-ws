@@ -944,7 +944,7 @@
 
 		<!-- Entity Picker -->
 		<div class="section" id="entity-picker-container" style="display:none;">
-			<div class="section-header collapsible collapsed">➕ Add Entity</div>
+			<div class="section-header collapsible collapsed">➕ Add Entities to Favorites/Main Menu</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<div class="form-group">
@@ -1180,9 +1180,9 @@
 					</p>
 				</div>
 				<div class="component">
-					<label class="form-label" for="config-diagnostics-url">Full save URL</label>
+					<label class="form-label" for="config-diagnostics-url">Config Page URL</label>
 					<textarea id="config-diagnostics-url" class="form-control" rows="4" readonly style="font-size:0.75rem;font-family:monospace;resize:vertical;"></textarea>
-					<button type="button" class="btn btn-sm btn-secondary" id="copy-diagnostics-url" style="margin-top:0.5rem;">Copy URL</button>
+					<button type="button" class="btn btn-sm btn-secondary" id="copy-diagnostics-url" style="margin-top:0.5rem;">Copy</button>
 				</div>
 			</div>
 		</div>
@@ -1773,7 +1773,6 @@
 				$('#ha-entity-press-behaviour-help').text(helpText);
 			}
 			entityPressBehavior.on('change', updateEntityPressBehaviorHelp);
-			updateEntityPressBehaviorHelp();
 
 			// Handle quick launch exit on back
 			if (watch_config['quick_launch_exit_on_back']) {
@@ -1854,6 +1853,7 @@
 			} else {
 				entityPressBehavior.val('false'); // Default
 			}
+			updateEntityPressBehaviorHelp();
 
 			if(watch_config['favorite_entities']) {
 				let html = '';
