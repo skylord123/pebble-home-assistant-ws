@@ -1,7 +1,7 @@
 /**
- * pebble-home-assistant-ws
+ * pebble-home-assistant-on-your-wrist
  *
- * Created by Skylord123 (https://skylar.tech)
+ * Created by Skylord123 (https://skylar.tech), enhanced by CaCO3
  *
  * Entry point for the Home Assistant Pebble app.
  * All functionality is delegated to modular services and pages.

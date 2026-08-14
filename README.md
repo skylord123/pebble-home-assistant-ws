@@ -99,12 +99,6 @@ After installation, you'll need to configure the app to connect to your Home Ass
 - **App Crashes**: Try restarting your Pebble watch
 - **Entity Changes Not Updating**: Adjust the refresh interval in settings
 
-## Join the Discussion
-
-To participate in our Discord community:
-1. First join the [Rebble Discord server](http://rebble.io/discord)
-2. Then access the [pebble-home-assistant-ws](https://discord.com/channels/221364737269694464/1356054710439903232) channel on that server
-
 ## Development
 
 This app is built using Pebble.js and is open source. Contributions are welcome!
@@ -120,7 +114,7 @@ This requires the pebble sdk. Go into the Pebble app on your phone and enable th
 ```bash
 # Clone the repository
 git clone https://github.com/caco3/pebble-home-assistant-on-your-wrist.git
-cd pebble-ha-ws
+cd pebble-ha-on-your-wrist
 
 # Install dependencies
 npm install
