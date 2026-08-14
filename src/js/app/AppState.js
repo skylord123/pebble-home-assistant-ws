@@ -48,6 +48,7 @@ class AppState {
         this.ha_state_cache = null;
         this.ha_state_dict = null;
         this.ha_state_cache_updated = null;
+        this.all_entities = null;
 
         // Registry caches
         this.area_registry_cache = null;

@@ -183,10 +183,17 @@ var SettingsManager = {
         },
         function(e) {
             log('opened configurable');
+            var appState = AppState.getInstance();
+            if (appState.all_entities && appState.all_entities.length) {
+                e.options.all_entities = appState.all_entities;
+            }
         },
         function(e) {
             log('closed configurable');
             log('returned_settings: ' + JSON.stringify(e.options));
+            if (e.options) {
+                delete e.options.all_entities;
+            }
             Settings.option(e.options);
 
             if (e.failed) {

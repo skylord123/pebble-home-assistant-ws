@@ -3,6 +3,7 @@ var myutil = require('lib/myutil');
 var safe = require('lib/safe');
 var ajax = require('lib/ajax');
 var appinfo = require('appinfo');
+var LZString = require('vendor/lz-string');
 
 var Settings = module.exports;
 
@@ -165,7 +166,7 @@ Settings.onOpenConfig = function(e) {
     return;
   }
   if (listener.params.hash !== false) {
-    url += '#' + encodeURIComponent(JSON.stringify(options));
+    url += '#' + LZString.compressToEncodedURIComponent(JSON.stringify(options));
   }
   console.log('Opening config URL: ' + url);
   Pebble.openURL(url);
