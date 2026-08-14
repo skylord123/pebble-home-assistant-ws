@@ -15,6 +15,13 @@ Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Disc
 - **Pin to Main Menu** — Pin your most important entities directly to the main menu
 - **Live Updates** — Entity states update instantly in real-time via WebSocket connection
 
+### Improvements against [Home Assistant WS](https://github.com/skylord123/pebble-home-assistant-ws)
+- ****Easy Favorites Pinning** - Edit the favorites directly on the smart phone
+- **Favorites Colors** - Assign colors to your favorites for easier handling
+- **Security** - The Home Assistant Token is only stored on the watch (not sent to the remote configuration page)
+- **Backup and Restore** - Settings import/export for easy backup and restore
+- **UI enhancements**
+
 Support
 -------
 
