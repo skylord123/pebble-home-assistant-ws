@@ -21,6 +21,7 @@ class EntityListPage extends BasePage {
         this.ignoreEntityCache = options && options.ignoreEntityCache !== undefined ? options.ignoreEntityCache : true;
         this.sortItems = options && options.sortItems !== undefined ? options.sortItems : true;
         this.skipIgnoredDomains = options && options.skipIgnoredDomains !== undefined ? options.skipIgnoredDomains : false;
+        this.swapPressBehavior = options && options.swapPressBehavior !== undefined ? options.swapPressBehavior : false;
         this.subscriptionId = null;
         this.currentPage = null;
         this.relativeTimeUpdater = null;
@@ -65,13 +66,26 @@ class EntityListPage extends BasePage {
                 e.item.on_click(e);
                 return;
             }
-            helpers.log_message('Entity ' + entity_id + ' was short pressed! Index: ' + e.itemIndex);
-            EntityService.show(entity_id);
+            
+            // For entities, swap behaviors: normal press toggles, long press shows details
+            if (self.swapPressBehavior) {
+                helpers.log_message('Entity ' + entity_id + ' was short pressed (swap mode - toggle)! Index: ' + e.itemIndex);
+                EntityService.handleLongPress(entity_id);
+            } else {
+                helpers.log_message('Entity ' + entity_id + ' was short pressed! Index: ' + e.itemIndex);
+                EntityService.show(entity_id);
+            }
         });
 
         this.menu.on('longSelect', function(e) {
             if (e.item && e.item.entity_id) {
-                EntityService.handleLongPress(e.item.entity_id);
+                // For entities, swap behaviors: long press shows details
+                if (self.swapPressBehavior) {
+                    helpers.log_message('Entity ' + e.item.entity_id + ' was long pressed (swap mode - show details)');
+                    EntityService.show(e.item.entity_id);
+                } else {
+                    EntityService.handleLongPress(e.item.entity_id);
+                }
             }
         });
 
@@ -367,10 +381,14 @@ class EntityListPage extends BasePage {
                     var cur = entityStates[changedId] || { entity_id: changedId, state: '', attributes: {} };
 
                     // Merge the changes
+                    var mergedAttrs = {};
+                    for (var k in cur.attributes) { mergedAttrs[k] = cur.attributes[k]; }
+                    if (plus.a) { for (var k in plus.a) { mergedAttrs[k] = plus.a[k]; } }
+
                     entityStates[changedId] = {
                         entity_id: changedId,
                         state: plus.s !== undefined ? plus.s : cur.state,
-                        attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                        attributes: mergedAttrs,
                         context: plus.c !== undefined ? plus.c : cur.context,
                         last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
                     };
@@ -403,8 +421,9 @@ class EntityListPage extends BasePage {
  * Show entity domains list from a list of entity IDs
  * @param {string[]} entityIdList - List of entity IDs
  * @param {string} title - Menu title
+ * @param {boolean} [swapPressBehavior] - Whether to swap press behaviors (press toggles, long press shows details)
  */
-function showEntityDomainsFromList(entityIdList, title) {
+function showEntityDomainsFromList(entityIdList, title, swapPressBehavior) {
     var appState = AppState.getInstance();
 
     var domainListMenu = new UI.Menu({
@@ -469,7 +488,7 @@ function showEntityDomainsFromList(entityIdList, title) {
                     subtitle: entities.length + ' ' + (entities.length > 1 ? 'entities' : 'entity'),
                     on_click: function(e) {
                         helpers.log_message('showEntityDomainsFromList: clicked domain \'' + dom + '\' with ' + entities.length + ' entities');
-                        showEntityList(displayName, entities);
+                        showEntityList(displayName, entities, true, true, true, null, swapPressBehavior);
                     }
                 });
             })(domainName, domainEntities[domainName]);
@@ -494,13 +513,15 @@ function showEntityDomainsFromList(entityIdList, title) {
  * @param {boolean} sortItems - Whether to sort items
  * @param {boolean} skipIgnoredDomains - Whether to skip ignored domains
  * @param {Function} [entityIdListProvider] - Optional function that returns fresh entity IDs on each show
+ * @param {boolean} [swapPressBehavior] - Whether to swap press behaviors (press toggles, long press shows details)
  */
-function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipIgnoredDomains, entityIdListProvider) {
+function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipIgnoredDomains, entityIdListProvider, swapPressBehavior) {
     var page = new EntityListPage(title, entityIdList, {
         ignoreEntityCache: ignoreEntityCache !== undefined ? ignoreEntityCache : true,
         sortItems: sortItems !== undefined ? sortItems : true,
         skipIgnoredDomains: skipIgnoredDomains !== undefined ? skipIgnoredDomains : false,
-        entityIdListProvider: entityIdListProvider || null
+        entityIdListProvider: entityIdListProvider || null,
+        swapPressBehavior: swapPressBehavior !== undefined ? swapPressBehavior : false
     });
     page.show();
 }

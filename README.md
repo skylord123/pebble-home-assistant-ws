@@ -1,10 +1,9 @@
-# Pebble Home Assistant WS
+# Pebble Home Assistant on your Wrist
 
 Control your Home Assistant smart home directly from your Pebble smartwatch! This app uses WebSockets for real-time updates and control of your Home Assistant devices and entities.
 
-Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Discord](http://rebble.io/discord)
 
-![pebble-ha-ws-logo-banner.png](pebble-ha-ws-logo-banner.png)
+![config/logo_large.png](config/logo_large.png)
 
 ## Features
 
@@ -25,8 +24,10 @@ Join our [Discord Discussion](#join-the-discussion) on the official [Rebble Disc
 Support
 -------
 
-If Home Assistant WS has been useful to you, consider supporting its development.
+If Home Assistant on your Wrist has been useful to you, consider supporting its development.
 All of my projects are fully open-source and free — donations help cover time, tools, and ongoing maintenance.
+
+The donations go to [skylord123](https://github.com/skylord123) who did the main work.
 
 [![ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/B0B51BM7C)
 [![Donate with PayPal](https://www.paypalobjects.com/en_US/i/btn/btn_donate_SM.gif)](https://www.paypal.com/donate/?hosted_button_id=4VS2UQWDUALXA)
@@ -35,14 +36,14 @@ All of my projects are fully open-source and free — donations help cover time,
 ## Installation
 
 #### Rebble App Store
-You can find our app in the app store under [Home Assistant WS](https://apps.rebble.io/en_US/application/68dea5734be9cb0009429595)
+You can find our app in the app store under [Home Assistant on your Wrist](https://apps.rebble.io/en_US/application/68dea5734be9cb0009429595)
 
 #### Sideload
 
 This is useful if you want to install a version not yet available on the app store for example.
 
 1. **Download the app**:
-   - Click the [Releases](https://github.com/skylord123/pebble-home-assistant-ws/releases) tab on the GitHub repository page
+   - Click the [Releases](https://github.com/caco3/pebble-home-assistant-on-your-wrist/releases) tab on the GitHub repository page
    - Press the `pebble.pbw` link under the release you want to start the download
    - The downloaded .pbw file is ready to be installed on your Pebble watch
 
@@ -99,17 +100,11 @@ After installation, you'll need to configure the app to connect to your Home Ass
 - **App Crashes**: Try restarting your Pebble watch
 - **Entity Changes Not Updating**: Adjust the refresh interval in settings
 
-## Join the Discussion
-
-To participate in our Discord community:
-1. First join the [Rebble Discord server](http://rebble.io/discord)
-2. Then access the [pebble-home-assistant-ws](https://discord.com/channels/221364737269694464/1356054710439903232) channel on that server
-
 ## Development
 
 This app is built using Pebble.js and is open source. Contributions are welcome!
 
-- **GitHub Repository**: [github.com/skylord123/pebble-home-assistant-ws](https://github.com/skylord123/pebble-home-assistant-ws)
+- **GitHub Repository**: [github.com/caco3/pebble-home-assistant-on-your-wrist](https://github.com/caco3/pebble-home-assistant-on-your-wrist)
 - **Bug Reports**: Please use the GitHub issues page to report bugs
 - **Feature Requests**: Feel free to suggest new features through GitHub issues
 
@@ -119,8 +114,8 @@ This requires the pebble sdk. Go into the Pebble app on your phone and enable th
 
 ```bash
 # Clone the repository
-git clone https://github.com/skylord123/pebble-home-assistant-ws.git
-cd pebble-ha-ws
+git clone https://github.com/caco3/pebble-home-assistant-on-your-wrist.git
+cd pebble-ha-on-your-wrist
 
 # Install dependencies
 npm install
@@ -145,6 +140,7 @@ Converting the entire application to use WebSockets not only enabled voice contr
 - Thanks to the Home Assistant team for their excellent API documentation
 - Special thanks to the Pebble developer community for keeping the platform alive
 - Thanks to all contributors who have helped improve this application
+- Thanks to [skylord123](https://github.com/skylord123) for the original work
 
 ## License
 

@@ -89,11 +89,17 @@ var CacheManager = {
             if (statesStr) {
                 appState.ha_state_cache = JSON.parse(statesStr);
                 var new_state_map = {};
+                var allEntities = [];
                 for (var i = 0; i < appState.ha_state_cache.length; i++) {
                     var entity = appState.ha_state_cache[i];
                     new_state_map[entity.entity_id] = entity;
+                    var name = (entity.attributes && entity.attributes.friendly_name);
+                    var item = { e: entity.entity_id };
+                    if (name && name !== entity.entity_id) item.n = name;
+                    allEntities.push(item);
                 }
                 appState.ha_state_dict = new_state_map;
+                appState.all_entities = allEntities;
                 appState.ha_state_cache_updated = new Date();
 
                 // Update favorite entity friendly names from cached state data

@@ -71,6 +71,16 @@ jobs:
           echo "=== Deployment directory contents ==="
           find deploy -type f | head -50 || echo "(empty)"
 
+      - name: Inject git hash into config pages
+        run: |
+          GIT_HASH=$(git -C current-branch rev-parse --short HEAD)
+          echo "Git hash: $GIT_HASH"
+          for f in deploy/config/*.html; do
+            if [ -f "$f" ]; then
+              sed -i "s/{{GIT_HASH}}/$GIT_HASH/g" "$f"
+            fi
+          done
+
       - name: Setup Pages
         uses: actions/configure-pages@v5
 

@@ -39,6 +39,7 @@ class AppState {
         this.unavailable_entity_handling = 'sort_to_end';
         this.unknown_entity_handling = 'sort_normally';
         this.automation_longpress_action = 'toggle';
+        this.entity_press_behavior = false;
         this.main_menu_custom_order_enabled = false;
         this.main_menu_order = null;
         this.timeline_token = null;
@@ -47,6 +48,7 @@ class AppState {
         this.ha_state_cache = null;
         this.ha_state_dict = null;
         this.ha_state_cache_updated = null;
+        this.all_entities = null;
 
         // Registry caches
         this.area_registry_cache = null;

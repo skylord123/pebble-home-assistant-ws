@@ -106,9 +106,9 @@ function showEntitiesForLabel(label_id) {
     );
 
     if (shouldShowDomains) {
-        EntityListPage.showEntityDomainsFromList(entityKeys, label.name);
+        EntityListPage.showEntityDomainsFromList(entityKeys, label.name, false);
     } else {
-        EntityListPage.showEntityList(label.name, entityKeys, true, true, true);
+        EntityListPage.showEntityList(label.name, entityKeys, true, true, true, null, false);
     }
 }
 
