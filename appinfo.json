@@ -3,7 +3,7 @@
   "capabilities": [
     "configurable"
   ],
-  "companyName": "skylar.tech",
+  "companyName": "CaCO3",
   "longName": "Home Assistant on your Wrist",
   "resources": {
     "media": [
@@ -209,7 +209,7 @@
     "diorite",
     "emery"
   ],
-  "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
+  "uuid": "20c52dca-957d-4a85-ad2f-5ad00f0b438b",
   "versionCode": 1,
   "versionLabel": "1.0",
   "watchapp": {

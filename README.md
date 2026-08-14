@@ -15,7 +15,7 @@ Control your Home Assistant smart home directly from your Pebble smartwatch! Thi
 - **Live Updates** — Entity states update instantly in real-time via WebSocket connection
 
 ### Improvements against [Home Assistant WS](https://github.com/skylord123/pebble-home-assistant-ws)
-- ****Easy Favorites Pinning** - Edit the favorites directly on the smart phone
+- **Easy Favorites Pinning** - Edit the favorites directly on the smart phone
 - **Favorites Colors** - Assign colors to your favorites for easier handling
 - **Security** - The Home Assistant Token is only stored on the watch (not sent to the remote configuration page)
 - **Backup and Restore** - Settings import/export for easy backup and restore

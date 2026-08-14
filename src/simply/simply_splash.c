@@ -21,7 +21,7 @@ static void window_load(Window *window) {
   int16_t text_x = margin_x;
 
   // Title
-  GRect title_frame = GRect(text_x, 15, text_width, 64);
+  GRect title_frame = GRect(text_x, 5, text_width, 64);
   self->title_layer = text_layer_create(title_frame);
   text_layer_set_text(self->title_layer, SPLASH_TEXT_TITLE);
   text_layer_set_font(self->title_layer, title_font);
