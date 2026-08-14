@@ -88,8 +88,8 @@
 
 		/* Header */
 		.page-header {
-			text-align: center;
-			padding: 1.5rem 0 1rem;
+			padding-bottom: 0;
+			padding-top: 0;
 		}
 
 		.page-header h1 {
@@ -782,7 +782,7 @@
 		<!-- Header -->
 		<div class="page-header">
 			<img src="ha_logo.png" alt="Home Assistant" style="width: 100%; height: auto; margin: 0 auto 0.25rem; display: block;">
-			<p class="author-link"><b>Home Assistant WS</b> is developed by CaCO3, based on the work of Skylor Sadlier</p>
+			<p class="author-link"><b>Home Assistant WS</b> is developed by CaCO3 and Skylor Sadlier</p>
 		</div>
 
 		<div id="alert-container"></div>
@@ -1204,9 +1204,10 @@
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
+<script src="bridge-shim.v1.4.js?b=15"></script>
 <script src="ha-bridge.v1.4.js?b=15"></script>
+<script src="lz-string.min.js?b=16"></script>
 <script src="common.v1.4.js?b=15"></script>
-<script src="lz-string.min.js"></script>
 <script type="text/javascript">
 	// Functions for Timeline Token
 	function selectTimelineToken() {
@@ -1534,81 +1535,6 @@
 			}
 		}
 
-		function compactFavorites(list) {
-			if (!Array.isArray(list)) return [];
-			return list.map(fav => {
-				let entity_id = fav.e !== undefined ? fav.e : (fav.entity_id || '');
-				let name = fav.n !== undefined ? fav.n : (fav.name || null);
-				let color = fav.c !== undefined ? fav.c : (fav.color || '');
-				let entry = { e: entity_id };
-				if (name) entry.n = name;
-				if (color) entry.c = color;
-				return entry;
-			});
-		}
-
-		function compactPinned(list) {
-			if (!Array.isArray(list)) return [];
-			return list.map(pinned => {
-				let entity_id = pinned.e !== undefined ? pinned.e : (pinned.entity_id || '');
-				let name = pinned.n !== undefined ? pinned.n : (pinned.name || null);
-				let entry = { e: entity_id };
-				if (name) entry.n = name;
-				return entry;
-			});
-		}
-
-		function normalizeFavorites(list) {
-			if (!Array.isArray(list)) return [];
-			return list.map(fav => {
-				if (typeof fav === 'string') return { entity_id: fav, color: '', name: null };
-				let entity_id = fav.e !== undefined ? fav.e : (fav.entity_id || '');
-				let name = fav.n !== undefined ? fav.n : (fav.name || null);
-				let color = fav.c !== undefined ? fav.c : (fav.color || '');
-				return { entity_id: entity_id, color: color, name: name };
-			});
-		}
-
-		function normalizePinned(list) {
-			if (!Array.isArray(list)) return [];
-			return list.map(pinned => {
-				if (typeof pinned === 'string') return { entity_id: pinned, name: null };
-				let entity_id = pinned.e !== undefined ? pinned.e : (pinned.entity_id || '');
-				let name = pinned.n !== undefined ? pinned.n : (pinned.name || null);
-				return { entity_id: entity_id, name: name };
-			});
-		}
-
-		function normalizeAllEntities(list) {
-			if (!Array.isArray(list)) return [];
-			return list.map(entity => {
-				if (typeof entity === 'string') return { entity_id: entity, name: entity, domain: 'unknown' };
-				if (entity && entity.e !== undefined) {
-					let entity_id = entity.e;
-					let name = entity.n !== undefined ? entity.n : entity_id;
-					let domain = entity.d !== undefined ? entity.d : 'unknown';
-					return { entity_id: entity_id, name: name, domain: domain };
-				}
-				return {
-					entity_id: entity.entity_id || '',
-					name: entity.name || (entity.entity_id || ''),
-					domain: entity.domain || 'unknown'
-				};
-			});
-		}
-
-		async function _decompressAllEntities(str) {
-			const bytes = _fromBase64(str);
-			const json = await _decompress(bytes);
-			return JSON.parse(json);
-		}
-
-		async function _compressAllEntities(list) {
-			const json = JSON.stringify(list);
-			const bytes = await _compress(json);
-			return _toBase64(bytes);
-		}
-
 		function getFormValues() {
 			let values = {
 				'ha_url': urlInput.val().replace(/\/+$/, ''),
@@ -1676,9 +1602,25 @@
 				values.timeline_token = watch_config.timeline_token;
 			}
 
-			values.favorite_entities = compactFavorites(values.favorite_entities);
-			values.pinned_entities = compactPinned(values.pinned_entities);
 			return values;
+		}
+
+		function normalizeAllEntities(list) {
+			if (!Array.isArray(list)) return [];
+			return list.map(function(entity) {
+				if (typeof entity === 'string') return { entity_id: entity, name: entity, domain: 'unknown' };
+				if (entity && entity.e !== undefined) {
+					let entity_id = entity.e;
+					let name = entity.n !== undefined ? entity.n : entity_id;
+					let domain = entity.d !== undefined ? entity.d : 'unknown';
+					return { entity_id: entity_id, name: name, domain: domain };
+				}
+				return {
+					entity_id: entity.entity_id || '',
+					name: entity.name || (entity.entity_id || ''),
+					domain: entity.domain || 'unknown'
+				};
+			});
 		}
 
 		async function restoreFormValues(skipLoad) {
@@ -1689,17 +1631,17 @@
 			if (!skipLoad) {
 				// Try to get config from hash first (for initial setup)
 				if(hash) {
-				try {
-					watch_config = JSON.parse(LZString.decompressFromEncodedURIComponent(hash));
-				} catch(e) {
 					try {
-						watch_config = JSON.parse(decodeURIComponent(hash));
-					} catch(e2) {
-						console.error("Error parsing hash config", e, e2);
+						var decodedHash;
+						try {
+							decodedHash = LZString.decompressFromEncodedURIComponent(hash);
+						} catch(err) {}
+						watch_config = JSON.parse(decodedHash || decodeURIComponent(hash));
+					} catch(e) {
+						console.error("Error parsing hash config", e);
 						watch_config = {};
 					}
-				}
-			} else {
+				} else {
 					// Otherwise try localStorage (for returning visits)
 					try {
 						watch_config = JSON.parse(localStorage.getItem("watch_config")) || {};
@@ -1709,29 +1651,13 @@
 					}
 				}
 				parseJsonStringValues(watch_config);
-			try {
-				if (watch_config && typeof watch_config.all_entities === 'string' && watch_config.all_entities.length > 0) {
-					watch_config._all_entities = watch_config.all_entities;
-					watch_config.all_entities = normalizeAllEntities(await _decompressAllEntities(watch_config.all_entities));
-				} else if (watch_config && Array.isArray(watch_config.all_entities) && watch_config.all_entities.length > 0) {
-					watch_config._all_entities = await _compressAllEntities(watch_config.all_entities);
+				if (watch_config.all_entities) {
 					watch_config.all_entities = normalizeAllEntities(watch_config.all_entities);
-				} else {
-					watch_config._all_entities = [];
-					watch_config.all_entities = [];
 				}
-			} catch (e) {
-				console.error('all_entities handling failed', e);
-				watch_config._all_entities = [];
-				watch_config.all_entities = [];
+				await mergeBridgeConfig(watch_config);
 			}
-		}
 
-		watch_config.all_entities = normalizeAllEntities(watch_config.all_entities || []);
-		watch_config.favorite_entities = normalizeFavorites(watch_config.favorite_entities || []);
-		watch_config.pinned_entities = normalizePinned(watch_config.pinned_entities || []);
-
-		if(watch_config['ha_url']) {
+			if(watch_config['ha_url']) {
 				urlInput.val(watch_config['ha_url']);
 			}
 			if(watch_config['token']) {
@@ -1965,11 +1891,10 @@
 						</li>`;
 				}
 				favorites_sortable
-					.html(html)
-					.sortable({
-						handle: '.fa-bars',
-						update: updateSizeDisplay
-					});
+						.html(html)
+						.sortable({
+							handle: '.fa-bars'
+						});
 
 				favorites_sortable.disableSelection();
 
@@ -2109,7 +2034,7 @@
 						${displayHtml}
 					</li>`;
 			}
-			mainMenuSortable.html(menuHtml).sortable({ handle: '.fa-bars', update: updateSizeDisplay });
+			mainMenuSortable.html(menuHtml).sortable({ handle: '.fa-bars' });
 			mainMenuSortable.disableSelection();
 
 			// Toggle main menu order container visibility
@@ -2155,7 +2080,7 @@
 							<a href="javascript:void(0)" class="remove-pinned"><i class="fa fa-trash"></i></a>
 						</li>`;
 				}
-				pinnedSortable.html(pinnedHtml).sortable({ handle: '.fa-bars', update: updateSizeDisplay });
+				pinnedSortable.html(pinnedHtml).sortable({ handle: '.fa-bars' });
 				pinnedSortable.disableSelection();
 
 				$(".remove-pinned").on('click', function(e) {
@@ -2395,36 +2320,38 @@
 		$('#save-btn').click(function(e) {
 			e.preventDefault();
 			display_alert();
-			let closeConfig = getFormValues();
+			watch_config = getFormValues();
 
-			if(!closeConfig['ha_url']) {
+			if(!watch_config['ha_url']) {
 				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant URL`);
 				return;
 			}
 
-			if(!closeConfig['token']) {
+			if(!watch_config['token']) {
 				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token`);
 				return;
 			}
 
-			console.log(JSON.stringify(closeConfig));
-
-			const configData = encodeURIComponent(JSON.stringify(closeConfig));
-			const MAX_URL_SIZE = 100000;
-			if (configData.length > MAX_URL_SIZE) {
-				display_alert('danger', `<strong>Config too large!</strong> The save URL is ${Math.round(configData.length / 1024)} KB. Please remove some favorites or pinned entities to stay under 100 KB.`);
-				return;
-			}
+			console.log(JSON.stringify(watch_config));
 
 			// Save to localStorage for returning visits
 			localStorage.setItem("watch_config", JSON.stringify(watch_config));
 
-			// Use the pebblejs://close URL scheme to return settings to the watch
-			console.log('[Save] Using pebblejs://close URL scheme');
+			// If PebbleBridge is available, use its close() method
+			if (window.pebbleBridge && window.pebbleBridge.close) {
+				console.log('[Save] Using PebbleBridge.close()');
+				window.pebbleBridge.close(watch_config);
+				return;
+			}
+
+			console.log('[Save] PebbleBridge not available, falling back to URL scheme');
 
 			// Get return_to parameter if it exists, otherwise use default close URL
 			const urlParams = new URLSearchParams(window.location.search);
 			const returnTo = urlParams.get('return_to');
+
+			// Build the return URL with config data
+			const configData = encodeURIComponent(JSON.stringify(watch_config));
 			let location;
 
 			if (returnTo) {
@@ -2470,9 +2397,6 @@
 		}
 
 		updateSizeDisplay();
-		const sizeObserver = new MutationObserver(updateSizeDisplay);
-		sizeObserver.observe(document.getElementById('watch-config-form'), { childList: true, subtree: true });
-		$(document).on('input change', '#watch-config-form input, #watch-config-form select, #watch-config-form textarea', updateSizeDisplay);
 
 		$('#copy-diagnostics-url').click(async function() {
 			const text = $('#config-diagnostics-url').val();
