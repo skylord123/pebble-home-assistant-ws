@@ -1,3 +1,4 @@
+
 /**
  * BasePage - Abstract base class for all page types
  * Provides common patterns for menu creation, event handling, and subscriptions
@@ -39,13 +40,12 @@ class BasePage {
      * Show the page
      */
     show() {
-        var self = this;
-
         if (!this.menu) {
             this.menu = this.createMenu();
             this.setupEventHandlers();
         }
 
+        this.onShow();
         this.menu.show();
     }
 
@@ -63,10 +63,6 @@ class BasePage {
      */
     setupEventHandlers() {
         var self = this;
-
-        this.menu.on('show', function() {
-            self.onShow();
-        });
 
         this.menu.on('hide', function() {
             self.onHide();

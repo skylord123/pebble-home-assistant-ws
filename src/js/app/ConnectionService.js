@@ -146,11 +146,13 @@ var ConnectionService = {
 
         appState.haws.on('error', function(evt) {
             self.loadingCard.subtitle('Error');
+            self.loadingCard.body('Press BACK to exit');
         });
 
         appState.haws.on('auth_invalid', function(evt) {
             self.loadingCard.title('Auth Failure');
             self.loadingCard.subtitle(evt.detail.message || 'Unknown error');
+            self.loadingCard.body('Press BACK to exit');
         });
 
         appState.haws.on('auth_ok', function(evt) {
@@ -177,6 +179,7 @@ var ConnectionService = {
         }
 
         this.loadingCard.subtitle('Reconnecting');
+        this.loadingCard.body('Press BACK to exit');
         this.loadingCard.show();
         this.reconnecting = true;
         this.hadWindowsBeforeDisconnect = WindowStack._items.some(function(window) {
@@ -186,7 +189,7 @@ var ConnectionService = {
         if (!this.backHandlerAttached) {
             this.backHandlerAttached = true;
             this.loadingCard.on('click', 'back', function(e) {
-                self.loadingCard.subtitle('Hold back to exit');
+                self.loadingCard.hide();
                 return true;
             });
         }

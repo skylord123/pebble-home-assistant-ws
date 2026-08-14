@@ -46,8 +46,8 @@ class MainMenuPage extends BasePage {
             highlightTextColor: 'black',
             sections: [{
                 title: 'Home Assistant',
-                backgroundColor: Constants.colour.highlight,
-                textColor: Constants.colour.highlight_text
+                backgroundColor: 'black',
+                textColor: 'white'
             }]
         });
     }
@@ -112,7 +112,13 @@ class MainMenuPage extends BasePage {
         this.appState.menuSelections.mainMenu = e.itemIndex;
 
         helpers.log_message("Main menu click: " + e.item.title + " Index: " + e.itemIndex);
-        if (typeof e.item.on_click === 'function') {
+        
+        // Check if this is a pinned entity and entity press behavior is enabled
+        var entityPressBehavior = this.appState.entity_press_behavior !== false;
+        if (e.item && e.item.entity_id && entityPressBehavior) {
+            helpers.log_message("Main menu: pinned entity short press (swap mode - toggle): " + e.item.entity_id);
+            EntityService.handleLongPress(e.item.entity_id);
+        } else if (typeof e.item.on_click === 'function') {
             e.item.on_click(e);
         }
     }
@@ -124,7 +130,12 @@ class MainMenuPage extends BasePage {
     }
 
     onLongSelect(e) {
-        if (e.item && e.item.entity_id) {
+        // Check if this is a pinned entity and entity press behavior is enabled
+        var entityPressBehavior = this.appState.entity_press_behavior !== false;
+        if (e.item && e.item.entity_id && entityPressBehavior) {
+            helpers.log_message("Main menu: pinned entity long press (swap mode - show details): " + e.item.entity_id);
+            EntityService.show(e.item.entity_id);
+        } else if (e.item && e.item.entity_id) {
             EntityService.handleLongPress(e.item.entity_id);
         }
     }
@@ -267,7 +278,7 @@ class MainMenuPage extends BasePage {
                         var personEntities = Object.keys(self.appState.ha_state_dict).filter(function(entity_id) {
                             return entity_id.indexOf('person.') === 0;
                         });
-                        EntityListPage.showEntityList("People", personEntities, true, true, true);
+                        EntityListPage.showEntityList("People", personEntities, true, true, true, null, false);
                     }
                 };
             case 'all_entities':
@@ -285,9 +296,9 @@ class MainMenuPage extends BasePage {
                             }
                         );
                         if (shouldShowDomains) {
-                            EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
+                            EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities", false);
                         } else {
-                            EntityListPage.showEntityList("All Entities", false, true, true, true);
+                            EntityListPage.showEntityList("All Entities", false, true, true, true, null, false);
                         }
                     }
                 };
@@ -351,10 +362,14 @@ class MainMenuPage extends BasePage {
                                   self.appState.getEntity(entity_id) ||
                                   { entity_id: entity_id, state: '', attributes: {} };
 
+                        var mergedAttrs = {};
+                        for (var k in cur.attributes) { mergedAttrs[k] = cur.attributes[k]; }
+                        if (plus.a) { for (var k in plus.a) { mergedAttrs[k] = plus.a[k]; } }
+
                         var entityData = {
                             entity_id: entity_id,
                             state: plus.s !== undefined ? plus.s : cur.state,
-                            attributes: plus.a !== undefined ? plus.a : cur.attributes,
+                            attributes: mergedAttrs,
                             last_changed: plus.lc !== undefined
                                 ? new Date(plus.lc * 1000).toISOString()
                                 : cur.last_changed

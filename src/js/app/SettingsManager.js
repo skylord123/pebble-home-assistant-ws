@@ -101,9 +101,16 @@ var SettingsManager = {
             ? appState.automation_longpress_action
             : 'toggle';
 
+        // Entity press behavior setting
+        appState.entity_press_behavior = Settings.option('entity_press_behavior');
+        appState.entity_press_behavior = appState.entity_press_behavior !== undefined
+            ? appState.entity_press_behavior
+            : false;
+
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
+        log('Entity press behavior: ' + appState.entity_press_behavior);
 
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;
@@ -169,15 +176,40 @@ var SettingsManager = {
         var self = this;
         var log = helpers.log_message;
 
+        log('Config URL: ' + options.configPageUrl);
+
         Settings.config({
             url: options.configPageUrl
         },
         function(e) {
             log('opened configurable');
+            var appState = AppState.getInstance();
+            if (appState.all_entities && appState.all_entities.length) {
+                var ignoreSet = {};
+                var ignoreList = appState.ignore_domains || [];
+                for (var i = 0; i < ignoreList.length; i++) {
+                    ignoreSet[ignoreList[i]] = true;
+                }
+                var filtered = [];
+                for (var j = 0; j < appState.all_entities.length; j++) {
+                    var ent = appState.all_entities[j];
+                    var domain = (ent.e || '').split('.')[0];
+                    if (!ignoreSet[domain]) {
+                        filtered.push(ent);
+                    }
+                }
+                e.options.all_entities = filtered;
+            }
         },
         function(e) {
             log('closed configurable');
             log('returned_settings: ' + JSON.stringify(e.options));
+            if (e.options) {
+                delete e.options.all_entities;
+                if (!e.options.token) {
+                    e.options.token = Settings.option('token');
+                }
+            }
             Settings.option(e.options);
 
             if (e.failed) {

@@ -1043,7 +1043,7 @@ let entityListMenu = null;
 
 // Entity list functions - delegate to EntityListPage module
 function showEntityList(title, entity_id_list, ignoreEntityCache, sortItems, skipIgnoredDomains) {
-    EntityListPage.showEntityList(title, entity_id_list, ignoreEntityCache, sortItems, skipIgnoredDomains);
+    EntityListPage.showEntityList(title, entity_id_list, ignoreEntityCache, sortItems, skipIgnoredDomains, null, false);
 }
 
 

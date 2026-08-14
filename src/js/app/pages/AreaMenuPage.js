@@ -171,9 +171,9 @@ class AreaMenuPage extends BasePage {
                             );
 
                             if (shouldShowDomains) {
-                                EntityListPage.showEntityDomainsFromList(entityKeys, entry.display_name);
+                                EntityListPage.showEntityDomainsFromList(entityKeys, entry.display_name, false);
                             } else {
-                                EntityListPage.showEntityList(entry.display_name, entityKeys, true, true, true);
+                                EntityListPage.showEntityList(entry.display_name, entityKeys, true, true, true, null, false);
                             }
                         }
                     });
@@ -260,9 +260,9 @@ function showAreasForFloor(floor_id, floor_name) {
                         );
 
                         if (shouldShowDomains) {
-                            EntityListPage.showEntityDomainsFromList(entityKeys, entry.display_name);
+                            EntityListPage.showEntityDomainsFromList(entityKeys, entry.display_name, false);
                         } else {
-                            EntityListPage.showEntityList(entry.display_name, entityKeys, true, true, true);
+                            EntityListPage.showEntityList(entry.display_name, entityKeys, true, true, true, null, false);
                         }
                     }
                 });

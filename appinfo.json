@@ -4,7 +4,7 @@
     "configurable"
   ],
   "companyName": "skylar.tech",
-  "longName": "Home Assistant WS",
+  "longName": "Home Assistant on your Wrist",
   "resources": {
     "media": [
       {
@@ -182,11 +182,26 @@
         "file": "images/icon_script.png",
         "name": "IMAGE_ICON_SCRIPT",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_arrow_left.png",
+        "name": "IMAGE_ICON_ARROW_LEFT",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/appicon_blue.png",
+        "name": "IMAGE_APPICON_BLUE",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/logo_large.png",
+        "name": "IMAGE_HA_LOGO",
+        "type": "bitmap"
       }
     ]
   },
   "sdkVersion": "3",
-  "shortName": "Home Assistant",
+  "shortName": "HA on Wrist",
   "targetPlatforms": [
     "aplite",
     "basalt",
@@ -196,7 +211,7 @@
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
-  "versionLabel": "2.0",
+  "versionLabel": "1.0",
   "watchapp": {
     "hiddenApp": false,
     "watchface": false
