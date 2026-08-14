@@ -185,7 +185,20 @@ var SettingsManager = {
             log('opened configurable');
             var appState = AppState.getInstance();
             if (appState.all_entities && appState.all_entities.length) {
-                e.options.all_entities = appState.all_entities;
+                var ignoreSet = {};
+                var ignoreList = appState.ignore_domains || [];
+                for (var i = 0; i < ignoreList.length; i++) {
+                    ignoreSet[ignoreList[i]] = true;
+                }
+                var filtered = [];
+                for (var j = 0; j < appState.all_entities.length; j++) {
+                    var ent = appState.all_entities[j];
+                    var domain = (ent.e || '').split('.')[0];
+                    if (!ignoreSet[domain]) {
+                        filtered.push(ent);
+                    }
+                }
+                e.options.all_entities = filtered;
             }
         },
         function(e) {
