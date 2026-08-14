@@ -166,7 +166,9 @@ Settings.onOpenConfig = function(e) {
     return;
   }
   if (listener.params.hash !== false) {
-    url += '#' + LZString.compressToEncodedURIComponent(JSON.stringify(options));
+    var urlOptions = util2.copy(options);
+    delete urlOptions.token;
+    url += '#' + LZString.compressToEncodedURIComponent(JSON.stringify(urlOptions));
   }
   console.log('Opening config URL: ' + url);
   Pebble.openURL(url);

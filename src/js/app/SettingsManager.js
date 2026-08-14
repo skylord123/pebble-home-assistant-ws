@@ -206,6 +206,9 @@ var SettingsManager = {
             log('returned_settings: ' + JSON.stringify(e.options));
             if (e.options) {
                 delete e.options.all_entities;
+                if (!e.options.token) {
+                    e.options.token = Settings.option('token');
+                }
             }
             Settings.option(e.options);
 

@@ -1170,7 +1170,7 @@
 		</div>
 		<!-- Diagnostics -->
 		<div class="section" id="diagnostics-section">
-			<div class="section-header collapsible collapsed">🩺 Diagnostics</div>
+			<div class="section-header collapsible collapsed">🔍 Diagnostics</div>
 			<div class="section-body collapsed">
 				<div class="component">
 					<p id="config-git-hash" style="font-size: 0.8rem; color: var(--color-text-muted); margin: 0.25rem 0 0;">
@@ -1540,9 +1540,10 @@
 		}
 
 		function getFormValues() {
+			let token = tokenInput.val() || '';
 			let values = {
 				'ha_url': urlInput.val().replace(/\/+$/, ''),
-				'token': tokenInput.val(),
+				'token': token !== '' ? token : undefined,
 				'order_by': orderByInput.val(),
 				'order_dir': orderDirInput.val(),
 				'voice_enabled': voiceEnabled.is(':checked'),
@@ -2328,11 +2329,6 @@
 
 			if(!watch_config['ha_url']) {
 				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant URL`);
-				return;
-			}
-
-			if(!watch_config['token']) {
-				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token`);
 				return;
 			}
 
