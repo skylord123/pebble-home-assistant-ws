@@ -158,7 +158,7 @@ function on_auth_ok(evt) {
                 case 'favorite_entity':
                     if (appState.quick_launch_favorite_entity &&
                         appState.favoriteEntityStore.has(appState.quick_launch_favorite_entity)) {
-                        EntityService.show(appState.quick_launch_favorite_entity);
+                        EntityService.handleLongPress(appState.quick_launch_favorite_entity);
                     }
                     break;
                 case 'areas':
