@@ -23,7 +23,7 @@ static void window_load(Window *window) {
   // Title
   GRect title_frame = GRect(text_x, 5, text_width, 64);
   self->title_layer = text_layer_create(title_frame);
-  text_layer_set_text(self->title_layer, SPLASH_TEXT_TITLE);
+  text_layer_set_text(self->title_layer, self->title);
   text_layer_set_font(self->title_layer, title_font);
   text_layer_set_text_alignment(self->title_layer, text_align);
   text_layer_set_background_color(self->title_layer, GColorClear);
@@ -41,11 +41,12 @@ static void window_load(Window *window) {
   layer_add_child(root_layer, bitmap_layer_get_layer(self->logo_layer));
 
   // Subtitle
-  GRect subtitle_frame = GRect(text_x, 158, text_width, 24);
+  GRect subtitle_frame = GRect(text_x, 150, text_width, 50);
   self->subtitle_layer = text_layer_create(subtitle_frame);
-  text_layer_set_text(self->subtitle_layer, SPLASH_TEXT_SUBTITLE);
+  text_layer_set_text(self->subtitle_layer, self->subtitle);
   text_layer_set_font(self->subtitle_layer, subtitle_font);
   text_layer_set_text_alignment(self->subtitle_layer, text_align);
+  text_layer_set_overflow_mode(self->subtitle_layer, GTextOverflowModeWordWrap);
   text_layer_set_background_color(self->subtitle_layer, GColorClear);
   text_layer_set_text_color(self->subtitle_layer, GColorBlue);
   layer_add_child(root_layer, text_layer_get_layer(self->subtitle_layer));
@@ -53,14 +54,26 @@ static void window_load(Window *window) {
 
 static void window_disappear(Window *window) {
   SimplySplash *self = window_get_user_data(window);
-  bool animated = false;
-  window_stack_remove(self->window, animated);
+  if (window_stack_contains_window(self->window)) {
+    window_stack_remove(self->window, false);
+  }
   simply_splash_destroy(self);
+}
+
+static void prv_back_click_handler(ClickRecognizerRef recognizer, void *context) {
+  (void) recognizer;
+  (void) context;
+  window_stack_pop_all(false);
+}
+
+static void prv_click_config_provider(void *context) {
+  (void) context;
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_back_click_handler);
 }
 
 SimplySplash *simply_splash_create(Simply *simply) {
   SimplySplash *self = malloc(sizeof(*self));
-  *self = (SimplySplash) { .simply = simply };
+  *self = (SimplySplash) { .simply = simply, .title = SPLASH_TEXT_TITLE, .subtitle = SPLASH_TEXT_SUBTITLE };
 
   self->window = window_create();
   window_set_user_data(self->window, self);
@@ -70,7 +83,25 @@ SimplySplash *simply_splash_create(Simply *simply) {
     .disappear = window_disappear,
   });
 
+  window_set_click_config_provider(self->window, prv_click_config_provider);
+
   return self;
+}
+
+void simply_splash_set_title(SimplySplash *self, const char *title) {
+  self->title = title;
+  if (self->title_layer) {
+    text_layer_set_text(self->title_layer, title);
+    layer_mark_dirty(text_layer_get_layer(self->title_layer));
+  }
+}
+
+void simply_splash_set_subtitle(SimplySplash *self, const char *subtitle) {
+  self->subtitle = subtitle;
+  if (self->subtitle_layer) {
+    text_layer_set_text(self->subtitle_layer, subtitle);
+    layer_mark_dirty(text_layer_get_layer(self->subtitle_layer));
+  }
 }
 
 void simply_splash_destroy(SimplySplash *self) {
@@ -89,7 +120,9 @@ void simply_splash_destroy(SimplySplash *self) {
 
   window_destroy(self->window);
 
-  self->simply->splash = NULL;
+  if (self->simply->splash == self) {
+    self->simply->splash = NULL;
+  }
 
   free(self);
 }

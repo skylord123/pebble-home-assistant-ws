@@ -3,6 +3,7 @@
 #include "simply_accel.h"
 #include "simply_voice.h"
 #include "simply_res.h"
+#include "simply_splash.h"
 #include "simply_stage.h"
 #include "simply_menu.h"
 #include "simply_ui.h"
@@ -17,6 +18,7 @@
 #include "util/memory.h"
 #include "util/platform.h"
 #include "util/string.h"
+#include "util/color.h"
 
 #include <pebble.h>
 
@@ -375,16 +377,13 @@ static void failed_callback(DictionaryIterator *iter, AppMessageResult reason, v
 
 void simply_msg_show_disconnected(SimplyMsg *self) {
   Simply *simply = self->simply;
-  SimplyUi *ui = simply->ui;
 
-  simply_ui_clear(ui, ~0);
-  simply_ui_set_text(ui, UiSubtitle, "Disconnected");
-  simply_ui_set_text(ui, UiBody, "Run the Pebble Phone App");
+  SimplySplash *splash = simply_splash_create(simply);
+  simply_splash_set_title(splash, "Disconnected");
+  simply_splash_set_subtitle(splash, "Run the Pebble\nPhone App");
 
-  if (window_stack_get_top_window() != ui->window.window) {
-    bool was_broadcast = simply_window_stack_set_broadcast(false);
-    simply_window_stack_show(simply->window_stack, &ui->window, true);
-    simply_window_stack_set_broadcast(was_broadcast);
+  if (window_stack_get_top_window() != splash->window) {
+    window_stack_push(splash->window, true);
   }
 }
 
