@@ -21,6 +21,18 @@ Control your Home Assistant smart home directly from your Pebble smartwatch! Thi
 - **Backup and Restore** - Settings import/export for easy backup and restore
 - **UI enhancements**
 
+## Screenshots
+### Pebble Watch
+![Favorites](resources/screenshot-favorites.png)
+![All Entities](resources/screenshot-all%20entities.jpg)
+![Automations](resources/screenshot-automations.jpg)
+
+### Smartphone (Configuration)
+![Configuration](resources/screenshot-config.jpg)
+![Entity Selection Filter](resources/screenshot-config-filter.jpg)
+![Favorites](resources/screenshot-config-favorites.jpg)
+
+
 Support
 -------
 
