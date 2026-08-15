@@ -28,9 +28,9 @@ Control your Home Assistant smart home directly from your Pebble smartwatch! Thi
 ![Automations](resources/screenshot-automations.jpg)
 
 ### Smartphone (Configuration)
-![Configuration](resources/screenshot-config.jpg)
-![Entity Selection Filter](resources/screenshot-config-filter.jpg)
-![Favorites](resources/screenshot-config-favorites.jpg)
+[![Configuration](resources/screenshot-config_resized.jpg)](resources/screenshot-config.jpg)
+[![Entity Selection Filter](resources/screenshot-config-filter_resized.jpg)](resources/screenshot-config-filter.jpg)
+[![Favorites](resources/screenshot-config-favorites_resized.jpg)](resources/screenshot-config-favorites.jpg)
 
 
 Support
