@@ -373,6 +373,7 @@ void simply_window_unload(SimplyWindow *self) {
 
   window_destroy(self->window);
   self->window = NULL;
+  self->layer = NULL;
 }
 
 static void prv_handle_window_props_packet(Simply *simply, Packet *data) {

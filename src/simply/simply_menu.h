@@ -106,4 +106,7 @@ struct SimplyMenuItem {
 SimplyMenu *simply_menu_create(Simply *simply);
 void simply_menu_destroy(SimplyMenu *self);
 
+void simply_menu_clear(SimplyMenu *self);
+void simply_menu_stop_scroll(SimplyMenu *self);
+
 bool simply_menu_handle_packet(Simply *simply, Packet *packet);
