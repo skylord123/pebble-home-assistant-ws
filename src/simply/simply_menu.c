@@ -580,6 +580,65 @@ static uint16_t prv_menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t s
   return section ? section->num_items : 1;
 }
 
+static void prv_menu_move_selection(SimplyMenu *self, MenuLayer *menu_layer, bool up) {
+  MenuIndex current = menu_layer_get_selected_index(menu_layer);
+  MenuIndex next = current;
+  uint16_t num_sections = self->menu_layer.num_sections;
+
+  if (num_sections == 0) {
+    return;
+  }
+
+  if (up) {
+    if (current.row > 0) {
+      next.row = current.row - 1;
+    } else if (current.section > 0) {
+      for (int s = current.section - 1; s >= 0; s--) {
+        uint16_t rows = prv_menu_get_num_rows_callback(menu_layer, s, self);
+        if (rows > 0) {
+          next.section = s;
+          next.row = rows - 1;
+          break;
+        }
+      }
+    } else {
+      for (int s = num_sections - 1; s >= 0; s--) {
+        uint16_t rows = prv_menu_get_num_rows_callback(menu_layer, s, self);
+        if (rows > 0) {
+          next.section = s;
+          next.row = rows - 1;
+          break;
+        }
+      }
+    }
+  } else {
+    uint16_t current_rows = prv_menu_get_num_rows_callback(menu_layer, current.section, self);
+    if (current.row + 1 < current_rows) {
+      next.row = current.row + 1;
+    } else if (current.section + 1 < num_sections) {
+      for (int s = current.section + 1; s < num_sections; s++) {
+        uint16_t rows = prv_menu_get_num_rows_callback(menu_layer, s, self);
+        if (rows > 0) {
+          next.section = s;
+          next.row = 0;
+          break;
+        }
+      }
+    } else {
+      for (int s = 0; s < num_sections; s++) {
+        uint16_t rows = prv_menu_get_num_rows_callback(menu_layer, s, self);
+        if (rows > 0) {
+          next.section = s;
+          next.row = 0;
+          break;
+        }
+      }
+    }
+  }
+
+  menu_layer_set_selected_index(menu_layer, next, MenuRowAlignCenter, true);
+}
+
 static int16_t prv_menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t section_index,
                                                    void *data) {
   SimplyMenu *self = data;
@@ -1026,9 +1085,25 @@ static void prv_single_click_handler(ClickRecognizerRef recognizer, void *contex
   simply_window_single_click_handler(recognizer, window);
 }
 
+static void prv_up_click_handler(ClickRecognizerRef recognizer, void *context) {
+  MenuLayer *menu_layer = (MenuLayer *)context;
+  Window *base_window = layer_get_window(context);
+  SimplyMenu *self = (SimplyMenu *)window_get_user_data(base_window);
+  prv_menu_move_selection(self, menu_layer, true);
+}
+
+static void prv_down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  MenuLayer *menu_layer = (MenuLayer *)context;
+  Window *base_window = layer_get_window(context);
+  SimplyMenu *self = (SimplyMenu *)window_get_user_data(base_window);
+  prv_menu_move_selection(self, menu_layer, false);
+}
+
 static void prv_click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_BACK, prv_single_click_handler);
   menu_layer_click_config(context);
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 100, prv_up_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 100, prv_down_click_handler);
 }
 
 static void prv_menu_window_load(Window *window) {
@@ -1060,6 +1135,7 @@ static void prv_menu_window_load(Window *window) {
     .selection_changed = prv_menu_selection_changed_callback,
 #endif
   });
+
 
   menu_layer_set_click_config_provider_onto_window(menu_layer, prv_click_config_provider, window);
 }
