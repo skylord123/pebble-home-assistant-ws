@@ -35,11 +35,11 @@ jobs:
       - name: Generate ELF bundle
         run: |
           mkdir elfs
-          cp build/basalt/pebble-app.elf elfs/pebble-app-basalt.elf
-          cp build/diorite/pebble-app.elf elfs/pebble-app-diorite.elf
-          cp build/chalk/pebble-app.elf elfs/pebble-app-chalk.elf
-          cp build/aplite/pebble-app.elf elfs/pebble-app-aplite.elf
-          cp build/emery/pebble-app.elf elfs/pebble-app-emery.elf
+          for platform in basalt diorite chalk aplite emery; do
+            if [ -f "build/$platform/pebble-app.elf" ]; then
+              cp "build/$platform/pebble-app.elf" "elfs/pebble-app-$platform.elf"
+            fi
+          done
           zip -r elfs.zip elfs
 
       - name: Upload PBW
