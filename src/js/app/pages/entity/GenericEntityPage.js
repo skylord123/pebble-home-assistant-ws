@@ -21,15 +21,30 @@ var menuSelections = {
     entityMenu: 0
 };
 
+// Shared C-side detail menu.  Reusing the same UI.Menu avoids the id-swap
+// and object churn that triggers the second-detail crash.
+var detailMenu = null;
+var currentDetailEntityId = null;
+var detailMsgId = null;
+var detailRelativeTimeUpdater = null;
+
 function showEntityMenu(entity_id) {
     var appState = AppState.getInstance();
     var favoriteEntityStore = appState.favoriteEntityStore;
     var pinnedEntityStore = appState.pinnedEntityStore;
     let entity = appState.ha_state_dict[entity_id];
-    let relativeTimeUpdater = null;
+    let attributes = {};
     if(!entity){
-        throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
+        helpers.log_message('Entity not found: ' + entity_id);
+        var notFoundCard = new UI.Card({ title: 'Not Found', body: entity_id, status: false });
+        notFoundCard.show();
+        return;
+    } else {
+        attributes = entity.attributes || {};
     }
+
+    // Track the entity currently shown in the shared detail menu.
+    currentDetailEntityId = entity_id;
 
     // Helper function to format date as Y-M-D HH:MM:SS
     function formatDateTime(isoString) {
@@ -46,70 +61,131 @@ function showEntityMenu(entity_id) {
 
     // Helper function to get state subtitle with relative time
     function getStateSubtitle(entity) {
-        var stateText = entity.state;
-        if (entity.attributes.unit_of_measurement) {
+        if (!entity) return '?';
+        var stateText = entity.state !== undefined ? String(entity.state) : '?';
+        if (entity.attributes && entity.attributes.unit_of_measurement) {
             stateText += ' ' + entity.attributes.unit_of_measurement;
         }
-        var timeStr = helpers.humanDiff(new Date(), new Date(entity.last_changed));
+        var timeStr = 'unknown';
+        if (entity.last_changed) {
+            timeStr = helpers.humanDiff(new Date(), new Date(entity.last_changed));
+        }
         return stateText + ' > ' + timeStr;
     }
 
     // Set Menu colors
-    let showEntityMenu = new UI.Menu({
-        status: false,
-        backgroundColor: 'white',
-        textColor: 'black',
-        highlightBackgroundColor: 'black',
-        highlightTextColor: 'white',
-        sections: [
-            {
-                title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id
-            },
-            {
-                title: 'Services'
-            },
-            {
-                title: 'Extra'
+    if (!detailMenu) {
+        detailMenu = new UI.Menu({
+            status: false,
+            backgroundColor: 'white',
+            textColor: 'black',
+            highlightBackgroundColor: 'black',
+            highlightTextColor: 'white',
+            sections: []
+        });
+
+        // Store selection when navigating to a submenu
+        detailMenu.on('select', function(e) {
+            if (typeof e.item.on_click == 'function') {
+                e.item.on_click(e);
+                return;
             }
-        ]
-    });
+        });
 
-    let msg_id = null;
+        detailMenu.on('show', function() {
+            var entity = appState.ha_state_dict[currentDetailEntityId];
+            if (!entity) { return; }
+            detailRelativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
+                var currentEntity = appState.ha_state_dict[currentDetailEntityId];
+                if (currentEntity) {
+                    detailMenu.item(0, 1, {
+                        title: 'State',
+                        subtitle: getStateSubtitle(currentEntity)
+                    });
+                }
+            });
+            detailRelativeTimeUpdater.register(currentDetailEntityId, entity.last_changed);
 
-    // Store selection when navigating to a submenu
-    showEntityMenu.on('select', function(e) {
-        // Handle on_click function if it exists
-        if(typeof e.item.on_click == 'function') {
-            e.item.on_click(e);
-            return;
-        }
-    });
+            detailMsgId = appState.haws.subscribeTrigger({
+                "type": "subscribe_trigger",
+                "trigger": {
+                    "platform": "state",
+                    "entity_id": currentDetailEntityId,
+                },
+            }, function(data) {
+                if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+                    var updatedEntity = data.event.variables.trigger.to_state;
+                    appState.ha_state_dict[currentDetailEntityId] = updatedEntity;
+
+                    detailMenu.item(0, 1, {
+                        title: 'State',
+                        subtitle: getStateSubtitle(updatedEntity)
+                    });
+                    detailMenu.item(0, 2, {
+                        title: 'Last Changed',
+                        subtitle: formatDateTime(updatedEntity.last_changed)
+                    });
+                    detailMenu.item(0, 3, {
+                        title: 'Last Updated',
+                        subtitle: formatDateTime(updatedEntity.last_updated)
+                    });
+
+                    if (detailRelativeTimeUpdater) {
+                        detailRelativeTimeUpdater.update(currentDetailEntityId, updatedEntity.last_changed);
+                    }
+                }
+            }, function(error) {
+                helpers.log_message(`ENTITY UPDATE ERROR [${currentDetailEntityId}]: ` + JSON.stringify(error));
+            });
+        });
+
+        detailMenu.on('hide', function() {
+            if (detailMsgId) {
+                appState.haws.unsubscribe(detailMsgId);
+                detailMsgId = null;
+            }
+            if (detailRelativeTimeUpdater) {
+                detailRelativeTimeUpdater.destroy();
+                detailRelativeTimeUpdater = null;
+            }
+        });
+    }
 
     //Object.getOwnPropertyNames(entity);
     //Object.getOwnPropertyNames(entity.attributes);
-    var arr = Object.getOwnPropertyNames(entity.attributes);
+    var arr = Object.getOwnPropertyNames(attributes);
     //var arr = Object.getOwnPropertyNames(device_status.attributes);
     var i = 0;
-    helpers.log_message(`Showing entity ${entity.entity_id}: ${JSON.stringify(entity, null, 4)}`)
+    detailMenu.sections([
+        {
+            title: attributes.friendly_name ? attributes.friendly_name : entity.entity_id
+        },
+        {
+            title: 'Services'
+        },
+        {
+            title: 'Extra'
+        }
+    ]);
+    helpers.log_message('Showing entity ' + entity.entity_id + ' (state: ' + (entity.state !== undefined ? entity.state : '?') + ')')
 
-    showEntityMenu.item(0, i++, {
+    detailMenu.item(0, i++, {
         title: 'Entity ID',
         subtitle: entity.entity_id
     });
-    let stateIndex = i;
-    showEntityMenu.item(0, i++, {
+    detailMenu.item(0, i++, {
         title: 'State',
         subtitle: getStateSubtitle(entity)
     });
-    showEntityMenu.item(0, i++, {
+    detailMenu.item(0, i++, {
         title: 'Last Changed',
         subtitle: formatDateTime(entity.last_changed)
     });
-    showEntityMenu.item(0, i++, {
+    detailMenu.item(0, i++, {
         title: 'Last Updated',
         subtitle: formatDateTime(entity.last_updated)
     });
-    showEntityMenu.item(0, i++, {
+    detailMenu.item(0, i++, {
         title: 'Attributes',
         subtitle: `${arr.length} attributes`,
         on_click: function() {
@@ -127,7 +203,7 @@ function showEntityMenu(entity_id) {
         domain === "button" ||
         domain === "input_button"
     ) {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Press',
             on_click: function(){
                 appState.haws.callService(
@@ -156,7 +232,7 @@ function showEntityMenu(entity_id) {
         domain === "script"
     )
     {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Toggle',
             on_click: function(){
                 appState.haws.callService(
@@ -177,7 +253,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',
             on_click: function(){
                 appState.haws.callService(
@@ -198,7 +274,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn Off',
             on_click: function(){
                 appState.haws.callService(
@@ -219,7 +295,7 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "lock") {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Lock',
             on_click: function(){
                 appState.haws.callService(
@@ -240,7 +316,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Unlock',
             on_click: function(){
                 appState.haws.callService(
@@ -261,7 +337,7 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "scene") {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',
             on_click: function(){
                 appState.haws.callService(
@@ -282,7 +358,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Apply',
             on_click: function(){
                 appState.haws.callService(
@@ -309,7 +385,7 @@ function showEntityMenu(entity_id) {
         domain === "input_number" ||
         domain === "counter"
     ) {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Increment',
             on_click: function(){
                 appState.haws.callService(
@@ -327,7 +403,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Decrement',
             on_click: function(){
                 appState.haws.callService(
@@ -349,7 +425,7 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "counter") {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Reset',
             on_click: function(){
                 appState.haws.callService(
@@ -373,7 +449,7 @@ function showEntityMenu(entity_id) {
     if(
         domain === "automation"
     ) {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Trigger',
             on_click: function(){
                 appState.haws.callService(
@@ -402,7 +478,7 @@ function showEntityMenu(entity_id) {
         domain === "button" ||
         domain === "input_boolean"
     ) {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
+        detailMenu.item(1, servicesCount++, { //menuIndex
             title: 'Reload',
             on_click: function(){
                 appState.haws.callService(
@@ -426,7 +502,7 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "vacuum") {
-        showEntityMenu.item(1, servicesCount++, {
+        detailMenu.item(1, servicesCount++, {
             title: 'Start',
             on_click: function(){
                 helpers.log_message('Calling vacuum.start for ' + entity.entity_id);
@@ -445,7 +521,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, {
+        detailMenu.item(1, servicesCount++, {
             title: 'Pause',
             on_click: function(){
                 helpers.log_message('Calling vacuum.pause for ' + entity.entity_id);
@@ -464,7 +540,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, {
+        detailMenu.item(1, servicesCount++, {
             title: 'Stop',
             on_click: function(){
                 helpers.log_message('Calling vacuum.stop for ' + entity.entity_id);
@@ -483,7 +559,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, {
+        detailMenu.item(1, servicesCount++, {
             title: 'Return to Base',
             on_click: function(){
                 helpers.log_message('Calling vacuum.return_to_base for ' + entity.entity_id);
@@ -502,7 +578,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, {
+        detailMenu.item(1, servicesCount++, {
             title: 'Locate',
             on_click: function(){
                 helpers.log_message('Calling vacuum.locate for ' + entity.entity_id);
@@ -521,7 +597,7 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, {
+        detailMenu.item(1, servicesCount++, {
             title: 'Clean Spot',
             on_click: function(){
                 helpers.log_message('Calling vacuum.clean_spot for ' + entity.entity_id);
@@ -543,7 +619,7 @@ function showEntityMenu(entity_id) {
     }
 
     function _renderFavoriteBtn() {
-        showEntityMenu.item(2, 0, {
+        detailMenu.item(2, 0, {
             title: (favoriteEntityStore.has(entity.entity_id) ? 'Remove' : 'Add') + ' Favorite',
             on_click: function(e) {
                 EntityService.toggleFavorite(entity);
@@ -554,7 +630,7 @@ function showEntityMenu(entity_id) {
     _renderFavoriteBtn();
 
     function _renderPinnedBtn() {
-        showEntityMenu.item(2, 1, {
+        detailMenu.item(2, 1, {
             title: (pinnedEntityStore.has(entity.entity_id) ? 'Unpin from' : 'Pin to') + ' Main Menu',
             on_click: function(e) {
                 EntityService.togglePinned(entity);
@@ -564,77 +640,21 @@ function showEntityMenu(entity_id) {
     }
     _renderPinnedBtn();
 
-    showEntityMenu.on('show', function(){
-        // Create RelativeTimeUpdater for live time updates
-        relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            // Get current entity and update the state field
-            let currentEntity = appState.ha_state_dict[entity_id];
-            if (currentEntity) {
-                showEntityMenu.item(0, stateIndex, {
-                    title: 'State',
-                    subtitle: getStateSubtitle(currentEntity)
-                });
-            }
-        });
-        relativeTimeUpdater.register(entity_id, entity.last_changed);
-
-        msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity.entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedEntity = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedEntity;
-
-                // Update state field with new state and relative time
-                showEntityMenu.item(0, stateIndex, {
-                    title: 'State',
-                    subtitle: getStateSubtitle(updatedEntity)
-                });
-
-                // Update last changed and last updated fields
-                showEntityMenu.item(0, stateIndex + 1, {
-                    title: 'Last Changed',
-                    subtitle: formatDateTime(updatedEntity.last_changed)
-                });
-                showEntityMenu.item(0, stateIndex + 2, {
-                    title: 'Last Updated',
-                    subtitle: formatDateTime(updatedEntity.last_updated)
-                });
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedEntity.last_changed);
-                }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
-        });
-    });
-    showEntityMenu.on('close', function(){
-        if(msg_id) {
-            appState.haws.unsubscribe(msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
-
-    showEntityMenu.show();
+    detailMenu.show();
 }
 
 
 function showEntityAttributesMenu(entity_id) {
     var appState = AppState.getInstance();
     let entity = appState.ha_state_dict[entity_id];
+    let attributes = {};
     if(!entity){
-        throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
+        helpers.log_message('Entity not found: ' + entity_id);
+        var notFoundCard = new UI.Card({ title: 'Not Found', body: entity_id, status: false });
+        notFoundCard.show();
+        return;
+    } else {
+        attributes = entity.attributes || {};
     }
 
     // Create a menu for the attributes
@@ -660,14 +680,14 @@ function showEntityAttributesMenu(entity_id) {
     let msg_id = null;
 
     attributesMenu.on('show', function() {
-        var arr = Object.getOwnPropertyNames(entity.attributes);
-        helpers.log_message(`Showing attributes for ${entity.entity_id}: ${arr.length} attributes`);
+        var arr = Object.getOwnPropertyNames(attributes);
+        helpers.log_message('Showing attributes for ' + entity.entity_id + ': ' + arr.length + ' attributes');
 
         // Add each attribute to the menu
         for (let i = 0; i < arr.length; i++) {
             attributesMenu.item(0, i, {
                 title: arr[i],
-                subtitle: entity.attributes[arr[i]],
+                subtitle: attributes[arr[i]],
                 attribute_name: arr[i] // Store attribute name for updates
             });
         }
@@ -687,7 +707,7 @@ function showEntityAttributesMenu(entity_id) {
                 // Update all attribute values
                 for (let i = 0; i < attributesMenu.items(0).length; i++) {
                     const item = attributesMenu.item(0, i);
-                    if (item.attribute_name && updatedEntity.attributes[item.attribute_name] !== undefined) {
+                    if (item.attribute_name && updatedEntity.attributes && updatedEntity.attributes[item.attribute_name] !== undefined) {
                         attributesMenu.item(0, i, {
                             title: item.attribute_name,
                             subtitle: updatedEntity.attributes[item.attribute_name],

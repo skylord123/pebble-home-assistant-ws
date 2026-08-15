@@ -105,7 +105,7 @@ static GColor8 s_inverted_palette[] = { { GColorWhiteARGB8 }, { GColorClearARGB8
 
 
 static void simply_menu_clear_section_items(SimplyMenu *self, int section_index);
-static void simply_menu_clear(SimplyMenu *self);
+void simply_menu_clear(SimplyMenu *self);
 
 static void simply_menu_set_num_sections(SimplyMenu *self, uint16_t num_sections);
 static void simply_menu_add_section(SimplyMenu *self, SimplyMenuSection *section);
@@ -296,8 +296,15 @@ static void simply_menu_set_num_sections(SimplyMenu *self, uint16_t num_sections
   if (num_sections == 0) {
     num_sections = 1;
   }
+  // The JS is about to send a whole new menu.  Stop any scrolling and
+  // update the section count.  The new sections/items will replace the
+  // matching old entries as they arrive, so a full clear (which frees rows
+  // the MenuLayer may still reference) is skipped.
+  simply_menu_stop_scroll(self);
   self->menu_layer.num_sections = num_sections;
-  prv_reload_data(self);
+  // Don't reload immediately; wait until the JS has sent the new
+  // sections/items so the MenuLayer doesn't request rows while empty.
+  prv_reload_data_debounced(self);
 }
 
 static void simply_menu_add_section(SimplyMenu *self, SimplyMenuSection *section) {
@@ -559,12 +566,15 @@ static void stop_scroll_timer(SimplyMenu *self) {
   self->title_scroll_offset = 0;
   self->title_max_scroll_offset = 0;
   self->title_needs_scroll = false;
-  self->title_scrolling_active = false;
   self->subtitle_scroll_offset = 0;
   self->subtitle_max_scroll_offset = 0;
   self->subtitle_needs_scroll = false;
   self->subtitle_scrolling_active = false;
 #endif
+}
+
+void simply_menu_stop_scroll(SimplyMenu *self) {
+  stop_scroll_timer(self);
 }
 #endif
 
@@ -784,12 +794,6 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   MenuIndex current_selection = menu_layer_get_selected_index(self->menu_layer.menu_layer);
   const bool is_selected = (cell_index->section == current_selection.section &&
                            cell_index->row == current_selection.row);
-
-  // If this is selected but scroll timer hasn't been started yet, start it
-  // Don't start if we're in idle state (timeout exceeded)
-  if (is_selected && !self->scroll_timer && !self->scrolling_active && !self->scroll_idle) {
-    start_scroll_timer(self, current_selection);
-  }
 
   // Measure text width to determine if scrolling is needed
   if (is_selected) {
@@ -1162,9 +1166,6 @@ static void prv_menu_window_appear(Window *window) {
 
   // Stop any existing scroll timer first
   stop_scroll_timer(self);
-
-  // Trigger initial scroll after a short delay to ensure menu is loaded
-  app_timer_register(100, initial_scroll_timer_callback, self);
 #endif
 }
 
@@ -1202,8 +1203,15 @@ static void prv_menu_window_unload(Window *window) {
     self->reload_timer = NULL;
   }
 
-  menu_layer_destroy(self->menu_layer.menu_layer);
-  self->menu_layer.menu_layer = NULL;
+  // Only destroy the menu layer that actually belongs to this window,
+  // otherwise a late unload of a previous window could destroy the current one.
+  if (self->menu_layer.menu_layer) {
+    MenuLayer *menu_layer = self->menu_layer.menu_layer;
+    if (layer_get_window(menu_layer_get_layer(menu_layer)) == window) {
+      menu_layer_destroy(menu_layer);
+      self->menu_layer.menu_layer = NULL;
+    }
+  }
 
   simply_window_unload(&self->window);
 }
@@ -1217,7 +1225,17 @@ static void simply_menu_clear_section_items(SimplyMenu *self, int section_index)
   } while (item);
 }
 
-static void simply_menu_clear(SimplyMenu *self) {
+void simply_menu_clear(SimplyMenu *self) {
+  // Cancel any pending timers before freeing the data they may reference.
+  if (self->spinner_timer) {
+    app_timer_cancel(self->spinner_timer);
+    self->spinner_timer = NULL;
+  }
+  if (self->reload_timer) {
+    app_timer_cancel(self->reload_timer);
+    self->reload_timer = NULL;
+  }
+
   while (self->menu_layer.sections) {
     prv_destroy_section(self, (SimplyMenuSection *)self->menu_layer.sections);
   }
@@ -1225,6 +1243,11 @@ static void simply_menu_clear(SimplyMenu *self) {
   while (self->menu_layer.items) {
     prv_destroy_item(self, (SimplyMenuItem *)self->menu_layer.items);
   }
+
+  // Reset section count so the menu layer has nothing to draw until the new
+  // menu data is supplied.  This prevents drawing stale/empty rows while
+  // the JS is rebuilding the menu.
+  self->menu_layer.num_sections = 0;
 
   prv_reload_data(self);
 }

@@ -335,9 +335,7 @@ class FavoritesPage extends BasePage {
     item.subtitle = state + (unit ? ' ' + unit : '') + ' > ' + helpers.humanDiff(new Date(), new Date(lastChanged));
 
     this._elements[index].title.text(item.title);
-    if (index === this._selectedIndex) {
-      this._elements[index].subtitle.text(item.subtitle);
-    }
+    this._elements[index].subtitle.text(item.subtitle);
 
     var iconImage = EntityService.getIcon(entity);
     if (iconImage !== item.icon) {
