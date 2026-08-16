@@ -571,6 +571,7 @@ var MenuPropsPacket = new struct([
   ['uint8', 'textColor', ColorType],
   ['uint8', 'highlightBackgroundColor', ColorType],
   ['uint8', 'highlightTextColor', ColorType],
+  ['bool', 'scrollWrap', BoolType],
 ]);
 
 var MenuSectionPacket = new struct([
@@ -1216,7 +1217,9 @@ SimplyPebble.menuClearSection = function(section) {
 };
 
 SimplyPebble.menuProps = function(def) {
-  SimplyPebble.sendPacket(MenuPropsPacket.prop(def));
+  // scrollWrap is set explicitly because the packet buffer is reused between
+  // sends and prop() skips fields missing from def
+  SimplyPebble.sendPacket(MenuPropsPacket.prop(def).scrollWrap(def.scrollWrap !== false));
 };
 
 SimplyPebble.menuSection = function(section, def, clear) {

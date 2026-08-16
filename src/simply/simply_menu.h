@@ -28,6 +28,7 @@ struct SimplyMenuLayer {
   List1Node *sections;
   List1Node *items;
   uint16_t num_sections;
+  bool scroll_wrap;
   GColor8 normal_foreground;
   GColor8 normal_background;
   GColor8 highlight_foreground;

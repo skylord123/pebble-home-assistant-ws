@@ -12,6 +12,7 @@ var defaults = {
   textColor: 'black',
   highlightBackgroundColor: 'black',
   highlightTextColor: 'white',
+  scrollWrap: true,
 };
 
 var Menu = function(menuDef) {
@@ -23,6 +24,12 @@ var Menu = function(menuDef) {
 };
 
 Menu._codeName = 'menu';
+
+// Sets the default wrap-around scrolling behavior for menus created afterwards.
+// Menus that explicitly pass scrollWrap in their definition are unaffected.
+Menu.setScrollWrapDefault = function(enabled) {
+  defaults.scrollWrap = (enabled !== false);
+};
 
 util2.inherit(Menu, Window);
 
@@ -158,18 +165,18 @@ Menu.prototype._resolveMenu = function(clear, pushing) {
   }
 };
 
-Menu.prototype._resolveSection = function(e, clear) {
+Menu.prototype._resolveSection = function(e, clear, skipPreload) {
   var section = this._getSection(e);
   if (!section) { return; }
   section = myutil.shadow({
-    textColor: this.state.textColor, 
+    textColor: this.state.textColor,
     backgroundColor: this.state.backgroundColor
   }, section);
   section.items = this._getItems(e);
   if (this === WindowStack.top()) {
     simply.impl.menuSection.call(this, e.sectionIndex, section, clear);
     var select = this._selection;
-    if (select.sectionIndex === e.sectionIndex) {
+    if (!skipPreload && select.sectionIndex === e.sectionIndex) {
       this._preloadItems(select);
     }
     return true;
@@ -308,7 +315,10 @@ Menu.prototype.item = function(sectionIndex, itemIndex, item) {
   var prevLength = items.length;
   items[itemIndex] = util2.copy(item, items[itemIndex]);
   if (items.length !== prevLength) {
-    this._resolveSection(menuIndex);
+    // The appended item is sent by _resolveItem below, so skip the preload
+    // pass. Preloading here re-sends every cached item on each append,
+    // flooding the message queue with O(N^2) packets while building a menu.
+    this._resolveSection(menuIndex, undefined, true);
   }
   this._resolveItem(menuIndex);
   return this;

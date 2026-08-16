@@ -3,6 +3,7 @@
  */
 var Settings = require('settings');
 var Feature = require('platform/feature');
+var Menu = require('ui/menu');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
@@ -104,6 +105,11 @@ var SettingsManager = {
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
+
+        // Menu scrolling wrap-around setting (default enabled)
+        appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
+        Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
+        log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
 
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;

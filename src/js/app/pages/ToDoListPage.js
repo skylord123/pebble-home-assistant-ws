@@ -268,62 +268,37 @@ function showToDoList(entity_id) {
             }
         });
 
-        // Clear existing items in all sections
-        todoListMenu.items(0, []);
-        todoListMenu.items(1, []);
+        // Helper to build a menu item for a to-do item
+        function buildToDoMenuItem(item) {
+            let subtitle = '';
+
+            // Priority: description > due date > empty
+            if (item.description) {
+                subtitle = item.description;
+            } else if (item.due) {
+                subtitle = `Due: ${item.due}`;
+            }
+
+            return {
+                title: item.summary,
+                subtitle: subtitle || '',
+                uid: item.uid,
+                status: item.status,
+                description: item.description,
+                due: item.due,
+                on_click: function(e) {
+                    helpers.log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
+                    // TODO: Show item details or actions menu
+                    showToDoItemMenu(entity_id, item);
+                }
+            };
+        }
+
+        // Submit each section as a single items() call so the watch gets the
+        // final section counts ahead of the item stream
+        todoListMenu.items(0, incompleteItems.map(buildToDoMenuItem));
+        todoListMenu.items(1, completedItems.map(buildToDoMenuItem));
         todoListMenu.items(2, []);
-
-        // Add incomplete items to section 0
-        incompleteItems.forEach(function(item, index) {
-            let subtitle = '';
-
-            // Priority: description > due date > empty
-            if (item.description) {
-                subtitle = item.description;
-            } else if (item.due) {
-                subtitle = `Due: ${item.due}`;
-            }
-
-            todoListMenu.item(0, index, {
-                title: item.summary,
-                subtitle: subtitle || '',
-                uid: item.uid,
-                status: item.status,
-                description: item.description,
-                due: item.due,
-                on_click: function(e) {
-                    helpers.log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
-                    // TODO: Show item details or actions menu
-                    showToDoItemMenu(entity_id, item);
-                }
-            });
-        });
-
-        // Add completed items to section 1
-        completedItems.forEach(function(item, index) {
-            let subtitle = '';
-
-            // Priority: description > due date > empty
-            if (item.description) {
-                subtitle = item.description;
-            } else if (item.due) {
-                subtitle = `Due: ${item.due}`;
-            }
-
-            todoListMenu.item(1, index, {
-                title: item.summary,
-                subtitle: subtitle || '',
-                uid: item.uid,
-                status: item.status,
-                description: item.description,
-                due: item.due,
-                on_click: function(e) {
-                    helpers.log_message(`Todo item clicked: ${item.summary} (${item.uid})`);
-                    // TODO: Show item details or actions menu
-                    showToDoItemMenu(entity_id, item);
-                }
-            });
-        });
 
         // Add action items to section 2
         let actionIndex = 0;
