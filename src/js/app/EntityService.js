@@ -201,6 +201,9 @@ var EntityService = {
             case 'fan':
                 require('app/pages/entity/FanPage').showFanEntity(entity_id);
                 break;
+            case 'cover':
+                require('app/pages/entity/CoverPage').showCoverEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
