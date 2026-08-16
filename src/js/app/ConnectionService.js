@@ -162,6 +162,20 @@ var ConnectionService = {
             }
         });
 
+        // Wrap callService so the app can automatically close itself after an
+        // entity action has been triggered successfully (configurable).
+        // The HAWS callback signature is:
+        //   callService(domain, service, service_data, target, successCallback, errorCallback)
+        var hawsCallService = appState.haws.callService.bind(appState.haws);
+        appState.haws.callService = function(domain, service, serviceData, target, successCallback, errorCallback) {
+            hawsCallService(domain, service, serviceData, target, function(result) {
+                if (typeof successCallback === 'function') {
+                    successCallback(result);
+                }
+                helpers.maybeCloseAppAfterEntityAction();
+            }, errorCallback);
+        };
+
         appState.haws.connect();
     },
 

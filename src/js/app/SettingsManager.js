@@ -107,10 +107,14 @@ var SettingsManager = {
             ? appState.entity_press_behavior
             : false;
 
+        // Close app after entity action setting
+        appState.close_app_after_entity_action = Settings.option('close_app_after_entity_action') === true;
+
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
         log('Entity press behavior: ' + appState.entity_press_behavior);
+        log('Close app after entity action: ' + appState.close_app_after_entity_action);
 
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;

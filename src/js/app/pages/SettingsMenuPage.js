@@ -342,6 +342,22 @@ function showEntitySettings() {
                 showAutomationLongpressMenu();
             }
         });
+
+        // Close App After Action setting
+        entitySettingsMenu.item(0, 5, {
+            title: "Close App After Action",
+            subtitle: appState.close_app_after_entity_action ? "Enabled" : "Disabled",
+            on_click: function(e) {
+                appState.close_app_after_entity_action = !appState.close_app_after_entity_action;
+                Settings.option('close_app_after_entity_action', appState.close_app_after_entity_action);
+
+                entitySettingsMenu.item(0, 5, {
+                    title: "Close App After Action",
+                    subtitle: appState.close_app_after_entity_action ? "Enabled" : "Disabled",
+                    on_click: e.item.on_click
+                });
+            }
+        });
     });
 
     entitySettingsMenu.on('select', function(e) {

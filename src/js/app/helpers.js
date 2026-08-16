@@ -219,6 +219,43 @@ function log_message(msg, extra) {
     console.log('[App] ' + msg);
 }
 
+/**
+ * Close the watch app by hiding all open windows.
+ * Once the window stack is empty, Pebble returns to the watchface.
+ */
+function closeWatchApp() {
+    log_message('Closing watch app...');
+    var WindowStack = require('ui/windowstack');
+
+    // Hide windows top-down. The windowhide for the last window
+    // empties the native window stack, which exits the app.
+    while (WindowStack.length() > 0) {
+        var top = WindowStack.top();
+        if (!top) {
+            break;
+        }
+        top.hide();
+    }
+}
+
+/**
+ * If the "Close App After Entity Action" setting is enabled,
+ * close the watch app after a short delay so the confirmation
+ * vibration and any other feedback can be felt first.
+ */
+function maybeCloseAppAfterEntityAction() {
+    var AppState = require('app/AppState');
+    var appState = AppState.getInstance();
+
+    if (!appState.close_app_after_entity_action) {
+        return;
+    }
+
+    setTimeout(function() {
+        closeWatchApp();
+    }, 500);
+}
+
 module.exports = {
     sortObjectByKeys: sortObjectByKeys,
     cloneObject: cloneObject,
@@ -227,5 +264,7 @@ module.exports = {
     humanDiff: humanDiff,
     getNextHumanDiffChangeMs: getNextHumanDiffChangeMs,
     shouldShowDomainMenu: shouldShowDomainMenu,
-    log_message: log_message
+    log_message: log_message,
+    closeWatchApp: closeWatchApp,
+    maybeCloseAppAfterEntityAction: maybeCloseAppAfterEntityAction
 };
