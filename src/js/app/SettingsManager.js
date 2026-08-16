@@ -4,6 +4,7 @@
 var Settings = require('settings');
 var Feature = require('platform/feature');
 var Menu = require('ui/menu');
+var InactivityTimer = require('app/InactivityTimer');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
@@ -105,6 +106,11 @@ var SettingsManager = {
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
+
+        // Inactivity timeout in seconds (0 = disabled). Configuring it also
+        // (re)starts the countdown, so a settings change applies immediately.
+        appState.inactivity_timeout = parseInt(Settings.option('inactivity_timeout'), 10) || 0;
+        InactivityTimer.configure(appState.inactivity_timeout);
 
         // Menu scrolling wrap-around setting (default enabled)
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
