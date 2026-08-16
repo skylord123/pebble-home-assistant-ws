@@ -13,6 +13,7 @@ Control your Home Assistant smart home directly from your Pebble smartwatch! Thi
 - **Favorites** — Mark frequently used entities for quick access
 - **Pin to Main Menu** — Pin your most important entities directly to the main menu
 - **Live Updates** — Entity states update instantly in real-time via WebSocket connection
+- **Auto-Close After Action** — Optionally close the app automatically after an entity action (e.g. toggle) is triggered successfully
 
 ### Improvements against [Home Assistant WS](https://github.com/skylord123/pebble-home-assistant-ws)
 - **Easy Favorites Pinning** - Edit the favorites directly on the smart phone
