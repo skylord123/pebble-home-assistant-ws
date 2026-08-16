@@ -66,6 +66,13 @@ Settings._getDataKey = function(path, field) {
   return field + ':' + path;
 };
 
+// Backup key carries the previous good value so a torn primary write
+// (e.g. JS process killed mid-setItem) doesn't strand the user with no
+// recoverable settings.
+Settings._getBackupKey = function(path, field) {
+  return Settings._getDataKey(path, field) + '.bak';
+};
+
 Settings._saveData = function(path, field, data) {
   field = field || 'data';
   if (data) {
@@ -74,18 +81,40 @@ Settings._saveData = function(path, field, data) {
     data = state[field];
   }
   var key = Settings._getDataKey(path, field);
-  localStorage.setItem(key, JSON.stringify(data));
+  var backupKey = Settings._getBackupKey(path, field);
+  var serialized;
+  try {
+    serialized = JSON.stringify(data);
+  } catch (e) {
+    safe.warn('Failed to serialize settings for ' + key + ': ' + (e.message || e));
+    return;
+  }
+  // Promote the current primary to backup before overwriting it, so we always
+  // have at least one parseable copy on disk.
+  var previous = localStorage.getItem(key);
+  if (previous && previous !== serialized) {
+    localStorage.setItem(backupKey, previous);
+  }
+  localStorage.setItem(key, serialized);
 };
 
 Settings._loadData = function(path, field, nocache) {
   field = field || 'data';
   state[field] = {};
   var key = Settings._getDataKey(path, field);
+  var backupKey = Settings._getBackupKey(path, field);
   var value = localStorage.getItem(key);
   var data = parseJson(value);
   if (value && typeof data === 'undefined') {
-    // There was an issue loading the data, remove it
-    localStorage.removeItem(key);
+    // Primary is corrupt (likely a torn write). Try the backup before giving
+    // up — and never remove the primary, so the raw bytes remain available
+    // for manual recovery / debugging on next launch.
+    safe.warn('Primary settings for ' + key + ' did not parse; trying backup.');
+    var backupValue = localStorage.getItem(backupKey);
+    var backupData = parseJson(backupValue);
+    if (backupValue && typeof backupData !== 'undefined') {
+      data = backupData;
+    }
   }
   if (!nocache && typeof data === 'object' && data !== null) {
     state[field] = data;

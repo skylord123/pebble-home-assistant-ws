@@ -238,17 +238,20 @@ class EntityListPage extends BasePage {
                 self.relativeTimeUpdater.clear();
             }
 
-            self.menu.items(0, []); // clear items
-            var menuIndex = 0;
+            // Build the full item list first and submit it in a single
+            // items() call. This sends one section update carrying the final
+            // item count ahead of the item stream, so the watch knows the
+            // true list length immediately (needed for wrap-around scrolling
+            // to jump to the real end while items are still transferring).
+            var menuItems = [];
 
             if (pageNumber > 1) {
-                self.menu.item(0, menuIndex, {
+                menuItems.push({
                     title: "Prev Page",
                     on_click: function(e) {
                         self.updateStates(pageNumber - 1);
                     }
                 });
-                menuIndex++;
             }
 
             helpers.log_message('renderMenu: about to render ' + data.length + ' items to menu');
@@ -259,7 +262,6 @@ class EntityListPage extends BasePage {
                         continue;
                     }
 
-                    var menuId = menuIndex++;
                     var itemTitle = data[j].attributes.friendly_name ? data[j].attributes.friendly_name : data[j].entity_id;
                     var itemSubtitle = data[j].state + (data[j].attributes.unit_of_measurement ? ' ' + data[j].attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(data[j].last_changed));
 
@@ -272,13 +274,13 @@ class EntityListPage extends BasePage {
                         itemIcon = 'images/icon_unknown.png';
                     }
 
-                    self.menu.item(0, menuId, {
+                    renderedEntityIds[data[j].entity_id] = menuItems.length;
+                    menuItems.push({
                         title: itemTitle,
                         subtitle: itemSubtitle,
                         entity_id: data[j].entity_id,
                         icon: itemIcon
                     });
-                    renderedEntityIds[data[j].entity_id] = menuId;
 
                     // Register entity for relative time updates
                     if (self.relativeTimeUpdater) {
@@ -288,15 +290,24 @@ class EntityListPage extends BasePage {
                     helpers.log_message('renderMenu: ERROR rendering entity ' + (data[j] ? data[j].entity_id : 'unknown') + ' at index ' + j + ': ' + err.message);
                 }
             }
-            helpers.log_message('renderMenu: rendered ' + menuIndex + ' items total');
+            helpers.log_message('renderMenu: rendered ' + menuItems.length + ' items total');
 
             if (paginateMore) {
-                self.menu.item(0, menuIndex, {
+                menuItems.push({
                     title: "Next Page",
                     on_click: function(e) {
                         self.updateStates(pageNumber + 1);
                     }
                 });
+            }
+
+            self.menu.items(0, menuItems);
+
+            // Reset selection to the top when switching pagination pages, but
+            // not on same-page re-renders (returning from a detail page or
+            // live entity updates), where the selection should stay put
+            if (self.currentPage !== null && self.currentPage !== pageNumber) {
+                self.menu.selection(0, 0);
             }
 
             self.currentPage = pageNumber;
@@ -459,12 +470,13 @@ function showEntityDomainsFromList(entityIdList, title) {
             helpers.log_message('showEntityDomainsFromList: domain \'' + d + '\' has ' + domainEntities[d].length + ' entities');
         }
 
-        // Add domain entries into menu
-        var menuIdx = 0;
+        // Add domain entries into menu with a single items() call so the
+        // final item count reaches the watch ahead of the item stream
+        var domainMenuItems = [];
         for (var domainName in domainEntities) {
             (function(dom, entities) {
                 var displayName = helpers.ucwords(dom.replace('_', ' '));
-                domainListMenu.item(0, menuIdx++, {
+                domainMenuItems.push({
                     title: displayName,
                     subtitle: entities.length + ' ' + (entities.length > 1 ? 'entities' : 'entity'),
                     on_click: function(e) {
@@ -474,6 +486,7 @@ function showEntityDomainsFromList(entityIdList, title) {
                 });
             })(domainName, domainEntities[domainName]);
         }
+        domainListMenu.items(0, domainMenuItems);
     });
 
     domainListMenu.on('select', function(e) {

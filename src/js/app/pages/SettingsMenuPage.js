@@ -9,6 +9,7 @@ var BasePage = require('app/pages/BasePage');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
+var InactivityTimer = require('app/InactivityTimer');
 
 class SettingsMenuPage extends BasePage {
     constructor() {
@@ -65,6 +66,14 @@ class SettingsMenuPage extends BasePage {
             title: "Quick Launch",
             on_click: function(e) {
                 showQuickLaunchSettings();
+            }
+        });
+
+        this.menu.item(0, i++, {
+            title: "Inactivity Timeout",
+            subtitle: formatInactivityTimeout(appState.inactivity_timeout),
+            on_click: function(e) {
+                showInactivityTimeoutMenu();
             }
         });
     }
@@ -533,6 +542,93 @@ function showAutomationLongpressMenu() {
     });
 
     automationMenu.show();
+}
+
+var INACTIVITY_TIMEOUT_PRESETS = [
+    { label: 'Disabled', seconds: 0 },
+    { label: '30 seconds', seconds: 30 },
+    { label: '1 minute', seconds: 60 },
+    { label: '2 minutes', seconds: 120 },
+    { label: '5 minutes', seconds: 300 },
+    { label: '10 minutes', seconds: 600 },
+    { label: '15 minutes', seconds: 900 },
+    { label: '30 minutes', seconds: 1800 },
+    { label: '1 hour', seconds: 3600 }
+];
+
+function formatInactivityTimeout(seconds) {
+    if (!seconds || seconds <= 0) {
+        return 'Disabled';
+    }
+    if (seconds < 60) {
+        return seconds + 's';
+    }
+    if (seconds % 3600 === 0) {
+        return (seconds / 3600) + 'h';
+    }
+    if (seconds % 60 === 0) {
+        return (seconds / 60) + 'm';
+    }
+    return Math.floor(seconds / 60) + 'm ' + (seconds % 60) + 's';
+}
+
+function showInactivityTimeoutMenu() {
+    var appState = AppState.getInstance();
+
+    var timeoutMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Inactivity Timeout'
+        }]
+    });
+
+    function updateMenuItems() {
+        var items = [];
+        var isPreset = false;
+
+        for (var i = 0; i < INACTIVITY_TIMEOUT_PRESETS.length; i++) {
+            var preset = INACTIVITY_TIMEOUT_PRESETS[i];
+            var isCurrent = appState.inactivity_timeout === preset.seconds;
+            if (isCurrent) {
+                isPreset = true;
+            }
+            items.push({
+                title: preset.label,
+                subtitle: isCurrent ? 'Current' : '',
+                value: preset.seconds
+            });
+        }
+
+        // A custom value set from the config page may not match any preset;
+        // show it so the current setting is always visible
+        if (!isPreset) {
+            items.push({
+                title: formatInactivityTimeout(appState.inactivity_timeout),
+                subtitle: 'Current (custom)',
+                value: appState.inactivity_timeout
+            });
+        }
+
+        timeoutMenu.items(0, items);
+    }
+
+    timeoutMenu.on('show', updateMenuItems);
+
+    timeoutMenu.on('select', function(e) {
+        appState.inactivity_timeout = e.item.value;
+        Settings.option('inactivity_timeout', appState.inactivity_timeout);
+        InactivityTimer.configure(appState.inactivity_timeout);
+        updateMenuItems();
+        setTimeout(function() {
+            timeoutMenu.hide();
+        }, 500);
+    });
+
+    timeoutMenu.show();
 }
 
 /**

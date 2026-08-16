@@ -3,6 +3,8 @@
  */
 var Settings = require('settings');
 var Feature = require('platform/feature');
+var Menu = require('ui/menu');
+var InactivityTimer = require('app/InactivityTimer');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
@@ -105,6 +107,16 @@ var SettingsManager = {
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
 
+        // Inactivity timeout in seconds (0 = disabled). Configuring it also
+        // (re)starts the countdown, so a settings change applies immediately.
+        appState.inactivity_timeout = parseInt(Settings.option('inactivity_timeout'), 10) || 0;
+        InactivityTimer.configure(appState.inactivity_timeout);
+
+        // Menu scrolling wrap-around setting (default enabled)
+        appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
+        Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
+        log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
+
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;
         appState.main_menu_order = Settings.option('main_menu_order');
@@ -177,17 +189,23 @@ var SettingsManager = {
         },
         function(e) {
             log('closed configurable');
-            log('returned_settings: ' + JSON.stringify(e.options));
-            Settings.option(e.options);
 
+            // Android fires an extra "cancelled" webviewclosed event after a
+            // normal close, and the user can also genuinely cancel. In both
+            // cases the underlying options weren't touched, so we must not
+            // reload or restart — doing so during a flaky connection just
+            // adds churn.
             if (e.failed) {
-                log(e.response);
+                log('Config close failed/cancelled, ignoring: ' + e.response);
+                return;
             }
 
-            // Reload settings
+            log('returned_settings: ' + JSON.stringify(e.options));
+            // Settings.onCloseConfig has already merged and persisted the new
+            // options via autoSave, so no second Settings.option() call here.
+
             self.load();
 
-            // Call the callback if provided
             if (options.onSettingsChanged) {
                 options.onSettingsChanged();
             }

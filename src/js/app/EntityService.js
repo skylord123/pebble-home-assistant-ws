@@ -63,6 +63,7 @@ var EntityService = {
 
             case 'switch':
             case 'input_boolean':
+            case 'fan':
                 return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
             case 'cover':
@@ -197,6 +198,12 @@ var EntityService = {
             case 'climate':
                 require('app/pages/entity/ClimatePage').showClimateEntity(entity_id);
                 break;
+            case 'fan':
+                require('app/pages/entity/FanPage').showFanEntity(entity_id);
+                break;
+            case 'cover':
+                require('app/pages/entity/CoverPage').showCoverEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -239,6 +246,7 @@ var EntityService = {
         } else if (
             domain === "switch" ||
             domain === "light" ||
+            domain === "fan" ||
             domain === "input_boolean" ||
             domain === "script" ||
             domain === "cover"
@@ -280,7 +288,7 @@ var EntityService = {
         } else if (domain === "scene") {
             appState.haws.callService(
                 domain,
-                "apply",
+                "turn_on",
                 {},
                 { entity_id: entity_id },
                 function(data) {
@@ -327,6 +335,21 @@ var EntityService = {
             } else {
                 log('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
             }
+        } else if (domain === "button" || domain === "input_button") {
+            appState.haws.callService(
+                domain,
+                'press',
+                {},
+                { entity_id: entity_id },
+                function(data) {
+                    log(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function(error) {
+                    log('no response');
+                    Vibe.vibrate('double');
+                }
+            );
         }
     },
 

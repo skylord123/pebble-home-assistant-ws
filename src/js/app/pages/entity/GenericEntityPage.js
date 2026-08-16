@@ -153,7 +153,8 @@ function showEntityMenu(entity_id) {
         domain === "switch" ||
         domain === "input_boolean" ||
         domain === "automation" ||
-        domain === "script"
+        domain === "script" ||
+        domain === "fan"
     )
     {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
@@ -216,6 +217,49 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
+    }
+
+    if(domain === "cover") {
+        // Cover feature bits from Home Assistant's CoverEntityFeature enum.
+        // cover.toggle is only registered for entities supporting OPEN and CLOSE
+        const sf = entity.attributes.supported_features || 0;
+        const canOpen = !!(sf & 1);   // OPEN
+        const canClose = !!(sf & 2);  // CLOSE
+        const canStop = !!(sf & 8);   // STOP
+
+        function coverServiceItem(title, service) {
+            return {
+                title: title,
+                on_click: function(){
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        }
+
+        if (canOpen && canClose) {
+            showEntityMenu.item(1, servicesCount++, coverServiceItem('Toggle', 'toggle'));
+        }
+        if (canOpen) {
+            showEntityMenu.item(1, servicesCount++, coverServiceItem('Open', 'open_cover'));
+        }
+        if (canClose) {
+            showEntityMenu.item(1, servicesCount++, coverServiceItem('Close', 'close_cover'));
+        }
+        if (canStop) {
+            showEntityMenu.item(1, servicesCount++, coverServiceItem('Stop', 'stop_cover'));
+        }
     }
 
     if(domain === "lock") {

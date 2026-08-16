@@ -53,6 +53,7 @@ struct __attribute__((__packed__)) MenuPropsPacket {
   GColor8 text_color;
   GColor8 highlight_background_color;
   GColor8 highlight_text_color;
+  bool scroll_wrap;
 };
 
 typedef struct MenuSectionPacket MenuSectionPacket;
@@ -325,6 +326,17 @@ static MenuIndex simply_menu_get_selection(SimplyMenu *self) {
 
 static void simply_menu_set_selection(SimplyMenu *self, MenuIndex menu_index, MenuRowAlign align,
                                       bool animated) {
+  if (!self->menu_layer.menu_layer) { return; }
+  // Apply any pending debounced reload before selecting. The selection packet
+  // usually arrives in the same message batch as the section data it refers
+  // to, and the MenuLayer computes the scroll offset from the row counts it
+  // currently knows: selecting against stale counts restores the highlight
+  // but leaves the list scrolled to the top with the selection off screen.
+  if (self->reload_timer) {
+    app_timer_cancel(self->reload_timer);
+    self->reload_timer = NULL;
+    prv_reload_data(self);
+  }
   menu_layer_set_selected_index(self->menu_layer.menu_layer, menu_index, align, animated);
 }
 
@@ -1026,9 +1038,74 @@ static void prv_single_click_handler(ClickRecognizerRef recognizer, void *contex
   simply_window_single_click_handler(recognizer, window);
 }
 
+static uint16_t prv_get_section_num_rows(SimplyMenu *self, uint16_t section_index) {
+  // Mirrors prv_menu_get_num_rows_callback: sections not yet loaded report 1 row
+  SimplyMenuSection *section = prv_get_menu_section(self, section_index);
+  return section ? section->num_items : 1;
+}
+
+// Returns true and fills target_out when the selection sits at the first (up) or
+// last (down) selectable row and there is a different row to wrap to.
+static bool prv_get_wrap_target(SimplyMenu *self, bool up, MenuIndex index,
+                                MenuIndex *target_out) {
+  const uint16_t num_sections = self->menu_layer.num_sections;
+  if (up) {
+    if (index.row > 0) { return false; }
+    for (int32_t s = (int32_t)index.section - 1; s >= 0; --s) {
+      if (prv_get_section_num_rows(self, s) > 0) { return false; }
+    }
+    for (int32_t s = (int32_t)num_sections - 1; s >= 0; --s) {
+      const uint16_t num_rows = prv_get_section_num_rows(self, s);
+      if (num_rows > 0) {
+        *target_out = (MenuIndex) { .section = s, .row = num_rows - 1 };
+        return (target_out->section != index.section || target_out->row != index.row);
+      }
+    }
+  } else {
+    if (index.row + 1 < prv_get_section_num_rows(self, index.section)) { return false; }
+    for (uint16_t s = index.section + 1; s < num_sections; ++s) {
+      if (prv_get_section_num_rows(self, s) > 0) { return false; }
+    }
+    for (uint16_t s = 0; s < num_sections; ++s) {
+      if (prv_get_section_num_rows(self, s) > 0) {
+        *target_out = (MenuIndex) { .section = s, .row = 0 };
+        return (target_out->section != index.section || target_out->row != index.row);
+      }
+    }
+  }
+  return false;
+}
+
+static void prv_up_down_click_handler(ClickRecognizerRef recognizer, void *context) {
+  MenuLayer *menu_layer = context;
+  Window *base_window = layer_get_window(menu_layer_get_layer(menu_layer));
+  SimplyMenu *self = window_get_user_data(base_window);
+  const bool up = (click_recognizer_get_button_id(recognizer) == BUTTON_ID_UP);
+
+#if !defined(PBL_PLATFORM_APLITE)
+  // Update last input time and clear idle state
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
+
+  // Wrap around only on a discrete press, never while the button is held down
+  // repeating, so holding a button stops at the edge instead of cycling forever
+  MenuIndex target;
+  if (self->menu_layer.scroll_wrap && click_number_of_clicks_counted(recognizer) <= 1 &&
+      prv_get_wrap_target(self, up, menu_layer_get_selected_index(menu_layer), &target)) {
+    menu_layer_set_selected_index(menu_layer, target, MenuRowAlignCenter, false);
+    return;
+  }
+
+  menu_layer_set_selected_next(menu_layer, up, MenuRowAlignCenter, true);
+}
+
 static void prv_click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_BACK, prv_single_click_handler);
   menu_layer_click_config(context);
+  // Take over up/down so we can wrap the selection at the top and bottom
+  window_single_repeating_click_subscribe(BUTTON_ID_UP, 100, prv_up_down_click_handler);
+  window_single_repeating_click_subscribe(BUTTON_ID_DOWN, 100, prv_up_down_click_handler);
 }
 
 static void prv_menu_window_load(Window *window) {
@@ -1166,6 +1243,7 @@ static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
   MenuPropsPacket *packet = (MenuPropsPacket *)data;
   SimplyMenu *self = simply->menu;
 
+  self->menu_layer.scroll_wrap = packet->scroll_wrap;
   simply_menu_set_num_sections(self, packet->num_sections);
 
   if (!self->window.window) { return; }
@@ -1263,6 +1341,7 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .window.status_bar_insets_bottom = true,
 #endif
     .menu_layer.num_sections = 1,
+    .menu_layer.scroll_wrap = true,
     .reload_timer = NULL,
 #if !defined(PBL_PLATFORM_APLITE)
     .scroll_timer = NULL,

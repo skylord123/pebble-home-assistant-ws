@@ -571,6 +571,7 @@ var MenuPropsPacket = new struct([
   ['uint8', 'textColor', ColorType],
   ['uint8', 'highlightBackgroundColor', ColorType],
   ['uint8', 'highlightTextColor', ColorType],
+  ['bool', 'scrollWrap', BoolType],
 ]);
 
 var MenuSectionPacket = new struct([
@@ -1216,7 +1217,9 @@ SimplyPebble.menuClearSection = function(section) {
 };
 
 SimplyPebble.menuProps = function(def) {
-  SimplyPebble.sendPacket(MenuPropsPacket.prop(def));
+  // scrollWrap is set explicitly because the packet buffer is reused between
+  // sends and prop() skips fields missing from def
+  SimplyPebble.sendPacket(MenuPropsPacket.prop(def).scrollWrap(def.scrollWrap !== false));
 };
 
 SimplyPebble.menuSection = function(section, def, clear) {
@@ -1542,6 +1545,10 @@ SimplyPebble.onAccelData = function(packet) {
   }
 };
 
+// Set by the app to be notified of direct user input on the watch (e.g. to
+// drive an inactivity timeout). Called with no arguments.
+SimplyPebble.onUserActivity = null;
+
 SimplyPebble.onPacket = function(buffer, offset) {
   Packet._view = buffer;
   Packet._offset = offset;
@@ -1554,6 +1561,25 @@ SimplyPebble.onPacket = function(buffer, offset) {
 
   packet._view = Packet._view;
   packet._offset = offset;
+
+  // These packets only arrive as a result of the user physically interacting
+  // with the watch. Data requests (MenuGetItem etc) are excluded: those are
+  // rendering-driven and would keep the app alive without any user present.
+  switch (packet) {
+    case ClickPacket:
+    case LongClickPacket:
+    case AccelTapPacket:
+    case MenuSelectPacket:
+    case MenuLongSelectPacket:
+    case MenuSelectionEventPacket:
+    case WindowHideEventPacket:
+    case VoiceDictationDataPacket:
+      if (SimplyPebble.onUserActivity) {
+        SimplyPebble.onUserActivity();
+      }
+      break;
+  }
+
   switch (packet) {
     case LaunchReasonPacket:
       SimplyPebble.onLaunchReason(packet);

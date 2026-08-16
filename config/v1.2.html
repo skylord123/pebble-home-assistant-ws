@@ -738,6 +738,27 @@
 			</div>
 		</div>
 
+		<!-- Display Settings -->
+		<div class="section">
+			<div class="section-header">Display Settings</div>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-menu-scroll-wrap">Menu Scrolling - Wrap Around</label>
+						<input class="form-check-input" type="checkbox" id="ha-menu-scroll-wrap" checked>
+					</div>
+					<small class="form-text">When enabled, scrolling past the top or bottom of a menu jumps to the other end</small>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-inactivity-timeout">Inactivity Timeout (seconds)</label>
+						<input type="number" class="form-control" id="ha-inactivity-timeout" min="0" step="1" value="0">
+						<small class="form-text">Exit the app after this many seconds without any button presses or navigation on the watch. Set to 0 to disable. Also configurable on the watch under Settings.</small>
+					</div>
+				</div>
+			</div>
+		</div>
+
 		<!-- Quick Launch Settings -->
 		<div class="section">
 			<div class="section-header">Quick Launch Settings</div>
@@ -1219,6 +1240,8 @@
 				quickLaunchFavoriteEntity = $('#ha-quick-launch-favorite-entity'),
 				quickLaunchFavoriteEntityContainer = $('#quick-launch-favorite-entity-container'),
 				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back'),
+				menuScrollWrap = $('#ha-menu-scroll-wrap'),
+				inactivityTimeout = $('#ha-inactivity-timeout'),
 				unavailableHandling = $('#ha-unavailable-handling'),
 				unknownHandling = $('#ha-unknown-handling'),
 				automationLongpress = $('#ha-automation-longpress'),
@@ -1267,6 +1290,8 @@
 				'quick_launch_behavior': quickLaunchBehavior.val(),
 				'quick_launch_favorite_entity': quickLaunchFavoriteEntity.val() || null,
 				'quick_launch_exit_on_back': quickLaunchExitOnBack.is(':checked'),
+				'menu_scroll_wrap': menuScrollWrap.is(':checked'),
+				'inactivity_timeout': parseInt(inactivityTimeout.val(), 10) || 0,
 				// Domain menu settings
 				'domain_menu_enabled': 'conditional', // Default global setting
 				'domain_menu_all_entities': domainMenuAll.val(),
@@ -1454,6 +1479,12 @@
 			} else {
 				quickLaunchExitOnBack.prop('checked', false);
 			}
+
+			// Handle menu scroll wrap-around (default enabled)
+			menuScrollWrap.prop('checked', typeof watch_config['menu_scroll_wrap'] !== 'undefined' ? watch_config['menu_scroll_wrap'] : true);
+
+			// Handle inactivity timeout (default 0 = disabled)
+			inactivityTimeout.val(typeof watch_config['inactivity_timeout'] !== 'undefined' ? watch_config['inactivity_timeout'] : 0);
 
 			// Handle domain menu settings
 			if (watch_config['domain_menu_all_entities']) {
