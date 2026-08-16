@@ -513,6 +513,25 @@
 			text-overflow: ellipsis;
 		}
 
+		.list-group-item .entity-custom-name {
+			font-size: 0.8rem;
+			color: var(--color-accent);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list-group-item .edit-favorite-name {
+			margin-left: 0.75rem;
+			color: var(--color-accent);
+			text-decoration: none;
+			flex-shrink: 0;
+		}
+
+		.list-group-item .edit-favorite-name:hover {
+			opacity: 0.8;
+		}
+
 		.list-group-item .remove-favorite,
 		.list-group-item .remove-domain {
 			margin-left: 0.75rem;
@@ -1228,13 +1247,33 @@
 			</div>
 		</div>
 
+		<!-- Custom Name Edit Overlay -->
+		<div id="custom-name-overlay" class="overlay" style="display:none;">
+			<div class="section" style="max-width: 300px; margin: 0 auto;">
+				<div class="section-header">Custom Name</div>
+				<div class="section-body">
+					<div class="component">
+						<div class="form-group">
+							<label class="form-label" for="custom-name-input">Display Name</label>
+							<input type="text" class="form-control" id="custom-name-input" maxlength="32" placeholder="e.g. Living Room Light">
+							<small class="form-text">Shown on the watch instead of the Home Assistant entity name. Leave empty to use the original name.</small>
+						</div>
+					</div>
+					<div class="component" style="text-align: center;">
+						<button type="button" class="btn btn-secondary" id="custom-name-cancel">Cancel</button>
+						<button type="button" class="btn btn-primary" id="custom-name-save" style="margin-left: 0.5rem;">Save</button>
+					</div>
+				</div>
+			</div>
+		</div>
+
 	</form>
 </div>
 
 <script src="https://code.jquery.com/jquery-3.6.0.min.js" integrity="sha256-/xUj+3OJU5yExlq6GSYGSHk7tPXikynS7ogEvDej/m4=" crossorigin="anonymous"></script>
 <script src="https://code.jquery.com/ui/1.13.2/jquery-ui.js"></script>
 <script src="bridge-shim.v1.0.js"></script>
-<script src="ha-bridge.v1.0.js"></script>
+<script src="ha-bridge.v1.2.js"></script>
 <script src="lz-string.min.js"></script>
 <script src="common.v1.0.js"></script>
 <script type="text/javascript">
@@ -1540,6 +1579,86 @@
 			activeColorTarget = null;
 		});
 
+		// Custom name editing dialog (pencil button)
+		let customNameOverlay = $('#custom-name-overlay'),
+			customNameInput = $('#custom-name-input'),
+			customNameSave = $('#custom-name-save'),
+			customNameCancel = $('#custom-name-cancel');
+		let activeNameTarget = null;
+
+		$(document).on('click', '.edit-favorite-name', function(e) {
+			e.preventDefault();
+			activeNameTarget = $(this).closest('li');
+			customNameInput.val(activeNameTarget.data('custom-name') || '');
+			customNameOverlay.css('display', 'flex');
+			customNameInput.focus();
+		});
+
+		function closeCustomNameDialog() {
+			customNameOverlay.hide();
+			activeNameTarget = null;
+		}
+
+		customNameCancel.click(function() {
+			closeCustomNameDialog();
+		});
+
+		customNameSave.click(function() {
+			if (!activeNameTarget) return;
+			let newName = customNameInput.val().trim();
+			let entityId = activeNameTarget.data('entity-id');
+			let friendlyName = activeNameTarget.data('friendly-name');
+
+			activeNameTarget.data('custom-name', newName);
+
+			// Update the third line display
+			let infoEl = activeNameTarget.find('.entity-info');
+			let customLine = activeNameTarget.find('.entity-custom-name');
+			if (newName) {
+				if (customLine.length) {
+					customLine.text(newName);
+				} else {
+					customLine = $('<div class="entity-custom-name"></div>').text(newName);
+					infoEl.append(customLine);
+				}
+			} else if (customLine.length) {
+				customLine.remove();
+			}
+
+			// Keep watch_config in sync (used when re-rendering the quick launch dropdown)
+			if (Array.isArray(watch_config.favorite_entities)) {
+				let existing = watch_config.favorite_entities.find(function(f) {
+					return typeof f === 'object' && f.entity_id === entityId;
+				});
+				if (existing) {
+					if (newName) {
+						existing.custom_name = newName;
+					} else {
+						delete existing.custom_name;
+					}
+				}
+			}
+
+			// Update the quick launch dropdown label if this entity is present
+			let displayName = newName || friendlyName || entityId;
+			let option = quickLaunchFavoriteEntity.find(`option[value="${entityId}"]`);
+			if (option.length) {
+				option.text(displayName);
+			}
+
+			closeCustomNameDialog();
+		});
+
+		// Enter saves, Escape cancels
+		customNameInput.on('keydown', function(e) {
+			if (e.key === 'Enter') {
+				e.preventDefault();
+				customNameSave.click();
+			} else if (e.key === 'Escape') {
+				closeCustomNameDialog();
+			}
+		});
+
 		// Toggle token visibility
 		$('#toggle-token-visibility').click(function(e) {
 			e.preventDefault();
@@ -1592,11 +1711,15 @@
 					let $item = $(b);
 					let entityId = $item.data('entity-id');
 					let friendlyName = $item.data('friendly-name');
+					let customName = $item.data('custom-name');
 					let color = $item.find('.favorite-color').val();
-					// Save as object with entity_id, name (if available), and color
+					// Save as object with entity_id, name (if available), color and custom_name (if set)
 					let entry = { entity_id: entityId, color: color };
 					if (friendlyName) {
 						entry.name = friendlyName;
+					}
+					if (customName) {
+						entry.custom_name = String(customName);
 					}
 					return entry;
 				}).toArray(),
@@ -1759,15 +1882,17 @@
 
 				if (watch_config['favorite_entities'] && watch_config['favorite_entities'].length > 0) {
 					for (let fav of watch_config['favorite_entities']) {
-						let entity_id, friendly_name;
+						let entity_id, friendly_name, custom_name;
 						if (typeof fav === 'string') {
 							entity_id = fav;
 							friendly_name = null;
+							custom_name = null;
 						} else {
 							entity_id = fav.entity_id;
 							friendly_name = fav.name || null;
+							custom_name = fav.custom_name || null;
 						}
-						const displayName = friendly_name || entity_id;
+						const displayName = custom_name || friendly_name || entity_id;
 						quickLaunchFavoriteEntity.append(
 							$('<option></option>').attr('value', entity_id).text(displayName)
 						);
@@ -1896,14 +2021,16 @@
 				let html = '';
 				for(let fav of watch_config['favorite_entities']) {
 					// Handle both old format (string) and new format (object with entity_id and name)
-					let entity_id, friendly_name, color;
+					let entity_id, friendly_name, custom_name, color;
 					if (typeof fav === 'string') {
 						entity_id = fav;
 						friendly_name = null;
+						custom_name = null;
 						color = '';
 					} else {
 						entity_id = fav.entity_id;
 						friendly_name = fav.name || null;
+						custom_name = fav.custom_name || null;
 						color = fav.color || '';
 					}
 
@@ -1914,19 +2041,22 @@
 							<div class="entity-info">
 								<div class="entity-name">${friendly_name}</div>
 								<div class="entity-id">${entity_id}</div>
+								${custom_name ? `<div class="entity-custom-name">${custom_name}</div>` : ''}
 							</div>`;
 					} else {
 						displayHtml = `
 							<div class="entity-info">
 								<div class="entity-name">${entity_id}</div>
+								${custom_name ? `<div class="entity-custom-name">${custom_name}</div>` : ''}
 							</div>`;
 					}
 
 					html += `
-						<li class="list-group-item" data-entity-id="${entity_id}" data-friendly-name="${friendly_name || ''}">
+						<li class="list-group-item" data-entity-id="${entity_id}" data-friendly-name="${friendly_name || ''}" data-custom-name="${custom_name || ''}">
 							<i class="fa fa-bars"></i>
 							${displayHtml}
 							${buildColorPicker(color)}
+							<a href="javascript:void(0)" class="edit-favorite-name" title="Set custom name"><i class="fa fa-pencil"></i></a>
 							<a href="javascript:void(0)" class="remove-favorite"><i class="fa fa-trash"></i></a>
 						</li>`;
 				}
@@ -1943,7 +2073,8 @@
 					let parent = $(this).parent();
 					let entityId = parent.data('entity-id');
 					let friendlyName = parent.data('friendly-name');
-					let displayName = friendlyName || entityId;
+					let customName = parent.data('custom-name');
+					let displayName = customName || friendlyName || entityId;
 					if(confirm(`Are you sure you want to remove "${displayName}" from your favorites?`)) {
 						parent.remove();
 						// Update the favorite entity dropdown

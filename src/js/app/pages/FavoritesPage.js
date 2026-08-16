@@ -108,9 +108,10 @@ class FavoritesPage extends BasePage {
       var entityId = favoriteEntities[i];
       var entity = appState.ha_state_dict[entityId];
       this._entityIndex[entityId] = i;
-      var titleText = entity && entity.attributes && entity.attributes.friendly_name
+      var customName = this.appState.favoriteEntityStore.getCustomName(entityId);
+      var titleText = customName || (entity && entity.attributes && entity.attributes.friendly_name
         ? entity.attributes.friendly_name
-        : entityId;
+        : entityId);
       var friendlyName = titleText;
       var state = (entity && entity.state !== undefined) ? entity.state : '?';
       var unit = (entity && entity.attributes && entity.attributes.unit_of_measurement) ? entity.attributes.unit_of_measurement : '';
@@ -123,6 +124,7 @@ class FavoritesPage extends BasePage {
         icon: EntityService.getIcon(entity),
         entity_id: entityId,
         friendlyName: friendlyName,
+        customName: customName,
         state: state,
         unit: unit,
         lastChanged: lastChanged
@@ -316,9 +318,10 @@ class FavoritesPage extends BasePage {
       return;
     }
 
-    var friendlyName = entity.attributes && entity.attributes.friendly_name
+    var customName = this.appState.favoriteEntityStore.getCustomName(entity.entity_id);
+    var friendlyName = customName || (entity.attributes && entity.attributes.friendly_name
       ? entity.attributes.friendly_name
-      : entity.entity_id;
+      : entity.entity_id);
     var state = entity.state !== undefined ? entity.state : item.state;
     var unit = (entity.attributes && entity.attributes.unit_of_measurement)
       ? entity.attributes.unit_of_measurement
@@ -328,6 +331,7 @@ class FavoritesPage extends BasePage {
       : item.lastChanged;
 
     item.friendlyName = friendlyName;
+    item.customName = customName;
     item.state = state;
     item.unit = unit;
     item.lastChanged = lastChanged;

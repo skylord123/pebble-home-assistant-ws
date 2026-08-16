@@ -567,7 +567,7 @@ function showQuickLaunchSettings() {
                     var favorites = appState.favoriteEntityStore.allWithNames();
                     for (var i = 0; i < favorites.length; i++) {
                         if (favorites[i].entity_id === appState.quick_launch_favorite_entity) {
-                            return favorites[i].name || appState.quick_launch_favorite_entity;
+                            return favorites[i].custom_name || favorites[i].name || appState.quick_launch_favorite_entity;
                         }
                     }
                 }
@@ -760,7 +760,7 @@ function showFavoriteEntitySelectionMenu(onSelect) {
 
         for (var i = 0; i < favorites.length; i++) {
             var fav = favorites[i];
-            var displayName = fav.name || fav.entity_id;
+            var displayName = fav.custom_name || fav.name || fav.entity_id;
             var isCurrent = appState.quick_launch_favorite_entity === fav.entity_id;
 
             favoriteMenu.item(0, itemIndex++, {

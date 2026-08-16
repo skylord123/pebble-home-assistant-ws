@@ -75,10 +75,43 @@ class FavoriteEntityStore {
 
     /**
      * Get all favorites with full data (entity_id and name)
-     * @returns {Array<{entity_id: string, name?: string, color?: string}>}
+     * @returns {Array<{entity_id: string, name?: string, custom_name?: string, color?: string}>}
      */
     allWithNames() {
         return this.favoriteEntities;
+    }
+
+    /**
+     * Get the custom display name for a favorite entity
+     * @param {string} id - The entity_id
+     * @returns {string|null} The configured custom name, or null if not set
+     */
+    getCustomName(id) {
+        let index = this._findIndex(id);
+        if (index > -1 && this.favoriteEntities[index].custom_name) {
+            return this.favoriteEntities[index].custom_name;
+        }
+        return null;
+    }
+
+    /**
+     * Set or clear the custom display name for a favorite entity
+     * @param {string} id - The entity_id
+     * @param {string} [customName] - The custom name, or null/empty string to clear
+     * @returns {boolean} true if the favorite exists and was updated
+     */
+    setCustomName(id, customName) {
+        let index = this._findIndex(id);
+        if (index > -1) {
+            if (customName) {
+                this.favoriteEntities[index].custom_name = customName;
+            } else {
+                delete this.favoriteEntities[index].custom_name;
+            }
+            this.save();
+            return true;
+        }
+        return false;
     }
 
     /**
