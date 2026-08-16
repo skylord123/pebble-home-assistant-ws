@@ -326,6 +326,17 @@ static MenuIndex simply_menu_get_selection(SimplyMenu *self) {
 
 static void simply_menu_set_selection(SimplyMenu *self, MenuIndex menu_index, MenuRowAlign align,
                                       bool animated) {
+  if (!self->menu_layer.menu_layer) { return; }
+  // Apply any pending debounced reload before selecting. The selection packet
+  // usually arrives in the same message batch as the section data it refers
+  // to, and the MenuLayer computes the scroll offset from the row counts it
+  // currently knows: selecting against stale counts restores the highlight
+  // but leaves the list scrolled to the top with the selection off screen.
+  if (self->reload_timer) {
+    app_timer_cancel(self->reload_timer);
+    self->reload_timer = NULL;
+    prv_reload_data(self);
+  }
   menu_layer_set_selected_index(self->menu_layer.menu_layer, menu_index, align, animated);
 }
 
