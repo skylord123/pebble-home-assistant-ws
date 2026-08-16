@@ -63,6 +63,7 @@ var EntityService = {
 
             case 'switch':
             case 'input_boolean':
+            case 'fan':
                 return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
             case 'cover':
@@ -197,6 +198,9 @@ var EntityService = {
             case 'climate':
                 require('app/pages/entity/ClimatePage').showClimateEntity(entity_id);
                 break;
+            case 'fan':
+                require('app/pages/entity/FanPage').showFanEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -239,6 +243,7 @@ var EntityService = {
         } else if (
             domain === "switch" ||
             domain === "light" ||
+            domain === "fan" ||
             domain === "input_boolean" ||
             domain === "script" ||
             domain === "cover"
