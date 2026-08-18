@@ -41,6 +41,10 @@ struct SimplyImage {
   uint8_t *bitmap_data;
   GBitmap *bitmap;
   GColor8 *palette;
+  //! Number of palette entries the bitmap's pixels actually reference, or 0
+  //! for non-palettized formats. Used to invert icon colors on highlighted
+  //! menu rows without reading past the palette allocation.
+  uint16_t palette_entries;
   bool is_palette_black_and_white:1;
 };
 

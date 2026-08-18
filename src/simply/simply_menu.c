@@ -127,8 +127,19 @@ struct __attribute__((__packed__)) MenuSelectionPacket {
 };
 
 
-static GColor8 s_normal_palette[] = { { GColorBlackARGB8 }, { GColorClearARGB8 } };
-static GColor8 s_inverted_palette[] = { { GColorWhiteARGB8 }, { GColorClearARGB8 } };
+// Inverts every color in a palettized bitmap's palette in place, preserving
+// each entry's alpha so transparency and anti-aliasing survive. XORing the six
+// color bits maps every channel value v to 3-v (black <-> white, dark grey <->
+// light grey), and applying it twice restores the original palette.
+static void prv_invert_image_palette(SimplyImage *image) {
+  GColor8 *palette = gbitmap_get_palette(image->bitmap);
+  if (!palette) {
+    return;
+  }
+  for (uint16_t i = 0; i < image->palette_entries; ++i) {
+    palette[i].argb ^= 0b00111111;
+  }
+}
 
 
 static void simply_menu_clear_section_items(SimplyMenu *self, int section_index);
@@ -747,13 +758,15 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 #if !defined(PBL_PLATFORM_APLITE) // disable icons on APLITE as it causes crash
   image = simply_res_get_image(self->window.simply->res, item->icon);
 #endif
-  GColor8 *palette = NULL;
-
-  if (image && image->is_palette_black_and_white) {
-    palette = gbitmap_get_palette(image->bitmap);
-    const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
-    gbitmap_set_palette(image->bitmap, is_highlighted ? s_inverted_palette : s_normal_palette,
-                        false);
+  // Icons are designed for the normal row background, so invert their colors
+  // while drawing a highlighted row to keep them visible on the highlight
+  // background. This works for any palettized bitmap (the bundled icons decode
+  // to multi-entry palettes with transparency and anti-aliasing, not just
+  // 2-color black and white).
+  bool palette_inverted = false;
+  if (image && image->palette_entries && menu_cell_layer_is_highlighted(cell_layer)) {
+    prv_invert_image_palette(image);
+    palette_inverted = true;
   }
 
   graphics_context_set_alpha_blended(ctx, true);
@@ -1038,8 +1051,8 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
 #endif
 
-  if (palette) {
-    gbitmap_set_palette(image->bitmap, palette, false);
+  if (palette_inverted) {
+    prv_invert_image_palette(image);
   }
 }
 
