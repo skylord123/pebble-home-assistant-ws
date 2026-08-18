@@ -29,6 +29,8 @@ class AppState {
         this.quick_launch_favorite_entity = null;
         this.quick_launch_exit_on_back = false;
         this.inactivity_timeout = 0;
+        this.calendar_order = null;
+        this.hidden_calendars = [];
         this.domain_menu_enabled = 'conditional';
         this.domain_menu_all_entities = 'conditional';
         this.domain_menu_areas = 'conditional';

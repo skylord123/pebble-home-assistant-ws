@@ -1529,9 +1529,10 @@ SimplyPebble.onLaunchReason = function(packet) {
     Wakeup.emitWakeup();
   }
 
-  // Store the launch reason for later use
-  // Make sure it's a valid value, defaulting to 'user' if undefined
+  // Store the launch reason and args for later use. For timeline launches
+  // the args value is the pin action's launchCode.
   state.launchReason = reason;
+  state.launchArgs = args;
 };
 
 SimplyPebble.onWakeupSetResult = function(packet) {

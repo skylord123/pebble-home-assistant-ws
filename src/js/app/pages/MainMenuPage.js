@@ -15,6 +15,7 @@ function getFavoritesPage() { return require('app/pages/FavoritesPage'); }
 function getAreaMenuPage() { return require('app/pages/AreaMenuPage'); }
 function getLabelMenuPage() { return require('app/pages/LabelMenuPage'); }
 function getToDoListPage() { return require('app/pages/ToDoListPage'); }
+function getCalendarPage() { return require('app/pages/CalendarPage'); }
 function getAssistPage() { return require('app/pages/AssistPage'); }
 function getSettingsMenuPage() { return require('app/pages/SettingsMenuPage'); }
 
@@ -24,6 +25,7 @@ var DEFAULT_MAIN_MENU_ORDER = [
     'favorites',
     'areas',
     'labels',
+    'calendars',
     'todo_lists',
     'people',
     'all_entities',
@@ -251,6 +253,19 @@ class MainMenuPage extends BasePage {
                         getLabelMenuPage().showLabelMenu();
                     }
                 };
+            case 'calendars':
+                var calendarCount = Object.keys(this.appState.ha_state_dict).filter(function(entity_id) {
+                    return entity_id.indexOf('calendar.') === 0;
+                }).length;
+                helpers.log_message('Main menu: ' + calendarCount + ' calendar entities in state dict');
+                if (calendarCount === 0) return null;
+                return {
+                    id: 'calendars',
+                    title: "Calendars",
+                    on_click: function(e) {
+                        getCalendarPage().showCalendarList();
+                    }
+                };
             case 'todo_lists':
                 return {
                     id: 'todo_lists',
@@ -412,5 +427,22 @@ function showMainMenu() {
     mainMenuPageInstance.show();
 }
 
+/**
+ * Rebuild the main menu items if the main menu is the visible window. Used
+ * after a background data refresh, since the menu may have been rendered from
+ * the startup cache and items like Calendars appear based on fetched data.
+ */
+function refreshIfVisible() {
+    if (!mainMenuPageInstance || !mainMenuPageInstance.menu) {
+        return;
+    }
+    var WindowStack = require('ui/windowstack');
+    if (WindowStack.top() === mainMenuPageInstance.menu) {
+        helpers.log_message('Main menu: refreshing after background data update');
+        mainMenuPageInstance.onShow();
+    }
+}
+
 module.exports = MainMenuPage;
 module.exports.showMainMenu = showMainMenu;
+module.exports.refreshIfVisible = refreshIfVisible;

@@ -6,6 +6,9 @@ var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 
+// Caches older than this are ignored at startup rather than shown as-is
+var MAX_CACHE_AGE_MS = 24 * 60 * 60 * 1000;
+
 var CacheManager = {
     /**
      * Save current state to startup cache
@@ -52,6 +55,15 @@ var CacheManager = {
             log('Startup cache saved successfully');
         } catch (e) {
             log('Error saving startup cache: ' + e);
+            // A failed save (e.g. quota exceeded) leaves the previous cache in
+            // place, which would keep serving increasingly stale data on every
+            // launch. Drop the cache so the next launch fetches fresh data.
+            try {
+                localStorage.removeItem(CACHE_KEYS.STATES);
+                localStorage.removeItem(CACHE_KEYS.TIMESTAMP);
+            } catch (clearError) {
+                log('Error clearing startup cache: ' + clearError);
+            }
         }
     },
 
@@ -73,6 +85,15 @@ var CacheManager = {
             var timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
             if (!timestamp) {
                 log('No startup cache found');
+                return false;
+            }
+
+            // Ignore caches that are too old to be trusted for instant UI:
+            // the menu renders from this data, and if saving has been failing
+            // (e.g. quota exceeded) the cache can lag reality by weeks
+            var cacheAgeMs = Date.now() - parseInt(timestamp);
+            if (cacheAgeMs > MAX_CACHE_AGE_MS) {
+                log('Startup cache too old (' + (cacheAgeMs / 1000).toFixed(0) + 's), ignoring');
                 return false;
             }
 
