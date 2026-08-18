@@ -35,6 +35,32 @@
 #define SCROLL_IDLE_TIMEOUT_MS 60000  // Stop scrolling after 60 seconds of inactivity (configurable)
 #endif
 
+// The firmware selects the Large content size for displays 200px or taller
+// (PebbleOS preferred_content_size.h). SDK 4.17 does not expose
+// PBL_DISPLAY_HEIGHT, so name emery explicitly as well; newer SDKs pick up
+// any future large-screen platform through the display height automatically.
+#if defined(PBL_PLATFORM_EMERY) || (defined(PBL_DISPLAY_HEIGHT) && PBL_DISPLAY_HEIGHT >= 200)
+#define MENU_CONTENT_SIZE_LARGE 1
+#endif
+
+// Menu row fonts, matching what menu_cell_basic_draw uses for the platform's
+// content size so the custom-drawn scrolling selected row is identical to the
+// firmware-drawn static rows. Large content size (Pebble Time 2) means 61px
+// cells with Gothic 24 Bold titles and Gothic 24 subtitles (per Core Devices'
+// PebbleOS system theme); the other platforms use Medium (44px cells,
+// Gothic 24 Bold / Gothic 18).
+#if defined(MENU_CONTENT_SIZE_LARGE)
+#define MENU_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
+#define MENU_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_24
+#define MENU_TITLE_FONT_HEIGHT 24
+#define MENU_SUBTITLE_FONT_HEIGHT 24
+#else
+#define MENU_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
+#define MENU_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_18
+#define MENU_TITLE_FONT_HEIGHT 24
+#define MENU_SUBTITLE_FONT_HEIGHT 18
+#endif
+
 typedef Packet MenuClearPacket;
 
 typedef struct MenuClearSectionPacket MenuClearSectionPacket;
@@ -750,23 +776,28 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     int16_t available_width = bounds.size.w;
 
 #if !defined(PBL_ROUND)
+#if defined(MENU_CONTENT_SIZE_LARGE)
+    // RECTANGULAR DISPLAY (Large content size): menu_cell_basic_draw uses a
+    // fixed 44px left text margin when an icon is present (10px inset plus
+    // 34px title/subtitle margin), 10px without
+    available_width -= (image && image->bitmap) ? 44 : 10;
+    available_width -= 10; // right margin
+#else
     // RECTANGULAR DISPLAY: Account for icon width
     if (image && image->bitmap) {
       GRect icon_rect = gbitmap_get_bounds(image->bitmap);
       available_width -= (icon_rect.size.w + 8); // icon width + margins
     }
     available_width -= 10; // text margins
+#endif
 #else
     // ROUND DISPLAY: Account for icon height and margins
     // Icon is centered at top, text is below it
     available_width -= 20; // left/right margins for centered text
 #endif
 
-    // Measure title text
-    // For round displays, use the system theme fonts which are:
-    // - Title: GOTHIC_24_BOLD (Medium content size)
-    // - Subtitle: GOTHIC_18 (Medium content size)
-    const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    // Measure title text with the same fonts the row is drawn with
+    const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
     GSize title_size = graphics_text_layout_get_content_size(
         item->title, title_font,
         GRect(0, 0, 1000, 100),
@@ -780,7 +811,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     bool subtitle_needs_scroll = false;
     int16_t subtitle_width = 0;
     if (item->subtitle) {
-      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      const GFont subtitle_font = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
       GSize subtitle_size = graphics_text_layout_get_content_size(
           item->subtitle, subtitle_font,
           GRect(0, 0, 1000, 100),
@@ -797,14 +828,14 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     self->subtitle_needs_scroll = subtitle_needs_scroll;
 
     // Cache font heights to avoid expensive measurements during drawing
-    const GFont title_font_for_height = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    const GFont title_font_for_height = fonts_get_system_font(MENU_TITLE_FONT_KEY);
     GSize title_height_size = graphics_text_layout_get_content_size(
         "A", title_font_for_height, GRect(0, 0, 100, 100),
         GTextOverflowModeFill, GTextAlignmentLeft);
     self->title_height = title_height_size.h;
 
     if (item->subtitle) {
-      const GFont subtitle_font_for_height = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      const GFont subtitle_font_for_height = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
       GSize subtitle_height_size = graphics_text_layout_get_content_size(
           "A", subtitle_font_for_height, GRect(0, 0, 100, 100),
           GTextOverflowModeFill, GTextAlignmentLeft);
@@ -857,15 +888,24 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
 #if !defined(PBL_ROUND)
     // ===== RECTANGULAR DISPLAY: Scroll icon and text together =====
-    int16_t text_x = 4;
+#if defined(MENU_CONTENT_SIZE_LARGE)
+    // Large content size margins from menu_cell_basic_draw: icon inset 10px,
+    // text at a fixed 44px when an icon is present, 10px otherwise
+    const int16_t icon_x = 10;
+    const int16_t text_x = (image && image->bitmap) ? 44 : 10;
+#else
+    const int16_t icon_x = 4;
+    const int16_t text_x = (image && image->bitmap)
+        ? (int16_t)(4 + gbitmap_get_bounds(image->bitmap).size.w + 4) : 4;
+#endif
     if (image && image->bitmap) {
       GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
       graphics_context_set_compositing_mode(ctx, GCompOpSet);
       // Scroll the icon along with the text
       graphics_draw_bitmap_in_rect(ctx, image->bitmap,
-                                   GRect(4 - self->scroll_offset, (bounds.size.h - icon_bounds.size.h) / 2,
-                                        icon_bounds.size.w, icon_bounds.size.h));
-      text_x = 4 + icon_bounds.size.w + 4;
+                                   GRect(icon_x - self->scroll_offset,
+                                         (bounds.size.h - icon_bounds.size.h) / 2,
+                                         icon_bounds.size.w, icon_bounds.size.h));
     }
 
     // Text color - use configured highlight/normal colors
@@ -878,22 +918,24 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     const int16_t scroll_x = text_x - self->scroll_offset;
     const int16_t text_w = bounds.size.w - text_x + self->scroll_offset;
 
+    // Lay the text out exactly the way menu_cell_basic_draw does: the block of
+    // title + subtitle + 10px padding is vertically centered in the cell, the
+    // title box is font height + 4, and the subtitle starts one title height
+    // below the title. This keeps the custom-drawn scrolling row identical to
+    // the firmware-drawn static rows on every rectangular platform.
+    const int16_t subtitle_font_height = item->subtitle ? MENU_SUBTITLE_FONT_HEIGHT : 0;
+    const int16_t vertical_margin = (int16_t)
+        ((bounds.size.h - (MENU_TITLE_FONT_HEIGHT + subtitle_font_height + 10)) / 2);
+    graphics_draw_text(ctx, item->title,
+                      fonts_get_system_font(MENU_TITLE_FONT_KEY),
+                      GRect(scroll_x, vertical_margin, text_w, MENU_TITLE_FONT_HEIGHT + 4),
+                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     if (item->subtitle) {
-      // Two lines - move UP 4 more pixels
-      graphics_draw_text(ctx, item->title,
-                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                        GRect(scroll_x, -4, text_w, 24),
-                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
       graphics_draw_text(ctx, item->subtitle,
-                        fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                        GRect(scroll_x, 20, text_w, 18),
+                        fonts_get_system_font(MENU_SUBTITLE_FONT_KEY),
+                        GRect(scroll_x, vertical_margin + MENU_TITLE_FONT_HEIGHT, text_w,
+                              MENU_SUBTITLE_FONT_HEIGHT + 4),
                         GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    } else {
-      // Single line - move DOWN, use vertical alignment
-      graphics_draw_text(ctx, item->title,
-                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                        GRect(scroll_x, 4, text_w, bounds.size.h),
-                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     }
 
 #else
@@ -924,11 +966,8 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
     if (item->subtitle) {
       // Two lines of text
-      // Use system theme fonts for round displays (Medium content size):
-      // - Title: GOTHIC_24_BOLD
-      // - Subtitle: GOTHIC_18
-      const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
-      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
+      const GFont subtitle_font = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
 
       // Use cached font heights (measured once during measurement phase, not every frame)
       const int16_t title_height = self->title_height;
@@ -967,7 +1006,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       }
     } else {
       // Single line of text
-      const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+      const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
 
       // Use cached font height (measured once during measurement phase, not every frame)
       const int16_t text_height = self->title_height;
