@@ -24,6 +24,7 @@ struct SimplyWindow {
   ButtonId button_mask:4;
   GColor8 background_color;
   bool is_scrollable:1;
+  bool use_scroll_arrows:1;
   bool is_paging:1;
   bool use_scroll_layer:1;
   bool use_status_bar:1;
@@ -54,6 +55,9 @@ void simply_window_set_background_color(SimplyWindow *self, GColor8 background_c
 void simply_window_set_button(SimplyWindow *self, ButtonId button, bool enable);
 
 void simply_window_set_action_bar(SimplyWindow *self, bool is_action_bar);
+//! Refresh the native up/down scroll arrows on the action bar to match the
+//! current scroll position. Call after the scroll content size changes.
+void simply_window_update_scroll_arrows(SimplyWindow *self);
 void simply_window_set_action_bar_icon(SimplyWindow *self, ButtonId button, uint32_t id);
 void simply_window_set_action_bar_background_color(SimplyWindow *self, GColor8 background_color);
 void simply_window_action_bar_clear(SimplyWindow *self);

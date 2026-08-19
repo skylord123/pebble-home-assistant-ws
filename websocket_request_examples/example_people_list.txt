@@ -1,0 +1,35 @@
+request:
+{
+  "type": "person/list",
+  "id": 45
+}
+
+response:
+{
+  "id": 45,
+  "type": "result",
+  "success": true,
+  "result": {
+    "storage": [
+      {
+        "id": "skylar",
+        "name": "Skylar",
+        "device_trackers": [
+          "device_tracker.pixel_8_pro"
+        ],
+        "user_id": null,
+        "picture": null
+      },
+      {
+        "id": "thea",
+        "name": "Thea",
+        "device_trackers": [
+          "device_tracker.thea_s_phone_2"
+        ],
+        "user_id": null,
+        "picture": null
+      }
+    ],
+    "config": []
+  }
+}

@@ -49,6 +49,10 @@ struct __attribute__((__packed__)) WindowActionBarPacket {
   uint32_t image[3];
   GColor8 background_color;
   bool action;
+  //! When set on a scrollable window, the up/down action bar icons are
+  //! managed natively: arrows appear only in the directions the content can
+  //! still scroll, updating as the scroll offset changes
+  bool scroll_arrows;
 };
 
 typedef struct ClickPacket ClickPacket;
@@ -91,6 +95,48 @@ static void prv_set_scroll_layer_click_config(SimplyWindow *self) {
   }
 }
 
+// Native scroll arrows: when a scrollable window opts in, the up/down action
+// bar icons show only the directions the content can still scroll, updated
+// on the watch as the scroll offset changes
+static GBitmap *s_scroll_arrow_up_bitmap;
+static GBitmap *s_scroll_arrow_down_bitmap;
+
+void simply_window_update_scroll_arrows(SimplyWindow *self) {
+  if (!self || !self->action_bar_layer || !self->use_scroll_arrows ||
+      !self->is_scrollable || !self->scroll_layer) {
+    return;
+  }
+
+  if (!s_scroll_arrow_up_bitmap) {
+    s_scroll_arrow_up_bitmap = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_UP);
+  }
+  if (!s_scroll_arrow_down_bitmap) {
+    s_scroll_arrow_down_bitmap = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_DOWN);
+  }
+
+  const GPoint offset = scroll_layer_get_content_offset(self->scroll_layer);
+  const GSize content_size = scroll_layer_get_content_size(self->scroll_layer);
+  const int16_t frame_height =
+      layer_get_frame(scroll_layer_get_layer(self->scroll_layer)).size.h;
+  const bool can_scroll_up = (offset.y < 0);
+  const bool can_scroll_down = (content_size.h + offset.y > frame_height);
+
+  if (can_scroll_up && s_scroll_arrow_up_bitmap) {
+    action_bar_layer_set_icon(self->action_bar_layer, BUTTON_ID_UP, s_scroll_arrow_up_bitmap);
+  } else {
+    action_bar_layer_clear_icon(self->action_bar_layer, BUTTON_ID_UP);
+  }
+  if (can_scroll_down && s_scroll_arrow_down_bitmap) {
+    action_bar_layer_set_icon(self->action_bar_layer, BUTTON_ID_DOWN, s_scroll_arrow_down_bitmap);
+  } else {
+    action_bar_layer_clear_icon(self->action_bar_layer, BUTTON_ID_DOWN);
+  }
+}
+
+static void prv_scroll_offset_changed(ScrollLayer *scroll_layer, void *context) {
+  simply_window_update_scroll_arrows((SimplyWindow *)context);
+}
+
 void simply_window_set_scrollable(SimplyWindow *self, bool is_scrollable, bool is_paging,
                                   bool animated, bool reset) {
   const bool is_state_same = (self->is_scrollable == is_scrollable &&
@@ -109,6 +155,7 @@ void simply_window_set_scrollable(SimplyWindow *self, bool is_scrollable, bool i
     const bool animated = false;
     scroll_layer_set_content_offset(self->scroll_layer, GPointZero, animated);
     scroll_layer_set_content_size(self->scroll_layer, frame.size);
+    simply_window_update_scroll_arrows(self);
   }
 
   if (self->layer) {
@@ -317,6 +364,9 @@ void simply_window_load(SimplyWindow *self) {
 
   scroll_layer_set_context(self->scroll_layer, self);
   scroll_layer_set_shadow_hidden(self->scroll_layer, true);
+  scroll_layer_set_callbacks(self->scroll_layer, (ScrollLayerCallbacks) {
+    .content_offset_changed_handler = prv_scroll_offset_changed,
+  });
 
   self->status_bar_layer = status_bar_layer_create();
   status_bar_layer_set_separator_mode(self->status_bar_layer, StatusBarLayerSeparatorModeDotted);
@@ -410,11 +460,13 @@ static void prv_handle_window_action_bar_packet(Simply *simply, Packet *data) {
   if (!window) { return; }
 
   WindowActionBarPacket *packet = (WindowActionBarPacket *)data;
+  window->use_scroll_arrows = packet->scroll_arrows;
   simply_window_set_action_bar_background_color(window, packet->background_color);
   for (unsigned int i = 0; i < ARRAY_LENGTH(packet->image); ++i) {
     simply_window_set_action_bar_icon(window, i + 1, packet->image[i]);
   }
   simply_window_set_action_bar(window, packet->action);
+  simply_window_update_scroll_arrows(window);
 }
 
 bool simply_window_handle_packet(Simply *simply, Packet *packet) {

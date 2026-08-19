@@ -1,0 +1,32 @@
+request:
+{
+  "type": "config/floor_registry/list",
+  "id": 11
+}
+
+response:
+{
+  "id": 11,
+  "type": "result",
+  "success": true,
+  "result": [
+    {
+      "aliases": [],
+      "created_at": 1768503690.155164,
+      "floor_id": "main_floor",
+      "icon": null,
+      "level": 1,
+      "name": "Main Floor",
+      "modified_at": 1768503828.467411
+    },
+    {
+      "aliases": [],
+      "created_at": 1768503809.551609,
+      "floor_id": "upstairs",
+      "icon": null,
+      "level": 2,
+      "name": "Upstairs",
+      "modified_at": 1768503824.373027
+    }
+  ]
+}
