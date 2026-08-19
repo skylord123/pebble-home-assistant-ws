@@ -413,7 +413,9 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
     const GSize content_size = scroll_layer_get_content_size(self->window.scroll_layer);
     if (!gsize_equal(&frame.size, &content_size)) {
       scroll_layer_set_content_size(self->window.scroll_layer, frame.size);
-      simply_window_update_scroll_arrows(&self->window);
+      // This runs inside the stage draw callback; the arrows update touches
+      // the action bar layers, which must not happen mid-render
+      simply_window_schedule_scroll_arrows_update(&self->window);
     }
   }
 }

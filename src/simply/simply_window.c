@@ -133,8 +133,22 @@ void simply_window_update_scroll_arrows(SimplyWindow *self) {
   }
 }
 
+static void prv_scroll_arrows_timer_callback(void *data) {
+  SimplyWindow *self = data;
+  self->scroll_arrows_timer = NULL;
+  simply_window_update_scroll_arrows(self);
+}
+
+void simply_window_schedule_scroll_arrows_update(SimplyWindow *self) {
+  if (!self || self->scroll_arrows_timer) { return; }
+  self->scroll_arrows_timer = app_timer_register(0, prv_scroll_arrows_timer_callback, self);
+}
+
 static void prv_scroll_offset_changed(ScrollLayer *scroll_layer, void *context) {
-  simply_window_update_scroll_arrows((SimplyWindow *)context);
+  // Can fire from inside a layer render pass (content size changes clamp the
+  // offset during the stage draw); defer so the action bar is never touched
+  // mid-render
+  simply_window_schedule_scroll_arrows_update((SimplyWindow *)context);
 }
 
 void simply_window_set_scrollable(SimplyWindow *self, bool is_scrollable, bool is_paging,
@@ -409,11 +423,22 @@ bool simply_window_disappear(SimplyWindow *self) {
 }
 
 void simply_window_unload(SimplyWindow *self) {
+  if (self->scroll_arrows_timer) {
+    app_timer_cancel(self->scroll_arrows_timer);
+    self->scroll_arrows_timer = NULL;
+  }
+
   // Unregister the click config provider
   window_set_click_config_provider_with_context(self->window, NULL, NULL);
 
   scroll_layer_destroy(self->scroll_layer);
   self->scroll_layer = NULL;
+
+  // The window-type owner (menu, card, stage) destroys the layer this points
+  // at during its own unload; clear it so the next load can't be tricked into
+  // using a dangling pointer whose memory has been reallocated (this crashed
+  // when a long string was allocated into the freed menu layer's block)
+  self->layer = NULL;
 
   action_bar_layer_destroy(self->action_bar_layer);
   self->action_bar_layer = NULL;
