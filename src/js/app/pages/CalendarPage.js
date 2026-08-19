@@ -522,6 +522,16 @@ function showCalendarEvents(title, entityIds) {
         }
     }
 
+    // The native menu keeps the previously shown menu's selected index (the
+    // row picked in the calendars list), which lands mid-list once the events
+    // stream in; snap to the top after the first render. Every later show is a
+    // return from an event detail, and the menu gets rebuilt both natively and
+    // by the re-fetch below, so restore the row that was clicked once the
+    // re-render is done. Relying on the menu's own remembered selection is not
+    // enough because the native rebuild clamps it before the rows exist.
+    var hasRendered = false;
+    var restoreSelection = null;
+
     eventsMenu.on('show', function() {
         var start = new Date();
         start.setHours(0, 0, 0, 0);
@@ -530,6 +540,12 @@ function showCalendarEvents(title, entityIds) {
 
         fetchEvents(entityIds, start, end, function(events) {
             renderEvents(events);
+            if (restoreSelection) {
+                eventsMenu.selection(restoreSelection.sectionIndex, restoreSelection.itemIndex);
+            } else if (!hasRendered) {
+                eventsMenu.selection(0, 0);
+            }
+            hasRendered = true;
         }, function(error) {
             eventsMenu.section(0, { title: title });
             eventsMenu.items(0, [{
@@ -540,6 +556,7 @@ function showCalendarEvents(title, entityIds) {
     });
 
     eventsMenu.on('select', function(e) {
+        restoreSelection = { sectionIndex: e.sectionIndex, itemIndex: e.itemIndex };
         if (typeof e.item.on_click === 'function') {
             e.item.on_click(e);
         }
