@@ -99,7 +99,15 @@ function showEntityMenu(entity_id) {
     let stateIndex = i;
     showEntityMenu.item(0, i++, {
         title: 'State',
-        subtitle: getStateSubtitle(entity)
+        subtitle: getStateSubtitle(entity),
+        on_click: function() {
+            // Opens the history graph (numeric states) or change list.
+            // Not available on aplite due to memory constraints.
+            var HistoryPage = require('app/pages/HistoryPage');
+            if (HistoryPage.isSupported()) {
+                HistoryPage.show(entity_id);
+            }
+        }
     });
     showEntityMenu.item(0, i++, {
         title: 'Last Changed',

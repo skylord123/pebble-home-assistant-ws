@@ -31,6 +31,7 @@ enum SimplyElementType {
   SimplyElementTypeText,
   SimplyElementTypeImage,
   SimplyElementTypeInverter,
+  SimplyElementTypePolyline,
 };
 
 struct SimplyStageLayer {
@@ -57,6 +58,19 @@ struct SimplyElementCommon {
 };
 
 typedef struct SimplyElementCommon SimplyElementLine;
+
+typedef struct SimplyElementPolyline SimplyElementPolyline;
+
+//! A connected line series for graphs, drawn in C so the phone only sends
+//! one packet of pixel y-offsets instead of one line element per segment.
+//! Points are y offsets within the frame; x positions spread evenly across
+//! the frame width. Stroke uses the common border color and width.
+//! Not available on aplite (data and drawing are compiled out).
+struct SimplyElementPolyline {
+  SimplyElementCommon common;
+  uint16_t num_points;
+  uint8_t *points;
+};
 
 typedef struct SimplyElementRect SimplyElementRect;
 

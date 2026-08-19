@@ -733,6 +733,13 @@ var ElementAnimateDonePacket = new struct([
   ['uint32', 'id'],
 ]);
 
+var ElementPolylinePacket = new struct([
+  [Packet, 'packet'],
+  ['uint32', 'id'],
+  ['uint16', 'numPoints'],
+  ['data', 'points'],
+]);
+
 var CalculateTextSizePacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'font_key'],
@@ -822,6 +829,7 @@ var CommandPackets = [
   VoiceDictationDataPacket,
   CalculateTextSizePacket,
   CalculateTextSizeResponsePacket,
+  ElementPolylinePacket,
 ];
 
 var accelAxes = [
@@ -1432,6 +1440,15 @@ SimplyPebble.stageClear = function() {
   SimplyPebble.sendPacket(StageClearPacket);
 };
 
+SimplyPebble.elementPolyline = function(id, points) {
+  points = points || [];
+  ElementPolylinePacket
+    .id(id)
+    .numPoints(points.length)
+    .points(points);
+  SimplyPebble.sendPacket(ElementPolylinePacket);
+};
+
 SimplyPebble.stageElement = function(id, type, def, index) {
   if (index !== undefined) {
     SimplyPebble.elementInsert(id, type, index);
@@ -1455,6 +1472,9 @@ SimplyPebble.stageElement = function(id, type, def, index) {
     case StageElement.ImageType:
       SimplyPebble.elementRadius(id, def);
       SimplyPebble.elementImage(id, def.image, def.compositing);
+      break;
+    case StageElement.PolylineType:
+      SimplyPebble.elementPolyline(id, def.points);
       break;
   }
 };

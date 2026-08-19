@@ -270,6 +270,17 @@ function showCoverEntity(entity_id) {
             });
         }
 
+        // The cover rows all trigger actions, so history gets its own item
+        // (not available on aplite)
+        if (require('app/pages/HistoryPage').isSupported()) {
+            menuItems.push({
+                title: 'History',
+                on_click: function() {
+                    require('app/pages/HistoryPage').show(updatedData.entity_id);
+                }
+            });
+        }
+
         // Add More option
         menuItems.push({
             title: 'More',

@@ -267,6 +267,17 @@ function showLightEntity(entity_id) {
             });
         }
 
+        // The light's main click toggles it, so history gets its own item
+        // (not available on aplite)
+        if (require('app/pages/HistoryPage').isSupported()) {
+            lightMenu.item(0, menuIndex++, {
+                title: 'History',
+                on_click: function() {
+                    require('app/pages/HistoryPage').show(updatedData.entity_id);
+                }
+            });
+        }
+
         // Add More option
         lightMenu.item(0, menuIndex++, {
             title: 'More',

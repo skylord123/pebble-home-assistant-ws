@@ -60,5 +60,6 @@ enum Command {
   CommandVoiceData,
   CommandCalculateTextSize,
   CommandCalculateTextSizeResponse,
+  CommandElementPolyline,
   NumCommands,
 };
