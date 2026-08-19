@@ -12,6 +12,7 @@
 var UI = require('ui');
 var Vibe = require('ui/vibe');
 var Voice = require('ui/voice');
+var Feature = require('platform/feature');
 
 var BasePage = require('app/pages/BasePage');
 var AppState = require('app/AppState');
