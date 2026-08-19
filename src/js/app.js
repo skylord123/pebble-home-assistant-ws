@@ -31,7 +31,16 @@ var AreaMenuPage = require('app/pages/AreaMenuPage');
 var LabelMenuPage = require('app/pages/LabelMenuPage');
 var EntityListPage = require('app/pages/EntityListPage');
 var ToDoListPage = require('app/pages/ToDoListPage');
+var CalendarPage = require('app/pages/CalendarPage');
+var TimelineLaunch = require('app/TimelineLaunch');
 var AssistPage = require('app/pages/AssistPage');
+
+// === Timeline Launch Handlers ===
+// Timeline pins launch the app with a launch code whose top byte selects the
+// action; register a handler per supported action type
+TimelineLaunch.registerHandler(TimelineLaunch.ACTION_CALENDAR_EVENT, function(payload, launchCode) {
+    CalendarPage.showCalendarEventByLaunchCode(launchCode);
+});
 
 // === Initialize AppState ===
 var appState = AppState.getInstance();
@@ -126,6 +135,17 @@ function on_auth_ok(evt) {
                     break;
             }
         }
+
+        // Timeline pin launch: dispatch the pin's launch code to the handler
+        // for its action type (main menu stays underneath so backing out of
+        // the launched page lands somewhere useful)
+        if (launchReason === 'timelineAction') {
+            var launchCode = simply.impl.state.launchArgs;
+            log('Timeline launch with code: ' + launchCode);
+            if (launchCode) {
+                TimelineLaunch.handle(launchCode);
+            }
+        }
     }
 
     function showUIAfterAuth() {
@@ -176,6 +196,10 @@ function on_auth_ok(evt) {
 
             if (!isFetchingInBackground) {
                 showUIAfterAuth();
+            } else {
+                // The UI was shown from the startup cache; fresh data may add
+                // or remove main menu items (e.g. Calendars)
+                MainMenuPage.refreshIfVisible();
             }
         }
     }

@@ -4,7 +4,11 @@ var Platform = require('platform');
 var Feature = module.exports;
 
 Feature.platform = function(map, yes, no) {
-  var v = map[Platform.version()] || map.unknown;
+  // Fall back to map.unknown only when the platform is genuinely missing
+  // from the map: `||` would also swallow legitimate false values (e.g.
+  // microphone/color on aplite) and return the unknown default instead
+  var version = Platform.version();
+  var v = (version in map) ? map[version] : map.unknown;
   var rv;
   if (v && yes !== undefined) {
     rv = typeof yes === 'function' ? yes(v) : yes;

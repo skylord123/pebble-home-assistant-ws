@@ -44,6 +44,26 @@
         "type": "bitmap"
       },
       {
+        "file": "images/action_edit.png",
+        "name": "IMAGE_ACTION_EDIT",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/action_up.png",
+        "name": "IMAGE_ACTION_UP",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/action_down.png",
+        "name": "IMAGE_ACTION_DOWN",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/action_delete.png",
+        "name": "IMAGE_ACTION_DELETE",
+        "type": "bitmap"
+      },
+      {
         "file": "images/icon_switch_on.png",
         "name": "IMAGE_ICON_SWITCH_ON",
         "type": "bitmap"

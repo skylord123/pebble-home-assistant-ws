@@ -112,6 +112,17 @@ var SettingsManager = {
         appState.inactivity_timeout = parseInt(Settings.option('inactivity_timeout'), 10) || 0;
         InactivityTimer.configure(appState.inactivity_timeout);
 
+        // Calendar visibility and ordering from the config page. A null
+        // order means "use Home Assistant's order"
+        appState.calendar_order = Settings.option('calendar_order');
+        if (!Array.isArray(appState.calendar_order) || appState.calendar_order.length === 0) {
+            appState.calendar_order = null;
+        }
+        appState.hidden_calendars = Settings.option('hidden_calendars');
+        if (!Array.isArray(appState.hidden_calendars)) {
+            appState.hidden_calendars = [];
+        }
+
         // Menu scrolling wrap-around setting (default enabled)
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);

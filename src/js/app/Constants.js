@@ -7,7 +7,7 @@ const Constants = {
     // App versioning
     appVersion: '2.1',
     confVersion: '1.2',
-    configPageUrl: 'https://skylord123.github.io/pebble-home-assistant-ws/config/v1.2.html',
+    configPageUrl: 'https://skylord123.github.io/pebble-home-assistant-ws/config/v1.3.html',
 
     // Debug settings
     debugMode: true,
@@ -16,6 +16,7 @@ const Constants = {
     // Default domains to ignore
     DEFAULT_IGNORE_DOMAINS: [
         'assist_satellite',
+        'calendar',
         'conversation',
         'tts',
         'stt',

@@ -470,6 +470,7 @@ var WindowActionBarPacket = new struct([
   ['uint32', 'down', ImageType],
   ['uint8', 'backgroundColor', ColorType],
   ['uint8', 'action', BoolType],
+  ['bool', 'scrollArrows', BoolType],
 ]);
 
 var ClickPacket = new struct([
@@ -1078,7 +1079,8 @@ SimplyPebble.windowActionBar = function(def) {
     .select(actionDef.select)
     .down(actionDef.down)
     .action(typeof def === 'boolean' ? def : def.action !== false)
-    .backgroundColor(actionDef.backgroundColor || 'black');
+    .backgroundColor(actionDef.backgroundColor || 'black')
+    .scrollArrows(!!actionDef.scrollArrows);
   SimplyPebble.sendPacket(WindowActionBarPacket);
 };
 
@@ -1529,9 +1531,10 @@ SimplyPebble.onLaunchReason = function(packet) {
     Wakeup.emitWakeup();
   }
 
-  // Store the launch reason for later use
-  // Make sure it's a valid value, defaulting to 'user' if undefined
+  // Store the launch reason and args for later use. For timeline launches
+  // the args value is the pin action's launchCode.
   state.launchReason = reason;
+  state.launchArgs = args;
 };
 
 SimplyPebble.onWakeupSetResult = function(packet) {
@@ -1650,11 +1653,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case CalculateTextSizeResponsePacket:
       console.log('Received direct text size calculation response: width=' + packet.width() + ', height=' + packet.height());
       if (state.calculateTextSizeCallback) {
-        state.calculateTextSizeCallback({
+        // Clear the slot before invoking: the callback may synchronously
+        // request another measurement, which stores a new callback that a
+        // delete after the call would silently wipe out
+        var textSizeCallback = state.calculateTextSizeCallback;
+        delete state.calculateTextSizeCallback;
+        textSizeCallback({
           width: packet.width(),
           height: packet.height()
         });
-        delete state.calculateTextSizeCallback;
       }
       break;
   }

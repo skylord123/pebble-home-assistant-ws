@@ -28,6 +28,11 @@ struct SimplyMenuLayer {
   List1Node *sections;
   List1Node *items;
   uint16_t num_sections;
+  //! Row count and header presence per section, surviving cache eviction so
+  //! reloads never clamp the selection or compute offsets from placeholder
+  //! counts when a menu has more sections than the cache holds
+  uint16_t *row_counts;
+  uint16_t row_counts_len;
   bool scroll_wrap;
   GColor8 normal_foreground;
   GColor8 normal_background;

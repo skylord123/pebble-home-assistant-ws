@@ -1,8 +1,35 @@
 /**
  * StateService - Handles fetching and caching entity states from Home Assistant
  */
+var Settings = require('settings');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
+
+/**
+ * Publish the available calendars to settings so the config page can offer
+ * per-calendar visibility and ordering. The array order matches Home
+ * Assistant's state order, which is the default calendar order.
+ */
+function publishAvailableCalendars(appState) {
+    var calendars = [];
+    for (var i = 0; i < appState.ha_state_cache.length; i++) {
+        var entity = appState.ha_state_cache[i];
+        if (entity.entity_id.indexOf('calendar.') === 0) {
+            calendars.push({
+                entity_id: entity.entity_id,
+                name: entity.attributes && entity.attributes.friendly_name
+                    ? entity.attributes.friendly_name
+                    : entity.entity_id.substring(9)
+            });
+        }
+    }
+
+    var previous = Settings.option('available_calendars');
+    if (JSON.stringify(calendars) !== JSON.stringify(previous || [])) {
+        Settings.option('available_calendars', calendars);
+        helpers.log_message('Published ' + calendars.length + ' calendars for config page');
+    }
+}
 
 var StateService = {
     /**
@@ -47,6 +74,8 @@ var StateService = {
                 if (appState.favoriteEntityStore) {
                     appState.favoriteEntityStore.updateFriendlyNames(appState.ha_state_dict);
                 }
+
+                publishAvailableCalendars(appState);
 
                 if (typeof successCallback === 'function') {
                     successCallback(data.result);
