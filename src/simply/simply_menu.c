@@ -213,6 +213,54 @@ static bool prv_request_item_filter(List1Node *node, void *data) {
   return (((SimplyMenuItem *)node)->title == NULL);
 }
 
+#define ROW_COUNT_UNKNOWN 0xffff
+#define ROW_COUNT_HAS_HEADER 0x8000
+#define ROW_COUNT_MASK 0x7fff
+
+static void prv_row_counts_resize(SimplyMenu *self, uint16_t num_sections) {
+  SimplyMenuLayer *menu_layer = &self->menu_layer;
+  if (menu_layer->row_counts && menu_layer->row_counts_len == num_sections) { return; }
+  uint16_t *counts = malloc(num_sections * sizeof(uint16_t));
+  if (!counts) { return; }
+  for (uint16_t i = 0; i < num_sections; ++i) {
+    counts[i] = (menu_layer->row_counts && i < menu_layer->row_counts_len) ?
+        menu_layer->row_counts[i] : ROW_COUNT_UNKNOWN;
+  }
+  free(menu_layer->row_counts);
+  menu_layer->row_counts = counts;
+  menu_layer->row_counts_len = num_sections;
+}
+
+static void prv_row_counts_record(SimplyMenu *self, uint16_t section, uint16_t num_items,
+                                  bool has_header) {
+  if (section >= self->menu_layer.row_counts_len) {
+    prv_row_counts_resize(self, section + 1);
+  }
+  if (section < self->menu_layer.row_counts_len) {
+    self->menu_layer.row_counts[section] =
+        (num_items & ROW_COUNT_MASK) | (has_header ? ROW_COUNT_HAS_HEADER : 0);
+  }
+}
+
+//! Returns false when the section's row count has not been received yet
+static bool prv_row_counts_get(SimplyMenu *self, uint16_t section, uint16_t *num_items_out,
+                               bool *has_header_out) {
+  SimplyMenuLayer *menu_layer = &self->menu_layer;
+  if (!menu_layer->row_counts || section >= menu_layer->row_counts_len ||
+      menu_layer->row_counts[section] == ROW_COUNT_UNKNOWN) {
+    return false;
+  }
+  if (num_items_out) { *num_items_out = menu_layer->row_counts[section] & ROW_COUNT_MASK; }
+  if (has_header_out) { *has_header_out = (menu_layer->row_counts[section] & ROW_COUNT_HAS_HEADER); }
+  return true;
+}
+
+static void prv_row_counts_reset(SimplyMenu *self) {
+  for (uint16_t i = 0; i < self->menu_layer.row_counts_len; ++i) {
+    self->menu_layer.row_counts[i] = ROW_COUNT_UNKNOWN;
+  }
+}
+
 static SimplyMenuSection *prv_get_menu_section(SimplyMenu *self, int index) {
   return (SimplyMenuSection*) list1_find(self->menu_layer.sections, prv_section_filter,
                                          (void*)(uintptr_t) index);
@@ -335,6 +383,7 @@ static void simply_menu_set_num_sections(SimplyMenu *self, uint16_t num_sections
     num_sections = 1;
   }
   self->menu_layer.num_sections = num_sections;
+  prv_row_counts_resize(self, num_sections);
   prv_reload_data(self);
 }
 
@@ -625,6 +674,10 @@ static uint16_t prv_menu_get_num_sections_callback(MenuLayer *menu_layer, void *
 static uint16_t prv_menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_index,
                                                void *data) {
   SimplyMenu *self = data;
+  uint16_t num_items;
+  if (prv_row_counts_get(self, section_index, &num_items, NULL)) {
+    return num_items;
+  }
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   return section ? section->num_items : 1;
 }
@@ -632,6 +685,10 @@ static uint16_t prv_menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t s
 static int16_t prv_menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t section_index,
                                                    void *data) {
   SimplyMenu *self = data;
+  bool has_header;
+  if (prv_row_counts_get(self, section_index, NULL, &has_header)) {
+    return has_header ? MENU_CELL_BASIC_HEADER_HEIGHT : 0;
+  }
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   return (section && section->title &&
           section->title != EMPTY_TITLE ? MENU_CELL_BASIC_HEADER_HEIGHT : 0);
@@ -1092,6 +1149,10 @@ static void prv_single_click_handler(ClickRecognizerRef recognizer, void *contex
 
 static uint16_t prv_get_section_num_rows(SimplyMenu *self, uint16_t section_index) {
   // Mirrors prv_menu_get_num_rows_callback: sections not yet loaded report 1 row
+  uint16_t num_items;
+  if (prv_row_counts_get(self, section_index, &num_items, NULL)) {
+    return num_items;
+  }
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   return section ? section->num_items : 1;
 }
@@ -1271,6 +1332,8 @@ static void simply_menu_clear_section_items(SimplyMenu *self, int section_index)
 }
 
 static void simply_menu_clear(SimplyMenu *self) {
+  prv_row_counts_reset(self);
+
   while (self->menu_layer.sections) {
     prv_destroy_section(self, (SimplyMenuSection *)self->menu_layer.sections);
   }
@@ -1321,6 +1384,8 @@ static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
 
 static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
   MenuSectionPacket *packet = (MenuSectionPacket *)data;
+  prv_row_counts_record(simply->menu, packet->section, packet->num_items,
+                        packet->title_length != 0);
   SimplyMenuSection *section = malloc(sizeof(*section));
   *section = (SimplyMenuSection) {
     .section = packet->section,
@@ -1440,5 +1505,6 @@ void simply_menu_destroy(SimplyMenu *self) {
 
   simply_window_deinit(&self->window);
 
+  free(self->menu_layer.row_counts);
   free(self);
 }
