@@ -209,8 +209,11 @@ static void destroy_element(SimplyStage *self, SimplyElementCommon *element) {
 
 static void destroy_animation(SimplyStage *self, SimplyAnimation *animation) {
   if (!animation) { return; }
-  property_animation_destroy(animation->animation);
+  // Remove from the list before destroying: unscheduling fires the stopped
+  // handler, which looks the animation up and would double free it otherwise
   list1_remove(&self->stage_layer.animations, &animation->node);
+  animation_unschedule((Animation *)animation->animation);
+  property_animation_destroy(animation->animation);
   free(animation);
 }
 
@@ -547,7 +550,9 @@ SimplyAnimation *simply_stage_animate_element(SimplyStage *self,
   static const PropertyAnimationImplementation implementation = {
     .base = {
       .update = (AnimationUpdateImplementation) property_animation_update_grect,
-      .teardown = (AnimationTeardownImplementation) animation_destroy,
+      // No teardown: animation_destroy as the teardown recurses on modern
+      // SDKs since animation_destroy itself invokes the teardown handler.
+      // destroy_animation owns the cleanup instead.
     },
     .accessors = {
       .setter = { .grect = (const GRectSetter) element_frame_setter },
