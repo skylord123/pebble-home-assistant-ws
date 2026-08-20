@@ -20,7 +20,46 @@ var EntityService = {
     },
 
     /**
-     * Get the display subtitle for an entity (state + unit + relative time)
+     * Get the state portion of an entity's subtitle (state + unit, or for
+     * climate entities the mode plus set/current temperatures)
+     * @param {Object} entity - The entity object
+     * @returns {string} The formatted state text
+     */
+    getStateText: function(entity) {
+        if (!entity) return '';
+
+        var text = entity.state;
+        var attrs = entity.attributes || {};
+        var domain = entity.entity_id ? entity.entity_id.split('.')[0] : '';
+
+        if (domain === 'climate') {
+            // Mode plus set/current, e.g. "heat 70°/68°" (heat_cool ranges
+            // show as "68-74°/71°")
+            var target = null;
+            if (attrs.temperature !== undefined && attrs.temperature !== null) {
+                target = attrs.temperature + '°';
+            } else if (attrs.target_temp_low !== undefined && attrs.target_temp_low !== null &&
+                       attrs.target_temp_high !== undefined && attrs.target_temp_high !== null) {
+                target = attrs.target_temp_low + '-' + attrs.target_temp_high + '°';
+            }
+            var current = (attrs.current_temperature !== undefined && attrs.current_temperature !== null)
+                ? attrs.current_temperature + '°'
+                : null;
+
+            if (target && current) {
+                text += ' ' + target + '/' + current;
+            } else if (target || current) {
+                text += ' ' + (target || current);
+            }
+        } else if (attrs.unit_of_measurement) {
+            text += ' ' + attrs.unit_of_measurement;
+        }
+
+        return text;
+    },
+
+    /**
+     * Get the display subtitle for an entity (state text + relative time)
      * @param {Object} entity - The entity object
      * @param {boolean} [includeRelativeTime=true] - Whether to include relative time
      * @returns {string} The formatted subtitle
@@ -29,12 +68,7 @@ var EntityService = {
         if (!entity) return '';
         if (includeRelativeTime === undefined) includeRelativeTime = true;
 
-        var subtitle = entity.state;
-
-        // Add unit of measurement if available
-        if (entity.attributes && entity.attributes.unit_of_measurement) {
-            subtitle += ' ' + entity.attributes.unit_of_measurement;
-        }
+        var subtitle = this.getStateText(entity);
 
         // Add relative time if requested and last_changed is available
         if (includeRelativeTime && entity.last_changed) {

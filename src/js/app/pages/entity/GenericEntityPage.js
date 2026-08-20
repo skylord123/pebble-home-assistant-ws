@@ -46,12 +46,8 @@ function showEntityMenu(entity_id) {
 
     // Helper function to get state subtitle with relative time
     function getStateSubtitle(entity) {
-        var stateText = entity.state;
-        if (entity.attributes.unit_of_measurement) {
-            stateText += ' ' + entity.attributes.unit_of_measurement;
-        }
         var timeStr = helpers.humanDiff(new Date(), new Date(entity.last_changed));
-        return stateText + ' > ' + timeStr;
+        return EntityService.getStateText(entity) + ' > ' + timeStr;
     }
 
     // Set Menu colors
