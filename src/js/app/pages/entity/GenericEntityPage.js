@@ -359,6 +359,33 @@ function showEntityMenu(entity_id) {
         showEntityMenu.item(1, servicesCount++, selectServiceItem('Previous Option', 'select_previous'));
     }
 
+    if(domain === "timer") {
+        let timerServiceItem = function(title, service, data) {
+            return {
+                title: title,
+                on_click: function() {
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        data || {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Start', 'start'));
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Pause', 'pause'));
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Cancel', 'cancel'));
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Finish', 'finish'));
+    }
+
     if(domain === "scene") {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',
