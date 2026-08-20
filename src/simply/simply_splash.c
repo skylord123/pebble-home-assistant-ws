@@ -15,7 +15,11 @@
 // resources or image heap are needed. JS drives the status text and error
 // state through the CommandSplash* packets.
 
-#define SPLASH_BG PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorBlack)
+// A deeper azure than the Home Assistant brand blues (#18BCF2 quantizes to
+// vivid cerulean and #41BDF5 to picton blue) because both washed out the
+// white logo and text on the watch; blue moon keeps the vibrancy with far
+// better contrast
+#define SPLASH_BG PBL_IF_COLOR_ELSE(GColorBlueMoon, GColorBlack)
 #define SPLASH_ACCENT PBL_IF_COLOR_ELSE(GColorCeleste, GColorWhite)
 
 // Aplite loads the app binary into its 24KB of app RAM, and pebble.js already
@@ -243,12 +247,12 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
       GRect(0, title_y, w, title_h + 8), GTextOverflowModeTrailingEllipsis,
       GTextAlignmentCenter, NULL);
 
-  graphics_context_set_text_color(ctx, SPLASH_ACCENT);
-  graphics_draw_text(ctx, self->status, fonts_get_system_font(FONT_KEY_GOTHIC_18),
+  // Plain white and bold: tinted text that looks fine in the emulator is
+  // hard to read on real displays
+  graphics_draw_text(ctx, self->status, fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD),
       GRect(0, status_y, w, 24), GTextOverflowModeTrailingEllipsis,
       GTextAlignmentCenter, NULL);
 
-  graphics_context_set_text_color(ctx, GColorWhite);
   graphics_draw_text(ctx, self->body, fonts_get_system_font(FONT_KEY_GOTHIC_14),
       GRect((w - body_w) / 2, body_y, body_w, 36), GTextOverflowModeWordWrap,
       GTextAlignmentCenter, NULL);
