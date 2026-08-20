@@ -165,8 +165,11 @@ def concat_javascript(ctx, js_path=None):
 
     js_target = ctx.path.make_node('build/src/js/pebble-js-app.js')
 
+    # appinfo.json is baked into the bundle (resource ids come from its media
+    # order), so it must be a declared dependency or icon ids go stale when
+    # resources change without any JS changing
     ctx(rule=concat_javascript_task,
-        source=js_nodes,
+        source=js_nodes + [ctx.path.make_node('appinfo.json')],
         target=js_target)
 
     return js_target
