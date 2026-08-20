@@ -120,7 +120,13 @@ void simply_menu_destroy(SimplyMenu *self);
 //! @return true if a row was hit and activated.
 bool simply_menu_handle_tap(SimplyMenu *self, int16_t x, int16_t y);
 
-//! Move the selection by whole rows, for swipe scrolling.
-void simply_menu_scroll_by(SimplyMenu *self, int rows);
+//! Long-press equivalent: selects the row under the point and fires the same
+//! event holding the select button does.
+bool simply_menu_handle_long_press(SimplyMenu *self, int16_t x, int16_t y);
+
+//! Touch counts as user input for the menu's idle tracking (marquee scroll,
+//! inactivity timeout).
+void simply_menu_touch_note_input(SimplyMenu *self);
+
 
 bool simply_menu_handle_packet(Simply *simply, Packet *packet);

@@ -5,11 +5,11 @@
 
 #include <pebble.h>
 
-// The touch digitizer only exists on the platforms that ship one (Pebble Time 2
-// and later). Everything else compiles the whole subsystem away, the same way
-// simply_voice does for aplite's missing microphone.
-#if defined(PBL_PLATFORM_EMERY) || defined(PBL_PLATFORM_FLINT) || \
-    defined(PBL_PLATFORM_GABBRO)
+// The touch digitizer only exists on the platforms that ship one (Pebble
+// Time 2 and Core Time 2's round sibling). Everything else compiles the whole
+// subsystem away, the same way simply_voice does for aplite's missing
+// microphone.
+#if defined(PBL_PLATFORM_EMERY) || defined(PBL_PLATFORM_GABBRO)
 #define SIMPLY_HAS_TOUCH 1
 #endif
 
@@ -26,6 +26,10 @@ struct SimplyTouch {
   // AppMessage, so they are opt-in and off by default. Taps and swipes are
   // derived on the JS side from touchdown/liftoff alone.
   bool wants_moves;
+
+  // Whether holding a finger on a menu row fires the long select event, so
+  // touch can be used for navigation only without triggering entity actions.
+  bool long_press;
 };
 
 #ifdef SIMPLY_HAS_TOUCH

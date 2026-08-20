@@ -14,7 +14,7 @@ var simply = require('ui/simply');
 
 // Platforms with a digitizer. Everything else has the whole subsystem compiled
 // out of the C runtime, so we never send it a config packet.
-var touchPlatforms = ['emery', 'flint', 'gabbro'];
+var touchPlatforms = ['emery', 'gabbro'];
 
 // A finger that moves less than this between touchdown and liftoff is a tap.
 var TAP_SLOP = 10;
@@ -40,6 +40,8 @@ Touch.init = function() {
     subscribed: false,
     subscribeMode: 'auto',
     wantsMoves: false,
+    enabled: true,
+    longPress: true,
     down: null,
   };
 };
@@ -85,6 +87,8 @@ Touch.config = function(opt, auto) {
     return {
       subscribed: state.subscribed,
       wantsMoves: state.wantsMoves,
+      enabled: state.enabled,
+      longPress: state.longPress,
     };
   } else if (typeof opt === 'boolean') {
     opt = { subscribed: opt };
@@ -116,6 +120,20 @@ Touch.config = function(opt, auto) {
  * @property {string} direction - The direction the finger travelled.
  * @property {Vector2} position - Where the finger lifted off.
  */
+
+/**
+ * Apply the user's touch settings: whether touch input is on at all (turning
+ * it off powers the digitizer down) and whether holding a finger on a menu
+ * row fires the long select event.
+ */
+Touch.applySettings = function(enabled, longPress) {
+  state.enabled = (enabled !== false);
+  state.longPress = (longPress !== false);
+  if (!Touch.supported()) {
+    return;
+  }
+  return simply.impl.touchConfig(Touch.config());
+};
 
 Touch.emitTouchData = function(type, x, y) {
   var position = new Vector2(x, y);

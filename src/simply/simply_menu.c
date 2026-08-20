@@ -1,5 +1,7 @@
 #include "simply_menu.h"
 
+#include "simply_touch.h"
+
 #include "simply_res.h"
 #include "simply_msg.h"
 #include "simply_window_stack.h"
@@ -1130,78 +1132,112 @@ static void prv_menu_select_click_callback(MenuLayer *menu_layer, MenuIndex *cel
 // ---- Touch -----------------------------------------------------------------
 //
 // A MenuLayer renders itself and does not expose cell frames, so mapping a
-// finger to a row means recomputing the layout the same way the callbacks above
-// declare it: each section contributes an optional header plus num_items cells.
-// On rectangular platforms every cell is MENU_CELL_BASIC_CELL_HEIGHT, which is
-// what makes this exact rather than approximate.
-//
-// The scroll offset comes from the MenuLayer's own ScrollLayer, so this stays
-// correct no matter how far down the list has been scrolled.
+// finger to a row means recomputing the layout the same way the layer's own
+// callbacks declare it. The scroll offset comes from the MenuLayer's
+// ScrollLayer, so this stays correct however far the list has scrolled.
 
-bool simply_menu_handle_tap(SimplyMenu *self, int16_t x, int16_t y) {
+#ifdef SIMPLY_HAS_TOUCH
+
+// Cell metrics must mirror exactly what the MenuLayer uses: round platforms
+// get our get_cell_height callback (the focused row is taller), large content
+// size platforms (Pebble Time 2) get the firmware's 61px default, everything
+// else the classic 44px
+static int16_t prv_touch_cell_height(SimplyMenu *self, MenuIndex index) {
+#if defined(PBL_ROUND)
+  const bool is_selected =
+      menu_layer_is_index_selected(self->menu_layer.menu_layer, &index);
+  return is_selected ? MENU_CELL_ROUND_FOCUSED_TALL_CELL_HEIGHT
+                     : MENU_CELL_ROUND_UNFOCUSED_SHORT_CELL_HEIGHT;
+#elif defined(MENU_CONTENT_SIZE_LARGE)
+  return 61;
+#else
+  return MENU_CELL_BASIC_CELL_HEIGHT;
+#endif
+}
+
+static bool prv_touch_hit_test(SimplyMenu *self, int16_t x, int16_t y,
+                               MenuIndex *index_out) {
+  (void) x;
   if (!self || !self->menu_layer.menu_layer) { return false; }
 
   MenuLayer *menu_layer = self->menu_layer.menu_layer;
   Layer *layer = menu_layer_get_layer(menu_layer);
   GRect frame = layer_get_frame(layer);
-
   ScrollLayer *scroll_layer = menu_layer_get_scroll_layer(menu_layer);
-  GPoint offset = scroll_layer ? scroll_layer_get_content_offset(scroll_layer) : GPointZero;
+  GPoint offset =
+      scroll_layer ? scroll_layer_get_content_offset(scroll_layer) : GPointZero;
 
-  // Screen coordinates to content coordinates. The offset is negative once the
-  // list has scrolled, which is why it is subtracted rather than added.
+  // Screen coordinates to content coordinates. The offset is negative once
+  // the list has scrolled, which is why it is subtracted rather than added
   int content_y = y - frame.origin.y - offset.y;
   if (content_y < 0) { return false; }
 
   int cursor = 0;
-  uint16_t num_sections = self->menu_layer.num_sections;
+  const uint16_t num_sections = self->menu_layer.num_sections;
   for (uint16_t s = 0; s < num_sections; ++s) {
-    SimplyMenuSection *section = prv_get_menu_section(self, s);
-    int header = (section && section->title && section->title != EMPTY_TITLE)
-                     ? MENU_CELL_BASIC_HEADER_HEIGHT : 0;
+    // Match the layer callbacks: known sections report their shape from the
+    // persistent row counts, unknown ones fall back to the cache
+    bool has_header;
+    uint16_t num_items;
+    if (!prv_row_counts_get(self, s, &num_items, &has_header)) {
+      SimplyMenuSection *section = prv_get_menu_section(self, s);
+      has_header = (section && section->title && section->title != EMPTY_TITLE);
+      num_items = section ? section->num_items : 1;
+    }
+    const int header = has_header ? MENU_CELL_BASIC_HEADER_HEIGHT : 0;
     if (content_y < cursor + header) {
       return false;                        // the header itself is not a target
     }
     cursor += header;
 
-    uint16_t num_items = section ? section->num_items : 1;
-    int block = num_items * MENU_CELL_BASIC_CELL_HEIGHT;
-    if (content_y < cursor + block) {
-      uint16_t row = (uint16_t) ((content_y - cursor) / MENU_CELL_BASIC_CELL_HEIGHT);
-      if (row >= num_items) { return false; }
-
-      MenuIndex index = { .section = s, .row = row };
-      // Move the highlight first so the screen agrees with what is about to
-      // happen, then fire the same event the select button would.
-      menu_layer_set_selected_index(menu_layer, index, MenuRowAlignNone, false);
-#if !defined(PBL_PLATFORM_APLITE)
-      self->last_input_time = time(NULL);
-      self->scroll_idle = false;
-#endif
-      prv_send_menu_select_click(index.section, index.row);
-      return true;
+    for (uint16_t r = 0; r < num_items; ++r) {
+      MenuIndex index = { .section = s, .row = r };
+      const int height = prv_touch_cell_height(self, index);
+      if (content_y < cursor + height) {
+        *index_out = index;
+        return true;
+      }
+      cursor += height;
     }
-    cursor += block;
   }
 
   return false;                            // tap landed past the last row
 }
 
-void simply_menu_scroll_by(SimplyMenu *self, int rows) {
-  if (!self || !self->menu_layer.menu_layer) { return; }
-  MenuLayer *menu_layer = self->menu_layer.menu_layer;
-  const bool animated = true;
-  for (int i = 0; i < rows; ++i) {
-    menu_layer_set_selected_next(menu_layer, false, MenuRowAlignCenter, animated);
+static bool prv_touch_activate(SimplyMenu *self, int16_t x, int16_t y,
+                               bool long_click) {
+  MenuIndex index;
+  if (!prv_touch_hit_test(self, x, y, &index)) { return false; }
+  // Move the highlight first so the screen agrees with what is about to
+  // happen, then fire the same event the matching button action would
+  menu_layer_set_selected_index(self->menu_layer.menu_layer, index,
+                                MenuRowAlignNone, false);
+  simply_menu_touch_note_input(self);
+  if (long_click) {
+    prv_send_menu_select_long_click(index.section, index.row);
+  } else {
+    prv_send_menu_select_click(index.section, index.row);
   }
-  for (int i = 0; i > rows; --i) {
-    menu_layer_set_selected_next(menu_layer, true, MenuRowAlignCenter, animated);
-  }
+  return true;
+}
+
+bool simply_menu_handle_tap(SimplyMenu *self, int16_t x, int16_t y) {
+  return prv_touch_activate(self, x, y, false);
+}
+
+bool simply_menu_handle_long_press(SimplyMenu *self, int16_t x, int16_t y) {
+  return prv_touch_activate(self, x, y, true);
+}
+
+void simply_menu_touch_note_input(SimplyMenu *self) {
+  if (!self) { return; }
 #if !defined(PBL_PLATFORM_APLITE)
   self->last_input_time = time(NULL);
   self->scroll_idle = false;
 #endif
 }
+
+#endif  // SIMPLY_HAS_TOUCH
 
 static void prv_menu_select_long_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
                                                 void *data) {
