@@ -49,11 +49,6 @@
         "type": "bitmap"
       },
       {
-        "file": "images/action_delete.png",
-        "name": "IMAGE_ACTION_DELETE",
-        "type": "bitmap"
-      },
-      {
         "file": "images/icon_switch_on.png",
         "name": "IMAGE_ICON_SWITCH_ON",
         "type": "bitmap"
@@ -96,36 +91,6 @@
       {
         "file": "images/icon_blinds_closed.png",
         "name": "IMAGE_ICON_BLIND_CLOSED",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/icon_unavailable.png",
-        "name": "IMAGE_ICON_UNAVAILABLE",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_tick_active.png",
-        "name": "IMAGE_MICRO_TICK_ACTIVE",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_tick.png",
-        "name": "IMAGE_MICRO_TICK",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_brightness.png",
-        "name": "IMAGE_MICRO_BRIGHTNESS",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_temp.png",
-        "name": "IMAGE_MICRO_TEMP",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_tick_chalk.png",
-        "name": "IMAGE_MICRO_TICK_CHALK",
         "type": "bitmap"
       },
       {

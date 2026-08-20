@@ -162,11 +162,14 @@ static void scroll_timer_callback(void *data);
 static void reset_scroll_callback(void *data);
 #endif
 
-static int64_t prv_get_milliseconds(void) {
+static uint32_t prv_get_milliseconds(void) {
   time_t now_s;
   uint16_t now_ms_part;
   time_ms(&now_s, &now_ms_part);
-  return ((int64_t) now_s) * 1000 + now_ms_part;
+  // Truncating to 32 bits is fine: this only feeds interval math, which
+  // stays correct across the wraparound, and it avoids pulling in libgcc's
+  // 64-bit division helpers (~900 bytes of app RAM)
+  return (uint32_t) now_s * 1000 + now_ms_part;
 }
 
 static bool prv_send_menu_item(Command type, uint16_t section, uint16_t item) {
@@ -765,7 +768,7 @@ static void simply_menu_draw_row_spinner(SimplyMenu *self, GContext *ctx,
   const int16_t num_lines = 16;
   const int16_t num_drawn_lines = 3;
 
-  const int64_t now_ms = prv_get_milliseconds();
+  const uint32_t now_ms = prv_get_milliseconds();
   const uint32_t start_index = (now_ms / SPINNER_MS) % num_lines;
 
   graphics_context_set_antialiased(ctx, true);
