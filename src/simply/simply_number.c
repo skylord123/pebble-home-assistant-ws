@@ -89,6 +89,53 @@ static void prv_format_value(SimplyNumber *self, char *out, size_t out_size) {
   snprintf(out, out_size, "%s%ld.%s%s", sign, (long)whole, frac_buf, self->unit);
 }
 
+// Seconds a press on the given duration field adds or subtracts
+static int32_t prv_field_step(uint8_t field) {
+  if (field == 0) { return 3600; }
+  if (field == 1) { return 60; }
+  return 1;
+}
+
+// Draw the value as HH:MM:SS with the selected field boxed. The field is
+// only an input aid, so nothing here needs its own stored value.
+static void prv_draw_duration(SimplyNumber *self, GContext *ctx, int16_t w, int16_t h, int16_t inset) {
+  const int32_t total = self->value < 0 ? 0 : self->value;
+  const int32_t parts[3] = { total / 3600, (total % 3600) / 60, total % 60 };
+
+  const int16_t colon_w = 10;
+  int16_t box_w = (w - 2 * inset - 2 * colon_w) / 3;
+  if (box_w > 40) { box_w = 40; }
+  const int16_t box_h = 34;
+  const int16_t total_w = 3 * box_w + 2 * colon_w;
+  const int16_t y = h / 2 - 24;
+  int16_t x = (w - total_w) / 2;
+
+  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+
+  for (uint8_t i = 0; i < 3; i++) {
+    char buf[4];
+    snprintf(buf, sizeof(buf), "%02d", (int)parts[i]);
+
+    if (i == self->field) {
+      graphics_context_set_fill_color(ctx, GColorBlack);
+      graphics_fill_rect(ctx, GRect(x, y, box_w, box_h), 3, GCornersAll);
+      graphics_context_set_text_color(ctx, GColorWhite);
+    } else {
+      graphics_context_set_text_color(ctx, GColorBlack);
+    }
+    graphics_draw_text(ctx, buf, font, GRect(x, y - 3, box_w, box_h),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+
+    x += box_w;
+    if (i < 2) {
+      graphics_context_set_text_color(ctx, GColorBlack);
+      graphics_draw_text(ctx, ":", font, GRect(x, y - 3, colon_w, box_h),
+          GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+      x += colon_w;
+    }
+  }
+}
+
 static void prv_layer_update(Layer *layer, GContext *ctx) {
   SimplyNumber *self = window_get_user_data(layer_get_window(layer));
   const GRect bounds = layer_get_bounds(layer);
@@ -110,16 +157,20 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
   // Value
-  char value_buf[32];
-  prv_format_value(self, value_buf, sizeof(value_buf));
-  graphics_draw_text(ctx, value_buf,
-      fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
-      GRect(0, h / 2 - 22, w, 34),
-      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  if (self->duration_mode) {
+    prv_draw_duration(self, ctx, w, h, inset);
+  } else {
+    char value_buf[32];
+    prv_format_value(self, value_buf, sizeof(value_buf));
+    graphics_draw_text(ctx, value_buf,
+        fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD),
+        GRect(0, h / 2 - 22, w, 34),
+        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+  }
 
   // Progress bar: outlined track with a filled portion, which works on
   // every display without needing gray
-  if (self->show_bar) {
+  if (self->show_bar && !self->duration_mode) {
     const int16_t bar_margin = PBL_IF_ROUND_ELSE(34, 20);
     const GRect track = GRect(bar_margin, h / 2 + 20, w - 2 * bar_margin, 14);
     graphics_context_set_stroke_color(ctx, GColorBlack);
@@ -136,13 +187,21 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
   }
 
   // Hint
-  graphics_draw_text(ctx, "UP/DOWN adjust, hold to fly\nSELECT to set",
+  graphics_draw_text(ctx,
+      self->duration_mode ? "UP/DOWN set, SELECT next\nBACK prev, hold SELECT done"
+                          : "UP/DOWN adjust, hold to fly\nSELECT to set",
       fonts_get_system_font(FONT_KEY_GOTHIC_14),
       GRect(inset, h - PBL_IF_ROUND_ELSE(52, 40), w - 2 * inset, 36),
       GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
 
 static int32_t prv_accel_delta(SimplyNumber *self, uint8_t clicks) {
+  // In duration mode the step comes from the selected field, and the
+  // acceleration stops at ten so holding seconds does not jump by minutes
+  if (self->duration_mode) {
+    const int32_t step = prv_field_step(self->field);
+    return (clicks > ACCEL_TIER1_CLICKS) ? step * 10 : step;
+  }
   const int32_t total_steps = self->step > 0 ? (self->max - self->min) / self->step : 0;
   int32_t mult = 1;
   if (clicks > ACCEL_TIER1_CLICKS && total_steps > ACCEL_TIER1_MIN_STEPS) { mult = 10; }
@@ -169,8 +228,7 @@ static void prv_down_click(ClickRecognizerRef recognizer, void *context) {
   prv_adjust(self, -prv_accel_delta(self, click_number_of_clicks_counted(recognizer)));
 }
 
-static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
-  SimplyNumber *self = context;
+static void prv_confirm(SimplyNumber *self) {
   NumberSelectorResultPacket packet = {
     .packet = { .type = CommandNumberSelectorResult, .length = sizeof(packet) },
     .value = self->value,
@@ -178,13 +236,45 @@ static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
   simply_msg_send_packet(&packet.packet);
 }
 
+static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
+  SimplyNumber *self = context;
+  // Duration mode walks hours to minutes to seconds first, then confirms
+  if (self->duration_mode && self->field < 2) {
+    self->field++;
+    self->last_input_ms = prv_now_ms();
+    layer_mark_dirty(window_get_root_layer(self->window));
+    return;
+  }
+  prv_confirm(self);
+}
+
+static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
+  prv_confirm(context);
+}
+
+// Back steps to the previous field so an overshoot does not mean starting
+// over; on the first field it leaves as usual
+static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
+  SimplyNumber *self = context;
+  if (self->duration_mode && self->field > 0) {
+    self->field--;
+    self->last_input_ms = prv_now_ms();
+    layer_mark_dirty(window_get_root_layer(self->window));
+    return;
+  }
+  window_stack_remove(self->window, false);
+}
+
 static void prv_click_config_provider(void *context) {
   window_set_click_context(BUTTON_ID_UP, context);
   window_set_click_context(BUTTON_ID_DOWN, context);
   window_set_click_context(BUTTON_ID_SELECT, context);
+  window_set_click_context(BUTTON_ID_BACK, context);
   window_single_repeating_click_subscribe(BUTTON_ID_UP, REPEAT_INTERVAL_MS, prv_up_click);
   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, REPEAT_INTERVAL_MS, prv_down_click);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click);
+  window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_select_long_click, NULL);
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_back_click);
 }
 
 static void prv_send_closed(void) {
@@ -254,6 +344,11 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->value = prv_clamp(packet->value, self->min, self->max);
   self->decimals = packet->decimals;
   self->show_bar = (packet->flags & 1);
+  self->duration_mode = (packet->flags & 2);
+  // Always start on the leftmost field so select walks the whole value
+  // left to right; starting further in leaves the earlier fields
+  // reachable only by pressing back, which nobody expects
+  self->field = 0;
   self->last_input_ms = 0;
 
   const char *title = packet->buffer;

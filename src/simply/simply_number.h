@@ -24,6 +24,12 @@ struct SimplyNumber {
   uint8_t decimals;
   bool show_bar;
   bool destroying;
+  //! Duration mode shows the value as HH:MM:SS and edits it one field at a
+  //! time. The value stays a single count of seconds; the selected field
+  //! only decides how much a press adds or subtracts.
+  bool duration_mode;
+  //! Selected duration field: 0 hours, 1 minutes, 2 seconds
+  uint8_t field;
   //! Millisecond timestamp of the last button press, used to ignore external
   //! value updates while the user is actively adjusting
   int64_t last_input_ms;

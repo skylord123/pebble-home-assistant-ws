@@ -1609,7 +1609,7 @@ SimplyPebble.numberSelectorShow = function(opts) {
     .max(opts.max)
     .step(opts.step)
     .decimals(opts.decimals)
-    .flags(opts.showBar ? 1 : 0)
+    .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0))
     .titleLength(opts.title)
     .unitLength(opts.unit)
     .title(opts.title)
