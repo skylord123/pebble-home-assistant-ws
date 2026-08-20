@@ -1,6 +1,7 @@
 #include "simply_msg.h"
 
 #include "simply_splash.h"
+#include "simply_number.h"
 
 #include "simply_accel.h"
 #include "simply_touch.h"
@@ -315,6 +316,7 @@ static void handle_packet(Simply *simply, Packet *packet) {
   if (simply_window_stack_handle_packet(simply, packet)) { return; }
   if (simply_window_handle_packet(simply, packet)) { return; }
   if (simply_splash_handle_packet(simply, packet)) { return; }
+  if (simply_number_handle_packet(simply, packet)) { return; }
   if (simply_ui_handle_packet(simply, packet)) { return; }
   if (simply_accel_handle_packet(simply, packet)) { return; }
   if (simply_touch_handle_packet(simply, packet)) { return; }

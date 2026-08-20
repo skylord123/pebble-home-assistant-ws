@@ -68,5 +68,10 @@ enum Command {
   CommandSplashReveal,
   CommandTouchConfig,
   CommandTouchData,
+  CommandNumberSelectorShow,
+  CommandNumberSelectorHide,
+  CommandNumberSelectorValue,
+  CommandNumberSelectorResult,
+  CommandNumberSelectorClosedEvent,
   NumCommands,
 };

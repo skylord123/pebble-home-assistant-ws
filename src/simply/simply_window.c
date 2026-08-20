@@ -1,6 +1,7 @@
 #include "simply_window.h"
 
 #include "simply_splash.h"
+#include "simply_number.h"
 
 #include "simply_msg.h"
 #include "simply_res.h"
@@ -419,9 +420,12 @@ bool simply_window_disappear(SimplyWindow *self) {
   if (simply_voice_dictation_in_progress()) {
     return false;
   }
-  // If the splash is covering the window (e.g. while reconnecting), the JS
-  // window stack must keep this window so it is restored when the splash goes
-  if (simply_msg_has_communicated() && !simply_splash_is_covering(self->simply)) {
+  // If the splash or the native number selector is covering the window, the
+  // JS window stack must keep this window so it is restored when the cover
+  // goes away
+  if (simply_msg_has_communicated() &&
+      !simply_splash_is_covering(self->simply) &&
+      !simply_number_is_covering(self->simply)) {
     simply_window_stack_send_hide(self->simply->window_stack, self);
   }
 

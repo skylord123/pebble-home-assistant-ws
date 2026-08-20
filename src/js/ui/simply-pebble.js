@@ -9,6 +9,7 @@ var Resource = require('ui/resource');
 var Accel = require('ui/accel');
 var Touch = require('ui/touch');
 var Voice = require('ui/voice');
+var NumberField = require('ui/numberfield');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
 var Window = require('ui/window');
@@ -814,6 +815,38 @@ var SplashRevealPacket = new struct([
   [Packet, 'packet'],
 ]);
 
+var NumberSelectorShowPacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+  ['int32', 'min'],
+  ['int32', 'max'],
+  ['int32', 'step'],
+  ['uint8', 'decimals'],
+  ['uint8', 'flags'],
+  ['uint16', 'titleLength', StringLengthType],
+  ['uint16', 'unitLength', StringLengthType],
+  ['cstring', 'title', StringType],
+  ['cstring', 'unit', StringType],
+]);
+
+var NumberSelectorHidePacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var NumberSelectorValuePacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+]);
+
+var NumberSelectorResultPacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+]);
+
+var NumberSelectorClosedEventPacket = new struct([
+  [Packet, 'packet'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -881,6 +914,11 @@ var CommandPackets = [
   SplashRevealPacket,
   TouchConfigPacket,
   TouchDataPacket,
+  NumberSelectorShowPacket,
+  NumberSelectorHidePacket,
+  NumberSelectorValuePacket,
+  NumberSelectorResultPacket,
+  NumberSelectorClosedEventPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1564,6 +1602,29 @@ SimplyPebble.splashStatus = function(title, status, body) {
   SimplyPebble.sendPacket(SplashStatusPacket);
 };
 
+SimplyPebble.numberSelectorShow = function(opts) {
+  NumberSelectorShowPacket
+    .value(opts.value)
+    .min(opts.min)
+    .max(opts.max)
+    .step(opts.step)
+    .decimals(opts.decimals)
+    .flags(opts.showBar ? 1 : 0)
+    .titleLength(opts.title)
+    .unitLength(opts.unit)
+    .title(opts.title)
+    .unit(opts.unit);
+  SimplyPebble.sendPacket(NumberSelectorShowPacket);
+};
+
+SimplyPebble.numberSelectorHide = function() {
+  SimplyPebble.sendPacket(NumberSelectorHidePacket);
+};
+
+SimplyPebble.numberSelectorValue = function(value) {
+  SimplyPebble.sendPacket(NumberSelectorValuePacket.value(value));
+};
+
 SimplyPebble.splashMode = function(mode) {
   SimplyPebble.sendPacket(SplashModePacket.mode(mode));
 };
@@ -1682,6 +1743,8 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case MenuSelectionEventPacket:
     case WindowHideEventPacket:
     case VoiceDictationDataPacket:
+    case NumberSelectorResultPacket:
+    case NumberSelectorClosedEventPacket:
       if (SimplyPebble.onUserActivity) {
         SimplyPebble.onUserActivity();
       }
@@ -1701,6 +1764,12 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case WindowHideEventPacket:
       ImageService.markAllUnloaded();
       WindowStack.emitHide(packet.id());
+      break;
+    case NumberSelectorResultPacket:
+      NumberField.emitResult(packet.value());
+      break;
+    case NumberSelectorClosedEventPacket:
+      NumberField.emitClosed();
       break;
     case SplashRevealPacket:
       // The splash was covering the current window, which reloaded empty on

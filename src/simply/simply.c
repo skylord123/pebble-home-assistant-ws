@@ -21,6 +21,7 @@ Simply *simply_init(void) {
   simply->voice = simply_voice_create(simply);
   simply->res = simply_res_create(simply);
   simply->splash = simply_splash_create(simply);
+  simply->number = NULL;  // created on demand by simply_number
   simply->stage = simply_stage_create(simply);
   simply->menu = simply_menu_create(simply);
   simply->msg = simply_msg_create(simply);
