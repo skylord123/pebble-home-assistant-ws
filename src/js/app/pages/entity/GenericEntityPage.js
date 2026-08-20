@@ -331,6 +331,34 @@ function showEntityMenu(entity_id) {
         });
     }
 
+    if(
+        domain === "select" ||
+        domain === "input_select"
+    ) {
+        let selectServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        showEntityMenu.item(1, servicesCount++, selectServiceItem('Next Option', 'select_next'));
+        showEntityMenu.item(1, servicesCount++, selectServiceItem('Previous Option', 'select_previous'));
+    }
+
     if(domain === "scene") {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',

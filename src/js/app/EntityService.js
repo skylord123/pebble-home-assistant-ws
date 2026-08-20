@@ -160,6 +160,59 @@ var EntityService = {
     },
 
     /**
+     * Convert a subscribe_entities event for one entity into a standard
+     * entity object and store it in AppState. The initial snapshot (event.a)
+     * carries full state; diffs (event.c) carry only changed attributes in
+     * "+", so those are merged over the current attributes (a wholesale
+     * replace would drop everything that didn't change).
+     * @param {string} entity_id - The entity the subscription is for
+     * @param {Object} data - The raw subscription callback payload
+     * @returns {Object|null} The updated entity, or null if the event
+     *                        didn't concern this entity
+     */
+    applyCompressedEvent: function(entity_id, data) {
+        var appState = AppState.getInstance();
+        var ev = data.event || {};
+        var updated = null;
+
+        if (ev.a && ev.a[entity_id]) {
+            var d = ev.a[entity_id];
+            updated = {
+                entity_id: entity_id,
+                state: d.s,
+                attributes: d.a || {},
+                context: d.c,
+                last_changed: d.lc ? new Date(d.lc * 1000).toISOString() : new Date().toISOString()
+            };
+        } else if (ev.c && ev.c[entity_id]) {
+            var plus = ev.c[entity_id]['+'] || {};
+            var cur = appState.ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
+            var attributes = cur.attributes;
+            if (plus.a !== undefined) {
+                attributes = {};
+                for (var k in cur.attributes) { attributes[k] = cur.attributes[k]; }
+                for (var k2 in plus.a) { attributes[k2] = plus.a[k2]; }
+            }
+            var minus = ev.c[entity_id]['-'];
+            if (minus && Array.isArray(minus.a)) {
+                minus.a.forEach(function(removedKey) { delete attributes[removedKey]; });
+            }
+            updated = {
+                entity_id: entity_id,
+                state: plus.s !== undefined ? plus.s : cur.state,
+                attributes: attributes,
+                context: plus.c !== undefined ? plus.c : cur.context,
+                last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
+            };
+        }
+
+        if (updated) {
+            appState.setEntity(entity_id, updated);
+        }
+        return updated;
+    },
+
+    /**
      * Get a complete menu item object for an entity
      * @param {Object} entity - The entity object
      * @param {Object} [options] - Optional configuration
@@ -248,6 +301,10 @@ var EntityService = {
                 break;
             case 'alarm_control_panel':
                 require('app/pages/entity/AlarmPanelPage').showAlarmEntity(entity_id);
+                break;
+            case 'select':
+            case 'input_select':
+                require('app/pages/entity/SelectPage').showSelectEntity(entity_id);
                 break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
@@ -384,6 +441,22 @@ var EntityService = {
             // Disarm when armed, arm when disarmed; the page module owns the
             // state logic and any code prompt
             require('app/pages/entity/AlarmPanelPage').quickAction(entity_id);
+        } else if (domain === "select" || domain === "input_select") {
+            // Cycle to the next option (select_next wraps by default)
+            appState.haws.callService(
+                domain,
+                'select_next',
+                {},
+                { entity_id: entity_id },
+                function(data) {
+                    log(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function(error) {
+                    log('no response');
+                    Vibe.vibrate('double');
+                }
+            );
         } else if (domain === "button" || domain === "input_button") {
             appState.haws.callService(
                 domain,

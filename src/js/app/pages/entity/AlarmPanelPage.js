@@ -445,47 +445,10 @@ function showAlarmEntity(entity_id) {
         // page, which sits on top of and hides this window) are picked up when
         // we come back. A trigger subscription only reports future changes.
         subscription_msg_id = appState.haws.subscribeEntities([entity_id], function(data) {
-            let ev = data.event || {};
-            let updatedAlarm = null;
-
-            if (ev.a && ev.a[entity_id]) {
-                // Initial snapshot: full state
-                let d = ev.a[entity_id];
-                updatedAlarm = {
-                    entity_id: entity_id,
-                    state: d.s,
-                    attributes: d.a || {},
-                    context: d.c,
-                    last_changed: d.lc ? new Date(d.lc * 1000).toISOString() : new Date().toISOString()
-                };
-            } else if (ev.c && ev.c[entity_id]) {
-                // Diff: "+".a only carries changed attributes, so merge over
-                // the current ones (a wholesale replace would drop
-                // supported_features/code_format on the first update)
-                let plus = ev.c[entity_id]['+'] || {};
-                let cur = appState.ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
-                let attributes = cur.attributes;
-                if (plus.a !== undefined) {
-                    attributes = {};
-                    for (let k in cur.attributes) { attributes[k] = cur.attributes[k]; }
-                    for (let k in plus.a) { attributes[k] = plus.a[k]; }
-                }
-                let minus = ev.c[entity_id]['-'];
-                if (minus && Array.isArray(minus.a)) {
-                    minus.a.forEach(function(k) { delete attributes[k]; });
-                }
-                updatedAlarm = {
-                    entity_id: entity_id,
-                    state: plus.s !== undefined ? plus.s : cur.state,
-                    attributes: attributes,
-                    context: plus.c !== undefined ? plus.c : cur.context,
-                    last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
-                };
-            }
+            let updatedAlarm = EntityService.applyCompressedEvent(entity_id, data);
 
             if (updatedAlarm) {
                 helpers.log_message(`Alarm entity update for ${entity_id}: ${updatedAlarm.state}`);
-                appState.setEntity(entity_id, updatedAlarm);
 
                 updateAlarmMenuItems(updatedAlarm);
 
