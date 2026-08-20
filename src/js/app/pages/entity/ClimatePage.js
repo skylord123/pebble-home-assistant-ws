@@ -11,9 +11,11 @@
  */
 var UI = require('ui');
 var Vibe = require('ui/vibe');
+var NumberField = require('ui/numberfield');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 
 // Menu selection tracking
@@ -385,174 +387,93 @@ function showClimateEntity(entity_id) {
         }
     });
 
-    // Helper function to show temperature selection menu
+    // Temperature selection via the native number selector. mode is
+    // 'single', 'low', or 'high'; low/high are bounded by each other so a
+    // heat_cool range can't be set inverted.
     function showTemperatureMenu(entity_id, mode, current_temp, min_temp, max_temp, step) {
-        // Get the latest climate data to ensure we have the most up-to-date values
-        let climate = appState.ha_state_dict[entity_id];
-        let climateData = getClimateData(climate);
+        let climateData = getClimateData(appState.ha_state_dict[entity_id]);
 
-        // Remember which menu item we came from
-        let returnToIndex = selectedIndex;
-
-        let tempMenu = new UI.Menu({
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
-            sections: [{
-                title: 'Set Temperature'
-            }]
-        });
-
-        // Create temperature options
-        let temps = [];
-        for (let temp = max_temp; temp >= min_temp; temp -= step) {
-            temps.push(temp);
-        }
-
-        // Find the index of the current temperature to scroll to
-        let currentIndex = 0;
-        let roundedCurrentTemp = Math.round(current_temp / step) * step;
-        for (let i = 0; i < temps.length; i++) {
-            if (Math.abs(temps[i] - roundedCurrentTemp) < 0.001) {
-                currentIndex = i;
-                break;
+        let title = 'Temperature';
+        if (mode === 'low') {
+            title = 'Low Temperature';
+            if (climateData.target_temp_high !== undefined && climateData.target_temp_high !== null) {
+                max_temp = Math.min(max_temp, climateData.target_temp_high);
+            }
+        } else if (mode === 'high') {
+            title = 'High Temperature';
+            if (climateData.target_temp_low !== undefined && climateData.target_temp_low !== null) {
+                min_temp = Math.max(min_temp, climateData.target_temp_low);
             }
         }
 
-        // Helper function to determine if a temperature is the current one
-        function isCurrentTemperature(temp, mode, data) {
-            if (mode === 'single' && Math.abs(temp - data.target_temp) < 0.001) {
-                return true;
-            } else if (mode === 'low' && Math.abs(temp - data.target_temp_low) < 0.001) {
-                return true;
-            } else if (mode === 'high' && Math.abs(temp - data.target_temp_high) < 0.001) {
-                return true;
-            }
-            return false;
-        }
+        let stepStr = String(step);
+        let decimals = stepStr.indexOf('.') === -1 ? 0 : stepStr.length - stepStr.indexOf('.') - 1;
 
-        // Add each temperature as a menu item
-        for (let i = 0; i < temps.length; i++) {
-            let temp = temps[i];
-            let isCurrentTemp = isCurrentTemperature(temp, mode, climateData);
-
-            tempMenu.item(0, i, {
-                title: `${temp}°`,
-                subtitle: isCurrentTemp ? 'Current' : '',
-                temp: temp,
-                on_click: function() {
-                    // Set the temperature based on mode
-                    let data = {};
-                    if (mode === 'single') {
-                        data.temperature = temp;
-                    } else if (mode === 'low') {
-                        data.target_temp_low = temp;
-                        data.target_temp_high = climateData.target_temp_high;
-                    } else if (mode === 'high') {
-                        data.target_temp_low = climateData.target_temp_low;
-                        data.target_temp_high = temp;
-                    }
-
-                    appState.haws.climateSetTemp(
-                        entity_id,
-                        data,
-                        function(data) {
-                            helpers.log_message(`Set ${mode} temperature to ${temp}°`);
-                            // Don't hide the menu, let the user see the update
-                            // tempMenu.hide();
-                        },
-                        function(error) {
-                            helpers.log_message(`Error setting temperature: ${error}`);
-                        }
-                    );
+        // Follow changes made elsewhere while the selector is open; the
+        // watch ignores them while the user is actively adjusting
+        let subscription_msg_id = appState.haws.subscribeEntities([entity_id], function(eventData) {
+            let updatedClimate = EntityService.applyCompressedEvent(entity_id, eventData);
+            if (updatedClimate) {
+                let updatedData = getClimateData(updatedClimate);
+                let value = mode === 'low' ? updatedData.target_temp_low
+                    : mode === 'high' ? updatedData.target_temp_high
+                    : updatedData.target_temp;
+                if (value !== undefined && value !== null) {
+                    NumberField.value(value);
                 }
-            });
-        }
-
-        // Scroll to the current temperature
-        tempMenu.selection(0, currentIndex);
-
-        // Helper function to update temperature menu items
-        function updateTemperatureMenuItems(updatedClimate) {
-            // Get updated climate data
-            let updatedData = getClimateData(updatedClimate);
-
-            // Update menu items to reflect current state
-            for (let i = 0; i < temps.length; i++) {
-                let temp = temps[i];
-                let isCurrentTemp = isCurrentTemperature(temp, mode, updatedData);
-
-                tempMenu.item(0, i, {
-                    title: `${temp}°`,
-                    subtitle: isCurrentTemp ? 'Current' : '',
-                    temp: temp,
-                    on_click: tempMenu.items(0)[i].on_click
-                });
-            }
-
-            // Find the index of the current temperature to scroll to
-            let currentTemp;
-            if (mode === 'single') {
-                currentTemp = updatedData.target_temp;
-            } else if (mode === 'low') {
-                currentTemp = updatedData.target_temp_low;
-            } else if (mode === 'high') {
-                currentTemp = updatedData.target_temp_high;
-            }
-
-            if (currentTemp !== undefined) {
-                let roundedCurrentTemp = Math.round(currentTemp / step) * step;
-                for (let i = 0; i < temps.length; i++) {
-                    if (Math.abs(temps[i] - roundedCurrentTemp) < 0.001) {
-                        // Scroll to the current temperature
-                        tempMenu.selection(0, i);
-                        break;
-                    }
-                }
-            }
-        }
-
-        // Subscribe to entity updates
-        let temp_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Climate entity update for temperature menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
-
-                // Update menu items directly
-                updateTemperatureMenuItems(updatedClimate);
             }
         }, function(error) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
-        tempMenu.on('select', function(e) {
-            helpers.log_message(`Temperature menu item ${e.item.title} was selected!`);
-            if(typeof e.item.on_click === 'function') {
-                e.item.on_click(e);
+        function cleanup() {
+            if (subscription_msg_id) {
+                appState.haws.unsubscribe(subscription_msg_id);
+                subscription_msg_id = null;
             }
+        }
+
+        NumberField.show({
+            title: title,
+            unit: '°',
+            value: current_temp !== undefined && current_temp !== null ? current_temp : min_temp,
+            min: min_temp,
+            max: max_temp,
+            step: step,
+            decimals: decimals,
+            showBar: true,
+            onSet: function(value) {
+                // Re-read the other end of the range at set time so a
+                // concurrent change isn't clobbered with stale data
+                let latestData = getClimateData(appState.ha_state_dict[entity_id]);
+                let data = {};
+                if (mode === 'low') {
+                    data.target_temp_low = value;
+                    data.target_temp_high = latestData.target_temp_high;
+                } else if (mode === 'high') {
+                    data.target_temp_low = latestData.target_temp_low;
+                    data.target_temp_high = value;
+                } else {
+                    data.temperature = value;
+                }
+
+                appState.haws.climateSetTemp(
+                    entity_id,
+                    data,
+                    function(result) {
+                        Vibe.vibrate('short');
+                        helpers.log_message(`Set ${mode} temperature to ${value}°`);
+                        cleanup();
+                        NumberField.hide();
+                    },
+                    function(error) {
+                        Vibe.vibrate('double');
+                        helpers.log_message(`Error setting temperature: ${JSON.stringify(error)}`);
+                    }
+                );
+            },
+            onCancel: cleanup
         });
-
-        tempMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (temp_subscription_msg_id) {
-                appState.haws.unsubscribe(temp_subscription_msg_id);
-            }
-
-            // Restore the selection in the parent menu
-            selectedIndex = returnToIndex;
-        });
-
-        tempMenu.show();
     }
 
     // Helper function to show HVAC mode selection menu
