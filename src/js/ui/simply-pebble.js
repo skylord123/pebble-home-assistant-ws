@@ -561,6 +561,8 @@ var TouchConfigPacket = new struct([
   [Packet, 'packet'],
   ['bool', 'subscribed', BoolType],
   ['bool', 'wantsMoves', BoolType],
+  ['bool', 'enabled', BoolType],
+  ['bool', 'longPress', BoolType],
 ]);
 
 var TouchDataPacket = new struct([

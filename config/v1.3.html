@@ -755,6 +755,20 @@
 					<small class="form-text">When enabled, scrolling past the top or bottom of a menu jumps to the other end</small>
 				</div>
 				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-touch-enabled">Touch Input</label>
+						<input class="form-check-input" type="checkbox" id="ha-touch-enabled" checked>
+					</div>
+					<small class="form-text">Tap to select, slide to scroll, hold for a long press, and swipe right to go back on watches with a touchscreen</small>
+					<div id="ha-touch-long-press-wrap" style="margin-top: 12px;">
+						<div class="form-switch">
+							<label class="form-check-label" for="ha-touch-long-press">Touch Long Press Actions</label>
+							<input class="form-check-input" type="checkbox" id="ha-touch-long-press" checked>
+						</div>
+						<small class="form-text">Holding a finger on an item acts like holding the select button, which can trigger entity actions. Disable to use touch for navigation only.</small>
+					</div>
+				</div>
+				<div class="component">
 					<div class="form-group">
 						<label class="form-label" for="ha-inactivity-timeout">Inactivity Timeout (seconds)</label>
 						<input type="number" class="form-control" id="ha-inactivity-timeout" min="0" step="1" value="0">
@@ -1263,6 +1277,9 @@
 				quickLaunchFavoriteEntityContainer = $('#quick-launch-favorite-entity-container'),
 				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back'),
 				menuScrollWrap = $('#ha-menu-scroll-wrap'),
+				touchEnabled = $('#ha-touch-enabled'),
+				touchLongPress = $('#ha-touch-long-press'),
+				touchLongPressWrap = $('#ha-touch-long-press-wrap'),
 				inactivityTimeout = $('#ha-inactivity-timeout'),
 				unavailableHandling = $('#ha-unavailable-handling'),
 				unknownHandling = $('#ha-unknown-handling'),
@@ -1316,6 +1333,8 @@
 				'quick_launch_favorite_entity': quickLaunchFavoriteEntity.val() || null,
 				'quick_launch_exit_on_back': quickLaunchExitOnBack.is(':checked'),
 				'menu_scroll_wrap': menuScrollWrap.is(':checked'),
+				'touch_enabled': touchEnabled.is(':checked'),
+				'touch_long_press': touchLongPress.is(':checked'),
 				'inactivity_timeout': parseInt(inactivityTimeout.val(), 10) || 0,
 				// Domain menu settings
 				'domain_menu_enabled': 'conditional', // Default global setting
@@ -1525,6 +1544,12 @@
 
 			// Handle menu scroll wrap-around (default enabled)
 			menuScrollWrap.prop('checked', typeof watch_config['menu_scroll_wrap'] !== 'undefined' ? watch_config['menu_scroll_wrap'] : true);
+			touchEnabled.prop('checked', typeof watch_config['touch_enabled'] !== 'undefined' ? watch_config['touch_enabled'] : true);
+			touchLongPress.prop('checked', typeof watch_config['touch_long_press'] !== 'undefined' ? watch_config['touch_long_press'] : true);
+			touchLongPressWrap.toggle(touchEnabled.is(':checked'));
+			touchEnabled.on('change', function() {
+				touchLongPressWrap.toggle(touchEnabled.is(':checked'));
+			});
 
 			// Handle inactivity timeout (default 0 = disabled)
 			inactivityTimeout.val(typeof watch_config['inactivity_timeout'] !== 'undefined' ? watch_config['inactivity_timeout'] : 0);

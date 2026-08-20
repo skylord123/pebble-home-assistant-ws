@@ -5,6 +5,7 @@ var Settings = require('settings');
 var Feature = require('platform/feature');
 var Menu = require('ui/menu');
 var InactivityTimer = require('app/InactivityTimer');
+var Touch = require('ui/touch');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
@@ -127,6 +128,13 @@ var SettingsManager = {
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
+
+        // Touch input settings (both default enabled; only meaningful on
+        // watches with a touchscreen)
+        appState.touch_enabled = Settings.option('touch_enabled') !== false;
+        appState.touch_long_press = Settings.option('touch_long_press') !== false;
+        Touch.applySettings(appState.touch_enabled, appState.touch_long_press);
+        log('Touch: ' + appState.touch_enabled + ', long press: ' + appState.touch_long_press);
 
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;
