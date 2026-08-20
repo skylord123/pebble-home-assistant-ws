@@ -65,10 +65,7 @@ def configure_platform(ctx, platform=None):
                    '-fms-extensions',
                    '-Wno-address',
                    '-Wno-type-limits',
-                   '-Wno-missing-field-initializers',
-                   '-DSPLASH_TEXT',
-                   '-DSPLASH_TEXT_TITLE="Home Assistant WS"',
-                   '-DSPLASH_TEXT_SUBTITLE="Waiting for phone"'])
+                   '-Wno-missing-field-initializers'])
 
     ctx.env.CFLAGS = cflags
 

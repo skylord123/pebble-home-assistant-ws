@@ -50,10 +50,7 @@ appState.favoriteEntityStore = new FavoriteEntityStore();
 appState.pinnedEntityStore = new PinnedEntityStore();
 
 // === Loading Card ===
-var loadingCard = new UI.Card({
-    title: 'Home Assistant WS',
-    status: false
-});
+var loadingCard = require('app/ui/SplashScreen');
 
 // === Logging ===
 helpers.log_message('Started! v' + Constants.appVersion);
@@ -291,3 +288,4 @@ ConnectionService.init({
 SettingsManager.load();
 loadingCard.show();
 ConnectionService.connect();
+

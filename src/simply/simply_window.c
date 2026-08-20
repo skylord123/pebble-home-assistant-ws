@@ -1,5 +1,7 @@
 #include "simply_window.h"
 
+#include "simply_splash.h"
+
 #include "simply_msg.h"
 #include "simply_res.h"
 #include "simply_menu.h"
@@ -398,7 +400,13 @@ bool simply_window_appear(SimplyWindow *self) {
     return false;
   }
   if (simply_msg_has_communicated()) {
-    simply_window_stack_send_show(self->simply->window_stack, self);
+    if (simply_splash_consume_reveal()) {
+      // Revealed from under the splash: this window reloaded empty and JS
+      // does not know, so ask it to re-render (JS ignores plain show events)
+      simply_splash_send_reveal();
+    } else {
+      simply_window_stack_send_show(self->simply->window_stack, self);
+    }
   }
   return true;
 }
@@ -411,7 +419,9 @@ bool simply_window_disappear(SimplyWindow *self) {
   if (simply_voice_dictation_in_progress()) {
     return false;
   }
-  if (simply_msg_has_communicated()) {
+  // If the splash is covering the window (e.g. while reconnecting), the JS
+  // window stack must keep this window so it is restored when the splash goes
+  if (simply_msg_has_communicated() && !simply_splash_is_covering(self->simply)) {
     simply_window_stack_send_hide(self->simply->window_stack, self);
   }
 

@@ -771,6 +771,33 @@ var VoiceDictationDataPacket = new struct([
   ['cstring', 'transcription'],
 ]);
 
+var SplashShowPacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var SplashHidePacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var SplashStatusPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'titleLength', StringLengthType],
+  ['uint16', 'statusLength', StringLengthType],
+  ['uint16', 'bodyLength', StringLengthType],
+  ['cstring', 'title', StringType],
+  ['cstring', 'status', StringType],
+  ['cstring', 'body', StringType],
+]);
+
+var SplashModePacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'mode'],
+]);
+
+var SplashRevealPacket = new struct([
+  [Packet, 'packet'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -831,6 +858,11 @@ var CommandPackets = [
   CalculateTextSizePacket,
   CalculateTextSizeResponsePacket,
   ElementPolylinePacket,
+  SplashShowPacket,
+  SplashHidePacket,
+  SplashStatusPacket,
+  SplashModePacket,
+  SplashRevealPacket,
 ];
 
 var accelAxes = [
@@ -1483,6 +1515,29 @@ SimplyPebble.stageElement = function(id, type, def, index) {
 
 SimplyPebble.stageRemove = SimplyPebble.elementRemove;
 
+SimplyPebble.splashShow = function() {
+  SimplyPebble.sendPacket(SplashShowPacket);
+};
+
+SimplyPebble.splashHide = function() {
+  SimplyPebble.sendPacket(SplashHidePacket);
+};
+
+SimplyPebble.splashStatus = function(title, status, body) {
+  SplashStatusPacket
+    .titleLength(title)
+    .statusLength(status)
+    .bodyLength(body)
+    .title(title)
+    .status(status)
+    .body(body);
+  SimplyPebble.sendPacket(SplashStatusPacket);
+};
+
+SimplyPebble.splashMode = function(mode) {
+  SimplyPebble.sendPacket(SplashModePacket.mode(mode));
+};
+
 SimplyPebble.stageAnimate = SimplyPebble.elementAnimate;
 
 SimplyPebble.stage = function(def, clear, pushing) {
@@ -1616,6 +1671,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case WindowHideEventPacket:
       ImageService.markAllUnloaded();
       WindowStack.emitHide(packet.id());
+      break;
+    case SplashRevealPacket:
+      // The splash was covering the current window, which reloaded empty on
+      // the watch; re-render the top window (images must re-send too)
+      ImageService.markAllUnloaded();
+      var revealed = WindowStack.top();
+      if (revealed) {
+        revealed._show();
+      }
       break;
     case ClickPacket:
       Window.emitClick('click', ButtonTypes[packet.button()]);

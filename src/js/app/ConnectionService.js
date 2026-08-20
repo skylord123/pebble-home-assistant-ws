@@ -112,6 +112,7 @@ var ConnectionService = {
         if (!appState.ha_url || !appState.ha_password) {
             this.loadingCard.subtitle('Setup required');
             this.loadingCard.body("Configure from the Pebble app");
+            this.loadingCard.setup();
             return;
         }
 
@@ -150,7 +151,11 @@ var ConnectionService = {
 
         appState.haws.on('auth_invalid', function(evt) {
             self.loadingCard.title('Auth Failure');
-            self.loadingCard.subtitle(evt.detail.message || 'Unknown error');
+            self.loadingCard.subtitle('Check your access token');
+            // The full message from Home Assistant can be long; the detail
+            // line wraps while the status line would cut it off
+            self.loadingCard.body(evt.detail.message || 'Unknown error');
+            self.loadingCard.error();
         });
 
         appState.haws.on('auth_ok', function(evt) {

@@ -61,5 +61,10 @@ enum Command {
   CommandCalculateTextSize,
   CommandCalculateTextSizeResponse,
   CommandElementPolyline,
+  CommandSplashShow,
+  CommandSplashHide,
+  CommandSplashStatus,
+  CommandSplashMode,
+  CommandSplashReveal,
   NumCommands,
 };

@@ -14,16 +14,6 @@
         "type": "bitmap"
       },
       {
-        "file": "images/logo_splash.png",
-        "name": "IMAGE_LOGO_SPLASH",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/tile_splash.png",
-        "name": "IMAGE_TILE_SPLASH",
-        "type": "bitmap"
-      },
-      {
         "file": "fonts/UbuntuMono-Regular.ttf",
         "name": "MONO_FONT_14",
         "type": "font"
