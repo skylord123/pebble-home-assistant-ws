@@ -306,6 +306,10 @@ var EntityService = {
             case 'input_select':
                 require('app/pages/entity/SelectPage').showSelectEntity(entity_id);
                 break;
+            case 'number':
+            case 'input_number':
+                require('app/pages/entity/NumberPage').showNumberEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -441,6 +445,9 @@ var EntityService = {
             // Disarm when armed, arm when disarmed; the page module owns the
             // state logic and any code prompt
             require('app/pages/entity/AlarmPanelPage').quickAction(entity_id);
+        } else if (domain === "number" || domain === "input_number") {
+            // Jump straight to the value editor
+            require('app/pages/entity/NumberPage').showValueEditor(entity_id);
         } else if (domain === "select" || domain === "input_select") {
             // Cycle to the next option (select_next wraps by default)
             appState.haws.callService(
