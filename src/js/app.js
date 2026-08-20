@@ -12,6 +12,7 @@ var UI = require('ui');
 var Settings = require('settings');
 var FavoriteEntityStore = require('vendor/FavoriteEntityStore');
 var PinnedEntityStore = require('vendor/PinnedEntityStore');
+var AlarmCodeStore = require('vendor/AlarmCodeStore');
 var simply = require('ui/simply');
 
 // === Module Imports ===
@@ -48,6 +49,7 @@ var appState = AppState.getInstance();
 // === Initialize Stores ===
 appState.favoriteEntityStore = new FavoriteEntityStore();
 appState.pinnedEntityStore = new PinnedEntityStore();
+appState.alarmCodeStore = new AlarmCodeStore();
 
 // === Loading Card ===
 var loadingCard = require('app/ui/SplashScreen');

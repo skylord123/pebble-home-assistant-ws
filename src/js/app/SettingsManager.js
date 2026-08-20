@@ -104,6 +104,10 @@ var SettingsManager = {
             ? appState.automation_longpress_action
             : 'toggle';
 
+        // Whether to remember alarm panel codes after a successful entry
+        // (toggleable from the alarm page's Code menu)
+        appState.alarm_code_remember = Settings.option('alarm_code_remember') !== false;
+
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);

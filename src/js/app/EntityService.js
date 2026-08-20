@@ -72,6 +72,14 @@ var EntityService = {
             case 'lock':
                 return state === 'locked' ? 'images/icon_locked.png' : 'images/icon_unlocked.png';
 
+            case 'alarm_control_panel':
+                if (state === 'unavailable' || state === 'unknown') {
+                    return 'images/icon_unknown.png';
+                }
+                return (state === 'disarmed' || state === 'disarming')
+                    ? 'images/icon_unlocked.png'
+                    : 'images/icon_locked.png';
+
             case 'sensor':
                 // Check for temperature sensors
                 if (entity.attributes.device_class === 'temperature') {
@@ -204,6 +212,9 @@ var EntityService = {
             case 'cover':
                 require('app/pages/entity/CoverPage').showCoverEntity(entity_id);
                 break;
+            case 'alarm_control_panel':
+                require('app/pages/entity/AlarmPanelPage').showAlarmEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -335,6 +346,10 @@ var EntityService = {
             } else {
                 log('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
             }
+        } else if (domain === "alarm_control_panel") {
+            // Disarm when armed, arm when disarmed; the page module owns the
+            // state logic and any code prompt
+            require('app/pages/entity/AlarmPanelPage').quickAction(entity_id);
         } else if (domain === "button" || domain === "input_button") {
             appState.haws.callService(
                 domain,

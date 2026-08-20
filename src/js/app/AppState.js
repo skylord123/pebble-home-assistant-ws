@@ -66,6 +66,7 @@ class AppState {
         // Stores (will be initialized by app.js)
         this.favoriteEntityStore = null;
         this.pinnedEntityStore = null;
+        this.alarmCodeStore = null;
 
         // UI state
         this.saved_windows = null;

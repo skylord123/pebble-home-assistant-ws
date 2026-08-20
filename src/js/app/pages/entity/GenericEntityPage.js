@@ -312,6 +312,29 @@ function showEntityMenu(entity_id) {
         });
     }
 
+    if(domain === "alarm_control_panel") {
+        // AlarmPanelPage.performAction handles the code prompt when the
+        // panel requires one (lazy require: AlarmPanelPage imports this
+        // module at top level)
+        let AlarmPanelPage = require('app/pages/entity/AlarmPanelPage');
+        let alarmServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    AlarmPanelPage.performAction(entity.entity_id, service);
+                }
+            };
+        };
+        let alarmFeatures = entity.attributes.supported_features || 0;
+
+        showEntityMenu.item(1, servicesCount++, alarmServiceItem('Disarm', 'alarm_disarm'));
+        AlarmPanelPage.ARM_MODES.forEach(function(mode) {
+            if (alarmFeatures & mode.feature) {
+                showEntityMenu.item(1, servicesCount++, alarmServiceItem(mode.title, mode.service));
+            }
+        });
+    }
+
     if(domain === "scene") {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
             title: 'Turn On',
