@@ -3,6 +3,7 @@
 #include "simply.h"
 
 #include "simply_msg.h"
+#include "simply_touch.h"
 
 #include <pebble.h>
 
@@ -94,42 +95,53 @@ static int32_t prv_wrap(int32_t value, int32_t count) {
   return ((value % count) + count) % count;
 }
 
+static int16_t prv_inset(void) {
+  return PBL_IF_ROUND_ELSE(24, 8);
+}
+
+// Layout is shared with the touch hit testing, so the bar and the fields
+// can only ever be drawn where a finger is expected to find them
+static GRect prv_track_rect(GRect bounds) {
+  const int16_t bar_margin = PBL_IF_ROUND_ELSE(34, 20);
+  return GRect(bar_margin, bounds.size.h / 2 + 20, bounds.size.w - 2 * bar_margin, 14);
+}
+
+static GRect prv_field_rect(GRect bounds, uint8_t index) {
+  const int16_t colon_w = 10;
+  int16_t box_w = (bounds.size.w - 2 * prv_inset() - 2 * colon_w) / 3;
+  if (box_w > 40) { box_w = 40; }
+  const int16_t total_w = 3 * box_w + 2 * colon_w;
+  const int16_t x = (bounds.size.w - total_w) / 2 + index * (box_w + colon_w);
+  return GRect(x, bounds.size.h / 2 - 24, box_w, 34);
+}
+
 // Draw the value as HH:MM:SS with the selected field boxed. The field is
 // only an input aid, so nothing here needs its own stored value.
-static void prv_draw_duration(SimplyNumber *self, GContext *ctx, int16_t w, int16_t h, int16_t inset) {
+static void prv_draw_duration(SimplyNumber *self, GContext *ctx, GRect bounds) {
   const int32_t total = self->value < 0 ? 0 : self->value;
   const int32_t parts[3] = { total / 3600, (total % 3600) / 60, total % 60 };
-
-  const int16_t colon_w = 10;
-  int16_t box_w = (w - 2 * inset - 2 * colon_w) / 3;
-  if (box_w > 40) { box_w = 40; }
-  const int16_t box_h = 34;
-  const int16_t total_w = 3 * box_w + 2 * colon_w;
-  const int16_t y = h / 2 - 24;
-  int16_t x = (w - total_w) / 2;
-
   GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
 
   for (uint8_t i = 0; i < 3; i++) {
+    const GRect box = prv_field_rect(bounds, i);
     char buf[4];
     snprintf(buf, sizeof(buf), "%02d", (int)parts[i]);
 
     if (i == self->field) {
       graphics_context_set_fill_color(ctx, GColorBlack);
-      graphics_fill_rect(ctx, GRect(x, y, box_w, box_h), 3, GCornersAll);
+      graphics_fill_rect(ctx, box, 3, GCornersAll);
       graphics_context_set_text_color(ctx, GColorWhite);
     } else {
       graphics_context_set_text_color(ctx, GColorBlack);
     }
-    graphics_draw_text(ctx, buf, font, GRect(x, y - 3, box_w, box_h),
+    graphics_draw_text(ctx, buf, font, GRect(box.origin.x, box.origin.y - 3, box.size.w, box.size.h),
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-    x += box_w;
     if (i < 2) {
       graphics_context_set_text_color(ctx, GColorBlack);
-      graphics_draw_text(ctx, ":", font, GRect(x, y - 3, colon_w, box_h),
+      graphics_draw_text(ctx, ":", font,
+          GRect(box.origin.x + box.size.w, box.origin.y - 3, 10, box.size.h),
           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
-      x += colon_w;
     }
   }
 }
@@ -139,7 +151,7 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
   const GRect bounds = layer_get_bounds(layer);
   const int16_t w = bounds.size.w;
   const int16_t h = bounds.size.h;
-  const int16_t inset = PBL_IF_ROUND_ELSE(24, 8);
+  const int16_t inset = prv_inset();
 
   // Overriding the root layer's update proc replaces the default proc that
   // paints the window background, so clear the frame ourselves
@@ -156,7 +168,7 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
 
   // Value
   if (self->duration_mode) {
-    prv_draw_duration(self, ctx, w, h, inset);
+    prv_draw_duration(self, ctx, bounds);
   } else {
     char value_buf[32];
     prv_format_value(self, value_buf, sizeof(value_buf));
@@ -169,8 +181,7 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
   // Progress bar: outlined track with a filled portion, which works on
   // every display without needing gray
   if (self->show_bar && !self->duration_mode) {
-    const int16_t bar_margin = PBL_IF_ROUND_ELSE(34, 20);
-    const GRect track = GRect(bar_margin, h / 2 + 20, w - 2 * bar_margin, 14);
+    const GRect track = prv_track_rect(bounds);
     graphics_context_set_stroke_color(ctx, GColorBlack);
     graphics_draw_rect(ctx, track);
     const int32_t range = self->max - self->min;
@@ -417,6 +428,149 @@ static void prv_handle_value(Simply *simply, Packet *data) {
 bool simply_number_is_covering(Simply *simply) {
   return (simply->number && window_stack_contains_window(simply->number->window));
 }
+
+#ifdef SIMPLY_HAS_TOUCH
+
+// A finger that moves less than this between touchdown and liftoff is a tap,
+// and one travelling at least SWIPE_MIN horizontally is a swipe. Kept in step
+// with simply_touch.c so gestures feel the same here as everywhere else.
+#define TOUCH_TAP_SLOP 10
+#define TOUCH_SWIPE_MIN 30
+#define TOUCH_GESTURE_MAX_MS 2000
+
+// Extra margin around the bar and the fields, since both are smaller than a
+// fingertip
+#define TOUCH_PAD 12
+
+typedef enum {
+  NumberTouchIdle = 0,
+  NumberTouchPending,   // finger down, gesture undecided
+  NumberTouchScrub,     // finger is dragging the bar
+} NumberTouchMode;
+
+static NumberTouchMode s_touch_mode = NumberTouchIdle;
+static int16_t s_touch_down_x, s_touch_down_y;
+static int64_t s_touch_down_ms;
+
+static bool prv_rect_hit(GRect r, int16_t x, int16_t y, int16_t pad) {
+  return x >= r.origin.x - pad && x <= r.origin.x + r.size.w + pad &&
+         y >= r.origin.y - pad && y <= r.origin.y + r.size.h + pad;
+}
+
+// Map a horizontal position on the bar to a value, snapped to the caller's
+// step so dragging cannot produce a value the buttons never would
+static void prv_set_from_x(SimplyNumber *self, GRect bounds, int16_t x) {
+  const GRect track = prv_track_rect(bounds);
+  const int32_t inner_x = track.origin.x + 2;
+  const int32_t inner_w = track.size.w - 4;
+  if (inner_w <= 0) { return; }
+
+  int32_t pos = x - inner_x;
+  if (pos < 0) { pos = 0; }
+  if (pos > inner_w) { pos = inner_w; }
+
+  const int32_t range = self->max - self->min;
+  int32_t value = self->min + (int32_t)(((int64_t)range * pos + inner_w / 2) / inner_w);
+  if (self->step > 0) {
+    const int32_t steps = (value - self->min + self->step / 2) / self->step;
+    value = self->min + steps * self->step;
+  }
+  value = prv_clamp(value, self->min, self->max);
+
+  self->last_input_ms = prv_now_ms();
+  if (value != self->value) {
+    self->value = value;
+    layer_mark_dirty(window_get_root_layer(self->window));
+  }
+}
+
+static void prv_select_field_at(SimplyNumber *self, GRect bounds, int16_t x, int16_t y) {
+  for (uint8_t i = 0; i < 3; i++) {
+    if (prv_rect_hit(prv_field_rect(bounds, i), x, y, TOUCH_PAD)) {
+      if (self->field != i) {
+        self->field = i;
+        self->last_input_ms = prv_now_ms();
+        layer_mark_dirty(window_get_root_layer(self->window));
+      }
+      return;
+    }
+  }
+}
+
+bool simply_number_handle_touch(Simply *simply, const TouchEvent *event) {
+  SimplyNumber *self = simply->number;
+  // Only while the selector is the window actually on screen. Without this
+  // the swipe back in simply_touch would act on the JS window underneath,
+  // dismissing the page behind the selector while the selector stayed up.
+  if (!self || window_stack_get_top_window() != self->window) {
+    return false;
+  }
+
+  const GRect bounds = layer_get_bounds(window_get_root_layer(self->window));
+
+  switch (event->type) {
+    case TouchEvent_Touchdown:
+      if (event->non_navigational) {
+        s_touch_mode = NumberTouchIdle;
+        return true;
+      }
+      s_touch_down_x = event->x;
+      s_touch_down_y = event->y;
+      s_touch_down_ms = prv_now_ms();
+      // Touching the bar grabs it straight away, so a tap sets the value and
+      // a drag carries on from there. Anywhere else stays undecided so it can
+      // still turn into a swipe.
+      if (!self->duration_mode && self->show_bar &&
+          prv_rect_hit(prv_track_rect(bounds), event->x, event->y, TOUCH_PAD)) {
+        s_touch_mode = NumberTouchScrub;
+        prv_set_from_x(self, bounds, event->x);
+      } else {
+        s_touch_mode = NumberTouchPending;
+      }
+      return true;
+
+    case TouchEvent_PositionUpdate:
+      if (s_touch_mode == NumberTouchScrub) {
+        prv_set_from_x(self, bounds, event->x);
+      }
+      return true;
+
+    case TouchEvent_Liftoff: {
+      const NumberTouchMode mode = s_touch_mode;
+      s_touch_mode = NumberTouchIdle;
+      if (mode == NumberTouchScrub) {
+        return true;
+      }
+      if (mode != NumberTouchPending ||
+          prv_now_ms() - s_touch_down_ms > TOUCH_GESTURE_MAX_MS) {
+        return true;
+      }
+
+      const int dx = event->x - s_touch_down_x;
+      const int dy = event->y - s_touch_down_y;
+      const int adx = abs(dx);
+      const int ady = abs(dy);
+
+      if (adx < TOUCH_TAP_SLOP && ady < TOUCH_TAP_SLOP) {
+        if (self->duration_mode) {
+          prv_select_field_at(self, bounds, event->x, event->y);
+        }
+        return true;
+      }
+
+      // Swipe right leaves, the same as the back button and the same as
+      // everywhere else on the watch
+      if (adx >= TOUCH_SWIPE_MIN && adx > ady && dx > 0) {
+        window_stack_remove(self->window, false);
+      }
+      return true;
+    }
+  }
+
+  return true;
+}
+
+#endif  // SIMPLY_HAS_TOUCH
 
 bool simply_number_handle_packet(Simply *simply, Packet *packet) {
   switch (packet->type) {

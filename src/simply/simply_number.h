@@ -3,6 +3,7 @@
 #include "simply.h"
 
 #include "simply_msg.h"
+#include "simply_touch.h"
 
 #include <pebble.h>
 
@@ -43,3 +44,14 @@ bool simply_number_handle_packet(Simply *simply, Packet *packet);
 //! it must not report hide events to JS: the JS window stack keeps the page
 //! beneath so it is restored when the selector closes.
 bool simply_number_is_covering(Simply *simply);
+
+#ifdef SIMPLY_HAS_TOUCH
+
+//! Handle a touch event while the selector is the window on screen: tapping
+//! or dragging the bar sets the value, tapping a duration field selects it,
+//! and a swipe right leaves. Returns true when the selector consumed the
+//! event, which also keeps the generic swipe back from acting on the JS
+//! window hidden underneath.
+bool simply_number_handle_touch(Simply *simply, const TouchEvent *event);
+
+#endif

@@ -4,6 +4,7 @@
 
 #include "simply_msg.h"
 #include "simply_menu.h"
+#include "simply_number.h"
 #include "simply_window.h"
 #include "simply_window_stack.h"
 
@@ -226,6 +227,14 @@ static bool prv_handle_liftoff(int16_t x, int16_t y) {
 
 static void handle_touch(const TouchEvent *event, void *context) {
   if (!s_touch) {
+    return;
+  }
+
+  // The number selector is a native window that the JS window stack knows
+  // nothing about, so it has to resolve its own gestures. It also has to run
+  // before the generic handling below, which would otherwise swipe back the
+  // JS window sitting hidden underneath it.
+  if (simply_number_handle_touch(s_touch->simply, event)) {
     return;
   }
 
