@@ -172,6 +172,16 @@
         "file": "images/icon_clock.png",
         "name": "IMAGE_ICON_CLOCK",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_refresh.png",
+        "name": "IMAGE_ICON_REFRESH",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_power.png",
+        "name": "IMAGE_ICON_POWER",
+        "type": "bitmap"
       }
     ]
   },

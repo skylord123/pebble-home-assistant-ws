@@ -6,6 +6,23 @@ var Vibe = require('ui/vibe');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
 
+/**
+ * Whether a button has ever been pressed. Its state is an ISO timestamp of
+ * the last press, and unknown until there has been one.
+ * @param {Object} entity
+ * @returns {boolean}
+ */
+function wasPressed(entity) {
+    if (!entity || typeof entity.state !== 'string') return false;
+    if (entity.state === 'unknown' || entity.state === 'unavailable') return false;
+    return !isNaN(new Date(entity.state).getTime());
+}
+
+function pressedText(entity) {
+    if (entity.state === 'unavailable') return entity.state;
+    return wasPressed(entity) ? 'Pressed' : 'Never pressed';
+}
+
 var EntityService = {
     /**
      * Get the display title for an entity
@@ -60,6 +77,14 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
+        } else if (domain === 'button' || domain === 'input_button') {
+            // A button's state is when it was last pressed, not a condition,
+            // so the raw timestamp is noise. The relative time that follows
+            // is the same instant and keeps counting on its own.
+            text = pressedText(entity);
+        } else if (domain === 'remote') {
+            // Whatever activity it is running, where the remote has them
+            text = require('app/pages/entity/RemotePage').statusText(entity);
         } else if (domain === 'lawn_mower') {
             // What it is doing, plus a battery level for the custom
             // integrations that report one
@@ -94,11 +119,27 @@ var EntityService = {
         var subtitle = this.getStateText(entity);
 
         // Add relative time if requested and last_changed is available
-        if (includeRelativeTime && entity.last_changed) {
+        if (includeRelativeTime && entity.last_changed && !this.hidesRelativeTime(entity)) {
             subtitle += ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed));
         }
 
         return subtitle;
+    },
+
+    /**
+     * Whether the relative time would say something untrue. A button that
+     * has never been pressed still has a last_changed, but it marks when
+     * Home Assistant started rather than anything the user did.
+     * @param {Object} entity
+     * @returns {boolean}
+     */
+    hidesRelativeTime: function(entity) {
+        if (!entity || !entity.entity_id) return false;
+        var domain = entity.entity_id.split('.')[0];
+        if (domain !== 'button' && domain !== 'input_button') return false;
+        // Only the never pressed case: an unavailable button's last_changed
+        // is the moment it went unavailable, which is worth showing
+        return entity.state !== 'unavailable' && !wasPressed(entity);
     },
 
     /**
@@ -123,6 +164,7 @@ var EntityService = {
             case 'fan':
             case 'humidifier':
             case 'siren':
+            case 'remote':
                 return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
             case 'cover':
@@ -180,6 +222,13 @@ var EntityService = {
 
             case 'timer':
                 return 'images/icon_timer.png';
+
+            case 'button':
+            case 'input_button':
+                // Buttons carry a device class of restart, identify or update
+                return entity.attributes.device_class === 'restart'
+                    ? 'images/icon_refresh.png'
+                    : 'images/icon_power.png';
 
             case 'water_heater':
                 return 'images/icon_temp.png';
@@ -393,6 +442,9 @@ var EntityService = {
             case 'lawn_mower':
                 require('app/pages/entity/LawnMowerPage').showLawnMowerEntity(entity_id);
                 break;
+            case 'remote':
+                require('app/pages/entity/RemotePage').showRemoteEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -542,6 +594,8 @@ var EntityService = {
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
             require('app/pages/entity/TextPage').dictateValue(entity_id);
+        } else if (domain === "remote") {
+            require('app/pages/entity/RemotePage').quickAction(entity_id);
         } else if (domain === "lawn_mower") {
             // Stop a mower that is moving, set a stopped one going
             require('app/pages/entity/LawnMowerPage').quickAction(entity_id);

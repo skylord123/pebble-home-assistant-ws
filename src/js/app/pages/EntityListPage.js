@@ -145,7 +145,7 @@ class EntityListPage extends BasePage {
 
             self.menu.item(0, renderedEntityIds[entity_id], {
                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                subtitle: EntityService.getStateText(entity) + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed)),
+                subtitle: EntityService.getSubtitle(entity),
                 entity_id: entity.entity_id,
                 icon: EntityService.getIcon(entity)
             });
@@ -263,7 +263,7 @@ class EntityListPage extends BasePage {
                     }
 
                     var itemTitle = data[j].attributes.friendly_name ? data[j].attributes.friendly_name : data[j].entity_id;
-                    var itemSubtitle = EntityService.getStateText(data[j]) + ' > ' + helpers.humanDiff(new Date(), new Date(data[j].last_changed));
+                    var itemSubtitle = EntityService.getSubtitle(data[j]);
 
                     // Get icon path
                     var itemIcon;
@@ -326,7 +326,7 @@ class EntityListPage extends BasePage {
 
             self.menu.item(0, renderedEntityIds[entity_id], {
                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                subtitle: EntityService.getStateText(entity) + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed)),
+                subtitle: EntityService.getSubtitle(entity),
                 entity_id: entity.entity_id,
                 icon: EntityService.getIcon(entity)
             });
