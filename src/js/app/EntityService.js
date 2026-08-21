@@ -60,6 +60,10 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
+        } else if (domain === 'lawn_mower') {
+            // What it is doing, plus a battery level for the custom
+            // integrations that report one
+            text = require('app/pages/entity/LawnMowerPage').statusText(entity);
         } else if (domain === 'water_heater') {
             // The state is the operation mode, so pair it with the readings
             text = require('app/pages/entity/WaterHeaterPage').statusText(entity);
@@ -197,6 +201,9 @@ var EntityService = {
                     : 'images/icon_calendar.png';
 
             case 'vacuum':
+            case 'lawn_mower':
+                // No mower artwork, and the robot that drives itself around
+                // is the same idea
                 return 'images/icon_vacuum.png';
 
             default:
@@ -383,6 +390,9 @@ var EntityService = {
             case 'counter':
                 require('app/pages/entity/CounterPage').showCounterEntity(entity_id);
                 break;
+            case 'lawn_mower':
+                require('app/pages/entity/LawnMowerPage').showLawnMowerEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -532,6 +542,9 @@ var EntityService = {
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
             require('app/pages/entity/TextPage').dictateValue(entity_id);
+        } else if (domain === "lawn_mower") {
+            // Stop a mower that is moving, set a stopped one going
+            require('app/pages/entity/LawnMowerPage').quickAction(entity_id);
         } else if (domain === "counter") {
             // Counting up is what a counter is usually for
             require('app/pages/entity/CounterPage').quickAction(entity_id);
