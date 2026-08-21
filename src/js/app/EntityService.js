@@ -60,6 +60,9 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
+        } else if (domain === 'water_heater') {
+            // The state is the operation mode, so pair it with the readings
+            text = require('app/pages/entity/WaterHeaterPage').statusText(entity);
         } else if (domain === 'valve') {
             // How far open it is, where the valve reports it
             text = require('app/pages/entity/ValvePage').statusText(entity);
@@ -173,6 +176,9 @@ var EntityService = {
 
             case 'timer':
                 return 'images/icon_timer.png';
+
+            case 'water_heater':
+                return 'images/icon_temp.png';
 
             case 'date':
             case 'datetime':
@@ -368,6 +374,9 @@ var EntityService = {
             case 'valve':
                 require('app/pages/entity/ValvePage').showValveEntity(entity_id);
                 break;
+            case 'water_heater':
+                require('app/pages/entity/WaterHeaterPage').showWaterHeaterEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -517,6 +526,9 @@ var EntityService = {
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
             require('app/pages/entity/TextPage').dictateValue(entity_id);
+        } else if (domain === "water_heater") {
+            // No toggle service exists, so the direction comes from the state
+            require('app/pages/entity/WaterHeaterPage').quickAction(entity_id);
         } else if (domain === "valve") {
             // Toggle where the valve does both, otherwise its one direction
             require('app/pages/entity/ValvePage').quickAction(entity_id);
