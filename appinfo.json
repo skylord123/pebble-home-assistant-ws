@@ -182,6 +182,11 @@
         "file": "images/icon_power.png",
         "name": "IMAGE_ICON_POWER",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_yes.png",
+        "name": "IMAGE_ICON_YES",
+        "type": "bitmap"
       }
     ]
   },

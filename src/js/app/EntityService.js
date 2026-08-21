@@ -82,6 +82,9 @@ var EntityService = {
             // so the raw timestamp is noise. The relative time that follows
             // is the same instant and keeps counting on its own.
             text = pressedText(entity);
+        } else if (domain === 'update') {
+            // Which version is waiting, rather than a bare on or off
+            text = require('app/pages/entity/UpdatePage').statusText(entity);
         } else if (domain === 'remote') {
             // Whatever activity it is running, where the remote has them
             text = require('app/pages/entity/RemotePage').statusText(entity);
@@ -232,6 +235,10 @@ var EntityService = {
 
             case 'water_heater':
                 return 'images/icon_temp.png';
+
+            case 'update':
+                // Something waiting to install, or a tick for up to date
+                return state === 'on' ? 'images/icon_refresh.png' : 'images/icon_yes.png';
 
             case 'counter':
                 return 'images/icon_sensor.png';
@@ -444,6 +451,9 @@ var EntityService = {
                 break;
             case 'remote':
                 require('app/pages/entity/RemotePage').showRemoteEntity(entity_id);
+                break;
+            case 'update':
+                require('app/pages/entity/UpdatePage').showUpdateEntity(entity_id);
                 break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);

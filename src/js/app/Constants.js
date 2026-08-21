@@ -23,7 +23,6 @@ const Constants = {
         'wake_word',
         'tag',
         'todo',
-        'update',
         'zone'
     ],
 
