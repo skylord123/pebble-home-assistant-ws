@@ -360,6 +360,42 @@ function showEntityMenu(entity_id) {
         showEntityMenu.item(1, servicesCount++, selectServiceItem('Previous Option', 'select_previous'));
     }
 
+    if(domain === "siren") {
+        // SirenEntityFeature: TURN_ON 1, TURN_OFF 2. Home Assistant registers
+        // each service only for the entities that advertise the matching bit,
+        // and toggle only when both are present
+        let sirenFeatures = entity.attributes.supported_features || 0;
+        let sirenServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        if ((sirenFeatures & 1) && (sirenFeatures & 2)) {
+            showEntityMenu.item(1, servicesCount++, sirenServiceItem('Toggle', 'toggle'));
+        }
+        if (sirenFeatures & 1) {
+            showEntityMenu.item(1, servicesCount++, sirenServiceItem('Turn On', 'turn_on'));
+        }
+        if (sirenFeatures & 2) {
+            showEntityMenu.item(1, servicesCount++, sirenServiceItem('Turn Off', 'turn_off'));
+        }
+    }
+
     if(domain === "timer") {
         let timerServiceItem = function(title, service, data) {
             return {

@@ -105,6 +105,7 @@ var EntityService = {
             case 'input_boolean':
             case 'fan':
             case 'humidifier':
+            case 'siren':
                 return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
             case 'cover':
@@ -323,6 +324,9 @@ var EntityService = {
             case 'humidifier':
                 require('app/pages/entity/HumidifierPage').showHumidifierEntity(entity_id);
                 break;
+            case 'siren':
+                require('app/pages/entity/SirenPage').showSirenEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -465,6 +469,42 @@ var EntityService = {
         } else if (domain === "timer") {
             // Start when idle or paused, pause when running
             require('app/pages/entity/TimerPage').quickAction(entity_id);
+        } else if (domain === "siren") {
+            // Home Assistant gates each of these on its own feature bit, and
+            // only offers toggle when the siren can do both, so a siren that
+            // cannot be turned off remotely still gets its panic action
+            var siren = appState.ha_state_dict[entity_id];
+            if (!siren) {
+                log('handleEntityLongPress: entity ' + entity_id + ' not found in state dict');
+                return;
+            }
+            var sirenFeatures = siren.attributes.supported_features || 0;
+            var sirenService = null;
+            if ((sirenFeatures & 1) && (sirenFeatures & 2)) {
+                sirenService = 'toggle';
+            } else if (sirenFeatures & 1) {
+                sirenService = 'turn_on';
+            } else if (sirenFeatures & 2) {
+                sirenService = 'turn_off';
+            }
+            if (!sirenService) {
+                log('Siren ' + entity_id + ' supports no on/off services - no action taken');
+                return;
+            }
+            appState.haws.callService(
+                domain,
+                sirenService,
+                {},
+                { entity_id: entity_id },
+                function(data) {
+                    log(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function(error) {
+                    log('no response');
+                    Vibe.vibrate('double');
+                }
+            );
         } else if (domain === "select" || domain === "input_select") {
             // Cycle to the next option (select_next wraps by default)
             appState.haws.callService(
