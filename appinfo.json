@@ -157,6 +157,21 @@
         "file": "images/icon_script.png",
         "name": "IMAGE_ICON_SCRIPT",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_timer.png",
+        "name": "IMAGE_ICON_TIMER",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_calendar.png",
+        "name": "IMAGE_ICON_CALENDAR",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_clock.png",
+        "name": "IMAGE_ICON_CLOCK",
+        "type": "bitmap"
       }
     ]
   },
