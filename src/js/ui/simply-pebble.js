@@ -397,6 +397,7 @@ var LaunchReasonPacket = new struct([
   ['uint32', 'args'],
   ['uint32', 'time'],
   ['bool', 'isTimezone'],
+  ['bool', 'is24h'],
 ]);
 
 var WakeupSetPacket = new struct([
@@ -1609,7 +1610,7 @@ SimplyPebble.numberSelectorShow = function(opts) {
     .max(opts.max)
     .step(opts.step)
     .decimals(opts.decimals)
-    .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0))
+    .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0) | (opts.timeOfDay ? 4 : 0))
     .titleLength(opts.title)
     .unitLength(opts.unit)
     .title(opts.title)
@@ -1661,6 +1662,9 @@ SimplyPebble.onLaunchReason = function(packet) {
   var args = packet.args();
   var remoteTime = packet.time();
   var isTimezone = packet.isTimezone();
+  // The watch tells us its own 12 or 24 hour setting at launch; the app
+  // formats every time it shows to match
+  Platform.setClockIs24h(packet.is24h());
   if (isTimezone) {
     state.timeOffset = 0;
   } else {

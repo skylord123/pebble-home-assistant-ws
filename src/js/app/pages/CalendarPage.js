@@ -136,15 +136,11 @@ function parseEventDate(value) {
 }
 
 /**
- * Format a Date's time like "2:00PM"
+ * Format a Date's time like "2:00PM", or "14:00" when the user asked for
+ * 24 hour time
  */
 function formatTime(date) {
-    var hours = date.getHours();
-    var minutes = date.getMinutes();
-    var ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    if (hours === 0) hours = 12;
-    return hours + ':' + (minutes < 10 ? '0' : '') + minutes + ampm;
+    return helpers.formatTimeOfDay(date);
 }
 
 /**

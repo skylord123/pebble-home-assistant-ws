@@ -31,17 +31,16 @@ function showEntityMenu(entity_id) {
         throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
     }
 
-    // Helper function to format date as Y-M-D HH:MM:SS
+    // Helper function to format date as Y-M-D followed by the time in
+    // whichever clock format the user picked
     function formatDateTime(isoString) {
         if (!isoString) return 'N/A';
         var date = new Date(isoString);
         var year = date.getFullYear();
         var month = String(date.getMonth() + 1).padStart(2, '0');
         var day = String(date.getDate()).padStart(2, '0');
-        var hours = String(date.getHours()).padStart(2, '0');
-        var minutes = String(date.getMinutes()).padStart(2, '0');
-        var seconds = String(date.getSeconds()).padStart(2, '0');
-        return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes + ':' + seconds;
+        return year + '-' + month + '-' + day + ' ' +
+            helpers.formatTimeOfDay(date, { seconds: true });
     }
 
     // Helper function to get state subtitle with relative time

@@ -66,15 +66,32 @@ function show(opts) {
         }
     ];
 
+    var use24Hour = helpers.use24HourTime();
+
     if (opts.includeTime) {
         fields.push({
             key: 'hour',
             format: function() {
+                if (use24Hour) {
+                    return (value.hour < 10 ? '0' : '') + value.hour;
+                }
                 var hour = value.hour % 12;
                 return String(hour === 0 ? 12 : hour);
             },
             adjust: function(delta) {
-                value.hour = (value.hour + delta + 24) % 24;
+                if (use24Hour) {
+                    // Nothing to preserve without a meridiem field
+                    value.hour = (value.hour + delta + 24) % 24;
+                    return;
+                }
+                // Cycle within the half of the day that is showing and leave
+                // it alone: AM and PM is the field next door. Stepping the
+                // hour over the top used to flip it, so counting past 11
+                // moved the value half a day.
+                var isAfternoon = value.hour >= 12;
+                var hour12 = ((value.hour % 12) + delta) % 12;
+                if (hour12 < 0) { hour12 += 12; }
+                value.hour = hour12 + (isAfternoon ? 12 : 0);
             }
         });
         fields.push({
@@ -87,13 +104,15 @@ function show(opts) {
             },
             bigStep: 15
         });
-        fields.push({
-            key: 'ampm',
-            format: function() { return value.hour < 12 ? 'AM' : 'PM'; },
-            adjust: function(delta) {
-                value.hour = (value.hour + 12) % 24;
-            }
-        });
+        if (!use24Hour) {
+            fields.push({
+                key: 'ampm',
+                format: function() { return value.hour < 12 ? 'AM' : 'PM'; },
+                adjust: function(delta) {
+                    value.hour = (value.hour + 12) % 24;
+                }
+            });
+        }
     }
 
     var selectedField = 0;
@@ -118,7 +137,8 @@ function show(opts) {
     // boxes are fixed-width and centered as a group.
     var FIELD_H = 28;
     var DATE_WIDTHS = { month: 42, day: 30, year: 54 };
-    var TIME_WIDTHS = { hour: 30, minute: 34, ampm: 34 };
+    // The hour box is wider on a 24 hour clock, which always shows two digits
+    var TIME_WIDTHS = { hour: use24Hour ? 34 : 30, minute: 34, ampm: 34 };
     var GAP = 4;
     var dateY = opts.includeTime ? 34 : Math.round((res.y - FIELD_H) / 2) - 6;
     var timeY = dateY + FIELD_H + 14;
@@ -137,7 +157,8 @@ function show(opts) {
 
     var boxes = rowLayout(['month', 'day', 'year'], DATE_WIDTHS, dateY);
     if (opts.includeTime) {
-        var timeBoxes = rowLayout(['hour', 'minute', 'ampm'], TIME_WIDTHS, timeY);
+        var timeKeys = use24Hour ? ['hour', 'minute'] : ['hour', 'minute', 'ampm'];
+        var timeBoxes = rowLayout(timeKeys, TIME_WIDTHS, timeY);
         for (var k in timeBoxes) { boxes[k] = timeBoxes[k]; }
     }
 

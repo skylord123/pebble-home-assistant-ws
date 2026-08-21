@@ -219,8 +219,72 @@ function log_message(msg, extra) {
     console.log('[App] ' + msg);
 }
 
+function pad2(n) {
+    return (n < 10 ? '0' : '') + n;
+}
+
+/**
+ * Whether to show 24 hour time, which follows the watch's own clock setting
+ * rather than anything of ours: the wearer already told their watch how they
+ * want the time written. Looked up when asked rather than imported up top so
+ * this module stays free of dependencies and safe to require from anywhere.
+ * @returns {boolean}
+ */
+function use24HourTime() {
+    try {
+        return require('platform').clockIs24h() === true;
+    } catch (e) {
+        return false;
+    }
+}
+
+/**
+ * Format a Date's time of day in whichever format the user picked:
+ * "2:05PM" or "14:05".
+ * @param {Date} date
+ * @param {Object} [options]
+ * @param {boolean} [options.seconds] - include seconds
+ * @returns {string}
+ */
+function formatTimeOfDay(date, options) {
+    options = options || {};
+    var hours = date.getHours();
+    var text;
+
+    if (use24HourTime()) {
+        text = pad2(hours) + ':' + pad2(date.getMinutes());
+        if (options.seconds) { text += ':' + pad2(date.getSeconds()); }
+        return text;
+    }
+
+    var hour12 = hours % 12;
+    if (hour12 === 0) { hour12 = 12; }
+    text = hour12 + ':' + pad2(date.getMinutes());
+    if (options.seconds) { text += ':' + pad2(date.getSeconds()); }
+    return text + (hours >= 12 ? 'PM' : 'AM');
+}
+
+/**
+ * Format just the hour, for axis labels where minutes would not fit:
+ * "3PM" or "15"
+ * @param {Date} date
+ * @returns {string}
+ */
+function formatHourOfDay(date) {
+    var hours = date.getHours();
+    if (use24HourTime()) {
+        return pad2(hours);
+    }
+    var hour12 = hours % 12;
+    if (hour12 === 0) { hour12 = 12; }
+    return hour12 + (hours >= 12 ? 'PM' : 'AM');
+}
+
 module.exports = {
     sortObjectByKeys: sortObjectByKeys,
+    use24HourTime: use24HourTime,
+    formatTimeOfDay: formatTimeOfDay,
+    formatHourOfDay: formatHourOfDay,
     cloneObject: cloneObject,
     ucword: ucword,
     ucwords: ucwords,

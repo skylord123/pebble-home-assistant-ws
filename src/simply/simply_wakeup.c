@@ -16,6 +16,9 @@ struct __attribute__((__packed__)) LaunchReasonPacket {
   uint32_t args;
   uint32_t time;
   uint8_t is_timezone:8;
+  //! The watch's own 12 or 24 hour clock setting, so the app can show times
+  //! the way the wearer already asked their watch to
+  uint8_t is_24h:8;
 };
 
 typedef struct WakeupSetPacket WakeupSetPacket;
@@ -57,6 +60,7 @@ static bool send_launch_reason(AppLaunchReason reason, uint32_t args) {
     .args = args,
     .time = time(NULL),
     .is_timezone = clock_is_timezone_set(),
+    .is_24h = clock_is_24h_style(),
   };
   return simply_msg_send_packet(&packet.packet);
 }
