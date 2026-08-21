@@ -158,7 +158,8 @@ function showEntityMenu(entity_id) {
         domain === "input_boolean" ||
         domain === "automation" ||
         domain === "script" ||
-        domain === "fan"
+        domain === "fan" ||
+        domain === "humidifier"
     )
     {
         showEntityMenu.item(1, servicesCount++, { //menuIndex

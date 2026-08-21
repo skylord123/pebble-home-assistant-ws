@@ -54,6 +54,9 @@ var EntityService = {
         } else if (domain === 'timer') {
             // Countdown rather than the bare state, e.g. "Running 4:32"
             text = require('app/pages/entity/TimerPage').statusText(entity);
+        } else if (domain === 'humidifier') {
+            // What it is doing plus the readings, e.g. "humidifying 41%, set 55%"
+            text = require('app/pages/entity/HumidifierPage').statusText(entity);
         } else if (attrs.unit_of_measurement) {
             text += ' ' + attrs.unit_of_measurement;
         }
@@ -101,6 +104,7 @@ var EntityService = {
             case 'switch':
             case 'input_boolean':
             case 'fan':
+            case 'humidifier':
                 return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
             case 'cover':
@@ -316,6 +320,9 @@ var EntityService = {
             case 'timer':
                 require('app/pages/entity/TimerPage').showTimerEntity(entity_id);
                 break;
+            case 'humidifier':
+                require('app/pages/entity/HumidifierPage').showHumidifierEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -361,7 +368,8 @@ var EntityService = {
             domain === "fan" ||
             domain === "input_boolean" ||
             domain === "script" ||
-            domain === "cover"
+            domain === "cover" ||
+            domain === "humidifier"
         ) {
             appState.haws.callService(
                 domain,
