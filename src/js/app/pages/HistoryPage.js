@@ -50,12 +50,7 @@ function entityName(entity) {
 }
 
 function formatTime(date) {
-    var hours = date.getHours();
-    var minutes = date.getMinutes();
-    var ampm = hours >= 12 ? 'PM' : 'AM';
-    hours = hours % 12;
-    if (hours === 0) hours = 12;
-    return hours + ':' + (minutes < 10 ? '0' : '') + minutes + ampm;
+    return helpers.formatTimeOfDay(date);
 }
 
 function formatValue(value) {
@@ -92,7 +87,13 @@ function show(entity_id) {
         return;
     }
 
-    var isNumeric = isFinite(parseFloat(entity.state)) ||
+    // The whole state has to be a number, not merely start with one:
+    // parseFloat happily turns "14:30:00" into 14 and "2026-08-20" into
+    // 2026, which sent every date and time entity to the graph
+    var state = entity.state;
+    var isNumericState = (typeof state === 'number') ||
+        (typeof state === 'string' && state.trim() !== '' && isFinite(Number(state)));
+    var isNumeric = isNumericState ||
         (entity.attributes && entity.attributes.unit_of_measurement !== undefined);
     if (isNumeric) {
         showHistoryGraph(entity_id);
@@ -280,9 +281,7 @@ function showHistoryGraph(entity_id) {
         // bare clock time would be ambiguous
         function formatAxisTime(date) {
             if (PERIODS[periodIndex].minutes >= 1440) {
-                var hours = date.getHours() % 12;
-                if (hours === 0) hours = 12;
-                return DAY_NAMES[date.getDay()] + ' ' + hours + (date.getHours() >= 12 ? 'PM' : 'AM');
+                return DAY_NAMES[date.getDay()] + ' ' + helpers.formatHourOfDay(date);
             }
             return formatTime(date);
         }

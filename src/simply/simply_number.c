@@ -106,26 +106,102 @@ static GRect prv_track_rect(GRect bounds) {
   return GRect(bar_margin, bounds.size.h / 2 + 20, bounds.size.w - 2 * bar_margin, 14);
 }
 
-static GRect prv_field_rect(GRect bounds, uint8_t index) {
-  const int16_t colon_w = 10;
-  int16_t box_w = (bounds.size.w - 2 * prv_inset() - 2 * colon_w) / 3;
-  if (box_w > 40) { box_w = 40; }
-  const int16_t total_w = 3 * box_w + 2 * colon_w;
-  const int16_t x = (bounds.size.w - total_w) / 2 + index * (box_w + colon_w);
-  return GRect(x, bounds.size.h / 2 - 24, box_w, 34);
+//! Whether a meridiem field is showing: only for a time of day, and only
+//! when the wearer's watch is set to a 12 hour clock
+static bool prv_has_meridiem(SimplyNumber *self) {
+  return self->time_of_day && !clock_is_24h_style();
 }
 
-// Draw the value as HH:MM:SS with the selected field boxed. The field is
-// only an input aid, so nothing here needs its own stored value.
-static void prv_draw_duration(SimplyNumber *self, GContext *ctx, GRect bounds) {
-  const int32_t total = self->value < 0 ? 0 : self->value;
-  const int32_t parts[3] = { total / 3600, (total % 3600) / 60, total % 60 };
-  GFont font = fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD);
+//! Hours, minutes and seconds either way, plus AM/PM for a time of day on a
+//! 12 hour watch
+static uint8_t prv_field_count(SimplyNumber *self) {
+  return prv_has_meridiem(self) ? 4 : 3;
+}
 
-  for (uint8_t i = 0; i < 3; i++) {
-    const GRect box = prv_field_rect(bounds, i);
+#define FIELD_COLON_W 8
+#define FIELD_MERIDIEM_GAP 4
+
+//! Four fields do not fit at full size on the narrow displays, so the text
+//! steps down with the boxes rather than being clipped by them
+static GFont prv_field_font(int16_t box_w) {
+  if (box_w >= 32) { return fonts_get_system_font(FONT_KEY_GOTHIC_28_BOLD); }
+  if (box_w >= 26) { return fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD); }
+  return fonts_get_system_font(FONT_KEY_GOTHIC_18_BOLD);
+}
+
+//! Lay the fields out as one centered row, shrinking the boxes on narrow
+//! screens rather than letting them run off the edge
+static int16_t prv_layout_fields(SimplyNumber *self, GRect bounds, GRect *out) {
+  const bool meridiem = prv_has_meridiem(self);
+  const uint8_t count = prv_field_count(self);
+  const uint8_t numeric = meridiem ? count - 1 : count;
+
+  int16_t box_w = 36;
+  int16_t meridiem_w = 40;
+  const int16_t available = bounds.size.w - 2 * prv_inset();
+  int16_t total = numeric * box_w + (numeric - 1) * FIELD_COLON_W +
+      (meridiem ? FIELD_MERIDIEM_GAP + meridiem_w : 0);
+  while (total > available && box_w > 16) {
+    box_w -= 1;
+    meridiem_w = box_w + 4;
+    total = numeric * box_w + (numeric - 1) * FIELD_COLON_W +
+        (meridiem ? FIELD_MERIDIEM_GAP + meridiem_w : 0);
+  }
+
+  const int16_t y = bounds.size.h / 2 - 24;
+  int16_t x = (bounds.size.w - total) / 2;
+  for (uint8_t i = 0; i < numeric; i++) {
+    out[i] = GRect(x, y, box_w, 34);
+    x += box_w + FIELD_COLON_W;
+  }
+  if (meridiem) {
+    // No colon leads into AM/PM, just a gap
+    out[numeric] = GRect(x - FIELD_COLON_W + FIELD_MERIDIEM_GAP, y, meridiem_w, 34);
+  }
+  return box_w;
+}
+
+//! Text for one field: two digits for a duration, and for a time of day an
+//! unpadded 1 to 12 hour beside AM or PM on a 12 hour watch
+static void prv_field_text(SimplyNumber *self, uint8_t index, char *out, size_t out_size) {
+  const int32_t total = self->value < 0 ? 0 : self->value;
+  const int32_t hours = total / 3600;
+  const int32_t minutes = (total % 3600) / 60;
+
+  if (!self->time_of_day) {
+    const int32_t parts[3] = { hours, minutes, total % 60 };
+    snprintf(out, out_size, "%02d", (int)parts[index]);
+    return;
+  }
+
+  if (index == 0) {
+    if (prv_has_meridiem(self)) {
+      int32_t hour12 = hours % 12;
+      if (hour12 == 0) { hour12 = 12; }
+      snprintf(out, out_size, "%d", (int)hour12);
+    } else {
+      snprintf(out, out_size, "%02d", (int)hours);
+    }
+  } else if (index == 1) {
+    snprintf(out, out_size, "%02d", (int)minutes);
+  } else if (index == 2) {
+    snprintf(out, out_size, "%02d", (int)(total % 60));
+  } else {
+    snprintf(out, out_size, "%s", hours < 12 ? "AM" : "PM");
+  }
+}
+
+static void prv_draw_fields(SimplyNumber *self, GContext *ctx, GRect bounds) {
+  GRect boxes[4];
+  const int16_t box_w = prv_layout_fields(self, bounds, boxes);
+  const uint8_t count = prv_field_count(self);
+  const uint8_t numeric = prv_has_meridiem(self) ? count - 1 : count;
+  GFont font = prv_field_font(box_w);
+
+  for (uint8_t i = 0; i < count; i++) {
+    const GRect box = boxes[i];
     char buf[4];
-    snprintf(buf, sizeof(buf), "%02d", (int)parts[i]);
+    prv_field_text(self, i, buf, sizeof(buf));
 
     if (i == self->field) {
       graphics_context_set_fill_color(ctx, GColorBlack);
@@ -137,10 +213,11 @@ static void prv_draw_duration(SimplyNumber *self, GContext *ctx, GRect bounds) {
     graphics_draw_text(ctx, buf, font, GRect(box.origin.x, box.origin.y - 3, box.size.w, box.size.h),
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
-    if (i < 2) {
+    // Colons separate the numeric fields; AM/PM stands on its own
+    if (i + 1 < numeric) {
       graphics_context_set_text_color(ctx, GColorBlack);
       graphics_draw_text(ctx, ":", font,
-          GRect(box.origin.x + box.size.w, box.origin.y - 3, 10, box.size.h),
+          GRect(box.origin.x + box.size.w, box.origin.y - 3, FIELD_COLON_W, box.size.h),
           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     }
   }
@@ -168,7 +245,7 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
 
   // Value
   if (self->duration_mode) {
-    prv_draw_duration(self, ctx, bounds);
+    prv_draw_fields(self, ctx, bounds);
   } else {
     char value_buf[32];
     prv_format_value(self, value_buf, sizeof(value_buf));
@@ -236,7 +313,26 @@ static void prv_adjust_field(SimplyNumber *self, int32_t units) {
   if (hours_count > 24) { hours_count = 24; }
   if (hours_count < 1) { hours_count = 1; }
 
-  if (self->field == 0) {
+  if (self->time_of_day) {
+    if (self->field == 0) {
+      if (prv_has_meridiem(self)) {
+        // Stay in the half of the day that is showing: AM and PM is its own
+        // field, so counting past 11 must not quietly move the value by
+        // twelve hours
+        const bool afternoon = (h >= 12);
+        int32_t hour12 = prv_wrap((h % 12) + units, 12);
+        h = hour12 + (afternoon ? 12 : 0);
+      } else {
+        h = prv_wrap(h + units, 24);
+      }
+    } else if (self->field == 1) {
+      m = prv_wrap(m + units, 60);
+    } else if (self->field == 2) {
+      s = prv_wrap(s + units, 60);
+    } else {
+      h = (h + 12) % 24;   // the meridiem field flips the half of the day
+    }
+  } else if (self->field == 0) {
     h = prv_wrap(h + units, hours_count);
   } else if (self->field == 1) {
     m = prv_wrap(m + units, 60);
@@ -294,7 +390,7 @@ static void prv_confirm(SimplyNumber *self) {
 static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
   SimplyNumber *self = context;
   // Duration mode walks hours to minutes to seconds first, then confirms
-  if (self->duration_mode && self->field < 2) {
+  if (self->duration_mode && self->field + 1 < prv_field_count(self)) {
     self->field++;
     self->last_input_ms = prv_now_ms();
     layer_mark_dirty(window_get_root_layer(self->window));
@@ -400,6 +496,7 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->decimals = packet->decimals;
   self->show_bar = (packet->flags & 1);
   self->duration_mode = (packet->flags & 2);
+  self->time_of_day = (packet->flags & 4);
   // Always start on the leftmost field so select walks the whole value
   // left to right; starting further in leaves the earlier fields
   // reachable only by pressing back, which nobody expects
@@ -485,8 +582,11 @@ static void prv_set_from_x(SimplyNumber *self, GRect bounds, int16_t x) {
 }
 
 static void prv_select_field_at(SimplyNumber *self, GRect bounds, int16_t x, int16_t y) {
-  for (uint8_t i = 0; i < 3; i++) {
-    if (prv_rect_hit(prv_field_rect(bounds, i), x, y, TOUCH_PAD)) {
+  GRect boxes[4];
+  prv_layout_fields(self, bounds, boxes);
+  const uint8_t count = prv_field_count(self);
+  for (uint8_t i = 0; i < count; i++) {
+    if (prv_rect_hit(boxes[i], x, y, TOUCH_PAD)) {
       if (self->field != i) {
         self->field = i;
         self->last_input_ms = prv_now_ms();

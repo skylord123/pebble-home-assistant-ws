@@ -60,6 +60,10 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
+        } else if (domain === 'input_datetime' || domain === 'datetime' ||
+                   domain === 'date' || domain === 'time') {
+            // Readable local value rather than a raw ISO string
+            text = require('app/pages/entity/DateTimePage').displayValue(entity);
         } else if (attrs.unit_of_measurement) {
             text += ' ' + attrs.unit_of_measurement;
         }
@@ -161,6 +165,19 @@ var EntityService = {
 
             case 'timer':
                 return 'images/icon_timer.png';
+
+            case 'date':
+            case 'datetime':
+                return 'images/icon_calendar.png';
+
+            case 'time':
+                return 'images/icon_clock.png';
+
+            case 'input_datetime':
+                // A date helper gets the calendar, a time only one the clock
+                return entity.attributes.has_date === false
+                    ? 'images/icon_clock.png'
+                    : 'images/icon_calendar.png';
 
             case 'vacuum':
                 return 'images/icon_vacuum.png';
@@ -334,6 +351,12 @@ var EntityService = {
             case 'input_text':
                 require('app/pages/entity/TextPage').showTextEntity(entity_id);
                 break;
+            case 'input_datetime':
+            case 'datetime':
+            case 'date':
+            case 'time':
+                require('app/pages/entity/DateTimePage').showDateTimeEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -476,6 +499,10 @@ var EntityService = {
         } else if (domain === "timer") {
             // Start when idle or paused, pause when running
             require('app/pages/entity/TimerPage').quickAction(entity_id);
+        } else if (domain === "input_datetime" || domain === "datetime" ||
+                   domain === "date" || domain === "time") {
+            // Straight into the editor
+            require('app/pages/entity/DateTimePage').editValue(entity_id);
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
             require('app/pages/entity/TextPage').dictateValue(entity_id);

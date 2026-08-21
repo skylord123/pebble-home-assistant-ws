@@ -29,7 +29,10 @@ struct SimplyNumber {
   //! time. The value stays a single count of seconds; the selected field
   //! only decides how much a press adds or subtracts.
   bool duration_mode;
-  //! Selected duration field: 0 hours, 1 minutes, 2 seconds
+  //! A time of day rather than a length of time: hours read 1 to 12 beside
+  //! an AM/PM field on a 12 hour watch, and 00 to 23 on a 24 hour one.
+  bool time_of_day;
+  //! Selected field: hours, minutes, seconds, then AM/PM where it is shown
   uint8_t field;
   //! Millisecond timestamp of the last button press, used to ignore external
   //! value updates while the user is actively adjusting

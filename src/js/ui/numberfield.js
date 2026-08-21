@@ -59,6 +59,23 @@ NumberField.show = function(opts) {
  * value in seconds; onSet receives seconds.
  */
 NumberField.showDuration = function(opts) {
+  showFields(opts, false);
+};
+
+/**
+ * Pick a time of day, in seconds since midnight. The watch decides how it
+ * reads: hours run 1 to 12 beside an AM/PM field on a 12 hour watch, and 00
+ * to 23 on a 24 hour one. Seconds are carried through untouched rather than
+ * being dialled past, so a value that arrived with them keeps them.
+ *
+ * showTimeOfDay({ title, value, onSet, onCancel }) with seconds since
+ * midnight; onSet receives seconds since midnight.
+ */
+NumberField.showTimeOfDay = function(opts) {
+  showFields(opts, true);
+};
+
+function showFields(opts, timeOfDay) {
   state.active = true;
   state.hiding = false;
   state.scale = 1;
@@ -72,10 +89,11 @@ NumberField.showDuration = function(opts) {
     decimals: 0,
     showBar: false,
     duration: true,
+    timeOfDay: timeOfDay,
     title: opts.title || '',
     unit: '',
   });
-};
+}
 
 NumberField.hide = function() {
   if (!state.active) { return; }
