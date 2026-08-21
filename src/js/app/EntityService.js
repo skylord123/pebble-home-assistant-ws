@@ -60,6 +60,9 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
+        } else if (domain === 'valve') {
+            // How far open it is, where the valve reports it
+            text = require('app/pages/entity/ValvePage').statusText(entity);
         } else if (domain === 'input_datetime' || domain === 'datetime' ||
                    domain === 'date' || domain === 'time') {
             // Readable local value rather than a raw ISO string
@@ -117,6 +120,11 @@ var EntityService = {
 
             case 'cover':
                 return state === 'open' ? 'images/icon_blinds_open.png' : 'images/icon_blinds_closed.png';
+
+            case 'valve':
+                // No valve artwork exists, and open or shut is the thing that
+                // matters, so the door icons carry it
+                return state === 'closed' ? 'images/icon_door_closed.png' : 'images/icon_door_open.png';
 
             case 'lock':
                 return state === 'locked' ? 'images/icon_locked.png' : 'images/icon_unlocked.png';
@@ -357,6 +365,9 @@ var EntityService = {
             case 'time':
                 require('app/pages/entity/DateTimePage').showDateTimeEntity(entity_id);
                 break;
+            case 'valve':
+                require('app/pages/entity/ValvePage').showValveEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -506,6 +517,9 @@ var EntityService = {
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
             require('app/pages/entity/TextPage').dictateValue(entity_id);
+        } else if (domain === "valve") {
+            // Toggle where the valve does both, otherwise its one direction
+            require('app/pages/entity/ValvePage').quickAction(entity_id);
         } else if (domain === "siren") {
             // Home Assistant gates each of these on its own feature bit, and
             // only offers toggle when the siren can do both, so a siren that
