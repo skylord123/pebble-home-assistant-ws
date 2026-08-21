@@ -180,6 +180,9 @@ var EntityService = {
             case 'water_heater':
                 return 'images/icon_temp.png';
 
+            case 'counter':
+                return 'images/icon_sensor.png';
+
             case 'date':
             case 'datetime':
                 return 'images/icon_calendar.png';
@@ -377,6 +380,9 @@ var EntityService = {
             case 'water_heater':
                 require('app/pages/entity/WaterHeaterPage').showWaterHeaterEntity(entity_id);
                 break;
+            case 'counter':
+                require('app/pages/entity/CounterPage').showCounterEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -526,6 +532,9 @@ var EntityService = {
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
             require('app/pages/entity/TextPage').dictateValue(entity_id);
+        } else if (domain === "counter") {
+            // Counting up is what a counter is usually for
+            require('app/pages/entity/CounterPage').quickAction(entity_id);
         } else if (domain === "water_heater") {
             // No toggle service exists, so the direction comes from the state
             require('app/pages/entity/WaterHeaterPage').quickAction(entity_id);
