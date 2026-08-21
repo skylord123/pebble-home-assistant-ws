@@ -57,6 +57,9 @@ var EntityService = {
         } else if (domain === 'humidifier') {
             // What it is doing plus the readings, e.g. "humidifying 41%, set 55%"
             text = require('app/pages/entity/HumidifierPage').statusText(entity);
+        } else if (domain === 'text' || domain === 'input_text') {
+            // Password entities must not spell out their value in a list
+            text = require('app/pages/entity/TextPage').displayValue(entity);
         } else if (attrs.unit_of_measurement) {
             text += ' ' + attrs.unit_of_measurement;
         }
@@ -327,6 +330,10 @@ var EntityService = {
             case 'siren':
                 require('app/pages/entity/SirenPage').showSirenEntity(entity_id);
                 break;
+            case 'text':
+            case 'input_text':
+                require('app/pages/entity/TextPage').showTextEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -469,6 +476,9 @@ var EntityService = {
         } else if (domain === "timer") {
             // Start when idle or paused, pause when running
             require('app/pages/entity/TimerPage').quickAction(entity_id);
+        } else if (domain === "text" || domain === "input_text") {
+            // Straight to dictation, the only way to type on a watch
+            require('app/pages/entity/TextPage').dictateValue(entity_id);
         } else if (domain === "siren") {
             // Home Assistant gates each of these on its own feature bit, and
             // only offers toggle when the siren can do both, so a siren that
