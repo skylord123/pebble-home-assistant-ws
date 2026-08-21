@@ -89,11 +89,9 @@ static void prv_format_value(SimplyNumber *self, char *out, size_t out_size) {
   snprintf(out, out_size, "%s%ld.%s%s", sign, (long)whole, frac_buf, self->unit);
 }
 
-// Seconds a press on the given duration field adds or subtracts
-static int32_t prv_field_step(uint8_t field) {
-  if (field == 0) { return 3600; }
-  if (field == 1) { return 60; }
-  return 1;
+static int32_t prv_wrap(int32_t value, int32_t count) {
+  if (count <= 0) { return 0; }
+  return ((value % count) + count) % count;
 }
 
 // Draw the value as HH:MM:SS with the selected field boxed. The field is
@@ -196,12 +194,6 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
 }
 
 static int32_t prv_accel_delta(SimplyNumber *self, uint8_t clicks) {
-  // In duration mode the step comes from the selected field, and the
-  // acceleration stops at ten so holding seconds does not jump by minutes
-  if (self->duration_mode) {
-    const int32_t step = prv_field_step(self->field);
-    return (clicks > ACCEL_TIER1_CLICKS) ? step * 10 : step;
-  }
   const int32_t total_steps = self->step > 0 ? (self->max - self->min) / self->step : 0;
   int32_t mult = 1;
   if (clicks > ACCEL_TIER1_CLICKS && total_steps > ACCEL_TIER1_MIN_STEPS) { mult = 10; }
@@ -218,20 +210,72 @@ static void prv_adjust(SimplyNumber *self, int32_t delta) {
   }
 }
 
+// Each duration field wraps within its own range and leaves the others
+// alone, the way the built in timer behaves: stepping down from 00 hours
+// lands on 23 rather than dragging the whole value to its minimum
+static void prv_adjust_field(SimplyNumber *self, int32_t units) {
+  const int32_t total = self->value < 0 ? 0 : self->value;
+  int32_t h = total / 3600;
+  int32_t m = (total % 3600) / 60;
+  int32_t s = total % 60;
+
+  // Hours wrap at 24, or sooner when the caller's maximum cannot reach a
+  // full day
+  int32_t hours_count = self->max / 3600 + 1;
+  if (hours_count > 24) { hours_count = 24; }
+  if (hours_count < 1) { hours_count = 1; }
+
+  if (self->field == 0) {
+    h = prv_wrap(h + units, hours_count);
+  } else if (self->field == 1) {
+    m = prv_wrap(m + units, 60);
+  } else {
+    s = prv_wrap(s + units, 60);
+  }
+
+  // Fields wrap within their own ranges, so duration mode expects a
+  // maximum that falls on a field boundary (23:59:59 for a full day). With
+  // a maximum part way through a field, both directions can land above it
+  // and get pinned here, so pick the boundary below instead.
+  int32_t value = h * 3600 + m * 60 + s;
+  if (value > self->max) { value = self->max; }
+
+  self->last_input_ms = prv_now_ms();
+  if (value != self->value) {
+    self->value = value;
+    layer_mark_dirty(window_get_root_layer(self->window));
+  }
+}
+
+// Holding steps ten at a time
+static int32_t prv_duration_units(ClickRecognizerRef recognizer) {
+  return (click_number_of_clicks_counted(recognizer) > ACCEL_TIER1_CLICKS) ? 10 : 1;
+}
+
 static void prv_up_click(ClickRecognizerRef recognizer, void *context) {
   SimplyNumber *self = context;
+  if (self->duration_mode) {
+    prv_adjust_field(self, prv_duration_units(recognizer));
+    return;
+  }
   prv_adjust(self, prv_accel_delta(self, click_number_of_clicks_counted(recognizer)));
 }
 
 static void prv_down_click(ClickRecognizerRef recognizer, void *context) {
   SimplyNumber *self = context;
+  if (self->duration_mode) {
+    prv_adjust_field(self, -prv_duration_units(recognizer));
+    return;
+  }
   prv_adjust(self, -prv_accel_delta(self, click_number_of_clicks_counted(recognizer)));
 }
 
 static void prv_confirm(SimplyNumber *self) {
+  // Duration fields wrap without consulting the minimum, so the range is
+  // enforced here instead: callers are promised a value within [min, max]
   NumberSelectorResultPacket packet = {
     .packet = { .type = CommandNumberSelectorResult, .length = sizeof(packet) },
-    .value = self->value,
+    .value = prv_clamp(self->value, self->min, self->max),
   };
   simply_msg_send_packet(&packet.packet);
 }

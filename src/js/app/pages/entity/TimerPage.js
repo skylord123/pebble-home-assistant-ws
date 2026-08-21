@@ -154,10 +154,7 @@ function showDurationPicker(entity_id) {
         min: 1,
         max: MAX_SECONDS,
         onSet: function(seconds) {
-            if (seconds < 1) {
-                Vibe.vibrate('double');
-                return;
-            }
+            // The selector clamps to the min above, so zero never arrives
             appState.haws.callService(
                 'timer',
                 'start',
