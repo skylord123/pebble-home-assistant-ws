@@ -46,9 +46,96 @@ var FEATURE = {
     SEARCH_MEDIA: 4194304
 };
 
-// Vertical gap between the progress row and the volume row below it, which is
-// how far the volume row rises when there is no progress to show
-var VOLUME_ROW_SHIFT = 40;
+// The speaker icon that heads the volume row
+var VOLUME_ICON_W = 20;
+var VOLUME_ICON_H = 13;
+
+/**
+ * Work out where this screen's furniture goes on the watch it is running on.
+ *
+ * Two things matter here and both were got wrong before. Every offset is
+ * derived rather than written down, because the original numbers were measured
+ * for a 144 point wide screen and left the bars stopping two thirds of the way
+ * across an emery. And all of it is in *content* coordinates: the runtime
+ * already moves the window's layer below the status bar and shortens it to
+ * match, so measuring against the full screen height ran the bottom row off the
+ * end of the display.
+ */
+function computeLayout() {
+    var res = Feature.resolution();
+    var isRound = Feature.round(true, false);
+
+    // The native status bar can only ever draw the clock: Pebble's
+    // StatusBarLayer has colour and separator setters and nothing for text. To
+    // put the player's name up there instead, the window goes without one and
+    // this draws its own header, the way the menus do. With no status bar the
+    // runtime stops offsetting and shortening the content layer, so the whole
+    // screen is ours and nothing has to be adjusted for it.
+    var statusH = 0;
+    var contentH = res.y;
+    var pad = Math.max(5, Math.round(res.x * 0.045));
+
+    var left, right, safeTop, bottom;
+    if (isRound) {
+        // The largest square that fits the circle. A flat margin looks right
+        // across the middle, where the display is widest, and then clips the
+        // top and bottom rows.
+        var side = Math.floor((res.x / 2) * Math.SQRT2);
+        var inset = Math.ceil((res.x - side) / 2);
+        left = inset;
+        right = Math.min(res.x - inset, res.x - Feature.actionBarWidth() - pad);
+        safeTop = inset;
+        bottom = res.y - inset;
+    } else {
+        left = pad;
+        right = res.x - Feature.actionBarWidth() - pad;
+        safeTop = 0;
+        bottom = contentH - pad;
+    }
+
+    // Keyed on the height actually available rather than the width, so chalk
+    // does not get emery's type in two thirds of the room
+    var big = contentH >= 200;
+    var barH = big ? 10 : 7;
+
+    var L = {
+        isRound: isRound,
+        statusH: statusH,
+        contentH: contentH,
+        left: left,
+        width: Math.max(20, right - left),
+        bottom: bottom,
+        align: isRound ? 'center' : 'left',
+        // Line boxes are the system font's line height plus a little; sizing
+        // them any tighter clips descenders on the watch
+        titleFont: big ? 'gothic_24_bold' : 'gothic_18_bold',
+        titleLine: big ? 30 : 23,
+        bodyFont: big ? 'gothic_18' : 'gothic_14',
+        bodyLine: big ? 23 : 18,
+        smallFont: 'gothic_14',
+        smallLine: 18,
+        barH: barH,
+        barRadius: Math.floor(barH / 2),
+        // A finger is far wider than a seven point bar, so touches count from
+        // a band around it rather than the drawn rectangle
+        touchSlop: big ? 14 : 10,
+        gap: big ? 10 : 6
+    };
+
+    // The header runs flush across the top on a rectangle, and sits inside the
+    // safe square on a round display where the very top is barely there
+    L.headerH = L.smallLine + 4;
+    L.headerTop = safeTop;
+    L.headerX = isRound ? left : 0;
+    L.headerW = isRound ? L.width : res.x - Feature.actionBarWidth();
+    L.headerAlign = isRound ? 'center' : 'left';
+    L.headerTextX = L.headerX + (isRound ? 0 : pad);
+    L.headerTextW = Math.max(20, L.headerW - (isRound ? 0 : pad));
+
+    // Everything else begins below it
+    L.top = L.headerTop + L.headerH + (isRound ? L.gap : pad);
+    return L;
+}
 
 /**
  * Feature names for logging, read from the one table above so the two
@@ -147,7 +234,37 @@ class MediaPlayerPage extends BaseEntityPage {
         this.is_muted = false;
         this.mediaControlWindow = null;
         this.position_ticker = null;
-        this.position_row_visible = null;
+        this.layout_key = null;
+        this.dragging = null;
+        this.dragRatio = 0;
+        this.volume_hit_top = null;
+        this.seek_hit_top = null;
+    }
+
+    /** The unfilled groove of a bar. */
+    makeTrack() {
+        var L = this.layout;
+        return new UI.Rect({
+            position: new Vector(L.left, L.top),
+            size: new Vector(L.width, L.barH),
+            backgroundColor: 'white',
+            borderColor: 'black',
+            borderWidth: 1,
+            radius: L.barRadius
+        });
+    }
+
+    /** The filled part of a bar, drawn over the groove. */
+    makeFill(colour) {
+        var L = this.layout;
+        return new UI.Rect({
+            position: new Vector(L.left, L.top),
+            size: new Vector(0, L.barH),
+            backgroundColor: colour,
+            borderColor: 'clear',
+            borderWidth: 0,
+            radius: L.barRadius
+        });
     }
 
     /**
@@ -168,11 +285,9 @@ class MediaPlayerPage extends BaseEntityPage {
         this.is_muted = mediaPlayer.attributes.is_volume_muted;
 
         this.mediaControlWindow = new UI.Window({
-            status: {
-                color: 'black',
-                backgroundColor: 'white',
-                seperator: "dotted"
-            },
+            // No native status bar: it can only draw the clock, and this page
+            // would rather say which player you are looking at
+            status: false,
             backgroundColor: "white",
             action: {
                 up: "IMAGE_ICON_VOLUME_UP",
@@ -181,113 +296,107 @@ class MediaPlayerPage extends BaseEntityPage {
             }
         });
 
-        // Calculate available width
-        var availableWidth = Feature.resolution().x - Feature.actionBarWidth() - 10;
-        var titleFont = "gothic_24_bold";
-        var titleY = 3;
-        if (mediaPlayer.attributes.friendly_name.length > 17) {
-            titleFont = "gothic_14_bold";
-            titleY = 6;
-        }
+        var L = this.layout = computeLayout();
+        var accent = Feature.color(Constants.colour.highlight, "black");
 
-        this.mediaName = new UI.Text({
-            text: mediaPlayer.attributes.friendly_name,
-            color: Feature.color(Constants.colour.highlight, "black"),
-            font: titleFont,
-            position: Feature.round(new Vector(10, titleY), new Vector(5, titleY)),
-            size: new Vector(availableWidth, 30),
-            textAlign: "left"
+        this.trackTitle = new UI.Text({
+            text: "",
+            color: accent,
+            font: L.titleFont,
+            position: new Vector(L.left, L.top),
+            size: new Vector(L.width, L.titleLine),
+            textAlign: L.align,
+            textOverflow: 'ellipsis'
         });
 
-        var position_y = 30;
-        if (appState.enableIcons) {
+        this.trackArtist = new UI.Text({
+            text: "",
+            color: "black",
+            font: L.bodyFont,
+            position: new Vector(L.left, L.top),
+            size: new Vector(L.width, L.bodyLine),
+            textAlign: L.align,
+            textOverflow: 'ellipsis'
+        });
+
+        // Both bars are a rounded track with a fill, rather than the three
+        // overlapping lines that used to fake one at a fixed three points thick
+        this.position_bar_bg = this.makeTrack();
+        this.position_bar_fg = this.makeFill(accent);
+
+        this.time_elapsed = new UI.Text({
+            text: "",
+            color: "black",
+            font: L.smallFont,
+            position: new Vector(L.left, L.top),
+            size: new Vector(Math.floor(L.width / 2), L.smallLine),
+            textAlign: "left",
+            textOverflow: 'ellipsis'
+        });
+
+        this.time_total = new UI.Text({
+            text: "",
+            color: "black",
+            font: L.smallFont,
+            position: new Vector(L.left + Math.ceil(L.width / 2), L.top),
+            size: new Vector(Math.floor(L.width / 2), L.smallLine),
+            textAlign: "right",
+            textOverflow: 'ellipsis'
+        });
+
+        this.volume_bar_bg = this.makeTrack();
+        this.volume_bar_fg = this.makeFill(accent);
+
+        // Sits at the head of the volume row, directly above the left end of
+        // the volume bar, so the lower of the two bars says what it is rather
+        // than leaving the reader to work it out from which one moves.
+        //
+        // Read from Constants, not appState: enableIcons only ever existed on
+        // Constants and is never copied onto the state, so the old check was
+        // undefined every time and this icon has never once been drawn.
+        if (Constants.enableIcons) {
             this.muteIcon = new UI.Image({
-                position: new Vector(9, 82 + position_y),
-                size: new Vector(20, 13),
+                position: new Vector(L.left, L.top),
+                size: new Vector(VOLUME_ICON_W, VOLUME_ICON_H),
                 compositing: "set",
                 backgroundColor: 'transparent',
-                image: "IMAGE_ICON_UNMUTED"
+                image: mediaPlayer.attributes.is_volume_muted
+                    ? "IMAGE_ICON_MUTED" : "IMAGE_ICON_UNMUTED"
             });
-            if (mediaPlayer.attributes.is_volume_muted) {
-                this.muteIcon.image("IMAGE_ICON_MUTED");
-            }
         }
 
         this.volume_label = new UI.Text({
-            text: "%",
+            text: "",
             color: "black",
-            font: "gothic_14",
-            position: new Vector(Feature.resolution().x - Feature.actionBarWidth() - 30, 80 + position_y),
-            size: new Vector(30, 30),
-            textAlign: "center"
+            font: L.smallFont,
+            position: new Vector(L.left, L.top),
+            size: new Vector(L.width, L.smallLine),
+            textAlign: "right",
+            textOverflow: 'ellipsis'
         });
 
-        this.volume_progress_bg = new UI.Line({
-            position: new Vector(10, 105 + position_y),
-            position2: new Vector(134 - Feature.actionBarWidth(), 105 + position_y),
-            strokeColor: 'black',
-            strokeWidth: 5,
+        // The page header: which player this is, in the same colours the menus
+        // give their section headers so the two read as the same furniture
+        this.headerBar = new UI.Rect({
+            position: new Vector(L.headerX, L.headerTop),
+            size: new Vector(L.headerW, L.headerH),
+            backgroundColor: Constants.colour.highlight,
+            borderColor: 'clear',
+            borderWidth: 0
         });
 
-        this.volume_progress_bg_inner = new UI.Line({
-            position: new Vector(10, 105 + position_y),
-            position2: new Vector(134 - Feature.actionBarWidth(), 105 + position_y),
-            strokeColor: 'white',
-            strokeWidth: 3,
+        this.entityLabel = new UI.Text({
+            text: "",
+            color: Constants.colour.highlight_text,
+            font: L.smallFont,
+            position: new Vector(L.headerTextX, L.headerTop + 2),
+            size: new Vector(L.headerTextW, L.smallLine),
+            textAlign: L.headerAlign,
+            // A header is one line by definition. Left to wrap, a name like
+            // "home-assistant-voice-0930d1 Media Player" put its tail on a
+            // second line that reads as though it belongs to something else.
+            textOverflow: 'ellipsis'
         });
-
-        this.volume_progress_fg = new UI.Line({
-            position: new Vector(10, 105 + position_y),
-            position2: new Vector(10, 105 + position_y),
-            strokeColor: 'black',
-            strokeWidth: 3,
-        });
-        this.volume_progress_fg.maxWidth = this.volume_progress_bg_inner.position2().x - this.volume_progress_bg_inner.position().x;
-
-        // Remember where the volume row belongs so it can be moved up and back
-        // as the progress row above it comes and goes
-        var volumeRow = [this.volume_label, this.volume_progress_bg,
-                         this.volume_progress_bg_inner, this.volume_progress_fg];
-        if (this.muteIcon) { volumeRow.push(this.muteIcon); }
-        for (var v = 0; v < volumeRow.length; v++) {
-            volumeRow[v].baseY = volumeRow[v].position().y;
-            // Only lines have a second endpoint; text and images do not
-            var end = typeof volumeRow[v].position2 === 'function'
-                ? volumeRow[v].position2() : null;
-            if (end) { volumeRow[v].baseY2 = end.y; }
-        }
-
-        position_y = -10;
-        this.position_label = new UI.Text({
-            text: "-:-- / -:--",
-            color: "black",
-            font: "gothic_14",
-            position: new Vector(Feature.resolution().x - Feature.actionBarWidth() - 80, 80 + position_y),
-            size: new Vector(80, 30),
-            textAlign: "center"
-        });
-
-        this.position_progress_bg = new UI.Line({
-            position: new Vector(10, 105 + position_y),
-            position2: new Vector(134 - Feature.actionBarWidth(), 105 + position_y),
-            strokeColor: 'black',
-            strokeWidth: 5,
-        });
-
-        this.position_progress_bg_inner = new UI.Line({
-            position: new Vector(10, 105 + position_y),
-            position2: new Vector(134 - Feature.actionBarWidth(), 105 + position_y),
-            strokeColor: 'white',
-            strokeWidth: 3,
-        });
-
-        this.position_progress_fg = new UI.Line({
-            position: new Vector(10, 105 + position_y),
-            position2: new Vector(10, 105 + position_y),
-            strokeColor: 'black',
-            strokeWidth: 3,
-        });
-        this.position_progress_fg.maxWidth = this.position_progress_bg_inner.position2().x - this.position_progress_bg_inner.position().x;
 
         // Registered once. Handlers must not go inside the show handler:
         // popping a child window re-fires show on whatever it covered, and
@@ -336,19 +445,46 @@ class MediaPlayerPage extends BaseEntityPage {
         // Added once. These used to be re-added on every state update, and
         // since adding an element that is already on the window removes and
         // re-appends it, every position tick resent the whole screen.
-        this.mediaControlWindow.add(this.volume_progress_bg);
-        this.mediaControlWindow.add(this.volume_progress_bg_inner);
-        this.mediaControlWindow.add(this.volume_progress_fg);
+        this.mediaControlWindow.add(this.headerBar);
+        this.mediaControlWindow.add(this.trackTitle);
+        this.mediaControlWindow.add(this.volume_bar_bg);
+        this.mediaControlWindow.add(this.volume_bar_fg);
         this.mediaControlWindow.add(this.volume_label);
-        this.mediaControlWindow.add(this.mediaName);
-        if (appState.enableIcons && Feature.rectangle() && this.muteIcon) {
+        this.mediaControlWindow.add(this.entityLabel);
+        if (this.muteIcon) {
             this.mediaControlWindow.add(this.muteIcon);
         }
-        // The progress row is added by showPositionRow once the state says
-        // there is a position to show. Left unset rather than false so the
-        // first call always applies, including the one that decides there is
-        // no position and has to move the volume row up.
-        this.position_row_visible = null;
+
+        // Dragging a bar with a finger, on the watches that have a digitizer.
+        // The raw touch stream is used rather than tap, because a tap only
+        // arrives on liftoff and the fill should follow the finger. Returning
+        // false consumes the event so it cannot also become a swipe: letting it
+        // through would have a drag along the volume bar read as a back
+        // gesture and close the page.
+        this.mediaControlWindow.on('touch', 'down', function(e) {
+            var which = self.hitTestBars(e.position.x, e.position.y);
+            if (!which) { return; }
+            return self.beginDrag(which, e.position.x) ? false : undefined;
+        });
+
+        this.mediaControlWindow.on('touch', 'move', function(e) {
+            if (!self.dragging) { return; }
+            self.dragRatio = self.ratioAt(e.position.x);
+            self.previewDrag();
+            return false;
+        });
+
+        this.mediaControlWindow.on('touch', 'up', function(e) {
+            if (!self.dragging) { return; }
+            self.dragRatio = self.ratioAt(e.position.x);
+            self.previewDrag();
+            self.commitDrag();
+            return false;
+        });
+        // The artist line and the progress row are added by applyLayout once
+        // the state says there is something to put in them. Left unset so the
+        // first call always places the stack, whatever it decides to show.
+        this.layout_key = null;
 
         this.mediaControlWindow.on('show', function() {
             // Re-entered whenever a sub-menu closes, so never stack a second
@@ -374,6 +510,9 @@ class MediaPlayerPage extends BaseEntityPage {
         this.mediaControlWindow.on('hide', function() {
             self.unsubscribeMedia();
             self.stopPositionTicker();
+            // A finger still down when the window goes away must not leave the
+            // next visit thinking it is mid drag
+            self.dragging = null;
         });
 
         this.mediaControlWindow.show();
@@ -735,37 +874,181 @@ class MediaPlayerPage extends BaseEntityPage {
     }
 
     /**
-     * Show or hide the progress row, sliding the volume row into its place
-     * when it goes. Leaving a hole where the progress used to be would read as
-     * something failing to load rather than something that was never there.
+     * Place the stack for what this player currently has to show.
+     *
+     * The title, the artist and the progress row each come and go depending on
+     * the item, so the block is measured and then centred in the space above
+     * the footer rather than pinned to fixed offsets. That keeps a bare player
+     * from hugging the top of a tall screen and stops a hole appearing where
+     * the progress used to be.
      */
-    showPositionRow(visible) {
-        if (this.position_row_visible === visible) { return; }
-        this.position_row_visible = visible;
+    applyLayout(hasArtist, hasPosition) {
+        var key = (hasArtist ? 'a' : '-') + (hasPosition ? 'p' : '-');
+        if (this.layout_key === key) { return; }
+        this.layout_key = key;
 
+        var L = this.layout;
         var win = this.mediaControlWindow;
-        var parts = [this.position_progress_bg, this.position_progress_bg_inner,
-                     this.position_progress_fg, this.position_label];
-        for (var i = 0; i < parts.length; i++) {
-            if (visible) { win.add(parts[i]); } else { win.remove(parts[i]); }
+
+        // The volume row is pinned to the bottom of the safe area so it stays
+        // where the finger expects it, whatever else the player is showing
+        var volBarTop = L.bottom - L.barH;
+        var volLabelTop = volBarTop - L.smallLine;
+        this.volume_bar_bg.position(new Vector(L.left, volBarTop));
+        this.volume_bar_fg.position(new Vector(L.left, volBarTop));
+        this.volume_label.position(new Vector(L.left, volLabelTop));
+        if (this.muteIcon) {
+            // Centred against the row's text so it reads as part of the line
+            this.muteIcon.position(new Vector(L.left,
+                volLabelTop + Math.max(0, Math.round((L.smallLine - VOLUME_ICON_H) / 2))));
+        }
+        this.volume_hit_top = volBarTop;
+
+        // Everything above it is measured and then centred in what is left, so
+        // a player with nothing to say does not hug the top of a tall screen
+        var upperTop = L.top;
+        var upperBottom = volLabelTop - L.gap;
+        var room = upperBottom - upperTop;
+
+        function blockHeight(titleLines, artist, times) {
+            var h = L.titleLine * titleLines;
+            if (artist) { h += L.bodyLine; }
+            if (hasPosition) { h += L.gap + L.barH + (times ? L.smallLine : 0); }
+            return h;
         }
 
-        // The volume row sits a row below the progress; without a progress row
-        // it moves up to where that row would have been
-        var shift = visible ? 0 : -VOLUME_ROW_SHIFT;
-        var moved = [this.volume_progress_bg, this.volume_progress_bg_inner,
-                     this.volume_progress_fg, this.volume_label, this.muteIcon];
-        for (var j = 0; j < moved.length; j++) {
-            var el = moved[j];
-            if (!el || typeof el.baseY !== 'number') { continue; }
-            var p = el.position();
-            el.position(new Vector(p.x, el.baseY + shift));
-            var p2 = (typeof el.position2 === 'function' && el.baseY2 !== undefined)
-                ? el.position2() : null;
-            if (p2) {
-                el.position2(new Vector(p2.x, el.baseY2 + shift));
-            }
+        // Shed content until it fits rather than letting it run off the bottom,
+        // giving up the least useful thing first. A chalk showing a track with
+        // an artist genuinely does not have the room for all of it.
+        var titleLines = 2, showArtist = hasArtist, showTimes = hasPosition;
+        function fits() { return blockHeight(titleLines, showArtist, showTimes) <= room; }
+        if (!fits()) { titleLines = 1; }
+        if (!fits() && showArtist) { showArtist = false; }
+        if (!fits() && showTimes) { showTimes = false; }
+
+        var titleH = L.titleLine * titleLines;
+        var y = upperTop + Math.max(0,
+            Math.floor((room - blockHeight(titleLines, showArtist, showTimes)) / 2));
+
+        this.trackTitle.size(new Vector(L.width, titleH));
+        this.trackTitle.position(new Vector(L.left, y));
+        y += titleH;
+
+        if (showArtist) {
+            win.add(this.trackArtist);
+            this.trackArtist.position(new Vector(L.left, y));
+            y += L.bodyLine;
+        } else {
+            win.remove(this.trackArtist);
         }
+
+        var bars = [this.position_bar_bg, this.position_bar_fg];
+        var times = [this.time_elapsed, this.time_total];
+        if (hasPosition) {
+            y += L.gap;
+            this.position_bar_bg.position(new Vector(L.left, y));
+            this.position_bar_fg.position(new Vector(L.left, y));
+            this.seek_hit_top = y;
+            y += L.barH;
+            for (var i = 0; i < bars.length; i++) { win.add(bars[i]); }
+            // The bar carries the meaning; the two timestamps are the first
+            // thing to go when the screen cannot hold everything
+            for (var t = 0; t < times.length; t++) {
+                if (showTimes) {
+                    times[t].position(new Vector(
+                        L.left + (t === 0 ? 0 : Math.ceil(L.width / 2)), y));
+                    win.add(times[t]);
+                } else {
+                    win.remove(times[t]);
+                }
+            }
+        } else {
+            this.seek_hit_top = null;
+            for (var j = 0; j < bars.length; j++) { win.remove(bars[j]); }
+            for (var k = 0; k < times.length; k++) { win.remove(times[k]); }
+        }
+    }
+
+    /**
+     * Which bar, if either, a touch at this point belongs to.
+     *
+     * Touch arrives in screen coordinates while elements live in the content
+     * layer below the status bar, so the two have to be brought into the same
+     * space before anything is compared. The band is grown by a slop either
+     * side because a fingertip is far wider than the bar it is aiming at.
+     */
+    hitTestBars(x, y) {
+        var L = this.layout;
+        var cy = y - L.statusH;
+        if (x < L.left - L.touchSlop || x > L.left + L.width + L.touchSlop) { return null; }
+
+        function within(top) {
+            return top !== null && top !== undefined &&
+                   cy >= top - L.touchSlop && cy <= top + L.barH + L.touchSlop;
+        }
+        if (within(this.volume_hit_top)) { return 'volume'; }
+        if (within(this.seek_hit_top)) { return 'seek'; }
+        return null;
+    }
+
+    /** Where along a bar a touch fell, as a fraction from 0 to 1. */
+    ratioAt(x) {
+        var L = this.layout;
+        var ratio = (x - L.left) / L.width;
+        if (ratio < 0) { ratio = 0; }
+        if (ratio > 1) { ratio = 1; }
+        return ratio;
+    }
+
+    /**
+     * Drive a bar from a finger.
+     *
+     * The fill follows the finger immediately so the bar feels attached to it,
+     * but the service call only goes out on release: sending one per move event
+     * would put a burst of volume_set calls through a Bluetooth link that can
+     * barely keep up with one.
+     */
+    beginDrag(which, x) {
+        var current = this.appState.ha_state_dict[this.entityId];
+        if (which === 'volume' && !supports(current, FEATURE.VOLUME_SET)) { return false; }
+        if (which === 'seek') {
+            if (!supports(current, FEATURE.SEEK) || !hasPlaybackPosition(current)) { return false; }
+        }
+        this.dragging = which;
+        this.dragRatio = this.ratioAt(x);
+        this.previewDrag();
+        return true;
+    }
+
+    previewDrag() {
+        var L = this.layout;
+        var fill = this.dragging === 'volume' ? this.volume_bar_fg : this.position_bar_fg;
+        fill.size(new Vector(Math.round(L.width * this.dragRatio), L.barH));
+
+        if (this.dragging === 'volume') {
+            this.volume_label.text(Math.round(this.dragRatio * 100) + "%");
+        } else {
+            var entity = this.appState.ha_state_dict[this.entityId];
+            var duration = entity && entity.attributes && entity.attributes.media_duration;
+            if (duration) { this.time_elapsed.text(secToTime(duration * this.dragRatio)); }
+        }
+    }
+
+    commitDrag() {
+        var which = this.dragging;
+        if (!which) { return; }
+        this.dragging = null;
+
+        var appState = this.appState;
+        var entity = appState.ha_state_dict[this.entityId];
+        if (which === 'volume') {
+            appState.haws.mediaPlayerVolumeSet(this.entityId, this.dragRatio);
+        } else {
+            var duration = entity && entity.attributes && entity.attributes.media_duration;
+            if (!duration) { return; }
+            appState.haws.mediaPlayerSeek(this.entityId, Math.round(duration * this.dragRatio));
+        }
+        Vibe.vibrate('short');
     }
 
     /**
@@ -773,7 +1056,8 @@ class MediaPlayerPage extends BaseEntityPage {
      */
     updateMediaWindow(mediaPlayer) {
         if (!mediaPlayer) { return; }
-        var appState = this.appState;
+        var L = this.layout;
+        var attrs = mediaPlayer.attributes || {};
 
         // Media players push frequent position updates and log_message is a
         // no-op without debug, so do not stringify the entity every time
@@ -781,38 +1065,37 @@ class MediaPlayerPage extends BaseEntityPage {
             helpers.log_message("MEDIA PLAYER WINDOW UPDATE " + mediaPlayer.entity_id + ": " + JSON.stringify(mediaPlayer, null, 4));
         }
 
-        // Update volume progress
-        var newVolumeWidth = this.volume_progress_fg.maxWidth * mediaPlayer.attributes.volume_level;
-        var volume_x2 = this.volume_progress_fg.position().x + Math.round(newVolumeWidth);
-        this.volume_progress_fg.position2(new Vector(volume_x2, this.volume_progress_fg.position2().y));
+        // What is playing, falling back to the player itself when it is idle
+        // or the integration reports no title
+        var name = attrs.friendly_name || mediaPlayer.entity_id;
+        // The player is named in the header, so an untitled one says what it is
+        // doing rather than repeating that name back
+        var title = attrs.media_title ||
+                    helpers.ucwords(String(mediaPlayer.state || '').replace(/_/g, ' '));
+        // Music has an artist, television has a series, and either is the right
+        // second line for what it is
+        var subtitle = attrs.media_artist || attrs.media_series_title ||
+                       attrs.media_album_name || "";
 
-        // Update volume label
-        if (mediaPlayer.attributes.is_volume_muted) {
-            if (appState.enableIcons && this.muteIcon) {
-                this.muteIcon.image("IMAGE_ICON_MUTED");
-            }
-            this.volume_label.text("");
-        } else {
-            if (appState.enableIcons && this.muteIcon) {
-                this.muteIcon.image("IMAGE_ICON_UNMUTED");
-            }
-            if (mediaPlayer.attributes.volume_level) {
-                var percentage = Math.round(mediaPlayer.attributes.volume_level * 100);
-                this.volume_label.text(percentage === 100 ? 'MAX' : percentage + "%");
-            } else {
-                this.volume_label.text("0%");
-            }
+        this.trackTitle.text(title);
+        this.trackArtist.text(subtitle);
+        this.entityLabel.text(name);
+
+        var hasPosition = hasPlaybackPosition(mediaPlayer);
+        this.applyLayout(!!subtitle, hasPosition);
+
+        if (this.muteIcon) {
+            this.muteIcon.image(attrs.is_volume_muted ? "IMAGE_ICON_MUTED" : "IMAGE_ICON_UNMUTED");
         }
 
-        // Home Assistant leaves the position attributes off entirely when the
-        // thing playing has no meaningful place in it, which is what a live
-        // stream or a radio station looks like, so their absence is the signal
-        // that there is no progress to draw. Whether the player can seek is a
-        // separate question and does not decide this: plenty of players can
-        // seek but are currently on something unseekable, and plenty report a
-        // position they will not let you change.
-        var hasPosition = hasPlaybackPosition(mediaPlayer);
-        this.showPositionRow(hasPosition);
+        // A finger already on the bar wins over the state coming back, or the
+        // fill would jump about underneath it mid drag
+        if (this.dragging !== 'volume') {
+            var level = typeof attrs.volume_level === 'number' ? attrs.volume_level : 0;
+            this.volume_bar_fg.size(new Vector(Math.round(L.width * level), L.barH));
+            this.volume_label.text(attrs.is_volume_muted ? "Muted" : Math.round(level * 100) + "%");
+        }
+
         this.drawPosition(mediaPlayer);
 
         // Only a playing track moves on its own; anything else stays where the
@@ -825,22 +1108,23 @@ class MediaPlayerPage extends BaseEntityPage {
     }
 
     /**
-     * Paint the progress bar and its label from the position as of right now.
+     * Paint the progress bar and its labels from the position as of right now.
      */
     drawPosition(mediaPlayer) {
         if (!hasPlaybackPosition(mediaPlayer)) { return; }
+        if (this.dragging === 'seek') { return; }
 
+        var L = this.layout;
         var duration = mediaPlayer.attributes.media_duration;
         var position = currentPosition(mediaPlayer);
 
         var positionRatio = position / duration;
         if (positionRatio < 0) { positionRatio = 0; }
         if (positionRatio > 1) { positionRatio = 1; }
-        var newPositionWidth = this.position_progress_fg.maxWidth * positionRatio;
-        var position_x2 = this.position_progress_fg.position().x + Math.round(newPositionWidth);
-        this.position_progress_fg.position2(new Vector(position_x2, this.position_progress_fg.position2().y));
+        this.position_bar_fg.size(new Vector(Math.round(L.width * positionRatio), L.barH));
 
-        this.position_label.text(secToTime(position) + " / " + secToTime(duration));
+        this.time_elapsed.text(secToTime(position));
+        this.time_total.text(secToTime(duration));
     }
 
     startPositionTicker(mediaPlayer) {
