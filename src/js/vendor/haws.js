@@ -7,6 +7,10 @@ class HAWS {
     constructor(ha_url, token, debug, coalesce_messages) {
         this.events = new EventTarget();
         this.connected = false;
+        // Open sockets report `connected` only once onopen lands; without a
+        // separate flag a reconnect attempt can start a second socket while
+        // the first is still negotiating
+        this.connecting = false;
         this.reconnectTimeout = null;
         this.selfDisconnect = false;
         this.ha_url = ha_url;
@@ -18,6 +22,91 @@ class HAWS {
         this.reconnectInterval = 2500;
         this.debug = debug || false;
         this.coalesce_messages = coalesce_messages || false;
+
+        // A phone can lose its network without the socket ever closing: the
+        // TCP connection goes half-open and this side sits there believing it
+        // is still connected while no events arrive. Nothing recovers from
+        // that on its own, so the connection is probed on an interval and
+        // treated as dead when a reply does not come back.
+        this.heartbeatInterval = 30000;
+        this.heartbeatTimeout = 15000;
+        this._heartbeatTimer = null;
+        this._pongTimer = null;
+        this._pendingPingId = null;
+    }
+
+    startHeartbeat() {
+        let that = this;
+        this.stopHeartbeat();
+        this._heartbeatTimer = setInterval(function() {
+            that._sendPing();
+        }, this.heartbeatInterval);
+    }
+
+    stopHeartbeat() {
+        if (this._heartbeatTimer) {
+            clearInterval(this._heartbeatTimer);
+            this._heartbeatTimer = null;
+        }
+        if (this._pongTimer) {
+            clearTimeout(this._pongTimer);
+            this._pongTimer = null;
+        }
+        this._pendingPingId = null;
+    }
+
+    _sendPing() {
+        let that = this;
+        if (!this.connected) { return; }
+
+        // Still waiting on the previous one: the link is already unhealthy, so
+        // let its timeout make the call rather than queueing another
+        if (this._pendingPingId !== null) { return; }
+
+        let id = this.send({ type: 'ping' });
+        if (id === false) { return; }
+        this._pendingPingId = id;
+
+        this._pongTimer = setTimeout(function() {
+            that._pongTimer = null;
+            that._pendingPingId = null;
+            that._handleConnectionLost('no pong within ' + (that.heartbeatTimeout / 1000) + 's');
+        }, this.heartbeatTimeout);
+    }
+
+    /**
+     * Tear down a connection that is gone but has not told us so.
+     *
+     * The socket is detached before anything else, because a half-open one may
+     * fire its own onclose much later (or never) and must not run this twice.
+     */
+    _handleConnectionLost(reason) {
+        if (!this.connected && !this.connecting) { return; }
+
+        console.log(`[HAWS] ${reason}; treating the connection as lost`);
+
+        let dead = this.ws;
+        this.ws = null;
+        this.connected = false;
+        this.connecting = false;
+        this.stopHeartbeat();
+        this._resetConnectionState();
+
+        if (dead) {
+            try {
+                dead.close();
+            } catch (e) {
+                // already unusable, nothing to do
+            }
+        }
+
+        this.events.dispatchEvent(new CustomEvent("close", {
+            detail: { code: 4000, reason: reason, wasClean: false }
+        }));
+
+        if (!this.selfDisconnect) {
+            this.startAttemptingToEstablishConnection();
+        }
     }
 
     isConnected() {
@@ -40,24 +129,66 @@ class HAWS {
         return `code=${evt.code} (${meaning})${reason} wasClean=${!!evt.wasClean}`;
     }
 
+    /**
+     * Drop everything that only made sense on the socket that just died.
+     *
+     * Command ids, pending callbacks and subscription ids are all scoped to a
+     * single connection: Home Assistant forgets every subscription when the
+     * socket drops, and the id counter starts again on the next one. Keeping
+     * the old ids around meant a fresh command could be handed an id that was
+     * still listed as a subscription, and _handleMessage would then swallow
+     * its result instead of calling back.
+     */
+    _resetConnectionState() {
+        this._commands = new Map();
+        this._subscriptions = [];
+        this._last_cmd_id = 0;
+    }
+
     connect() {
-        if(this.connected) {
+        // A socket that is open, or one still negotiating, must not be
+        // replaced. Orphaning it leaves its handlers firing against this same
+        // object, which produces duplicate closes and a reconnect storm.
+        if(this.connected || this.connecting) {
             return false;
         }
 
         let that = this,
             ws_url = this.ha_url.replace('http','ws').replace(/\/+$/, '') + '/api/websocket';
-        this.ws = new WebSocket(ws_url);
-        this.ws.onclose = (evt) => {
-            that.events.dispatchEvent(new CustomEvent("close", {detail: evt}));
-            this.connected = false;
-            if (!this.selfDisconnect) {
-                console.log(`[HAWS] WebSocket closed: ${HAWS._describeCloseEvent(evt)}`);
-                this.startAttemptingToEstablishConnection();
-            }
+
+        this.connecting = true;
+        let socket = new WebSocket(ws_url);
+        this.ws = socket;
+
+        // Anything arriving from a socket we have already replaced is ignored
+        function isCurrent() {
+            return that.ws === socket;
         }
 
-        this.ws.onopen = function(evt){
+        socket.onclose = function(evt) {
+            if (!isCurrent()) { return; }
+            that.connecting = false;
+
+            // Order matters. Listeners respond to this event by unsubscribing,
+            // and send() only writes when `connected` is true. Clearing the
+            // flag after the dispatch meant those unsubscribes tried to write
+            // to a socket that had already closed, which throws and aborts the
+            // rest of the listener before it could release its timers.
+            that.connected = false;
+            that.stopHeartbeat();
+            that._resetConnectionState();
+
+            that.events.dispatchEvent(new CustomEvent("close", {detail: evt}));
+
+            if (!that.selfDisconnect) {
+                console.log(`[HAWS] WebSocket closed: ${HAWS._describeCloseEvent(evt)}`);
+                that.startAttemptingToEstablishConnection();
+            }
+        };
+
+        socket.onopen = function(evt){
+            if (!isCurrent()) { return; }
+            that.connecting = false;
             that.connected = true;
             that.events.dispatchEvent(new CustomEvent("open", {detail: evt.detail}));
             if(that.debug) {
@@ -65,7 +196,8 @@ class HAWS {
             }
         };
 
-        this.ws.onmessage = function(evt) {
+        socket.onmessage = function(evt) {
+            if (!isCurrent()) { return; }
             let data = JSON.parse(evt.data);
 
             // Handle coalesced messages (array of messages)
@@ -81,13 +213,18 @@ class HAWS {
             }
         };
 
-        this.ws.onerror = function(evt) {
+        socket.onerror = function(evt) {
+            if (!isCurrent()) { return; }
             if(that.debug) {
                 console.log(`[HAWS] WebSocket error: ${JSON.stringify(evt.detail, null, 4)}`);
             }
-            that.ws.close();
+            // This callback is not an arrow function, so `this` is the socket:
+            // the old `this.connected = false` here set a flag on the
+            // WebSocket and left HAWS believing it was still connected.
             that.trigger("error", {detail: evt.detail});
-            this.connected = false;
+            // onclose does the teardown, and closing an already-closed socket
+            // is a no-op
+            socket.close();
         };
     }
 
@@ -108,6 +245,14 @@ class HAWS {
                 break;
 
             case 'auth_ok':
+                // Nothing issued on a previous socket can be answered on this
+                // one, and Home Assistant restarts its own id counter for each
+                // connection. Carrying the old bookkeeping over meant a fresh
+                // command could be handed an id still listed as a subscription,
+                // and its result was then discarded instead of delivered - the
+                // reconnect data fetch would stall there forever.
+                this._resetConnectionState();
+
                 // Send supported_features if coalesce_messages is enabled
                 if(this.coalesce_messages) {
                     // Set _last_cmd_id to 1 so the first real command will be id 2
@@ -121,7 +266,23 @@ class HAWS {
                         console.log('[HAWS] Sent supported_features with coalesce_messages enabled');
                     }
                 }
+                // Only probe once the connection is actually usable
+                this.startHeartbeat();
                 this.trigger("auth_ok", {detail: data});
+                break;
+
+            case 'pong':
+                // Answers to ping come back as their own type rather than a
+                // result, so without this the pending callback would sit in
+                // _commands forever and the watchdog would never be cleared
+                if (this._pongTimer) {
+                    clearTimeout(this._pongTimer);
+                    this._pongTimer = null;
+                }
+                this._pendingPingId = null;
+                if (typeof data.id !== 'undefined') {
+                    this._commands.delete(data.id);
+                }
                 break;
 
             case 'auth_invalid':
@@ -175,11 +336,20 @@ class HAWS {
 
     startAttemptingToEstablishConnection() {
         let that = this;
+
+        // Overwriting the handle without clearing left the previous timer
+        // running, so two closes meant two pending attempts and two sockets
+        if (this.reconnectTimeout) {
+            clearTimeout(this.reconnectTimeout);
+            this.reconnectTimeout = null;
+        }
+
         if(this.debug) {
             console.log(`[HAWS] Reconnection attempt in ${this.reconnectInterval/1000}s`);
         }
 
         this.reconnectTimeout = setTimeout(function(){
+            that.reconnectTimeout = null;
             if(that.debug) {
                 console.log(`[HAWS] Attempting connection`);
             }
@@ -192,12 +362,16 @@ class HAWS {
             console.log(`[HAWS] Disconnecting..`);
         }
         this.selfDisconnect = true;
+        this.stopHeartbeat();
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
             this.reconnectTimeout = null;
         }
-        this.ws.close();
-
+        // connect() may never have run, or may have failed before assigning
+        if (this.ws) {
+            this.ws.close();
+        }
+        this.connecting = false;
     }
 
     send(msg, successCallback, errorCallback) {
@@ -247,7 +421,11 @@ class HAWS {
         //     },
         // }
         let msg_id = this.send(data, successCallback, errorCallback);
-        this._subscriptions.push(msg_id);
+        // send returns false while disconnected, and false never matches an
+        // incoming id, so tracking it only grows the list
+        if (msg_id !== false) {
+            this._subscriptions.push(msg_id);
+        }
 
         if(this.debug) {
             console.log(`[HAWS] subscribe: ${JSON.stringify(data, null, 4)}`);
@@ -279,7 +457,11 @@ class HAWS {
         };
 
         let msg_id = this.send(data, successCallback, errorCallback);
-        this._subscriptions.push(msg_id);
+        // send returns false while disconnected, and false never matches an
+        // incoming id, so tracking it only grows the list
+        if (msg_id !== false) {
+            this._subscriptions.push(msg_id);
+        }
 
         if(this.debug) {
             console.log(`[HAWS] subscribeEntities: ${JSON.stringify(data, null, 4)}`);
@@ -504,20 +686,20 @@ class HAWS {
     }
 
     close() {
+        this.stopHeartbeat();
         if(this.connected) {
             this.ws.close();
             this.connected = false;
-            this._last_cmd_id = 0;
-            this._commands = new Map();
-            this._subscriptions = [];
+            this._resetConnectionState();
         }
     }
 
     _genCmdId() {
-        if(this._last_cmd_id > 9999) {
-            this._last_cmd_id = 0;
-        }
-
+        // No wrap. Home Assistant rejects any id that is not greater than the
+        // last one it saw on this connection (error code id_reuse), so rolling
+        // back to 0 after 9999 commands would get every later command refused
+        // for the rest of the session. The counter is per-connection and
+        // starts again on the next socket, so letting it climb is correct.
         return ++this._last_cmd_id;
     }
 

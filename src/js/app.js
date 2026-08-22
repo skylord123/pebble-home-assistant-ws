@@ -78,8 +78,16 @@ function on_auth_ok(evt) {
     appState.ha_connected = true;
     Settings.option('ha_connected', true);
 
-    // Try to load from cache first
-    var cacheLoaded = CacheManager.load();
+    // Try to load from cache first.
+    //
+    // On a reconnect the live state is already in memory and is newer than
+    // anything on disk, so reloading the snapshot would roll every entity back
+    // to the last completed fetch and throw away everything the subscriptions
+    // delivered since. A restart clears ha_state_dict, so that path still
+    // loads the cache normally.
+    var haveLiveState = !!(appState.ha_state_dict &&
+        Object.keys(appState.ha_state_dict).length > 0);
+    var cacheLoaded = haveLiveState ? true : CacheManager.load();
     var isFetchingInBackground = cacheLoaded;
 
     // Quick launch handler

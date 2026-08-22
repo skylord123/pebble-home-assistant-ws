@@ -12,6 +12,11 @@
  */
 
 var simply = require('ui/simply');
+var WindowStack = require('ui/windowstack');
+
+// Whether the splash is currently covering a JS window. The native splash
+// never joins the JS window stack, so this side has to remember.
+var covering = false;
 
 var texts = {
     title: 'Home Assistant',
@@ -38,6 +43,23 @@ function setMode(newMode) {
 
 var SplashScreen = {
     show: function() {
+        // Covering a window natively bypasses the JS window stack, so nothing
+        // would otherwise tell the page underneath that it has gone away.
+        // Pages release their subscription on 'hide' and take a new one on
+        // 'show', and that pairing is what re-establishes them after a
+        // reconnect: Home Assistant drops every subscription with the socket.
+        // Staying silent here left pages holding ids for a connection that no
+        // longer existed, so their states froze until the user navigated away
+        // and back. Emitting only the event, never WindowStack._hide, keeps
+        // the window in place on the watch underneath the splash.
+        if (!covering) {
+            covering = true;
+            var top = WindowStack.top();
+            if (top) {
+                WindowStack._emitHide(top);
+            }
+        }
+
         // A fresh show is a fresh attempt, so always reset to the pulsing
         // connecting state
         simply.impl.splashShow();
@@ -47,6 +69,9 @@ var SplashScreen = {
         return this;
     },
     hide: function() {
+        covering = false;
+        // The matching 'show' is emitted when the watch reports the splash has
+        // actually come down, in the SplashRevealPacket handler
         simply.impl.splashHide();
         return this;
     },

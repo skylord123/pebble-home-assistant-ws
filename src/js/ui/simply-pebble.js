@@ -1781,7 +1781,11 @@ SimplyPebble.onPacket = function(buffer, offset) {
       ImageService.markAllUnloaded();
       var revealed = WindowStack.top();
       if (revealed) {
-        revealed._show();
+        // _show alone only re-renders. Going through the stack also emits
+        // 'show', which is what pages listen to in order to re-subscribe -
+        // their subscriptions died with the connection the splash was
+        // covering for.
+        WindowStack._show(revealed);
       }
       break;
     case ClickPacket:

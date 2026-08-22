@@ -54,8 +54,12 @@ var ConnectionService = {
         this.reconnecting = false;
         this.hadWindowsBeforeDisconnect = false;
 
-        // Disconnect HAWS if connected
-        if (appState.haws && appState.haws.isConnected()) {
+        // Disconnect HAWS whether or not it is currently up. A instance that is
+        // mid-reconnect is not "connected", but it still holds a pending retry
+        // timer, and letting it fire would authenticate a second connection
+        // that runs its own post-auth pipeline and throws the splash back over
+        // a working UI. disconnect() clears that timer and stops it retrying.
+        if (appState.haws) {
             log('Disconnecting HAWS...');
             appState.haws.disconnect();
         }
