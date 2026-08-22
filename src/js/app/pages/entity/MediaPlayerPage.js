@@ -46,6 +46,10 @@ var FEATURE = {
     SEARCH_MEDIA: 4194304
 };
 
+// Vertical gap between the progress row and the volume row below it, which is
+// how far the volume row rises when there is no progress to show
+var VOLUME_ROW_SHIFT = 40;
+
 /**
  * Feature names for logging, read from the one table above so the two
  * cannot drift apart
@@ -62,6 +66,53 @@ function supported_features(entity) {
  */
 function supports(entity, bit) {
     return !!(((entity && entity.attributes && entity.attributes.supported_features) || 0) & bit);
+}
+
+/**
+ * Where playback has reached right now, in seconds.
+ *
+ * media_position is a snapshot taken at media_position_updated_at, not a live
+ * value: Home Assistant only republishes it when playback jumps, so between
+ * updates the elapsed time has to be added here or the bar sits still through
+ * an entire track. Only a playing player advances; paused and buffering hold
+ * where they are. Without the timestamp there is nothing to measure from, so
+ * the snapshot is used as-is rather than producing NaN.
+ */
+function currentPosition(entity) {
+    var attrs = (entity && entity.attributes) || {};
+    var position = attrs.media_position;
+    if (entity.state !== 'playing' || !attrs.media_position_updated_at) {
+        return position;
+    }
+    var updatedAt = new Date(attrs.media_position_updated_at).getTime();
+    if (isNaN(updatedAt)) { return position; }
+
+    // Clocks on the phone and the server drift, and a timestamp slightly in
+    // the future would otherwise wind the counter backwards
+    var elapsed = (Date.now() - updatedAt) / 1000;
+    var current = position + elapsed;
+    if (current < 0) { current = 0; }
+    if (typeof attrs.media_duration === 'number' && current > attrs.media_duration) {
+        current = attrs.media_duration;
+    }
+    return current;
+}
+
+/**
+ * Whether the thing currently playing has a place in it worth showing.
+ *
+ * Home Assistant only publishes media_position and media_duration when the
+ * item actually has them, so a live stream, a radio station or an idle player
+ * simply carries neither. A duration of zero means the same thing. Note this
+ * is deliberately not the SEEK feature bit: that says the player is able to
+ * jump around, which is neither necessary nor sufficient for there being a
+ * position to draw.
+ */
+function hasPlaybackPosition(entity) {
+    var attrs = (entity && entity.attributes) || {};
+    return typeof attrs.media_position === 'number' &&
+           typeof attrs.media_duration === 'number' &&
+           attrs.media_duration > 0;
 }
 
 /**
@@ -95,6 +146,8 @@ class MediaPlayerPage extends BaseEntityPage {
         this.subscription_msg_id = null;
         this.is_muted = false;
         this.mediaControlWindow = null;
+        this.position_ticker = null;
+        this.position_row_visible = null;
     }
 
     /**
@@ -191,6 +244,19 @@ class MediaPlayerPage extends BaseEntityPage {
         });
         this.volume_progress_fg.maxWidth = this.volume_progress_bg_inner.position2().x - this.volume_progress_bg_inner.position().x;
 
+        // Remember where the volume row belongs so it can be moved up and back
+        // as the progress row above it comes and goes
+        var volumeRow = [this.volume_label, this.volume_progress_bg,
+                         this.volume_progress_bg_inner, this.volume_progress_fg];
+        if (this.muteIcon) { volumeRow.push(this.muteIcon); }
+        for (var v = 0; v < volumeRow.length; v++) {
+            volumeRow[v].baseY = volumeRow[v].position().y;
+            // Only lines have a second endpoint; text and images do not
+            var end = typeof volumeRow[v].position2 === 'function'
+                ? volumeRow[v].position2() : null;
+            if (end) { volumeRow[v].baseY2 = end.y; }
+        }
+
         position_y = -10;
         this.position_label = new UI.Text({
             text: "-:-- / -:--",
@@ -267,6 +333,23 @@ class MediaPlayerPage extends BaseEntityPage {
             appState.haws.mediaPlayerMute(self.entityId, !muted);
         });
 
+        // Added once. These used to be re-added on every state update, and
+        // since adding an element that is already on the window removes and
+        // re-appends it, every position tick resent the whole screen.
+        this.mediaControlWindow.add(this.volume_progress_bg);
+        this.mediaControlWindow.add(this.volume_progress_bg_inner);
+        this.mediaControlWindow.add(this.volume_progress_fg);
+        this.mediaControlWindow.add(this.volume_label);
+        this.mediaControlWindow.add(this.mediaName);
+        if (appState.enableIcons && Feature.rectangle() && this.muteIcon) {
+            this.mediaControlWindow.add(this.muteIcon);
+        }
+        // The progress row is added by showPositionRow once the state says
+        // there is a position to show. Left unset rather than false so the
+        // first call always applies, including the one that decides there is
+        // no position and has to move the volume row up.
+        this.position_row_visible = null;
+
         this.mediaControlWindow.on('show', function() {
             // Re-entered whenever a sub-menu closes, so never stack a second
             // subscription on top of a live one
@@ -290,6 +373,7 @@ class MediaPlayerPage extends BaseEntityPage {
         // never ran and every visit leaked its subscription
         this.mediaControlWindow.on('hide', function() {
             self.unsubscribeMedia();
+            self.stopPositionTicker();
         });
 
         this.mediaControlWindow.show();
@@ -651,6 +735,40 @@ class MediaPlayerPage extends BaseEntityPage {
     }
 
     /**
+     * Show or hide the progress row, sliding the volume row into its place
+     * when it goes. Leaving a hole where the progress used to be would read as
+     * something failing to load rather than something that was never there.
+     */
+    showPositionRow(visible) {
+        if (this.position_row_visible === visible) { return; }
+        this.position_row_visible = visible;
+
+        var win = this.mediaControlWindow;
+        var parts = [this.position_progress_bg, this.position_progress_bg_inner,
+                     this.position_progress_fg, this.position_label];
+        for (var i = 0; i < parts.length; i++) {
+            if (visible) { win.add(parts[i]); } else { win.remove(parts[i]); }
+        }
+
+        // The volume row sits a row below the progress; without a progress row
+        // it moves up to where that row would have been
+        var shift = visible ? 0 : -VOLUME_ROW_SHIFT;
+        var moved = [this.volume_progress_bg, this.volume_progress_bg_inner,
+                     this.volume_progress_fg, this.volume_label, this.muteIcon];
+        for (var j = 0; j < moved.length; j++) {
+            var el = moved[j];
+            if (!el || typeof el.baseY !== 'number') { continue; }
+            var p = el.position();
+            el.position(new Vector(p.x, el.baseY + shift));
+            var p2 = (typeof el.position2 === 'function' && el.baseY2 !== undefined)
+                ? el.position2() : null;
+            if (p2) {
+                el.position2(new Vector(p2.x, el.baseY2 + shift));
+            }
+        }
+    }
+
+    /**
      * Update the media window with current state
      */
     updateMediaWindow(mediaPlayer) {
@@ -686,33 +804,60 @@ class MediaPlayerPage extends BaseEntityPage {
             }
         }
 
-        // Update media position progress
-        var positionRatio = (mediaPlayer.attributes.media_position && mediaPlayer.attributes.media_duration)
-            ? mediaPlayer.attributes.media_position / mediaPlayer.attributes.media_duration
-            : 0;
+        // Home Assistant leaves the position attributes off entirely when the
+        // thing playing has no meaningful place in it, which is what a live
+        // stream or a radio station looks like, so their absence is the signal
+        // that there is no progress to draw. Whether the player can seek is a
+        // separate question and does not decide this: plenty of players can
+        // seek but are currently on something unseekable, and plenty report a
+        // position they will not let you change.
+        var hasPosition = hasPlaybackPosition(mediaPlayer);
+        this.showPositionRow(hasPosition);
+        this.drawPosition(mediaPlayer);
+
+        // Only a playing track moves on its own; anything else stays where the
+        // last update left it and needs no ticking
+        if (hasPosition && mediaPlayer.state === 'playing') {
+            this.startPositionTicker(mediaPlayer);
+        } else {
+            this.stopPositionTicker();
+        }
+    }
+
+    /**
+     * Paint the progress bar and its label from the position as of right now.
+     */
+    drawPosition(mediaPlayer) {
+        if (!hasPlaybackPosition(mediaPlayer)) { return; }
+
+        var duration = mediaPlayer.attributes.media_duration;
+        var position = currentPosition(mediaPlayer);
+
+        var positionRatio = position / duration;
+        if (positionRatio < 0) { positionRatio = 0; }
+        if (positionRatio > 1) { positionRatio = 1; }
         var newPositionWidth = this.position_progress_fg.maxWidth * positionRatio;
         var position_x2 = this.position_progress_fg.position().x + Math.round(newPositionWidth);
         this.position_progress_fg.position2(new Vector(position_x2, this.position_progress_fg.position2().y));
 
-        // Update position label
-        if (mediaPlayer.attributes.media_position && mediaPlayer.attributes.media_duration) {
-            this.position_label.text(secToTime(mediaPlayer.attributes.media_position) + " / " + secToTime(mediaPlayer.attributes.media_duration));
-        } else {
-            this.position_label.text("-:-- / -:--");
-        }
+        this.position_label.text(secToTime(position) + " / " + secToTime(duration));
+    }
 
-        // Add UI elements to the window
-        this.mediaControlWindow.add(this.volume_progress_bg);
-        this.mediaControlWindow.add(this.volume_progress_bg_inner);
-        this.mediaControlWindow.add(this.volume_progress_fg);
-        this.mediaControlWindow.add(this.volume_label);
-        this.mediaControlWindow.add(this.position_progress_bg);
-        this.mediaControlWindow.add(this.position_progress_bg_inner);
-        this.mediaControlWindow.add(this.position_progress_fg);
-        this.mediaControlWindow.add(this.position_label);
-        this.mediaControlWindow.add(this.mediaName);
-        if (appState.enableIcons && Feature.rectangle() && this.muteIcon) {
-            this.mediaControlWindow.add(this.muteIcon);
+    startPositionTicker(mediaPlayer) {
+        var self = this;
+        this.stopPositionTicker();
+        this.position_ticker = setInterval(function() {
+            // Read the entity fresh each tick so a track change that has not
+            // reached us yet cannot keep an old duration on screen
+            var current = self.appState.ha_state_dict[self.entityId] || mediaPlayer;
+            self.drawPosition(current);
+        }, 1000);
+    }
+
+    stopPositionTicker() {
+        if (this.position_ticker) {
+            clearInterval(this.position_ticker);
+            this.position_ticker = null;
         }
     }
 }
