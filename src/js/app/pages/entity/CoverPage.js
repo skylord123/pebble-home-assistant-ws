@@ -289,7 +289,17 @@ function showCoverEntity(entity_id) {
             }
         });
 
-        coverMenu.items(0, menuItems);
+        // Replacing the section clears it on the watch and re-marshals every
+        // row. A moving cover streams position updates, so doing that on each
+        // one churns the display exactly while the user is aiming for Stop.
+        // Only the row set changing needs the full replace.
+        if (coverMenu.items(0).length !== menuItems.length) {
+            coverMenu.items(0, menuItems);
+        } else {
+            for (let i = 0; i < menuItems.length; i++) {
+                coverMenu.item(0, i, menuItems[i]);
+            }
+        }
     }
 
     // Slider window for position/tilt (0-100, where 0 is closed and 100 open)

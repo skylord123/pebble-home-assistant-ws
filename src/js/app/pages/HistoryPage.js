@@ -437,8 +437,9 @@ function showHistoryGraph(entity_id) {
                 periodIndex = e.item.periodIndex;
                 // A new period re-anchors the window at the present
                 periodOffset = 0;
+                // Popping this menu re-shows the graph, whose 'show' handler
+                // already reloads; fetching here too doubled every request
                 periodMenu.hide();
-                loadData();
             });
 
             periodMenu.show();

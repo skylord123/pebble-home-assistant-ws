@@ -190,12 +190,16 @@ class AssistPage extends BasePage {
             SettingsMenuPage.showVoicePipelineMenu();
         });
 
+        // Opening Assist starts listening, but 'show' fires again every time a
+        // child window is dismissed. Without this guard, backing out of the
+        // pipeline settings would open the microphone on its own, and clearing
+        // the conversation on 'hide' would throw away the context mid-chat.
+        var started = false;
         this.assistWindow.on('show', function() {
-            self.startAssist();
-        });
-
-        this.assistWindow.on('hide', function() {
+            if (started) { return; }
+            started = true;
             conversation_id = null;
+            self.startAssist();
         });
 
         this.assistWindow.show();

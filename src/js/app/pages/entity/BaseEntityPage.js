@@ -142,12 +142,14 @@ class BaseEntityPage extends BasePage {
         var self = this;
 
         function render() {
-            var entity = self.getEntity();
             var isFavorite = self.appState.favoriteEntityStore.has(self.entityId);
             self.menu.item(sectionIndex, itemIndex, {
                 title: (isFavorite ? 'Remove from' : 'Add to') + ' Favorites',
                 on_click: function(e) {
-                    EntityService.toggleFavorite(entity);
+                    // Read on press: built from the startup cache the entity can
+                    // still be missing, and toggleFavorite drops a falsy one on
+                    // the floor, so the button would do nothing with no sign why
+                    EntityService.toggleFavorite(self.getEntity());
                     render();
                 }
             });
@@ -165,12 +167,11 @@ class BaseEntityPage extends BasePage {
         var self = this;
 
         function render() {
-            var entity = self.getEntity();
             var isPinned = self.appState.pinnedEntityStore.has(self.entityId);
             self.menu.item(sectionIndex, itemIndex, {
                 title: (isPinned ? 'Unpin from' : 'Pin to') + ' Main Menu',
                 on_click: function(e) {
-                    EntityService.togglePinned(entity);
+                    EntityService.togglePinned(self.getEntity());
                     render();
                 }
             });

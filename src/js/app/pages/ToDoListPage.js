@@ -921,6 +921,7 @@ function showToDoItemMenu(entity_id, item) {
 
 // Helper function to show todo item description options menu
 function showToDoItemDescriptionOptionsMenu(entity_id, item) {
+    var appState = AppState.getInstance();
     helpers.log_message('Showing todo item description options menu');
 
     let descOptionsMenu = new UI.Menu({
@@ -982,6 +983,7 @@ function showToDoItemDescriptionOptionsMenu(entity_id, item) {
 
 // Helper function to start todo item description dictation
 function startToDoItemDescriptionDictation(entity_id, item) {
+    var appState = AppState.getInstance();
     helpers.log_message('Starting voice dictation for todo item description');
 
     Voice.dictate('start', true, function(voiceEvent) {

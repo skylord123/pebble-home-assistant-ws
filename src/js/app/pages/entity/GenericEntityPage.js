@@ -726,7 +726,24 @@ function showEntityMenu(entity_id) {
     }
     _renderPinnedBtn();
 
+    // Releases the subscription and the timer. Every trip into a child page
+    // comes back through 'show', so this runs first there too: without it the
+    // old subscription is only overwritten, and the server keeps sending on it
+    // for the rest of the session.
+    function releaseUpdates() {
+        if (msg_id) {
+            appState.haws.unsubscribe(msg_id);
+            msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     showEntityMenu.on('show', function(){
+        releaseUpdates();
+
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current entity and update the state field
@@ -776,17 +793,9 @@ function showEntityMenu(entity_id) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
         });
     });
-    showEntityMenu.on('close', function(){
-        if(msg_id) {
-            appState.haws.unsubscribe(msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    // 'hide', not 'close': the runtime has no close event, so what used to be
+    // here never ran at all
+    showEntityMenu.on('hide', releaseUpdates);
 
     showEntityMenu.show();
 }

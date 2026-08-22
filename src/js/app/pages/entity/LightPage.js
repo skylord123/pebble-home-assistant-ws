@@ -87,7 +87,9 @@ function showLightEntity(entity_id) {
 
     // Helper function to get supported features
     function supported_features(entity) {
-        let entity_registry = appState.entity_registry_cache[entity.entity_id];
+        // The registry cache is null until it loads and is emptied again on
+        // every reconnect, so opening a light in either window would throw
+        let entity_registry = (appState.entity_registry_cache || {})[entity.entity_id];
         // Light feature bitfield values from Home Assistant
         // Modern Home Assistant uses LightEntityFeature enum
         const LightEntityFeature = {
@@ -817,32 +819,22 @@ function showLightEntity(entity_id) {
         colorWindow.add(sliderIndicator);
         colorWindow.add(instructions);
 
-        // Helper function to calculate color distance
-        function colorDistance(color1, color2) {
-            return Math.sqrt(
-                Math.pow(color1[0] - color2[0], 2) +
-                Math.pow(color1[1] - color2[1], 2) +
-                Math.pow(color1[2] - color2[2], 2)
-            );
-        }
-
-        // Helper function to convert RGB to hex
-        function rgbToHex(rgb) {
-            return '#' + rgb.map(x => {
-                const hex = x.toString(16);
-                return hex.length === 1 ? '0' + hex : hex;
-            }).join('');
-        }
+        // Once the user has moved the slider themselves, incoming state stops
+        // driving it: re-syncing under their thumb would drag the selection
+        // away mid-press
+        let userMovedSlider = false;
 
         // Handle button events
         colorWindow.on('click', 'up', function() {
             // Move to next color
+            userMovedSlider = true;
             colorIndex = (colorIndex + 1) % colors.length;
             updateColorUI();
         });
 
         colorWindow.on('click', 'down', function() {
             // Move to previous color
+            userMovedSlider = true;
             colorIndex = (colorIndex - 1 + colors.length) % colors.length;
             updateColorUI();
         });
@@ -880,14 +872,21 @@ function showLightEntity(entity_id) {
             }, 100);
         }
 
-        // Handle hide event to restore selection in parent menu
+        // Whichever of the two screens is used, leaving it has to release the
+        // subscription. Hanging it off colorMenu alone left it open forever on
+        // colour watches, where colorMenu is never shown.
+        function releaseColorUpdates() {
+            if (color_subscription_msg_id) {
+                appState.haws.unsubscribe(color_subscription_msg_id);
+                color_subscription_msg_id = null;
+            }
+        }
+
         colorWindow.on('hide', function() {
+            releaseColorUpdates();
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
         });
-
-        // Show the color window
-        colorWindow.show();
 
         // Helper function to update color menu items
         function updateColorMenuItems(updatedLight) {
@@ -947,16 +946,29 @@ function showLightEntity(entity_id) {
 
                 // Update menu items directly
                 updateColorMenuItems(updatedLight);
+
+                // The menu above is only on screen on watches without colour;
+                // elsewhere the slider window is what the user is looking at,
+                // and it used to sit frozen while the light changed under it
+                let newColor = getLightData(updatedLight).rgb_color;
+                if (!userMovedSlider && newColor) {
+                    let nearest = 0, nearestDistance = 999999;
+                    for (let i = 0; i < colors.length; i++) {
+                        let d = colorDistance(colors[i].rgb, newColor);
+                        if (d < nearestDistance) { nearestDistance = d; nearest = i; }
+                    }
+                    if (nearest !== colorIndex) {
+                        colorIndex = nearest;
+                        updateColorUI();
+                    }
+                }
             }
         }, function(error) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         colorMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (color_subscription_msg_id) {
-                appState.haws.unsubscribe(color_subscription_msg_id);
-            }
+            releaseColorUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;

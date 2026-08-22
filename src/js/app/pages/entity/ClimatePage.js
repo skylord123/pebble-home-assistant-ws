@@ -132,20 +132,28 @@ function showClimateEntity(entity_id) {
                         }]
                     });
 
+                    // These rows stay on screen while the setpoint changes, so
+                    // the bound has to be read when the row is pressed. Closing
+                    // over latestData would open the selector on the value from
+                    // when the menu was built, and confirming it would quietly
+                    // put back the temperature the user just moved away from.
+                    function openRangeEnd(which) {
+                        let d = getClimateData(appState.ha_state_dict[entity_id]);
+                        showTemperatureMenu(entity_id, which,
+                            which === 'low' ? d.target_temp_low : d.target_temp_high,
+                            d.min_temp, d.max_temp, d.temp_step);
+                    }
+
                     tempRangeMenu.item(0, 0, {
                         title: 'Low Temperature',
                         subtitle: `${latestData.target_temp_low}°`,
-                        on_click: function() {
-                            showTemperatureMenu(entity_id, 'low', latestData.target_temp_low, latestData.min_temp, latestData.max_temp, latestData.temp_step);
-                        }
+                        on_click: function() { openRangeEnd('low'); }
                     });
 
                     tempRangeMenu.item(0, 1, {
                         title: 'High Temperature',
                         subtitle: `${latestData.target_temp_high}°`,
-                        on_click: function() {
-                            showTemperatureMenu(entity_id, 'high', latestData.target_temp_high, latestData.min_temp, latestData.max_temp, latestData.temp_step);
-                        }
+                        on_click: function() { openRangeEnd('high'); }
                     });
 
 
