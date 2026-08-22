@@ -130,7 +130,9 @@ function show(opts) {
         font: 'gothic_14_bold',
         position: new Vector(0, 4),
         size: new Vector(res.x, 18),
-        textAlign: 'center'
+        textAlign: 'center',
+        // The entity's name, on one line above the fields
+        textOverflow: 'ellipsis'
     }));
 
     // Layout: date fields on one row, time fields on a second row. Field

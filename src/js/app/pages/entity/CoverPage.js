@@ -324,7 +324,8 @@ function showCoverEntity(entity_id) {
             font: "gothic_24_bold",
             position: new Vector(0, 0),
             size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
+            textAlign: "center",
+            textOverflow: 'ellipsis'
         });
 
         // Add current value text
@@ -334,7 +335,8 @@ function showCoverEntity(entity_id) {
             font: "gothic_24",
             position: new Vector(0, 35),
             size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
+            textAlign: "center",
+            textOverflow: 'ellipsis'
         });
 
         // Add slider background

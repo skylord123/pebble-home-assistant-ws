@@ -260,7 +260,8 @@ function showFanEntity(entity_id) {
             font: "gothic_24",
             position: new Vector(0, 35),
             size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
+            textAlign: "center",
+            textOverflow: 'ellipsis'
         });
 
         // Add slider background

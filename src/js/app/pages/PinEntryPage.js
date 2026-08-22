@@ -54,7 +54,10 @@ function show(opts) {
         font: 'gothic_14_bold',
         position: new Vector(0, 4),
         size: new Vector(res.x, 18),
-        textAlign: 'center'
+        textAlign: 'center',
+        // One line, with the subtitle immediately under it: wrapping would run
+        // straight through it
+        textOverflow: 'ellipsis'
     }));
 
     if (opts.subtitle) {
@@ -64,7 +67,10 @@ function show(opts) {
             font: 'gothic_14',
             position: new Vector(0, 22),
             size: new Vector(res.x, 18),
-            textAlign: 'center'
+            textAlign: 'center',
+            // This is the alarm panel's own name, which is routinely longer
+            // than a line, and the code fields start right below it
+            textOverflow: 'ellipsis'
         }));
     }
 

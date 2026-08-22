@@ -634,7 +634,8 @@ function showCalendarEventDetail(event) {
             font: 'gothic_18_bold',
             position: new Vector(MARGIN, 0),
             size: new Vector(textWidth, 20),
-            textAlign: 'left'
+            textAlign: 'left',
+            textOverflow: 'ellipsis'
         }));
         detailWindow.add(new UI.Text({
             text: day,
@@ -642,7 +643,8 @@ function showCalendarEventDetail(event) {
             font: 'gothic_14',
             position: new Vector(MARGIN, 20),
             size: new Vector(textWidth, 16),
-            textAlign: 'left'
+            textAlign: 'left',
+            textOverflow: 'ellipsis'
         }));
 
         var y = BANNER_HEIGHT + 2;
