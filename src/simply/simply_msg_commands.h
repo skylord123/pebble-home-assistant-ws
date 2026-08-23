@@ -73,5 +73,6 @@ enum Command {
   CommandNumberSelectorValue,
   CommandNumberSelectorResult,
   CommandNumberSelectorClosedEvent,
+  CommandNumberSelectorChangeEvent,
   NumCommands,
 };

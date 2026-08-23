@@ -37,6 +37,15 @@ struct SimplyNumber {
   //! Millisecond timestamp of the last button press, used to ignore external
   //! value updates while the user is actively adjusting
   int64_t last_input_ms;
+  //! Report the value to JS once it stops changing, without waiting for
+  //! select, so an entity can follow along as it is dialled. Opt in per
+  //! selector: a value that is only meaningful once confirmed (a timer's
+  //! duration, a date) must not act on every intermediate number.
+  bool live;
+  //! Pending settle timer, and the value the last change event carried so a
+  //! value dialled away from and back to does not report twice
+  AppTimer *settle_timer;
+  int32_t last_sent_value;
   char title[32];
   char unit[12];
 };

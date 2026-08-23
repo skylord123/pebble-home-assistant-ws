@@ -10,10 +10,16 @@ var simply = require('ui/simply');
  * so callers and the C side both deal in their natural units.
  *
  * NumberField.show({ title, unit, value, min, max, step, decimals,
- *                    showBar, onSet, onCancel })
+ *                    showBar, onSet, onChange, onCancel })
  *   onSet(value)  - select was pressed; perform the action and call
  *                   NumberField.hide() on success (the selector stays up
  *                   on failure so the user can retry)
+ *   onChange(value) - optional; the value stopped changing and has settled.
+ *                   Supplying it makes the selector live: the watch reports
+ *                   each settled value as it is dialled so the entity can
+ *                   follow along, and the selector stays up. Only for values
+ *                   worth acting on before they are confirmed - a light's
+ *                   brightness, not a timer's duration.
  *   onCancel()    - the selector left the screen without a successful
  *                   set (back button, or something covered it)
  *
@@ -28,6 +34,7 @@ var state = {
   hiding: false,
   scale: 1,
   onSet: null,
+  onChange: null,
   onCancel: null,
 };
 
@@ -36,8 +43,10 @@ NumberField.show = function(opts) {
   state.hiding = false;
   state.scale = Math.pow(10, opts.decimals || 0);
   state.onSet = opts.onSet;
+  state.onChange = opts.onChange;
   state.onCancel = opts.onCancel;
   simply.impl.numberSelectorShow({
+    live: !!opts.onChange,
     value: Math.round(opts.value * state.scale),
     min: Math.round(opts.min * state.scale),
     max: Math.round(opts.max * state.scale),
@@ -80,6 +89,8 @@ function showFields(opts, timeOfDay) {
   state.hiding = false;
   state.scale = 1;
   state.onSet = opts.onSet;
+  // A half dialled duration or time of day is not worth acting on
+  state.onChange = null;
   state.onCancel = opts.onCancel;
   simply.impl.numberSelectorShow({
     value: Math.round(opts.value || 0),
@@ -112,12 +123,19 @@ NumberField.emitResult = function(scaledValue) {
   }
 };
 
+NumberField.emitChange = function(scaledValue) {
+  if (state.onChange) {
+    state.onChange(scaledValue / state.scale);
+  }
+};
+
 NumberField.emitClosed = function() {
   var wasHiding = state.hiding;
   var onCancel = state.onCancel;
   state.active = false;
   state.hiding = false;
   state.onSet = null;
+  state.onChange = null;
   state.onCancel = null;
   // A programmatic hide (after a successful set) is not a cancel
   if (!wasHiding && onCancel) {

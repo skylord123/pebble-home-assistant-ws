@@ -20,6 +20,13 @@
 // so an automation changing the entity doesn't fight the user mid-adjust
 #define EXTERNAL_UPDATE_HOLDOFF_MS 1000
 
+// How long the value must hold still before a live selector reports it. Long
+// enough that dialling through a range sends one value rather than every
+// value it passed, short enough to read as immediate. Kept below
+// EXTERNAL_UPDATE_HOLDOFF_MS so the echo of our own change still lands inside
+// the holdoff and cannot bounce the value back under the user's finger.
+#define SETTLE_INTERVAL_MS 500
+
 typedef struct NumberSelectorShowPacket NumberSelectorShowPacket;
 
 struct __attribute__((__packed__)) NumberSelectorShowPacket {
@@ -53,6 +60,13 @@ typedef struct NumberSelectorClosedPacket NumberSelectorClosedPacket;
 
 struct __attribute__((__packed__)) NumberSelectorClosedPacket {
   Packet packet;
+};
+
+typedef struct NumberSelectorChangePacket NumberSelectorChangePacket;
+
+struct __attribute__((__packed__)) NumberSelectorChangePacket {
+  Packet packet;
+  int32_t value;
 };
 
 static int64_t prv_now_ms(void) {
@@ -289,11 +303,43 @@ static int32_t prv_accel_delta(SimplyNumber *self, uint8_t clicks) {
   return self->step * mult;
 }
 
+static void prv_cancel_settle(SimplyNumber *self) {
+  if (self->settle_timer) {
+    app_timer_cancel(self->settle_timer);
+    self->settle_timer = NULL;
+  }
+}
+
+static void prv_settle_timeout(void *data) {
+  SimplyNumber *self = data;
+  self->settle_timer = NULL;
+  const int32_t value = prv_clamp(self->value, self->min, self->max);
+  if (value == self->last_sent_value) { return; }
+  self->last_sent_value = value;
+  NumberSelectorChangePacket packet = {
+    .packet = { .type = CommandNumberSelectorChangeEvent, .length = sizeof(packet) },
+    .value = value,
+  };
+  simply_msg_send_packet(&packet.packet);
+}
+
+// Restart the countdown on every change, so a run of presses reports once it
+// finishes rather than once per press
+static void prv_schedule_settle(SimplyNumber *self) {
+  if (!self->live) { return; }
+  if (self->settle_timer) {
+    if (app_timer_reschedule(self->settle_timer, SETTLE_INTERVAL_MS)) { return; }
+    self->settle_timer = NULL;
+  }
+  self->settle_timer = app_timer_register(SETTLE_INTERVAL_MS, prv_settle_timeout, self);
+}
+
 static void prv_adjust(SimplyNumber *self, int32_t delta) {
   const int32_t value = prv_clamp(self->value + delta, self->min, self->max);
   self->last_input_ms = prv_now_ms();
   if (value != self->value) {
     self->value = value;
+    prv_schedule_settle(self);
     layer_mark_dirty(window_get_root_layer(self->window));
   }
 }
@@ -350,6 +396,7 @@ static void prv_adjust_field(SimplyNumber *self, int32_t units) {
   self->last_input_ms = prv_now_ms();
   if (value != self->value) {
     self->value = value;
+    prv_schedule_settle(self);
     layer_mark_dirty(window_get_root_layer(self->window));
   }
 }
@@ -378,6 +425,9 @@ static void prv_down_click(ClickRecognizerRef recognizer, void *context) {
 }
 
 static void prv_confirm(SimplyNumber *self) {
+  // The result carries the same value a pending change event would have, so
+  // let the confirmation be the one that reports it
+  prv_cancel_settle(self);
   // Duration fields wrap without consulting the minimum, so the range is
   // enforced here instead: callers are promised a value within [min, max]
   NumberSelectorResultPacket packet = {
@@ -452,6 +502,10 @@ static void prv_window_disappear(Window *window) {
   SimplyNumber *self = window_get_user_data(window);
   if (self->destroying) { return; }
   self->destroying = true;
+  // The selector is going away and the struct with it, so a settle timer must
+  // not be left to fire into freed memory. Leaving without confirming also
+  // means the last value was not chosen, so there is nothing to report.
+  prv_cancel_settle(self);
   prv_send_closed();
   // Defer the teardown: destroying a window from inside its own disappear
   // handler is unsafe while the window stack is mid-transition
@@ -497,6 +551,11 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->show_bar = (packet->flags & 1);
   self->duration_mode = (packet->flags & 2);
   self->time_of_day = (packet->flags & 4);
+  self->live = (packet->flags & 8);
+  // A reused selector must not carry the previous entity's pending report or
+  // its idea of what has already been sent
+  prv_cancel_settle(self);
+  self->last_sent_value = self->value;
   // Always start on the leftmost field so select walks the whole value
   // left to right; starting further in leaves the earlier fields
   // reachable only by pressing back, which nobody expects
@@ -519,6 +578,9 @@ static void prv_handle_value(Simply *simply, Packet *data) {
   if (!self) { return; }
   if (prv_now_ms() - self->last_input_ms < EXTERNAL_UPDATE_HOLDOFF_MS) { return; }
   self->value = prv_clamp(((NumberSelectorValuePacket *)data)->value, self->min, self->max);
+  // This value came from the entity, so reporting it back would tell it what
+  // it already knows; dialling away and returning to it stays quiet too
+  self->last_sent_value = self->value;
   layer_mark_dirty(window_get_root_layer(self->window));
 }
 
@@ -577,6 +639,7 @@ static void prv_set_from_x(SimplyNumber *self, GRect bounds, int16_t x) {
   self->last_input_ms = prv_now_ms();
   if (value != self->value) {
     self->value = value;
+    prv_schedule_settle(self);
     layer_mark_dirty(window_get_root_layer(self->window));
   }
 }

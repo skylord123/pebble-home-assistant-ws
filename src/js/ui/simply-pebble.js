@@ -848,6 +848,11 @@ var NumberSelectorClosedEventPacket = new struct([
   [Packet, 'packet'],
 ]);
 
+var NumberSelectorChangeEventPacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -920,6 +925,7 @@ var CommandPackets = [
   NumberSelectorValuePacket,
   NumberSelectorResultPacket,
   NumberSelectorClosedEventPacket,
+  NumberSelectorChangeEventPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1610,7 +1616,8 @@ SimplyPebble.numberSelectorShow = function(opts) {
     .max(opts.max)
     .step(opts.step)
     .decimals(opts.decimals)
-    .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0) | (opts.timeOfDay ? 4 : 0))
+    .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0) | (opts.timeOfDay ? 4 : 0) |
+           (opts.live ? 8 : 0))
     .titleLength(opts.title)
     .unitLength(opts.unit)
     .title(opts.title)
@@ -1749,6 +1756,7 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case VoiceDictationDataPacket:
     case NumberSelectorResultPacket:
     case NumberSelectorClosedEventPacket:
+    case NumberSelectorChangeEventPacket:
       if (SimplyPebble.onUserActivity) {
         SimplyPebble.onUserActivity();
       }
@@ -1774,6 +1782,9 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case NumberSelectorClosedEventPacket:
       NumberField.emitClosed();
+      break;
+    case NumberSelectorChangeEventPacket:
+      NumberField.emitChange(packet.value());
       break;
     case SplashRevealPacket:
       // The splash was covering the current window, which reloaded empty on
