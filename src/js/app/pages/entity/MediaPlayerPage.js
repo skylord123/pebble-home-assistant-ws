@@ -46,6 +46,10 @@ var FEATURE = {
     SEARCH_MEDIA: 4194304
 };
 
+// How long the finger must hold still before the dragged volume goes out.
+// Matches the native number selector so a light and a speaker settle alike.
+var VOLUME_SETTLE_MS = 500;
+
 // The speaker icon that heads the volume row
 var VOLUME_ICON_W = 20;
 var VOLUME_ICON_H = 13;
@@ -237,6 +241,8 @@ class MediaPlayerPage extends BaseEntityPage {
         this.layout_key = null;
         this.dragging = null;
         this.dragRatio = 0;
+        this.volume_settle = null;
+        this.volume_sent = null;
         this.volume_hit_top = null;
         this.seek_hit_top = null;
     }
@@ -511,7 +517,9 @@ class MediaPlayerPage extends BaseEntityPage {
             self.unsubscribeMedia();
             self.stopPositionTicker();
             // A finger still down when the window goes away must not leave the
-            // next visit thinking it is mid drag
+            // next visit thinking it is mid drag, nor a settle timer firing a
+            // volume change at a page that is gone
+            self.cancelVolumeSettle();
             self.dragging = null;
         });
 
@@ -1003,10 +1011,13 @@ class MediaPlayerPage extends BaseEntityPage {
     /**
      * Drive a bar from a finger.
      *
-     * The fill follows the finger immediately so the bar feels attached to it,
-     * but the service call only goes out on release: sending one per move event
-     * would put a burst of volume_set calls through a Bluetooth link that can
-     * barely keep up with one.
+     * The fill follows the finger immediately so the bar feels attached to it.
+     * Volume also goes out while the finger is still down, once it has held
+     * still long enough to mean it, so the room follows the drag instead of
+     * waiting for release; sending one per move event would put a burst of
+     * volume_set calls through a Bluetooth link that can barely keep up with
+     * one. Seeking stays on release, since a scrub that fires mid drag makes
+     * the player chase every position it passes.
      */
     beginDrag(which, x) {
         var current = this.appState.ha_state_dict[this.entityId];
@@ -1016,8 +1027,41 @@ class MediaPlayerPage extends BaseEntityPage {
         }
         this.dragging = which;
         this.dragRatio = this.ratioAt(x);
+        if (which === 'volume') {
+            var level = current && current.attributes && current.attributes.volume_level;
+            this.volume_sent = typeof level === 'number' ? level : null;
+        }
         this.previewDrag();
         return true;
+    }
+
+    /**
+     * Send the volume once the finger has stopped moving. Restarted on every
+     * move, so a drag across the bar sends where it landed rather than every
+     * point it crossed.
+     */
+    scheduleVolume() {
+        var self = this;
+        if (this.volume_settle) { clearTimeout(this.volume_settle); }
+        this.volume_settle = setTimeout(function() {
+            self.volume_settle = null;
+            self.sendVolume();
+        }, VOLUME_SETTLE_MS);
+    }
+
+    /** Push the dragged volume, unless the player is already there. */
+    sendVolume() {
+        var level = Math.round(this.dragRatio * 100) / 100;
+        if (this.volume_sent !== null && Math.abs(this.volume_sent - level) < 0.005) { return; }
+        this.volume_sent = level;
+        this.appState.haws.mediaPlayerVolumeSet(this.entityId, level);
+    }
+
+    cancelVolumeSettle() {
+        if (this.volume_settle) {
+            clearTimeout(this.volume_settle);
+            this.volume_settle = null;
+        }
     }
 
     previewDrag() {
@@ -1027,6 +1071,7 @@ class MediaPlayerPage extends BaseEntityPage {
 
         if (this.dragging === 'volume') {
             this.volume_label.text(Math.round(this.dragRatio * 100) + "%");
+            this.scheduleVolume();
         } else {
             var entity = this.appState.ha_state_dict[this.entityId];
             var duration = entity && entity.attributes && entity.attributes.media_duration;
@@ -1042,7 +1087,10 @@ class MediaPlayerPage extends BaseEntityPage {
         var appState = this.appState;
         var entity = appState.ha_state_dict[this.entityId];
         if (which === 'volume') {
-            appState.haws.mediaPlayerVolumeSet(this.entityId, this.dragRatio);
+            // Release is the final word on where the finger left the bar, so
+            // it goes out now rather than waiting on the settle timer
+            this.cancelVolumeSettle();
+            this.sendVolume();
         } else {
             var duration = entity && entity.attributes && entity.attributes.media_duration;
             if (!duration) { return; }
