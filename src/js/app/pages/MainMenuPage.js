@@ -9,6 +9,7 @@ var EntityService = require('app/EntityService');
 var EntityListPage = require('app/pages/EntityListPage');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
+var Settings = require('settings');
 
 // Lazy imports to avoid circular dependencies
 function getFavoritesPage() { return require('app/pages/FavoritesPage'); }
@@ -199,6 +200,51 @@ class MainMenuPage extends BasePage {
     }
 
     /**
+     * A row for an entity whose state has not arrived yet.
+     *
+     * Both the pinned and favourite stores keep the friendly name alongside the
+     * entity_id for exactly this, so the row can carry its real name straight
+     * away and only the value is outstanding.
+     */
+    placeholderRow(entityId, store) {
+        var name = entityId;
+        if (store && typeof store.allWithNames === 'function') {
+            var entries = store.allWithNames() || [];
+            for (var i = 0; i < entries.length; i++) {
+                if (entries[i].entity_id === entityId && entries[i].name) {
+                    name = entries[i].name;
+                    break;
+                }
+            }
+        }
+        return {
+            title: name,
+            subtitle: 'Loading',
+            entity_id: entityId,
+            on_click: function() {
+                EntityService.show(entityId);
+            }
+        };
+    }
+
+    /**
+     * How many calendars this instance has, as far as we know without asking.
+     * The last completed fetch publishes them to settings for the config page,
+     * which makes that list a usable answer before any state has arrived.
+     */
+    getCalendarCount() {
+        var dict = this.appState.ha_state_dict;
+        if (dict) {
+            var live = Object.keys(dict).filter(function(entity_id) {
+                return entity_id.indexOf('calendar.') === 0;
+            });
+            return live.length;
+        }
+        var published = Settings.option('available_calendars');
+        return Array.isArray(published) ? published.length : 0;
+    }
+
+    /**
      * Get the menu item definition for a given item ID
      */
     getMenuItem(itemId) {
@@ -208,10 +254,18 @@ class MainMenuPage extends BasePage {
         if (itemId.indexOf('pinned:') === 0) {
             var entityId = itemId.substring(7);
             var entity = this.appState.getEntity(entityId);
-            if (!entity) {
-                return null;
+            var menuItem;
+            if (entity) {
+                menuItem = EntityService.getMenuItem(entity);
+            } else {
+                // No state yet. Dropping the row here used to lose it for the
+                // whole session: the id never reached pinnedEntityIds, so
+                // nothing subscribed to it and nothing could ever fill it in.
+                // The store keeps the name, so the row is drawn now and the
+                // subscription's first snapshot replaces this in place.
+                menuItem = self.placeholderRow(entityId,
+                    self.appState.pinnedEntityStore, 'pinnedEntities');
             }
-            var menuItem = EntityService.getMenuItem(entity);
             menuItem.id = itemId;
             return menuItem;
         }
@@ -254,10 +308,13 @@ class MainMenuPage extends BasePage {
                     }
                 };
             case 'calendars':
-                var calendarCount = Object.keys(this.appState.ha_state_dict).filter(function(entity_id) {
-                    return entity_id.indexOf('calendar.') === 0;
-                }).length;
-                helpers.log_message('Main menu: ' + calendarCount + ' calendar entities in state dict');
+                // Decided from the calendar list the last fetch published to
+                // settings, not from the state dict. The dict is empty until
+                // states arrive, and Object.keys(null) threw outright, which is
+                // the only reason the first paint ever had to wait for them.
+                // refreshIfVisible() corrects the row once the fetch lands.
+                var calendarCount = this.getCalendarCount();
+                helpers.log_message('Main menu: ' + calendarCount + ' calendar entities known');
                 if (calendarCount === 0) return null;
                 return {
                     id: 'calendars',

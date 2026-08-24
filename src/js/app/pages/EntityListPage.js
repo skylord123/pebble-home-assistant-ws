@@ -18,6 +18,9 @@ class EntityListPage extends BasePage {
         this.title = title || "Entities";
         this.entityIdList = entityIdList || false;
         this.entityIdListProvider = options && options.entityIdListProvider ? options.entityIdListProvider : null;
+        // {entity_id: name} for rows that can be drawn before their state
+        // arrives, e.g. favourites, which keep the name alongside the id
+        this.placeholderNames = options && options.placeholderNames ? options.placeholderNames : null;
         this.ignoreEntityCache = options && options.ignoreEntityCache !== undefined ? options.ignoreEntityCache : true;
         this.sortItems = options && options.sortItems !== undefined ? options.sortItems : true;
         this.skipIgnoredDomains = options && options.skipIgnoredDomains !== undefined ? options.skipIgnoredDomains : false;
@@ -340,6 +343,25 @@ class EntityListPage extends BasePage {
 
         helpers.log_message('Setting up subscribeEntities for ' + entitiesToSubscribe.length + ' entities');
 
+        // Draw what we already know before asking. The names come from the
+        // caller's own store, so the list is readable immediately and only the
+        // values are outstanding; the first snapshot replaces these rows.
+        if (this.placeholderNames) {
+            var placeholders = [];
+            for (var p = 0; p < entitiesToSubscribe.length; p++) {
+                var pid = entitiesToSubscribe[p];
+                placeholders.push({
+                    title: this.placeholderNames[pid] || pid,
+                    subtitle: 'Loading',
+                    entity_id: pid
+                });
+            }
+            if (placeholders.length) {
+                this.menu.section(0, { title: this.title });
+                this.menu.items(0, placeholders);
+            }
+        }
+
         this.subscribe(entitiesToSubscribe, function(data) {
             var ev = data.event || {};
 
@@ -436,18 +458,16 @@ function showEntityDomainsFromList(entityIdList, title) {
         helpers.log_message('showEntityDomainsFromList: building domain list from ' + entityIdList.length + ' entities');
 
         // Loop over entity id list and index them by their domain
+        // The domain is the part of the entity_id before the dot, so this
+        // needs no state at all. It used to look each entity up and skip the
+        // ones it could not find, which meant an empty menu whenever states
+        // had not been fetched yet.
         var domainEntities = {};
-        var missingEntities = [];
         for (var i = 0; i < entityIdList.length; i++) {
             var entity_id = entityIdList[i];
-            var entity = appState.getEntity(entity_id);
-            if (!entity) {
-                missingEntities.push(entity_id);
-                continue;
-            }
-
             var parts = entity_id.split('.');
             var domain = parts[0];
+            if (parts.length < 2 || !domain) { continue; }
 
             // Skip domains that should be ignored
             if (appState.ignore_domains && appState.ignore_domains.indexOf(domain) !== -1) {
@@ -459,10 +479,6 @@ function showEntityDomainsFromList(entityIdList, title) {
             } else {
                 domainEntities[domain] = [entity_id];
             }
-        }
-
-        if (missingEntities.length > 0) {
-            helpers.log_message('showEntityDomainsFromList: WARNING - ' + missingEntities.length + ' entities missing from ha_state_dict');
         }
 
         // Sort domain list
@@ -511,12 +527,13 @@ function showEntityDomainsFromList(entityIdList, title) {
  * @param {boolean} skipIgnoredDomains - Whether to skip ignored domains
  * @param {Function} [entityIdListProvider] - Optional function that returns fresh entity IDs on each show
  */
-function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipIgnoredDomains, entityIdListProvider) {
+function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipIgnoredDomains, entityIdListProvider, placeholderNames) {
     var page = new EntityListPage(title, entityIdList, {
         ignoreEntityCache: ignoreEntityCache !== undefined ? ignoreEntityCache : true,
         sortItems: sortItems !== undefined ? sortItems : true,
         skipIgnoredDomains: skipIgnoredDomains !== undefined ? skipIgnoredDomains : false,
-        entityIdListProvider: entityIdListProvider || null
+        entityIdListProvider: entityIdListProvider || null,
+        placeholderNames: placeholderNames || null
     });
     page.show();
 }

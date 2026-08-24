@@ -20,50 +20,55 @@ var CacheManager = {
         var log = helpers.log_message;
         var CACHE_KEYS = Constants.CACHE_KEYS;
 
-        try {
-            log('Saving startup cache...');
-
-            // Save each piece of data to localStorage
-            if (appState.ha_state_cache) {
-                localStorage.setItem(CACHE_KEYS.STATES, JSON.stringify(appState.ha_state_cache));
-            }
-            if (appState.area_registry_cache) {
-                localStorage.setItem(CACHE_KEYS.AREAS, JSON.stringify(appState.area_registry_cache));
-            }
-            if (appState.floor_registry_cache) {
-                localStorage.setItem(CACHE_KEYS.FLOORS, JSON.stringify(appState.floor_registry_cache));
-            }
-            if (appState.device_registry_cache) {
-                localStorage.setItem(CACHE_KEYS.DEVICES, JSON.stringify(appState.device_registry_cache));
-            }
-            if (appState.entity_registry_cache) {
-                localStorage.setItem(CACHE_KEYS.ENTITIES, JSON.stringify(appState.entity_registry_cache));
-            }
-            if (appState.label_registry_cache) {
-                localStorage.setItem(CACHE_KEYS.LABELS, JSON.stringify(appState.label_registry_cache));
-            }
-            if (appState.ha_pipelines) {
-                localStorage.setItem(CACHE_KEYS.PIPELINES, JSON.stringify({
-                    pipelines: appState.ha_pipelines,
-                    preferred_pipeline: appState.preferred_pipeline
-                }));
-            }
-
-            // Save timestamp
-            localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
-
-            log('Startup cache saved successfully');
-        } catch (e) {
-            log('Error saving startup cache: ' + e);
-            // A failed save (e.g. quota exceeded) leaves the previous cache in
-            // place, which would keep serving increasingly stale data on every
-            // launch. Drop the cache so the next launch fetches fresh data.
+        // Entity states are deliberately not cached. On a large instance the
+        // states blob is megabytes, which is past the localStorage quota, so
+        // the write always threw. Because it was the first write in this
+        // function, that exception skipped every other key including the
+        // timestamp the loader gates on, and the whole cache silently never
+        // existed. States come from a subscription for whatever is on screen
+        // instead, which is both smaller and always current.
+        //
+        // Each key is written on its own so that one oversized value can never
+        // take the rest of the cache down with it again.
+        var wrote = 0;
+        function put(key, value) {
+            if (value === null || value === undefined) { return; }
             try {
-                localStorage.removeItem(CACHE_KEYS.STATES);
-                localStorage.removeItem(CACHE_KEYS.TIMESTAMP);
-            } catch (clearError) {
-                log('Error clearing startup cache: ' + clearError);
+                var payload = JSON.stringify(value);
+                localStorage.setItem(key, payload);
+                log('Startup cache: ' + key + ' ' + payload.length + 'B');
+                wrote++;
+            } catch (e) {
+                log('Startup cache: could not save ' + key + ': ' + e);
+                try { localStorage.removeItem(key); } catch (ignored) {}
             }
+        }
+
+        log('Saving startup cache...');
+        put(CACHE_KEYS.AREAS, appState.area_registry_cache);
+        put(CACHE_KEYS.FLOORS, appState.floor_registry_cache);
+        put(CACHE_KEYS.DEVICES, appState.device_registry_cache);
+        put(CACHE_KEYS.ENTITIES, appState.entity_registry_cache);
+        put(CACHE_KEYS.LABELS, appState.label_registry_cache);
+        if (appState.ha_pipelines) {
+            put(CACHE_KEYS.PIPELINES, {
+                pipelines: appState.ha_pipelines,
+                preferred_pipeline: appState.preferred_pipeline
+            });
+        }
+
+        // Last, and only if something above survived: the loader treats this
+        // as "a cache exists", so it must never outlive the data it stamps
+        if (wrote > 0) {
+            try {
+                localStorage.setItem(CACHE_KEYS.TIMESTAMP, Date.now().toString());
+                log('Startup cache saved (' + wrote + ' items)');
+            } catch (e) {
+                log('Error stamping startup cache: ' + e);
+            }
+        } else {
+            log('Startup cache: nothing saved');
+            try { localStorage.removeItem(CACHE_KEYS.TIMESTAMP); } catch (ignored) {}
         }
     },
 
@@ -81,6 +86,18 @@ var CacheManager = {
         try {
             log('Loading startup cache...');
 
+            // A build before this one may have left a multi megabyte states
+            // blob behind. It is never read now, so drop it and give the quota
+            // back to the things that do get cached.
+            if (localStorage.getItem(CACHE_KEYS.STATES) !== null) {
+                try {
+                    localStorage.removeItem(CACHE_KEYS.STATES);
+                    log('Startup cache: dropped the legacy states blob');
+                } catch (e) {
+                    log('Startup cache: could not drop legacy states: ' + e);
+                }
+            }
+
             // Check if we have a timestamp (indicates cache exists)
             var timestamp = localStorage.getItem(CACHE_KEYS.TIMESTAMP);
             if (!timestamp) {
@@ -97,8 +114,7 @@ var CacheManager = {
                 return false;
             }
 
-            // Load each piece of data
-            var statesStr = localStorage.getItem(CACHE_KEYS.STATES);
+            // Load each piece of data. States are not cached; see save().
             var areasStr = localStorage.getItem(CACHE_KEYS.AREAS);
             var floorsStr = localStorage.getItem(CACHE_KEYS.FLOORS);
             var devicesStr = localStorage.getItem(CACHE_KEYS.DEVICES);
@@ -106,23 +122,12 @@ var CacheManager = {
             var labelsStr = localStorage.getItem(CACHE_KEYS.LABELS);
             var pipelinesStr = localStorage.getItem(CACHE_KEYS.PIPELINES);
 
+            var parseStart = Date.now();
+            var bytes = 0;
+            [areasStr, floorsStr, devicesStr, entitiesStr, labelsStr, pipelinesStr]
+                .forEach(function(str) { if (str) { bytes += str.length; } });
+
             // Parse and assign cached data
-            if (statesStr) {
-                appState.ha_state_cache = JSON.parse(statesStr);
-                var new_state_map = {};
-                for (var i = 0; i < appState.ha_state_cache.length; i++) {
-                    var entity = appState.ha_state_cache[i];
-                    new_state_map[entity.entity_id] = entity;
-                }
-                appState.ha_state_dict = new_state_map;
-                appState.ha_state_cache_updated = new Date();
-
-                // Update favorite entity friendly names from cached state data
-                if (appState.favoriteEntityStore) {
-                    appState.favoriteEntityStore.updateFriendlyNames(appState.ha_state_dict);
-                }
-            }
-
             if (areasStr) {
                 appState.area_registry_cache = JSON.parse(areasStr);
             }
@@ -166,7 +171,14 @@ var CacheManager = {
             }
 
             var cacheAge = Date.now() - parseInt(timestamp);
-            log('Startup cache loaded successfully (age: ' + (cacheAge / 1000).toFixed(1) + 's)');
+            log('Startup cache loaded successfully (age: ' + (cacheAge / 1000).toFixed(1) + 's, ' +
+                bytes + 'B, parsed in ' + (Date.now() - parseStart) + 'ms)');
+            log('Startup cache breakdown: areas ' + (areasStr ? areasStr.length : 0) +
+                'B, floors ' + (floorsStr ? floorsStr.length : 0) +
+                'B, devices ' + (devicesStr ? devicesStr.length : 0) +
+                'B, entities ' + (entitiesStr ? entitiesStr.length : 0) +
+                'B, labels ' + (labelsStr ? labelsStr.length : 0) +
+                'B, pipelines ' + (pipelinesStr ? pipelinesStr.length : 0) + 'B');
             return true;
         } catch (e) {
             log('Error loading startup cache: ' + e);
@@ -185,7 +197,7 @@ var CacheManager = {
 
         try {
             log('Clearing startup cache...');
-            localStorage.removeItem(CACHE_KEYS.STATES);
+            localStorage.removeItem(CACHE_KEYS.STATES);   // legacy, no longer written
             localStorage.removeItem(CACHE_KEYS.AREAS);
             localStorage.removeItem(CACHE_KEYS.FLOORS);
             localStorage.removeItem(CACHE_KEYS.DEVICES);

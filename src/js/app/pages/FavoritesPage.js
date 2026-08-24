@@ -32,10 +32,21 @@ class FavoritesPage extends BasePage {
                 return appState.favoriteEntityStore.all();
             };
 
+            // The store keeps the friendly name next to the id, so the list can
+            // be drawn and read before any state has come back
+            var placeholderNames = {};
+            var withNames = appState.favoriteEntityStore.allWithNames() || [];
+            for (var i = 0; i < withNames.length; i++) {
+                if (withNames[i].name) {
+                    placeholderNames[withNames[i].entity_id] = withNames[i].name;
+                }
+            }
+
             if (shouldShowDomains) {
                 EntityListPage.showEntityDomainsFromList(favoriteEntities, "Favorites");
             } else {
-                EntityListPage.showEntityList("Favorites", favoriteEntities, true, false, true, favoriteProvider);
+                EntityListPage.showEntityList("Favorites", favoriteEntities, true, false, true,
+                    favoriteProvider, placeholderNames);
             }
         } else {
             var noFavoritesCard = new UI.Card({
