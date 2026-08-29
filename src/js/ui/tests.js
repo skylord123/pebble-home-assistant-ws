@@ -30,7 +30,6 @@ tests.loadAppinfo = function() {
 
 tests.resolveBultinImagePath = function() {
   var ImageService = require('ui/imageservice');
-  console.log('image-logo-splash = resource #' + ImageService.resolve('images/logo_splash.png'));
 };
 
 for (var test in tests) {

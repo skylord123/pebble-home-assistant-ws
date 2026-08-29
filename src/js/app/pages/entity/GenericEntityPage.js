@@ -31,27 +31,22 @@ function showEntityMenu(entity_id) {
         throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
     }
 
-    // Helper function to format date as Y-M-D HH:MM:SS
+    // Helper function to format date as Y-M-D followed by the time in
+    // whichever clock format the user picked
     function formatDateTime(isoString) {
         if (!isoString) return 'N/A';
         var date = new Date(isoString);
         var year = date.getFullYear();
         var month = String(date.getMonth() + 1).padStart(2, '0');
         var day = String(date.getDate()).padStart(2, '0');
-        var hours = String(date.getHours()).padStart(2, '0');
-        var minutes = String(date.getMinutes()).padStart(2, '0');
-        var seconds = String(date.getSeconds()).padStart(2, '0');
-        return year + '-' + month + '-' + day + ' ' + hours + ':' + minutes + ':' + seconds;
+        return year + '-' + month + '-' + day + ' ' +
+            helpers.formatTimeOfDay(date, { seconds: true });
     }
 
     // Helper function to get state subtitle with relative time
     function getStateSubtitle(entity) {
-        var stateText = entity.state;
-        if (entity.attributes.unit_of_measurement) {
-            stateText += ' ' + entity.attributes.unit_of_measurement;
-        }
         var timeStr = helpers.humanDiff(new Date(), new Date(entity.last_changed));
-        return stateText + ' > ' + timeStr;
+        return EntityService.getStateText(entity) + ' > ' + timeStr;
     }
 
     // Set Menu colors
@@ -99,7 +94,15 @@ function showEntityMenu(entity_id) {
     let stateIndex = i;
     showEntityMenu.item(0, i++, {
         title: 'State',
-        subtitle: getStateSubtitle(entity)
+        subtitle: getStateSubtitle(entity),
+        on_click: function() {
+            // Opens the history graph (numeric states) or change list.
+            // Not available on aplite due to memory constraints.
+            var HistoryPage = require('app/pages/HistoryPage');
+            if (HistoryPage.isSupported()) {
+                HistoryPage.show(entity_id);
+            }
+        }
     });
     showEntityMenu.item(0, i++, {
         title: 'Last Changed',
@@ -154,7 +157,8 @@ function showEntityMenu(entity_id) {
         domain === "input_boolean" ||
         domain === "automation" ||
         domain === "script" ||
-        domain === "fan"
+        domain === "fan" ||
+        domain === "humidifier"
     )
     {
         showEntityMenu.item(1, servicesCount++, { //menuIndex
@@ -302,6 +306,120 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
+    }
+
+    if(domain === "alarm_control_panel") {
+        // AlarmPanelPage.performAction handles the code prompt when the
+        // panel requires one (lazy require: AlarmPanelPage imports this
+        // module at top level)
+        let AlarmPanelPage = require('app/pages/entity/AlarmPanelPage');
+        let alarmServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    AlarmPanelPage.performAction(entity.entity_id, service);
+                }
+            };
+        };
+        let alarmFeatures = entity.attributes.supported_features || 0;
+
+        showEntityMenu.item(1, servicesCount++, alarmServiceItem('Disarm', 'alarm_disarm'));
+        AlarmPanelPage.ARM_MODES.forEach(function(mode) {
+            if (alarmFeatures & mode.feature) {
+                showEntityMenu.item(1, servicesCount++, alarmServiceItem(mode.title, mode.service));
+            }
+        });
+    }
+
+    if(
+        domain === "select" ||
+        domain === "input_select"
+    ) {
+        let selectServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        showEntityMenu.item(1, servicesCount++, selectServiceItem('Next Option', 'select_next'));
+        showEntityMenu.item(1, servicesCount++, selectServiceItem('Previous Option', 'select_previous'));
+    }
+
+    if(domain === "siren") {
+        // SirenEntityFeature: TURN_ON 1, TURN_OFF 2. Home Assistant registers
+        // each service only for the entities that advertise the matching bit,
+        // and toggle only when both are present
+        let sirenFeatures = entity.attributes.supported_features || 0;
+        let sirenServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        if ((sirenFeatures & 1) && (sirenFeatures & 2)) {
+            showEntityMenu.item(1, servicesCount++, sirenServiceItem('Toggle', 'toggle'));
+        }
+        if (sirenFeatures & 1) {
+            showEntityMenu.item(1, servicesCount++, sirenServiceItem('Turn On', 'turn_on'));
+        }
+        if (sirenFeatures & 2) {
+            showEntityMenu.item(1, servicesCount++, sirenServiceItem('Turn Off', 'turn_off'));
+        }
+    }
+
+    if(domain === "timer") {
+        let timerServiceItem = function(title, service, data) {
+            return {
+                title: title,
+                on_click: function() {
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        data || {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Start', 'start'));
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Pause', 'pause'));
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Cancel', 'cancel'));
+        showEntityMenu.item(1, servicesCount++, timerServiceItem('Finish', 'finish'));
     }
 
     if(domain === "scene") {
@@ -608,7 +726,24 @@ function showEntityMenu(entity_id) {
     }
     _renderPinnedBtn();
 
+    // Releases the subscription and the timer. Every trip into a child page
+    // comes back through 'show', so this runs first there too: without it the
+    // old subscription is only overwritten, and the server keeps sending on it
+    // for the rest of the session.
+    function releaseUpdates() {
+        if (msg_id) {
+            appState.haws.unsubscribe(msg_id);
+            msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     showEntityMenu.on('show', function(){
+        releaseUpdates();
+
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current entity and update the state field
@@ -658,17 +793,9 @@ function showEntityMenu(entity_id) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
         });
     });
-    showEntityMenu.on('close', function(){
-        if(msg_id) {
-            appState.haws.unsubscribe(msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    // 'hide', not 'close': the runtime has no close event, so what used to be
+    // here never ran at all
+    showEntityMenu.on('hide', releaseUpdates);
 
     showEntityMenu.show();
 }

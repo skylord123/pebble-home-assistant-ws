@@ -4,7 +4,11 @@ var Platform = require('platform');
 var Feature = module.exports;
 
 Feature.platform = function(map, yes, no) {
-  var v = map[Platform.version()] || map.unknown;
+  // Fall back to map.unknown only when the platform is genuinely missing
+  // from the map: `||` would also swallow legitimate false values (e.g.
+  // microphone/color on aplite) and return the unknown default instead
+  var version = Platform.version();
+  var v = (version in map) ? map[version] : map.unknown;
   var rv;
   if (v && yes !== undefined) {
     rv = typeof yes === 'function' ? yes(v) : yes;
@@ -27,6 +31,7 @@ Feature.blackAndWhite = Feature.makePlatformTest({
   diorite: true,
   emery: false,
   flint: true,  // Core 2 Duo (Pebble 2 Duo)
+  gabbro: false,  // Core Time Round (260x260 round color)
   unknown: false,  // Assume color by default for unknown platforms
 });
 
@@ -37,6 +42,7 @@ Feature.color = Feature.makePlatformTest({
   diorite: false,
   emery: true,
   flint: false,  // Core 2 Duo (Pebble 2 Duo)
+  gabbro: true,  // Core Time Round
   unknown: true,  // Assume color by default for unknown platforms
 });
 
@@ -47,6 +53,7 @@ Feature.rectangle = Feature.makePlatformTest({
   diorite: true,
   emery: true,
   flint: true,  // Core 2 Duo (Pebble 2 Duo)
+  gabbro: false,  // Core Time Round
   unknown: true,  // Assume rectangle by default for unknown platforms
 });
 
@@ -57,6 +64,7 @@ Feature.round = Feature.makePlatformTest({
   diorite: false,
   emery: false,
   flint: false,  // Core 2 Duo (Pebble 2 Duo)
+  gabbro: true,  // Core Time Round
   unknown: false,  // Assume rectangle by default for unknown platforms
 });
 
@@ -67,6 +75,7 @@ Feature.microphone = Feature.makePlatformTest({
   diorite: true,
   emery: true,
   flint: true,  // Core 2 Duo (Pebble 2 Duo) - has dual mics with ENC
+  gabbro: true,  // Core Time Round
   unknown: true,  // Assume microphone support for unknown platforms
 });
 
@@ -77,6 +86,7 @@ Feature.resolution = Feature.makePlatformTest({
   diorite: new Vector2(144, 168),
   emery: new Vector2(200, 228),
   flint: new Vector2(144, 168),  // Core 2 Duo (Pebble 2 Duo)
+  gabbro: new Vector2(260, 260),  // Core Time Round
   unknown: new Vector2(144, 168),  // Safe default for unknown platforms
 });
 

@@ -54,8 +54,12 @@ var ConnectionService = {
         this.reconnecting = false;
         this.hadWindowsBeforeDisconnect = false;
 
-        // Disconnect HAWS if connected
-        if (appState.haws && appState.haws.isConnected()) {
+        // Disconnect HAWS whether or not it is currently up. A instance that is
+        // mid-reconnect is not "connected", but it still holds a pending retry
+        // timer, and letting it fire would authenticate a second connection
+        // that runs its own post-auth pipeline and throws the splash back over
+        // a working UI. disconnect() clears that timer and stops it retrying.
+        if (appState.haws) {
             log('Disconnecting HAWS...');
             appState.haws.disconnect();
         }
@@ -112,6 +116,7 @@ var ConnectionService = {
         if (!appState.ha_url || !appState.ha_password) {
             this.loadingCard.subtitle('Setup required');
             this.loadingCard.body("Configure from the Pebble app");
+            this.loadingCard.setup();
             return;
         }
 
@@ -150,7 +155,11 @@ var ConnectionService = {
 
         appState.haws.on('auth_invalid', function(evt) {
             self.loadingCard.title('Auth Failure');
-            self.loadingCard.subtitle(evt.detail.message || 'Unknown error');
+            self.loadingCard.subtitle('Check your access token');
+            // The full message from Home Assistant can be long; the detail
+            // line wraps while the status line would cut it off
+            self.loadingCard.body(evt.detail.message || 'Unknown error');
+            self.loadingCard.error();
         });
 
         appState.haws.on('auth_ok', function(evt) {

@@ -46,6 +46,10 @@ static bool send_accel_tap(AccelAxisType axis, int32_t direction) {
   return simply_msg_send_packet(&packet.packet);
 }
 
+// The app never streams accelerometer data or peeks it, so aplite (where
+// the binary shares 24KB of app RAM with the heap) keeps only tap events,
+// which feed the inactivity timeout's activity detection
+#if !defined(PBL_PLATFORM_APLITE)
 static bool send_accel_data(SimplyMsg *self, AccelData *data, uint32_t num_samples, bool is_peek) {
   size_t data_length = sizeof(AccelData) * num_samples;
   size_t length = sizeof(AccelDataPacket) + data_length;
@@ -82,9 +86,13 @@ static void set_data_subscribe(SimplyAccel *self, bool subscribe) {
   self->data_subscribed = subscribe;
 }
 
+#endif
+
 static void handle_accel_tap(AccelAxisType axis, int32_t direction) {
   send_accel_tap(axis, direction);
 }
+
+#if !defined(PBL_PLATFORM_APLITE)
 
 static void accel_peek_timer_callback(void *context) {
   Simply *simply = context;
@@ -107,14 +115,19 @@ static void handle_accel_config_packet(Simply *simply, Packet *data) {
   s_accel->rate = packet->rate;
   set_data_subscribe(simply->accel, packet->data_subscribed);
 }
+#endif
 
 bool simply_accel_handle_packet(Simply *simply, Packet *packet) {
   switch (packet->type) {
     case CommandAccelPeek:
+#if !defined(PBL_PLATFORM_APLITE)
       handle_accel_peek_packet(simply, packet);
+#endif
       return true;
     case CommandAccelConfig:
+#if !defined(PBL_PLATFORM_APLITE)
       handle_accel_config_packet(simply, packet);
+#endif
       return true;
   }
   return false;

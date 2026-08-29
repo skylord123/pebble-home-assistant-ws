@@ -204,6 +204,17 @@ function showFanEntity(entity_id) {
             });
         }
 
+        // The fan's main click toggles it, so history gets its own item
+        // (not available on aplite)
+        if (require('app/pages/HistoryPage').isSupported()) {
+            fanMenu.item(0, menuIndex++, {
+                title: 'History',
+                on_click: function() {
+                    require('app/pages/HistoryPage').show(updatedData.entity_id);
+                }
+            });
+        }
+
         // Add More option
         fanMenu.item(0, menuIndex++, {
             title: 'More',
@@ -249,7 +260,8 @@ function showFanEntity(entity_id) {
             font: "gothic_24",
             position: new Vector(0, 35),
             size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
+            textAlign: "center",
+            textOverflow: 'ellipsis'
         });
 
         // Add slider background

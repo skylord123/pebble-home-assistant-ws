@@ -38,6 +38,7 @@ var Types = [
   'TextType',
   'ImageType',
   'InverterType',
+  'PolylineType',
 ];
 
 Types.forEach(function(name, index) {

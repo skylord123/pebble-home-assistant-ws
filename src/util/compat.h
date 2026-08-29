@@ -8,9 +8,10 @@
  * When possible, they are copied directly without modification.
  */
 
-// Compatibility definitions for aplite on 2.9
-// Skip these for flint platform which has a newer SDK with these definitions built-in
-#if !defined(PBL_PLATFORM_APLITE) && !defined(PBL_PLATFORM_BASALT) && !defined(PBL_PLATFORM_CHALK) && !defined(PBL_PLATFORM_DIORITE) && !defined(PBL_PLATFORM_EMERY) && !defined(PBL_PLATFORM_FLINT)
+// Compatibility definitions for aplite on 2.9. The build defines PBL_SDK_3
+// for every SDK 3.x+ platform, so keying on it here avoids a per-platform
+// whitelist that breaks each time a new platform (flint, gabbro, ...) ships.
+#ifndef PBL_SDK_3
 
 #define PBL_SDK_2
 

@@ -28,6 +28,11 @@ struct SimplyMenuLayer {
   List1Node *sections;
   List1Node *items;
   uint16_t num_sections;
+  //! Row count and header presence per section, surviving cache eviction so
+  //! reloads never clamp the selection or compute offsets from placeholder
+  //! counts when a menu has more sections than the cache holds
+  uint16_t *row_counts;
+  uint16_t row_counts_len;
   bool scroll_wrap;
   GColor8 normal_foreground;
   GColor8 normal_background;
@@ -106,5 +111,22 @@ struct SimplyMenuItem {
 
 SimplyMenu *simply_menu_create(Simply *simply);
 void simply_menu_destroy(SimplyMenu *self);
+
+//! Select and activate whatever row is under a screen point.
+//!
+//! Menus are drawn entirely in C by a MenuLayer, so the JS side cannot
+//! hit-test them the way it can hit-test the elements of a stage window. That
+//! is why tapping a menu row has to be resolved here.
+//! @return true if a row was hit and activated.
+bool simply_menu_handle_tap(SimplyMenu *self, int16_t x, int16_t y);
+
+//! Long-press equivalent: selects the row under the point and fires the same
+//! event holding the select button does.
+bool simply_menu_handle_long_press(SimplyMenu *self, int16_t x, int16_t y);
+
+//! Touch counts as user input for the menu's idle tracking (marquee scroll,
+//! inactivity timeout).
+void simply_menu_touch_note_input(SimplyMenu *self);
+
 
 bool simply_menu_handle_packet(Simply *simply, Packet *packet);

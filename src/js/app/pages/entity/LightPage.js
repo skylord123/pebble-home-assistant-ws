@@ -12,6 +12,7 @@ var UI = require('ui');
 var Vector = require('vector2');
 var Feature = require('platform/feature');
 var Vibe = require('ui/vibe');
+var NumberField = require('ui/numberfield');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
@@ -87,7 +88,9 @@ function showLightEntity(entity_id) {
 
     // Helper function to get supported features
     function supported_features(entity) {
-        let entity_registry = appState.entity_registry_cache[entity.entity_id];
+        // The registry cache is null until it loads and is emptied again on
+        // every reconnect, so opening a light in either window would throw
+        let entity_registry = (appState.entity_registry_cache || {})[entity.entity_id];
         // Light feature bitfield values from Home Assistant
         // Modern Home Assistant uses LightEntityFeature enum
         const LightEntityFeature = {
@@ -214,7 +217,7 @@ function showLightEntity(entity_id) {
                 title: 'Brightness',
                 subtitle: updatedData.is_on ? `${updatedData.brightnessPerc}%` : 'NA',
                 on_click: function() {
-                    showBrightnessMenu(updatedData.entity_id, updatedData.brightnessPerc);
+                    showBrightnessMenu(updatedData.entity_id);
                 }
             });
         }
@@ -226,12 +229,7 @@ function showLightEntity(entity_id) {
                 subtitle: updatedData.is_on && updatedData.color_temp_kelvin ?
                           `${updatedData.color_temp_kelvin}K` : 'NA',
                 on_click: function() {
-                    showColorTempMenu(
-                        updatedData.entity_id,
-                        updatedData.color_temp_kelvin,
-                        updatedData.min_color_temp_kelvin,
-                        updatedData.max_color_temp_kelvin
-                    );
+                    showColorTempMenu(updatedData.entity_id);
                 }
             });
         }
@@ -267,6 +265,17 @@ function showLightEntity(entity_id) {
             });
         }
 
+        // The light's main click toggles it, so history gets its own item
+        // (not available on aplite)
+        if (require('app/pages/HistoryPage').isSupported()) {
+            lightMenu.item(0, menuIndex++, {
+                title: 'History',
+                on_click: function() {
+                    require('app/pages/HistoryPage').show(updatedData.entity_id);
+                }
+            });
+        }
+
         // Add More option
         lightMenu.item(0, menuIndex++, {
             title: 'More',
@@ -276,341 +285,169 @@ function showLightEntity(entity_id) {
         });
     }
 
-    // Helper function to show brightness selection menu
-    function showBrightnessMenu(entity_id, current_brightness) {
-        // Get the latest light data
-        let light = appState.ha_state_dict[entity_id];
-        let lightData = getLightData(light);
-
-        // Remember which menu item we came from
-        let returnToIndex = selectedIndex;
-
-        // Create a window for the brightness slider
-        let brightnessWindow = new UI.Window({
-            backgroundColor: 'white',
-            status: {
-                color: 'black',
-                backgroundColor: 'white',
-                seperator: "dotted"
-            }
-        });
-
-        // Add title
-        let title = new UI.Text({
-            text: "Brightness",
-            color: "black",
-            font: "gothic_24_bold",
-            position: new Vector(0, 0),
-            size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
-        });
-
-        // Add current value text
-        let valueText = new UI.Text({
-            text: `${current_brightness}%`,
-            color: "black",
-            font: "gothic_24",
-            position: new Vector(0, 35),
-            size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
-        });
-
-        // Add slider background
-        let sliderBg = new UI.Rect({
-            position: new Vector(20, 70),
-            size: new Vector(Feature.resolution().x - 40, 20),
-            backgroundColor: 'lightGray'
-        });
-
-        // Add slider foreground (progress)
-        let sliderWidth = Math.round((Feature.resolution().x - 40) * (current_brightness / 100));
-        let sliderFg = new UI.Rect({
-            position: new Vector(20, 70),
-            size: new Vector(sliderWidth, 20),
-            backgroundColor: 'black'
-        });
-
-        // Add instructions
-        let instructions = new UI.Text({
-            text: "UP/DOWN: Adjust | SELECT: Set",
-            color: "black",
-            font: "gothic_14",
-            position: new Vector(0, 100),
-            size: new Vector(Feature.resolution().x, 20),
-            textAlign: "center"
-        });
-
-        // Add elements to window
-        brightnessWindow.add(title);
-        brightnessWindow.add(valueText);
-        brightnessWindow.add(sliderBg);
-        brightnessWindow.add(sliderFg);
-        brightnessWindow.add(instructions);
-
-        // Handle button events
-        brightnessWindow.on('click', 'up', function() {
-            // Increase brightness by 10%
-            current_brightness = Math.min(100, current_brightness + 10);
-            updateBrightnessUI();
-        });
-
-        brightnessWindow.on('click', 'down', function() {
-            // Decrease brightness by 10%
-            current_brightness = Math.max(0, current_brightness - 10);
-            updateBrightnessUI();
-        });
-
-        brightnessWindow.on('longClick', 'up', function() {
-            // Increase brightness by 25%
-            current_brightness = Math.min(100, current_brightness + 25);
-            updateBrightnessUI();
-        });
-
-        brightnessWindow.on('longClick', 'down', function() {
-            // Decrease brightness by 25%
-            current_brightness = Math.max(0, current_brightness - 25);
-            updateBrightnessUI();
-        });
-
-        brightnessWindow.on('click', 'select', function() {
-            // Set the brightness
-            let brightness = Math.round((255 / 100) * current_brightness);
-            appState.haws.callService(
-                "light",
-                "turn_on",
-                { brightness: brightness },
-                { entity_id: entity_id },
-                function(data) {
-                    Vibe.vibrate('short');
-                    helpers.log_message(`Set brightness to ${current_brightness}%`);
-                    brightnessWindow.hide();
-                },
-                function(error) {
-                    Vibe.vibrate('double');
-                    helpers.log_message(`Error setting brightness: ${error}`);
-                }
-            );
-        });
-
-        // Function to update the UI based on current brightness
-        function updateBrightnessUI() {
-            valueText.text(`${current_brightness}%`);
-            sliderWidth = Math.round((Feature.resolution().x - 40) * (current_brightness / 100));
-            sliderFg.size(new Vector(sliderWidth, 20));
-        }
-
-        // Subscribe to entity updates
-        let brightness_subscription_msg_id = appState.haws.subscribeTrigger({
+    /**
+     * Follow the light while a selector is open, so a change made anywhere
+     * else moves the value under it. The watch ignores these while a finger or
+     * a button is actually adjusting, so it cannot fight the user.
+     */
+    function followLight(entity_id, pick) {
+        let msg_id = appState.haws.subscribeTrigger({
             "type": "subscribe_trigger",
             "trigger": {
                 "platform": "state",
                 "entity_id": entity_id,
             },
         }, function(data) {
-            helpers.log_message(`Light entity update for brightness menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
+            if (data.event && data.event.variables && data.event.variables.trigger &&
+                data.event.variables.trigger.to_state) {
                 let updatedLight = data.event.variables.trigger.to_state;
                 appState.ha_state_dict[entity_id] = updatedLight;
-
-                // Get updated light data
-                let updatedData = getLightData(updatedLight);
-
-                // Update the brightness value
-                if (updatedData.is_on) {
-                    current_brightness = updatedData.brightnessPerc;
-                    updateBrightnessUI();
+                let value = pick(getLightData(updatedLight));
+                if (value !== null && value !== undefined) {
+                    NumberField.value(value);
                 }
             }
         }, function(error) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
-        brightnessWindow.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (brightness_subscription_msg_id) {
-                appState.haws.unsubscribe(brightness_subscription_msg_id);
+        return function cleanup() {
+            if (msg_id) {
+                appState.haws.unsubscribe(msg_id);
+                msg_id = null;
             }
-
-            // Restore the selection in the parent menu
-            selectedIndex = returnToIndex;
-        });
-
-        brightnessWindow.show();
+        };
     }
 
-    // Helper function to show color temperature selection menu
-    function showColorTempMenu(entity_id, current_temp, min_temp, max_temp) {
-        // Get the latest light data
-        let light = appState.ha_state_dict[entity_id];
-        let lightData = getLightData(light);
-
-        // Remember which menu item we came from
-        let returnToIndex = selectedIndex;
-
-        // Default values if not provided
-        min_temp = min_temp || 2000;
-        max_temp = max_temp || 6500;
-        current_temp = current_temp || 3500;
-
-        // Create a window for the color temperature slider
-        let tempWindow = new UI.Window({
-            backgroundColor: 'white',
-            status: {
-                color: 'black',
-                backgroundColor: 'white',
-                seperator: "dotted"
-            }
+    /**
+     * Brightness, on the native selector.
+     *
+     * The watch does the stepping itself, with hold to repeat and
+     * acceleration, so a long press no longer costs one Bluetooth round trip
+     * per press the way the hand rolled slider did, and the value moves in
+     * ones rather than jumping ten at a time.
+     */
+    function showBrightnessMenu(entity_id) {
+        // Read now rather than trusting what the menu row was built with,
+        // which can be a state or two behind by the time it is pressed
+        let lightData = getLightData(appState.ha_state_dict[entity_id]);
+        let cleanup = followLight(entity_id, function(data) {
+            return data.is_on ? data.brightnessPerc : null;
         });
 
-        // Add title
-        let title = new UI.Text({
-            text: "Color Temperature",
-            color: "black",
-            font: "gothic_24_bold",
-            position: new Vector(0, 0),
-            size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
-        });
-
-        // Add current value text
-        let valueText = new UI.Text({
-            text: `${current_temp}K`,
-            color: "black",
-            font: "gothic_24",
-            position: new Vector(0, 35),
-            size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
-        });
-
-        // Add slider background
-        let sliderBg = new UI.Rect({
-            position: new Vector(20, 70),
-            size: new Vector(Feature.resolution().x - 40, 20),
-            backgroundColor: 'lightGray'
-        });
-
-        // Add slider foreground (progress)
-        let tempRange = max_temp - min_temp;
-        let tempPosition = current_temp - min_temp;
-        let sliderWidth = Math.round((Feature.resolution().x - 40) * (tempPosition / tempRange));
-        let sliderFg = new UI.Rect({
-            position: new Vector(20, 70),
-            size: new Vector(sliderWidth, 20),
-            backgroundColor: 'black'
-        });
-
-        // Add instructions
-        let instructions = new UI.Text({
-            text: "UP/DOWN: Adjust | SELECT: Set",
-            color: "black",
-            font: "gothic_14",
-            position: new Vector(0, 100),
-            size: new Vector(Feature.resolution().x, 20),
-            textAlign: "center"
-        });
-
-        // Add elements to window
-        tempWindow.add(title);
-        tempWindow.add(valueText);
-        tempWindow.add(sliderBg);
-        tempWindow.add(sliderFg);
-        tempWindow.add(instructions);
-
-        // Calculate step sizes
-        let smallStep = Math.round(tempRange / 10);
-        let largeStep = Math.round(tempRange / 4);
-
-        // Handle button events
-        tempWindow.on('click', 'up', function() {
-            // Increase temperature by small step
-            current_temp = Math.min(max_temp, current_temp + smallStep);
-            updateTempUI();
-        });
-
-        tempWindow.on('click', 'down', function() {
-            // Decrease temperature by small step
-            current_temp = Math.max(min_temp, current_temp - smallStep);
-            updateTempUI();
-        });
-
-        tempWindow.on('longClick', 'up', function() {
-            // Increase temperature by large step
-            current_temp = Math.min(max_temp, current_temp + largeStep);
-            updateTempUI();
-        });
-
-        tempWindow.on('longClick', 'down', function() {
-            // Decrease temperature by large step
-            current_temp = Math.max(min_temp, current_temp - largeStep);
-            updateTempUI();
-        });
-
-        tempWindow.on('click', 'select', function() {
-            // Set the color temperature
-            appState.haws.callService(
-                "light",
-                "turn_on",
-                { color_temp_kelvin: current_temp },
-                { entity_id: entity_id },
-                function(data) {
-                    Vibe.vibrate('short');
-                    helpers.log_message(`Set color temperature to ${current_temp}K`);
-                    tempWindow.hide();
-                },
-                function(error) {
-                    Vibe.vibrate('double');
-                    helpers.log_message(`Error setting color temperature: ${error}`);
-                }
-            );
-        });
-
-        // Function to update the UI based on current temperature
-        function updateTempUI() {
-            valueText.text(`${current_temp}K`);
-            tempPosition = current_temp - min_temp;
-            sliderWidth = Math.round((Feature.resolution().x - 40) * (tempPosition / tempRange));
-            sliderFg.size(new Vector(sliderWidth, 20));
-        }
-
-        // Subscribe to entity updates
-        let temp_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
+        NumberField.show({
+            title: 'Brightness',
+            unit: '%',
+            value: lightData.is_on ? lightData.brightnessPerc : 0,
+            min: 0,
+            max: 100,
+            step: 1,
+            showBar: true,
+            // The lamp follows the dial as it is turned, so the number on the
+            // watch is not a promise about a light that has not changed yet
+            onChange: function(value) {
+                appState.haws.callService(
+                    "light",
+                    "turn_on",
+                    { brightness_pct: value },
+                    { entity_id: entity_id },
+                    null,
+                    function(error) {
+                        // Nothing to report on screen: the selector is still
+                        // up and select will try again
+                        helpers.log_message(`Error setting brightness: ${JSON.stringify(error)}`);
+                    }
+                );
             },
-        }, function(data) {
-            helpers.log_message(`Light entity update for color temp menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
+            onSet: function(value) {
+                appState.haws.callService(
+                    "light",
+                    "turn_on",
+                    // brightness_pct is the number the user actually picked;
+                    // converting it to 0-255 here rounded it back off again
+                    { brightness_pct: value },
+                    { entity_id: entity_id },
+                    function(data) {
+                        Vibe.vibrate('short');
+                        helpers.log_message(`Set brightness to ${value}%`);
+                        cleanup();
+                        NumberField.hide();
+                    },
+                    function(error) {
+                        // Left up so the value can be tried again
+                        Vibe.vibrate('double');
+                        helpers.log_message(`Error setting brightness: ${JSON.stringify(error)}`);
+                    }
+                );
+            },
+            onCancel: cleanup
+        });
+    }
 
-                // Get updated light data
-                let updatedData = getLightData(updatedLight);
+    /**
+     * Colour temperature, on the native selector.
+     *
+     * Steps in fifty Kelvin. The old slider moved a tenth of the whole range
+     * per press, which on a typical 2000K to 6500K lamp was a 450K jump and
+     * gave nine usable positions across the entire range.
+     */
+    function showColorTempMenu(entity_id) {
+        let lightData = getLightData(appState.ha_state_dict[entity_id]);
+        let min_temp = lightData.min_color_temp_kelvin || 2000;
+        let max_temp = lightData.max_color_temp_kelvin || 6500;
+        let current = lightData.color_temp_kelvin;
+        if (current === null || current === undefined) {
+            current = Math.round((min_temp + max_temp) / 2);
+        }
+        // A light that reports a temperature outside its own range would
+        // otherwise open the selector on a value it will not accept back
+        if (current < min_temp) { current = min_temp; }
+        if (current > max_temp) { current = max_temp; }
 
-                // Update the color temperature value
-                if (updatedData.is_on && updatedData.color_temp_kelvin) {
-                    current_temp = updatedData.color_temp_kelvin;
-                    updateTempUI();
-                }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        let cleanup = followLight(entity_id, function(data) {
+            return data.is_on ? data.color_temp_kelvin : null;
         });
 
-        tempWindow.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (temp_subscription_msg_id) {
-                appState.haws.unsubscribe(temp_subscription_msg_id);
-            }
-
-            // Restore the selection in the parent menu
-            selectedIndex = returnToIndex;
+        NumberField.show({
+            title: 'Color Temp',
+            unit: 'K',
+            value: current,
+            min: min_temp,
+            max: max_temp,
+            step: 50,
+            showBar: true,
+            onChange: function(value) {
+                appState.haws.callService(
+                    "light",
+                    "turn_on",
+                    { color_temp_kelvin: value },
+                    { entity_id: entity_id },
+                    null,
+                    function(error) {
+                        helpers.log_message(`Error setting color temperature: ${JSON.stringify(error)}`);
+                    }
+                );
+            },
+            onSet: function(value) {
+                appState.haws.callService(
+                    "light",
+                    "turn_on",
+                    { color_temp_kelvin: value },
+                    { entity_id: entity_id },
+                    function(data) {
+                        Vibe.vibrate('short');
+                        helpers.log_message(`Set color temperature to ${value}K`);
+                        cleanup();
+                        NumberField.hide();
+                    },
+                    function(error) {
+                        Vibe.vibrate('double');
+                        helpers.log_message(`Error setting color temperature: ${JSON.stringify(error)}`);
+                    }
+                );
+            },
+            onCancel: cleanup
         });
-
-        tempWindow.show();
     }
 
     // Helper function to show color selection menu with a colorful slider
@@ -806,32 +643,22 @@ function showLightEntity(entity_id) {
         colorWindow.add(sliderIndicator);
         colorWindow.add(instructions);
 
-        // Helper function to calculate color distance
-        function colorDistance(color1, color2) {
-            return Math.sqrt(
-                Math.pow(color1[0] - color2[0], 2) +
-                Math.pow(color1[1] - color2[1], 2) +
-                Math.pow(color1[2] - color2[2], 2)
-            );
-        }
-
-        // Helper function to convert RGB to hex
-        function rgbToHex(rgb) {
-            return '#' + rgb.map(x => {
-                const hex = x.toString(16);
-                return hex.length === 1 ? '0' + hex : hex;
-            }).join('');
-        }
+        // Once the user has moved the slider themselves, incoming state stops
+        // driving it: re-syncing under their thumb would drag the selection
+        // away mid-press
+        let userMovedSlider = false;
 
         // Handle button events
         colorWindow.on('click', 'up', function() {
             // Move to next color
+            userMovedSlider = true;
             colorIndex = (colorIndex + 1) % colors.length;
             updateColorUI();
         });
 
         colorWindow.on('click', 'down', function() {
             // Move to previous color
+            userMovedSlider = true;
             colorIndex = (colorIndex - 1 + colors.length) % colors.length;
             updateColorUI();
         });
@@ -869,14 +696,21 @@ function showLightEntity(entity_id) {
             }, 100);
         }
 
-        // Handle hide event to restore selection in parent menu
+        // Whichever of the two screens is used, leaving it has to release the
+        // subscription. Hanging it off colorMenu alone left it open forever on
+        // colour watches, where colorMenu is never shown.
+        function releaseColorUpdates() {
+            if (color_subscription_msg_id) {
+                appState.haws.unsubscribe(color_subscription_msg_id);
+                color_subscription_msg_id = null;
+            }
+        }
+
         colorWindow.on('hide', function() {
+            releaseColorUpdates();
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
         });
-
-        // Show the color window
-        colorWindow.show();
 
         // Helper function to update color menu items
         function updateColorMenuItems(updatedLight) {
@@ -936,16 +770,29 @@ function showLightEntity(entity_id) {
 
                 // Update menu items directly
                 updateColorMenuItems(updatedLight);
+
+                // The menu above is only on screen on watches without colour;
+                // elsewhere the slider window is what the user is looking at,
+                // and it used to sit frozen while the light changed under it
+                let newColor = getLightData(updatedLight).rgb_color;
+                if (!userMovedSlider && newColor) {
+                    let nearest = 0, nearestDistance = 999999;
+                    for (let i = 0; i < colors.length; i++) {
+                        let d = colorDistance(colors[i].rgb, newColor);
+                        if (d < nearestDistance) { nearestDistance = d; nearest = i; }
+                    }
+                    if (nearest !== colorIndex) {
+                        colorIndex = nearest;
+                        updateColorUI();
+                    }
+                }
             }
         }, function(error) {
             helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         colorMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (color_subscription_msg_id) {
-                appState.haws.unsubscribe(color_subscription_msg_id);
-            }
+            releaseColorUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;

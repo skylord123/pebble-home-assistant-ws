@@ -10,6 +10,7 @@ var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var InactivityTimer = require('app/InactivityTimer');
+var Touch = require('ui/touch');
 
 class SettingsMenuPage extends BasePage {
     constructor() {
@@ -76,6 +77,17 @@ class SettingsMenuPage extends BasePage {
                 showInactivityTimeoutMenu();
             }
         });
+
+        // Only show touch settings on watches with a touchscreen
+        if (Touch.supported()) {
+            this.menu.item(0, i++, {
+                title: "Touch",
+                subtitle: appState.touch_enabled ? 'Enabled' : 'Disabled',
+                on_click: function(e) {
+                    showTouchSettings();
+                }
+            });
+        }
     }
 
     onSelect(e) {
@@ -629,6 +641,55 @@ function showInactivityTimeoutMenu() {
     });
 
     timeoutMenu.show();
+}
+
+/**
+ * Show touch input settings menu
+ */
+function showTouchSettings() {
+    var appState = AppState.getInstance();
+
+    var touchMenu = new UI.Menu({
+        status: false,
+        backgroundColor: 'black',
+        textColor: 'white',
+        highlightBackgroundColor: 'white',
+        highlightTextColor: 'black',
+        sections: [{
+            title: 'Touch'
+        }]
+    });
+
+    function updateMenuItems() {
+        touchMenu.items(0, [{
+            title: 'Touch Input',
+            subtitle: appState.touch_enabled ? 'Enabled' : 'Disabled',
+            key: 'touch_enabled'
+        }, {
+            title: 'Long Press Actions',
+            subtitle: !appState.touch_enabled ? 'Touch is disabled' :
+                      (appState.touch_long_press ? 'Enabled' : 'Disabled'),
+            key: 'touch_long_press'
+        }]);
+    }
+
+    touchMenu.on('show', updateMenuItems);
+
+    touchMenu.on('select', function(e) {
+        if (e.item.key === 'touch_enabled') {
+            appState.touch_enabled = !appState.touch_enabled;
+            Settings.option('touch_enabled', appState.touch_enabled);
+        } else if (appState.touch_enabled) {
+            appState.touch_long_press = !appState.touch_long_press;
+            Settings.option('touch_long_press', appState.touch_long_press);
+        } else {
+            return;
+        }
+        Touch.applySettings(appState.touch_enabled, appState.touch_long_press);
+        updateMenuItems();
+    });
+
+    touchMenu.show();
 }
 
 /**

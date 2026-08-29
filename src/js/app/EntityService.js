@@ -6,6 +6,23 @@ var Vibe = require('ui/vibe');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
 
+/**
+ * Whether a button has ever been pressed. Its state is an ISO timestamp of
+ * the last press, and unknown until there has been one.
+ * @param {Object} entity
+ * @returns {boolean}
+ */
+function wasPressed(entity) {
+    if (!entity || typeof entity.state !== 'string') return false;
+    if (entity.state === 'unknown' || entity.state === 'unavailable') return false;
+    return !isNaN(new Date(entity.state).getTime());
+}
+
+function pressedText(entity) {
+    if (entity.state === 'unavailable') return entity.state;
+    return wasPressed(entity) ? 'Pressed' : 'Never pressed';
+}
+
 var EntityService = {
     /**
      * Get the display title for an entity
@@ -20,7 +37,80 @@ var EntityService = {
     },
 
     /**
-     * Get the display subtitle for an entity (state + unit + relative time)
+     * Get the state portion of an entity's subtitle (state + unit, or for
+     * climate entities the mode plus set/current temperatures)
+     * @param {Object} entity - The entity object
+     * @returns {string} The formatted state text
+     */
+    getStateText: function(entity) {
+        if (!entity) return '';
+
+        var text = entity.state;
+        var attrs = entity.attributes || {};
+        var domain = entity.entity_id ? entity.entity_id.split('.')[0] : '';
+
+        if (domain === 'climate') {
+            // Mode plus set/current, e.g. "heat 70°/68°" (heat_cool ranges
+            // show as "68-74°/71°")
+            var target = null;
+            if (attrs.temperature !== undefined && attrs.temperature !== null) {
+                target = attrs.temperature + '°';
+            } else if (attrs.target_temp_low !== undefined && attrs.target_temp_low !== null &&
+                       attrs.target_temp_high !== undefined && attrs.target_temp_high !== null) {
+                target = attrs.target_temp_low + '-' + attrs.target_temp_high + '°';
+            }
+            var current = (attrs.current_temperature !== undefined && attrs.current_temperature !== null)
+                ? attrs.current_temperature + '°'
+                : null;
+
+            if (target && current) {
+                text += ' ' + target + '/' + current;
+            } else if (target || current) {
+                text += ' ' + (target || current);
+            }
+        } else if (domain === 'timer') {
+            // Countdown rather than the bare state, e.g. "Running 4:32"
+            text = require('app/pages/entity/TimerPage').statusText(entity);
+        } else if (domain === 'humidifier') {
+            // What it is doing plus the readings, e.g. "humidifying 41%, set 55%"
+            text = require('app/pages/entity/HumidifierPage').statusText(entity);
+        } else if (domain === 'text' || domain === 'input_text') {
+            // Password entities must not spell out their value in a list
+            text = require('app/pages/entity/TextPage').displayValue(entity);
+        } else if (domain === 'button' || domain === 'input_button') {
+            // A button's state is when it was last pressed, not a condition,
+            // so the raw timestamp is noise. The relative time that follows
+            // is the same instant and keeps counting on its own.
+            text = pressedText(entity);
+        } else if (domain === 'update') {
+            // Which version is waiting, rather than a bare on or off
+            text = require('app/pages/entity/UpdatePage').statusText(entity);
+        } else if (domain === 'remote') {
+            // Whatever activity it is running, where the remote has them
+            text = require('app/pages/entity/RemotePage').statusText(entity);
+        } else if (domain === 'lawn_mower') {
+            // What it is doing, plus a battery level for the custom
+            // integrations that report one
+            text = require('app/pages/entity/LawnMowerPage').statusText(entity);
+        } else if (domain === 'water_heater') {
+            // The state is the operation mode, so pair it with the readings
+            text = require('app/pages/entity/WaterHeaterPage').statusText(entity);
+        } else if (domain === 'valve') {
+            // How far open it is, where the valve reports it
+            text = require('app/pages/entity/ValvePage').statusText(entity);
+        } else if (domain === 'input_datetime' || domain === 'datetime' ||
+                   domain === 'date' || domain === 'time') {
+            // Readable local value rather than a raw ISO string
+            text = require('app/pages/entity/DateTimePage').displayValue(entity);
+        } else if (attrs.unit_of_measurement) {
+            text += ' ' + attrs.unit_of_measurement;
+        }
+
+        return text;
+    },
+
+    /**
+     * Get the display subtitle for an entity (state text + relative time)
      * @param {Object} entity - The entity object
      * @param {boolean} [includeRelativeTime=true] - Whether to include relative time
      * @returns {string} The formatted subtitle
@@ -29,19 +119,30 @@ var EntityService = {
         if (!entity) return '';
         if (includeRelativeTime === undefined) includeRelativeTime = true;
 
-        var subtitle = entity.state;
-
-        // Add unit of measurement if available
-        if (entity.attributes && entity.attributes.unit_of_measurement) {
-            subtitle += ' ' + entity.attributes.unit_of_measurement;
-        }
+        var subtitle = this.getStateText(entity);
 
         // Add relative time if requested and last_changed is available
-        if (includeRelativeTime && entity.last_changed) {
+        if (includeRelativeTime && entity.last_changed && !this.hidesRelativeTime(entity)) {
             subtitle += ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed));
         }
 
         return subtitle;
+    },
+
+    /**
+     * Whether the relative time would say something untrue. A button that
+     * has never been pressed still has a last_changed, but it marks when
+     * Home Assistant started rather than anything the user did.
+     * @param {Object} entity
+     * @returns {boolean}
+     */
+    hidesRelativeTime: function(entity) {
+        if (!entity || !entity.entity_id) return false;
+        var domain = entity.entity_id.split('.')[0];
+        if (domain !== 'button' && domain !== 'input_button') return false;
+        // Only the never pressed case: an unavailable button's last_changed
+        // is the moment it went unavailable, which is worth showing
+        return entity.state !== 'unavailable' && !wasPressed(entity);
     },
 
     /**
@@ -64,13 +165,29 @@ var EntityService = {
             case 'switch':
             case 'input_boolean':
             case 'fan':
+            case 'humidifier':
+            case 'siren':
+            case 'remote':
                 return state === 'on' ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png';
 
             case 'cover':
                 return state === 'open' ? 'images/icon_blinds_open.png' : 'images/icon_blinds_closed.png';
 
+            case 'valve':
+                // No valve artwork exists, and open or shut is the thing that
+                // matters, so the door icons carry it
+                return state === 'closed' ? 'images/icon_door_closed.png' : 'images/icon_door_open.png';
+
             case 'lock':
                 return state === 'locked' ? 'images/icon_locked.png' : 'images/icon_unlocked.png';
+
+            case 'alarm_control_panel':
+                if (state === 'unavailable' || state === 'unknown') {
+                    return 'images/icon_unknown.png';
+                }
+                return (state === 'disarmed' || state === 'disarming')
+                    ? 'images/icon_unlocked.png'
+                    : 'images/icon_locked.png';
 
             case 'sensor':
                 // Check for temperature sensors
@@ -109,12 +226,98 @@ var EntityService = {
             case 'timer':
                 return 'images/icon_timer.png';
 
+            case 'button':
+            case 'input_button':
+                // Buttons carry a device class of restart, identify or update
+                return entity.attributes.device_class === 'restart'
+                    ? 'images/icon_refresh.png'
+                    : 'images/icon_power.png';
+
+            case 'water_heater':
+                return 'images/icon_temp.png';
+
+            case 'update':
+                // Something waiting to install, or a tick for up to date
+                return state === 'on' ? 'images/icon_refresh.png' : 'images/icon_yes.png';
+
+            case 'counter':
+                return 'images/icon_sensor.png';
+
+            case 'date':
+            case 'datetime':
+                return 'images/icon_calendar.png';
+
+            case 'time':
+                return 'images/icon_clock.png';
+
+            case 'input_datetime':
+                // A date helper gets the calendar, a time only one the clock
+                return entity.attributes.has_date === false
+                    ? 'images/icon_clock.png'
+                    : 'images/icon_calendar.png';
+
             case 'vacuum':
+            case 'lawn_mower':
+                // No mower artwork, and the robot that drives itself around
+                // is the same idea
                 return 'images/icon_vacuum.png';
 
             default:
                 return 'images/icon_unknown.png';
         }
+    },
+
+    /**
+     * Convert a subscribe_entities event for one entity into a standard
+     * entity object and store it in AppState. The initial snapshot (event.a)
+     * carries full state; diffs (event.c) carry only changed attributes in
+     * "+", so those are merged over the current attributes (a wholesale
+     * replace would drop everything that didn't change).
+     * @param {string} entity_id - The entity the subscription is for
+     * @param {Object} data - The raw subscription callback payload
+     * @returns {Object|null} The updated entity, or null if the event
+     *                        didn't concern this entity
+     */
+    applyCompressedEvent: function(entity_id, data) {
+        var appState = AppState.getInstance();
+        var ev = data.event || {};
+        var updated = null;
+
+        if (ev.a && ev.a[entity_id]) {
+            var d = ev.a[entity_id];
+            updated = {
+                entity_id: entity_id,
+                state: d.s,
+                attributes: d.a || {},
+                context: d.c,
+                last_changed: d.lc ? new Date(d.lc * 1000).toISOString() : new Date().toISOString()
+            };
+        } else if (ev.c && ev.c[entity_id]) {
+            var plus = ev.c[entity_id]['+'] || {};
+            var cur = appState.ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
+            var attributes = cur.attributes;
+            if (plus.a !== undefined) {
+                attributes = {};
+                for (var k in cur.attributes) { attributes[k] = cur.attributes[k]; }
+                for (var k2 in plus.a) { attributes[k2] = plus.a[k2]; }
+            }
+            var minus = ev.c[entity_id]['-'];
+            if (minus && Array.isArray(minus.a)) {
+                minus.a.forEach(function(removedKey) { delete attributes[removedKey]; });
+            }
+            updated = {
+                entity_id: entity_id,
+                state: plus.s !== undefined ? plus.s : cur.state,
+                attributes: attributes,
+                context: plus.c !== undefined ? plus.c : cur.context,
+                last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
+            };
+        }
+
+        if (updated) {
+            appState.setEntity(entity_id, updated);
+        }
+        return updated;
     },
 
     /**
@@ -204,6 +407,54 @@ var EntityService = {
             case 'cover':
                 require('app/pages/entity/CoverPage').showCoverEntity(entity_id);
                 break;
+            case 'alarm_control_panel':
+                require('app/pages/entity/AlarmPanelPage').showAlarmEntity(entity_id);
+                break;
+            case 'select':
+            case 'input_select':
+                require('app/pages/entity/SelectPage').showSelectEntity(entity_id);
+                break;
+            case 'number':
+            case 'input_number':
+                require('app/pages/entity/NumberPage').showNumberEntity(entity_id);
+                break;
+            case 'timer':
+                require('app/pages/entity/TimerPage').showTimerEntity(entity_id);
+                break;
+            case 'humidifier':
+                require('app/pages/entity/HumidifierPage').showHumidifierEntity(entity_id);
+                break;
+            case 'siren':
+                require('app/pages/entity/SirenPage').showSirenEntity(entity_id);
+                break;
+            case 'text':
+            case 'input_text':
+                require('app/pages/entity/TextPage').showTextEntity(entity_id);
+                break;
+            case 'input_datetime':
+            case 'datetime':
+            case 'date':
+            case 'time':
+                require('app/pages/entity/DateTimePage').showDateTimeEntity(entity_id);
+                break;
+            case 'valve':
+                require('app/pages/entity/ValvePage').showValveEntity(entity_id);
+                break;
+            case 'water_heater':
+                require('app/pages/entity/WaterHeaterPage').showWaterHeaterEntity(entity_id);
+                break;
+            case 'counter':
+                require('app/pages/entity/CounterPage').showCounterEntity(entity_id);
+                break;
+            case 'lawn_mower':
+                require('app/pages/entity/LawnMowerPage').showLawnMowerEntity(entity_id);
+                break;
+            case 'remote':
+                require('app/pages/entity/RemotePage').showRemoteEntity(entity_id);
+                break;
+            case 'update':
+                require('app/pages/entity/UpdatePage').showUpdateEntity(entity_id);
+                break;
             default:
                 require('app/pages/entity/GenericEntityPage').showEntityMenu(entity_id);
                 break;
@@ -249,7 +500,8 @@ var EntityService = {
             domain === "fan" ||
             domain === "input_boolean" ||
             domain === "script" ||
-            domain === "cover"
+            domain === "cover" ||
+            domain === "humidifier"
         ) {
             appState.haws.callService(
                 domain,
@@ -335,6 +587,89 @@ var EntityService = {
             } else {
                 log('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
             }
+        } else if (domain === "alarm_control_panel") {
+            // Disarm when armed, arm when disarmed; the page module owns the
+            // state logic and any code prompt
+            require('app/pages/entity/AlarmPanelPage').quickAction(entity_id);
+        } else if (domain === "number" || domain === "input_number") {
+            // Jump straight to the value editor
+            require('app/pages/entity/NumberPage').showValueEditor(entity_id);
+        } else if (domain === "timer") {
+            // Start when idle or paused, pause when running
+            require('app/pages/entity/TimerPage').quickAction(entity_id);
+        } else if (domain === "input_datetime" || domain === "datetime" ||
+                   domain === "date" || domain === "time") {
+            // Straight into the editor
+            require('app/pages/entity/DateTimePage').editValue(entity_id);
+        } else if (domain === "text" || domain === "input_text") {
+            // Straight to dictation, the only way to type on a watch
+            require('app/pages/entity/TextPage').dictateValue(entity_id);
+        } else if (domain === "remote") {
+            require('app/pages/entity/RemotePage').quickAction(entity_id);
+        } else if (domain === "lawn_mower") {
+            // Stop a mower that is moving, set a stopped one going
+            require('app/pages/entity/LawnMowerPage').quickAction(entity_id);
+        } else if (domain === "counter") {
+            // Counting up is what a counter is usually for
+            require('app/pages/entity/CounterPage').quickAction(entity_id);
+        } else if (domain === "water_heater") {
+            // No toggle service exists, so the direction comes from the state
+            require('app/pages/entity/WaterHeaterPage').quickAction(entity_id);
+        } else if (domain === "valve") {
+            // Toggle where the valve does both, otherwise its one direction
+            require('app/pages/entity/ValvePage').quickAction(entity_id);
+        } else if (domain === "siren") {
+            // Home Assistant gates each of these on its own feature bit, and
+            // only offers toggle when the siren can do both, so a siren that
+            // cannot be turned off remotely still gets its panic action
+            var siren = appState.ha_state_dict[entity_id];
+            if (!siren) {
+                log('handleEntityLongPress: entity ' + entity_id + ' not found in state dict');
+                return;
+            }
+            var sirenFeatures = siren.attributes.supported_features || 0;
+            var sirenService = null;
+            if ((sirenFeatures & 1) && (sirenFeatures & 2)) {
+                sirenService = 'toggle';
+            } else if (sirenFeatures & 1) {
+                sirenService = 'turn_on';
+            } else if (sirenFeatures & 2) {
+                sirenService = 'turn_off';
+            }
+            if (!sirenService) {
+                log('Siren ' + entity_id + ' supports no on/off services - no action taken');
+                return;
+            }
+            appState.haws.callService(
+                domain,
+                sirenService,
+                {},
+                { entity_id: entity_id },
+                function(data) {
+                    log(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function(error) {
+                    log('no response');
+                    Vibe.vibrate('double');
+                }
+            );
+        } else if (domain === "select" || domain === "input_select") {
+            // Cycle to the next option (select_next wraps by default)
+            appState.haws.callService(
+                domain,
+                'select_next',
+                {},
+                { entity_id: entity_id },
+                function(data) {
+                    log(JSON.stringify(data));
+                    Vibe.vibrate('short');
+                },
+                function(error) {
+                    log('no response');
+                    Vibe.vibrate('double');
+                }
+            );
         } else if (domain === "button" || domain === "input_button") {
             appState.haws.callService(
                 domain,

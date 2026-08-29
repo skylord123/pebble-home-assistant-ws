@@ -99,13 +99,10 @@ SimplyWindow *simply_window_stack_get_top_window(Simply *simply) {
 
 #ifdef PBL_SDK_3
 static void show_window_sdk_3(SimplyWindowStack *self, SimplyWindow *window, bool is_push) {
+  // The splash removes itself as soon as another window covers it, so a
+  // plain push is enough; popping the whole stack first left the stack
+  // empty for a moment, which kills the app on aplite's 3.x firmware
   const bool animated = (self->simply->splash == NULL);
-
-  if (!animated) {
-    self->is_showing = true;
-    window_stack_pop_all(false);
-    self->is_showing = false;
-  }
 
   Window *prev_window = window_stack_get_top_window();
 

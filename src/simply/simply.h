@@ -6,11 +6,13 @@ typedef struct Simply Simply;
 
 struct Simply {
   struct SimplyAccel *accel;
+  struct SimplyTouch *touch;
   struct SimplyVoice *voice;
   struct SimplyRes *res;
   struct SimplyMsg *msg;
   struct SimplyWindowStack *window_stack;
   struct SimplySplash *splash;
+  struct SimplyNumber *number;
   union {
     struct {
       struct SimplyStage *stage;

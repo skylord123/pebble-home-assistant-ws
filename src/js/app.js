@@ -12,6 +12,7 @@ var UI = require('ui');
 var Settings = require('settings');
 var FavoriteEntityStore = require('vendor/FavoriteEntityStore');
 var PinnedEntityStore = require('vendor/PinnedEntityStore');
+var AlarmCodeStore = require('vendor/AlarmCodeStore');
 var simply = require('ui/simply');
 
 // === Module Imports ===
@@ -31,7 +32,16 @@ var AreaMenuPage = require('app/pages/AreaMenuPage');
 var LabelMenuPage = require('app/pages/LabelMenuPage');
 var EntityListPage = require('app/pages/EntityListPage');
 var ToDoListPage = require('app/pages/ToDoListPage');
+var CalendarPage = require('app/pages/CalendarPage');
+var TimelineLaunch = require('app/TimelineLaunch');
 var AssistPage = require('app/pages/AssistPage');
+
+// === Timeline Launch Handlers ===
+// Timeline pins launch the app with a launch code whose top byte selects the
+// action; register a handler per supported action type
+TimelineLaunch.registerHandler(TimelineLaunch.ACTION_CALENDAR_EVENT, function(payload, launchCode) {
+    CalendarPage.showCalendarEventByLaunchCode(launchCode);
+});
 
 // === Initialize AppState ===
 var appState = AppState.getInstance();
@@ -39,12 +49,10 @@ var appState = AppState.getInstance();
 // === Initialize Stores ===
 appState.favoriteEntityStore = new FavoriteEntityStore();
 appState.pinnedEntityStore = new PinnedEntityStore();
+appState.alarmCodeStore = new AlarmCodeStore();
 
 // === Loading Card ===
-var loadingCard = new UI.Card({
-    title: 'Home Assistant WS',
-    status: false
-});
+var loadingCard = require('app/ui/SplashScreen');
 
 // === Logging ===
 helpers.log_message('Started! v' + Constants.appVersion);
@@ -70,8 +78,16 @@ function on_auth_ok(evt) {
     appState.ha_connected = true;
     Settings.option('ha_connected', true);
 
-    // Try to load from cache first
-    var cacheLoaded = CacheManager.load();
+    // Try to load from cache first.
+    //
+    // On a reconnect the live state is already in memory and is newer than
+    // anything on disk, so reloading the snapshot would roll every entity back
+    // to the last completed fetch and throw away everything the subscriptions
+    // delivered since. A restart clears ha_state_dict, so that path still
+    // loads the cache normally.
+    var haveLiveState = !!(appState.ha_state_dict &&
+        Object.keys(appState.ha_state_dict).length > 0);
+    var cacheLoaded = haveLiveState ? true : CacheManager.load();
     var isFetchingInBackground = cacheLoaded;
 
     // Quick launch handler
@@ -126,6 +142,17 @@ function on_auth_ok(evt) {
                     break;
             }
         }
+
+        // Timeline pin launch: dispatch the pin's launch code to the handler
+        // for its action type (main menu stays underneath so backing out of
+        // the launched page lands somewhere useful)
+        if (launchReason === 'timelineAction') {
+            var launchCode = simply.impl.state.launchArgs;
+            log('Timeline launch with code: ' + launchCode);
+            if (launchCode) {
+                TimelineLaunch.handle(launchCode);
+            }
+        }
     }
 
     function showUIAfterAuth() {
@@ -176,6 +203,10 @@ function on_auth_ok(evt) {
 
             if (!isFetchingInBackground) {
                 showUIAfterAuth();
+            } else {
+                // The UI was shown from the startup cache; fresh data may add
+                // or remove main menu items (e.g. Calendars)
+                MainMenuPage.refreshIfVisible();
             }
         }
     }
@@ -267,3 +298,4 @@ ConnectionService.init({
 SettingsManager.load();
 loadingCard.show();
 ConnectionService.connect();
+

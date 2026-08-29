@@ -5,9 +5,9 @@ const Feature = require('platform/feature');
 
 const Constants = {
     // App versioning
-    appVersion: '2.1',
+    appVersion: '3.0',
     confVersion: '1.2',
-    configPageUrl: 'https://skylord123.github.io/pebble-home-assistant-ws/config/v1.2.html',
+    configPageUrl: 'https://skylord123.github.io/pebble-home-assistant-ws/config/v1.4.html',
 
     // Debug settings
     debugMode: true,
@@ -16,13 +16,13 @@ const Constants = {
     // Default domains to ignore
     DEFAULT_IGNORE_DOMAINS: [
         'assist_satellite',
+        'calendar',
         'conversation',
         'tts',
         'stt',
         'wake_word',
         'tag',
         'todo',
-        'update',
         'zone'
     ],
 

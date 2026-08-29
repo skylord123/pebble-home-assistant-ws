@@ -7,7 +7,9 @@ var Wakeup = require('wakeup');
 var Timeline = require('timeline');
 var Resource = require('ui/resource');
 var Accel = require('ui/accel');
+var Touch = require('ui/touch');
 var Voice = require('ui/voice');
+var NumberField = require('ui/numberfield');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
 var Window = require('ui/window');
@@ -395,6 +397,7 @@ var LaunchReasonPacket = new struct([
   ['uint32', 'args'],
   ['uint32', 'time'],
   ['bool', 'isTimezone'],
+  ['bool', 'is24h'],
 ]);
 
 var WakeupSetPacket = new struct([
@@ -470,6 +473,7 @@ var WindowActionBarPacket = new struct([
   ['uint32', 'down', ImageType],
   ['uint8', 'backgroundColor', ColorType],
   ['uint8', 'action', BoolType],
+  ['bool', 'scrollArrows', BoolType],
 ]);
 
 var ClickPacket = new struct([
@@ -553,6 +557,21 @@ var AccelTapPacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'axis'],
   ['int8', 'direction'],
+]);
+
+var TouchConfigPacket = new struct([
+  [Packet, 'packet'],
+  ['bool', 'subscribed', BoolType],
+  ['bool', 'wantsMoves', BoolType],
+  ['bool', 'enabled', BoolType],
+  ['bool', 'longPress', BoolType],
+]);
+
+var TouchDataPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'type'],
+  ['int16', 'x'],
+  ['int16', 'y'],
 ]);
 
 var MenuClearPacket = new struct([
@@ -733,6 +752,13 @@ var ElementAnimateDonePacket = new struct([
   ['uint32', 'id'],
 ]);
 
+var ElementPolylinePacket = new struct([
+  [Packet, 'packet'],
+  ['uint32', 'id'],
+  ['uint16', 'numPoints'],
+  ['data', 'points'],
+]);
+
 var CalculateTextSizePacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'font_key'],
@@ -761,6 +787,70 @@ var VoiceDictationDataPacket = new struct([
   [Packet, 'packet'],
   ['int8', 'status'],
   ['cstring', 'transcription'],
+]);
+
+var SplashShowPacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var SplashHidePacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var SplashStatusPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'titleLength', StringLengthType],
+  ['uint16', 'statusLength', StringLengthType],
+  ['uint16', 'bodyLength', StringLengthType],
+  ['cstring', 'title', StringType],
+  ['cstring', 'status', StringType],
+  ['cstring', 'body', StringType],
+]);
+
+var SplashModePacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'mode'],
+]);
+
+var SplashRevealPacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var NumberSelectorShowPacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+  ['int32', 'min'],
+  ['int32', 'max'],
+  ['int32', 'step'],
+  ['uint8', 'decimals'],
+  ['uint8', 'flags'],
+  ['uint16', 'titleLength', StringLengthType],
+  ['uint16', 'unitLength', StringLengthType],
+  ['cstring', 'title', StringType],
+  ['cstring', 'unit', StringType],
+]);
+
+var NumberSelectorHidePacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var NumberSelectorValuePacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+]);
+
+var NumberSelectorResultPacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
+]);
+
+var NumberSelectorClosedEventPacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var NumberSelectorChangeEventPacket = new struct([
+  [Packet, 'packet'],
+  ['int32', 'value'],
 ]);
 
 var CommandPackets = [
@@ -822,6 +912,28 @@ var CommandPackets = [
   VoiceDictationDataPacket,
   CalculateTextSizePacket,
   CalculateTextSizeResponsePacket,
+  ElementPolylinePacket,
+  SplashShowPacket,
+  SplashHidePacket,
+  SplashStatusPacket,
+  SplashModePacket,
+  SplashRevealPacket,
+  TouchConfigPacket,
+  TouchDataPacket,
+  NumberSelectorShowPacket,
+  NumberSelectorHidePacket,
+  NumberSelectorValuePacket,
+  NumberSelectorResultPacket,
+  NumberSelectorClosedEventPacket,
+  NumberSelectorChangeEventPacket,
+];
+
+// Mirrors TouchEventType in the SDK. Position updates are only sent when a
+// window opts into them via touchConfig({ wantsMoves: true }).
+var touchEventTypes = [
+  'down',
+  'up',
+  'move',
 ];
 
 var accelAxes = [
@@ -1070,7 +1182,8 @@ SimplyPebble.windowActionBar = function(def) {
     .select(actionDef.select)
     .down(actionDef.down)
     .action(typeof def === 'boolean' ? def : def.action !== false)
-    .backgroundColor(actionDef.backgroundColor || 'black');
+    .backgroundColor(actionDef.backgroundColor || 'black')
+    .scrollArrows(!!actionDef.scrollArrows);
   SimplyPebble.sendPacket(WindowActionBarPacket);
 };
 
@@ -1160,6 +1273,10 @@ SimplyPebble.accelPeek = function(callback) {
 
 SimplyPebble.accelConfig = function(def) {
   SimplyPebble.sendPacket(AccelConfigPacket.prop(def));
+};
+
+SimplyPebble.touchConfig = function(def) {
+  SimplyPebble.sendPacket(TouchConfigPacket.prop(def));
 };
 
 SimplyPebble.voiceDictationStart = function(callback, enableConfirmation) {
@@ -1432,6 +1549,15 @@ SimplyPebble.stageClear = function() {
   SimplyPebble.sendPacket(StageClearPacket);
 };
 
+SimplyPebble.elementPolyline = function(id, points) {
+  points = points || [];
+  ElementPolylinePacket
+    .id(id)
+    .numPoints(points.length)
+    .points(points);
+  SimplyPebble.sendPacket(ElementPolylinePacket);
+};
+
 SimplyPebble.stageElement = function(id, type, def, index) {
   if (index !== undefined) {
     SimplyPebble.elementInsert(id, type, index);
@@ -1456,10 +1582,60 @@ SimplyPebble.stageElement = function(id, type, def, index) {
       SimplyPebble.elementRadius(id, def);
       SimplyPebble.elementImage(id, def.image, def.compositing);
       break;
+    case StageElement.PolylineType:
+      SimplyPebble.elementPolyline(id, def.points);
+      break;
   }
 };
 
 SimplyPebble.stageRemove = SimplyPebble.elementRemove;
+
+SimplyPebble.splashShow = function() {
+  SimplyPebble.sendPacket(SplashShowPacket);
+};
+
+SimplyPebble.splashHide = function() {
+  SimplyPebble.sendPacket(SplashHidePacket);
+};
+
+SimplyPebble.splashStatus = function(title, status, body) {
+  SplashStatusPacket
+    .titleLength(title)
+    .statusLength(status)
+    .bodyLength(body)
+    .title(title)
+    .status(status)
+    .body(body);
+  SimplyPebble.sendPacket(SplashStatusPacket);
+};
+
+SimplyPebble.numberSelectorShow = function(opts) {
+  NumberSelectorShowPacket
+    .value(opts.value)
+    .min(opts.min)
+    .max(opts.max)
+    .step(opts.step)
+    .decimals(opts.decimals)
+    .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0) | (opts.timeOfDay ? 4 : 0) |
+           (opts.live ? 8 : 0))
+    .titleLength(opts.title)
+    .unitLength(opts.unit)
+    .title(opts.title)
+    .unit(opts.unit);
+  SimplyPebble.sendPacket(NumberSelectorShowPacket);
+};
+
+SimplyPebble.numberSelectorHide = function() {
+  SimplyPebble.sendPacket(NumberSelectorHidePacket);
+};
+
+SimplyPebble.numberSelectorValue = function(value) {
+  SimplyPebble.sendPacket(NumberSelectorValuePacket.value(value));
+};
+
+SimplyPebble.splashMode = function(mode) {
+  SimplyPebble.sendPacket(SplashModePacket.mode(mode));
+};
 
 SimplyPebble.stageAnimate = SimplyPebble.elementAnimate;
 
@@ -1493,6 +1669,9 @@ SimplyPebble.onLaunchReason = function(packet) {
   var args = packet.args();
   var remoteTime = packet.time();
   var isTimezone = packet.isTimezone();
+  // The watch tells us its own 12 or 24 hour setting at launch; the app
+  // formats every time it shows to match
+  Platform.setClockIs24h(packet.is24h());
   if (isTimezone) {
     state.timeOffset = 0;
   } else {
@@ -1509,9 +1688,10 @@ SimplyPebble.onLaunchReason = function(packet) {
     Wakeup.emitWakeup();
   }
 
-  // Store the launch reason for later use
-  // Make sure it's a valid value, defaulting to 'user' if undefined
+  // Store the launch reason and args for later use. For timeline launches
+  // the args value is the pin action's launchCode.
   state.launchReason = reason;
+  state.launchArgs = args;
 };
 
 SimplyPebble.onWakeupSetResult = function(packet) {
@@ -1574,6 +1754,9 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case MenuSelectionEventPacket:
     case WindowHideEventPacket:
     case VoiceDictationDataPacket:
+    case NumberSelectorResultPacket:
+    case NumberSelectorClosedEventPacket:
+    case NumberSelectorChangeEventPacket:
       if (SimplyPebble.onUserActivity) {
         SimplyPebble.onUserActivity();
       }
@@ -1594,6 +1777,28 @@ SimplyPebble.onPacket = function(buffer, offset) {
       ImageService.markAllUnloaded();
       WindowStack.emitHide(packet.id());
       break;
+    case NumberSelectorResultPacket:
+      NumberField.emitResult(packet.value());
+      break;
+    case NumberSelectorClosedEventPacket:
+      NumberField.emitClosed();
+      break;
+    case NumberSelectorChangeEventPacket:
+      NumberField.emitChange(packet.value());
+      break;
+    case SplashRevealPacket:
+      // The splash was covering the current window, which reloaded empty on
+      // the watch; re-render the top window (images must re-send too)
+      ImageService.markAllUnloaded();
+      var revealed = WindowStack.top();
+      if (revealed) {
+        // _show alone only re-renders. Going through the stack also emits
+        // 'show', which is what pages listen to in order to re-subscribe -
+        // their subscriptions died with the connection the splash was
+        // covering for.
+        WindowStack._show(revealed);
+      }
+      break;
     case ClickPacket:
       Window.emitClick('click', ButtonTypes[packet.button()]);
       break;
@@ -1605,6 +1810,9 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case AccelTapPacket:
       Accel.emitAccelTap(accelAxes[packet.axis()], packet.direction());
+      break;
+    case TouchDataPacket:
+      Touch.emitTouchData(touchEventTypes[packet.type()], packet.x(), packet.y());
       break;
     case MenuGetSectionPacket:
       Menu.emitSection(packet.section());
@@ -1630,11 +1838,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case CalculateTextSizeResponsePacket:
       console.log('Received direct text size calculation response: width=' + packet.width() + ', height=' + packet.height());
       if (state.calculateTextSizeCallback) {
-        state.calculateTextSizeCallback({
+        // Clear the slot before invoking: the callback may synchronously
+        // request another measurement, which stores a new callback that a
+        // delete after the call would silently wipe out
+        var textSizeCallback = state.calculateTextSizeCallback;
+        delete state.calculateTextSizeCallback;
+        textSizeCallback({
           width: packet.width(),
           height: packet.height()
         });
-        delete state.calculateTextSizeCallback;
       }
       break;
   }

@@ -54,6 +54,15 @@ struct __attribute__((__packed__)) ElementRadiusPacket {
   uint16_t radius;
 };
 
+typedef struct ElementPolylinePacket ElementPolylinePacket;
+
+struct __attribute__((__packed__)) ElementPolylinePacket {
+  Packet packet;
+  uint32_t id;
+  uint16_t num_points;
+  uint8_t points[];
+};
+
 typedef struct ElementAnglePacket ElementAnglePacket;
 
 struct __attribute__((__packed__)) ElementAnglePacket {
@@ -188,6 +197,9 @@ static void destroy_element(SimplyStage *self, SimplyElementCommon *element) {
     case SimplyElementTypeText:
       free(((SimplyElementText*) element)->text);
       break;
+    case SimplyElementTypePolyline:
+      free(((SimplyElementPolyline*) element)->points);
+      break;
     case SimplyElementTypeInverter:
       inverter_layer_destroy(((SimplyElementInverter*) element)->inverter_layer);
       break;
@@ -197,8 +209,11 @@ static void destroy_element(SimplyStage *self, SimplyElementCommon *element) {
 
 static void destroy_animation(SimplyStage *self, SimplyAnimation *animation) {
   if (!animation) { return; }
-  property_animation_destroy(animation->animation);
+  // Remove from the list before destroying: unscheduling fires the stopped
+  // handler, which looks the animation up and would double free it otherwise
   list1_remove(&self->stage_layer.animations, &animation->node);
+  animation_unschedule((Animation *)animation->animation);
+  property_animation_destroy(animation->animation);
   free(animation);
 }
 
@@ -248,6 +263,26 @@ static void line_element_draw(GContext *ctx, SimplyStage *self, SimplyElementLin
     graphics_draw_line(ctx, element->frame.origin, end);
   }
 }
+
+#if !defined(PBL_PLATFORM_APLITE)
+static void polyline_element_draw(GContext *ctx, SimplyStage *self,
+                                  SimplyElementPolyline *element) {
+  if (!element->common.border_color.a || element->num_points < 2 || !element->points) {
+    return;
+  }
+  const GRect *frame = &element->common.frame;
+  const int32_t last = element->num_points - 1;
+  GPoint prev = { frame->origin.x, frame->origin.y + element->points[0] };
+  for (int32_t i = 1; i <= last; ++i) {
+    const GPoint point = {
+      frame->origin.x + (int16_t)(i * (frame->size.w - 1) / last),
+      frame->origin.y + element->points[i],
+    };
+    graphics_draw_line(ctx, prev, point);
+    prev = point;
+  }
+}
+#endif
 
 static void circle_element_draw(GContext *ctx, SimplyStage *self, SimplyElementCircle *element) {
   if (element->common.background_color.a) {
@@ -352,6 +387,11 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
       case SimplyElementTypeLine:
         line_element_draw(ctx, self, (SimplyElementLine *)element);
         break;
+      case SimplyElementTypePolyline:
+#if !defined(PBL_PLATFORM_APLITE)
+        polyline_element_draw(ctx, self, (SimplyElementPolyline *)element);
+#endif
+        break;
       case SimplyElementTypeCircle:
         circle_element_draw(ctx, self, (SimplyElementCircle *)element);
         break;
@@ -376,6 +416,9 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
     const GSize content_size = scroll_layer_get_content_size(self->window.scroll_layer);
     if (!gsize_equal(&frame.size, &content_size)) {
       scroll_layer_set_content_size(self->window.scroll_layer, frame.size);
+      // This runs inside the stage draw callback; the arrows update touches
+      // the action bar layers, which must not happen mid-render
+      simply_window_schedule_scroll_arrows_update(&self->window);
     }
   }
 }
@@ -384,6 +427,7 @@ static size_t prv_get_element_size(SimplyElementType type) {
   switch (type) {
     case SimplyElementTypeNone: return 0;
     case SimplyElementTypeLine: return sizeof(SimplyElementLine);
+    case SimplyElementTypePolyline: return sizeof(SimplyElementPolyline);
     case SimplyElementTypeRect: return sizeof(SimplyElementRect);
     case SimplyElementTypeCircle: return sizeof(SimplyElementCircle);
     case SimplyElementTypeRadial: return sizeof(SimplyElementRadial);
@@ -506,7 +550,9 @@ SimplyAnimation *simply_stage_animate_element(SimplyStage *self,
   static const PropertyAnimationImplementation implementation = {
     .base = {
       .update = (AnimationUpdateImplementation) property_animation_update_grect,
-      .teardown = (AnimationTeardownImplementation) animation_destroy,
+      // No teardown: animation_destroy as the teardown recurses on modern
+      // SDKs since animation_destroy itself invokes the teardown handler.
+      // destroy_animation owns the cleanup instead.
     },
     .accessors = {
       .setter = { .grect = (const GRectSetter) element_frame_setter },
@@ -654,6 +700,28 @@ static void handle_element_radius_packet(Simply *simply, Packet *data) {
   }
   element->radius = packet->radius;
   simply_stage_update(simply->stage);
+};
+
+static void handle_element_polyline_packet(Simply *simply, Packet *data) {
+#if !defined(PBL_PLATFORM_APLITE)
+  ElementPolylinePacket *packet = (ElementPolylinePacket*) data;
+  SimplyElementPolyline *element =
+      (SimplyElementPolyline*) simply_stage_get_element(simply->stage, packet->id);
+  if (!element || element->common.type != SimplyElementTypePolyline) {
+    return;
+  }
+  free(element->points);
+  element->points = NULL;
+  element->num_points = 0;
+  if (packet->num_points) {
+    element->points = malloc(packet->num_points);
+    if (element->points) {
+      memcpy(element->points, packet->points, packet->num_points);
+      element->num_points = packet->num_points;
+    }
+  }
+  simply_stage_update(simply->stage);
+#endif
 };
 
 static void handle_element_angle_packet(Simply *simply, Packet *data) {
@@ -807,6 +875,9 @@ bool simply_stage_handle_packet(Simply *simply, Packet *packet) {
       return true;
     case CommandElementRemove:
       handle_element_remove_packet(simply, packet);
+      return true;
+    case CommandElementPolyline:
+      handle_element_polyline_packet(simply, packet);
       return true;
     case CommandElementCommon:
       handle_element_common_packet(simply, packet);

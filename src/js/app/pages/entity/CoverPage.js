@@ -270,6 +270,17 @@ function showCoverEntity(entity_id) {
             });
         }
 
+        // The cover rows all trigger actions, so history gets its own item
+        // (not available on aplite)
+        if (require('app/pages/HistoryPage').isSupported()) {
+            menuItems.push({
+                title: 'History',
+                on_click: function() {
+                    require('app/pages/HistoryPage').show(updatedData.entity_id);
+                }
+            });
+        }
+
         // Add More option
         menuItems.push({
             title: 'More',
@@ -278,7 +289,17 @@ function showCoverEntity(entity_id) {
             }
         });
 
-        coverMenu.items(0, menuItems);
+        // Replacing the section clears it on the watch and re-marshals every
+        // row. A moving cover streams position updates, so doing that on each
+        // one churns the display exactly while the user is aiming for Stop.
+        // Only the row set changing needs the full replace.
+        if (coverMenu.items(0).length !== menuItems.length) {
+            coverMenu.items(0, menuItems);
+        } else {
+            for (let i = 0; i < menuItems.length; i++) {
+                coverMenu.item(0, i, menuItems[i]);
+            }
+        }
     }
 
     // Slider window for position/tilt (0-100, where 0 is closed and 100 open)
@@ -303,7 +324,8 @@ function showCoverEntity(entity_id) {
             font: "gothic_24_bold",
             position: new Vector(0, 0),
             size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
+            textAlign: "center",
+            textOverflow: 'ellipsis'
         });
 
         // Add current value text
@@ -313,7 +335,8 @@ function showCoverEntity(entity_id) {
             font: "gothic_24",
             position: new Vector(0, 35),
             size: new Vector(Feature.resolution().x, 30),
-            textAlign: "center"
+            textAlign: "center",
+            textOverflow: 'ellipsis'
         });
 
         // Add slider background

@@ -14,16 +14,6 @@
         "type": "bitmap"
       },
       {
-        "file": "images/logo_splash.png",
-        "name": "IMAGE_LOGO_SPLASH",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/tile_splash.png",
-        "name": "IMAGE_TILE_SPLASH",
-        "type": "bitmap"
-      },
-      {
         "file": "fonts/UbuntuMono-Regular.ttf",
         "name": "MONO_FONT_14",
         "type": "font"
@@ -41,6 +31,21 @@
       {
         "file": "images/icon_sensor.png",
         "name": "IMAGE_ICON_SENSOR",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/action_edit.png",
+        "name": "IMAGE_ACTION_EDIT",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/action_up.png",
+        "name": "IMAGE_ACTION_UP",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/action_down.png",
+        "name": "IMAGE_ACTION_DOWN",
         "type": "bitmap"
       },
       {
@@ -86,36 +91,6 @@
       {
         "file": "images/icon_blinds_closed.png",
         "name": "IMAGE_ICON_BLIND_CLOSED",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/icon_unavailable.png",
-        "name": "IMAGE_ICON_UNAVAILABLE",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_tick_active.png",
-        "name": "IMAGE_MICRO_TICK_ACTIVE",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_tick.png",
-        "name": "IMAGE_MICRO_TICK",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_brightness.png",
-        "name": "IMAGE_MICRO_BRIGHTNESS",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_temp.png",
-        "name": "IMAGE_MICRO_TEMP",
-        "type": "bitmap"
-      },
-      {
-        "file": "images/micro_tick_chalk.png",
-        "name": "IMAGE_MICRO_TICK_CHALK",
         "type": "bitmap"
       },
       {
@@ -182,6 +157,36 @@
         "file": "images/icon_script.png",
         "name": "IMAGE_ICON_SCRIPT",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_timer.png",
+        "name": "IMAGE_ICON_TIMER",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_calendar.png",
+        "name": "IMAGE_ICON_CALENDAR",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_clock.png",
+        "name": "IMAGE_ICON_CLOCK",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_refresh.png",
+        "name": "IMAGE_ICON_REFRESH",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_power.png",
+        "name": "IMAGE_ICON_POWER",
+        "type": "bitmap"
+      },
+      {
+        "file": "images/icon_yes.png",
+        "name": "IMAGE_ICON_YES",
+        "type": "bitmap"
       }
     ]
   },
@@ -192,11 +197,13 @@
     "basalt",
     "chalk",
     "diorite",
-    "emery"
+    "emery",
+    "flint",
+    "gabbro"
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
-  "versionLabel": "2.2",
+  "versionLabel": "3.0",
   "watchapp": {
     "hiddenApp": false,
     "watchface": false

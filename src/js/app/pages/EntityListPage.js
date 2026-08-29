@@ -111,12 +111,13 @@ class EntityListPage extends BasePage {
 
         if (entitiesToSubscribe.length === 0) {
             helpers.log_message('No entities to subscribe to');
-            this.menu.section(0).title = 'No entities';
+            this.menu.section(0, { title: 'No entities' });
             return;
         }
 
-        var prevTitle = this.menu.section(0).title;
-        this.menu.section(0).title = 'updating ...';
+        // One argument is the getter, so assigning through it only changed
+        // the local copy and the watch kept the old header
+        this.menu.section(0, { title: 'updating ...' });
 
         // Local state cache for this subscription
         var entityStates = {};
@@ -145,7 +146,7 @@ class EntityListPage extends BasePage {
 
             self.menu.item(0, renderedEntityIds[entity_id], {
                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ' ' + entity.attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed)),
+                subtitle: EntityService.getSubtitle(entity),
                 entity_id: entity.entity_id,
                 icon: EntityService.getIcon(entity)
             });
@@ -263,7 +264,7 @@ class EntityListPage extends BasePage {
                     }
 
                     var itemTitle = data[j].attributes.friendly_name ? data[j].attributes.friendly_name : data[j].entity_id;
-                    var itemSubtitle = data[j].state + (data[j].attributes.unit_of_measurement ? ' ' + data[j].attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(data[j].last_changed));
+                    var itemSubtitle = EntityService.getSubtitle(data[j]);
 
                     // Get icon path
                     var itemIcon;
@@ -326,7 +327,7 @@ class EntityListPage extends BasePage {
 
             self.menu.item(0, renderedEntityIds[entity_id], {
                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id,
-                subtitle: entity.state + (entity.attributes.unit_of_measurement ? ' ' + entity.attributes.unit_of_measurement : '') + ' > ' + helpers.humanDiff(new Date(), new Date(entity.last_changed)),
+                subtitle: EntityService.getSubtitle(entity),
                 entity_id: entity.entity_id,
                 icon: EntityService.getIcon(entity)
             });
@@ -363,7 +364,9 @@ class EntityListPage extends BasePage {
                 // On initial snapshot, render the full menu
                 if (!initialSnapshotReceived) {
                     initialSnapshotReceived = true;
-                    self.menu.section(0).title = prevTitle;
+                    // self.title, not the header read back off the menu:
+                    // that could already say 'updating ...' and stick
+                    self.menu.section(0, { title: self.title });
                     renderMenu();
                 }
             }
@@ -405,7 +408,7 @@ class EntityListPage extends BasePage {
             }
         }, function(error) {
             helpers.log_message('subscribeEntities ERROR: ' + JSON.stringify(error));
-            self.menu.section(0).title = 'HAWS - failed updating';
+            self.menu.section(0, { title: 'HAWS - failed updating' });
         });
     }
 }

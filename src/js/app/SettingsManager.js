@@ -5,6 +5,7 @@ var Settings = require('settings');
 var Feature = require('platform/feature');
 var Menu = require('ui/menu');
 var InactivityTimer = require('app/InactivityTimer');
+var Touch = require('ui/touch');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
@@ -103,6 +104,10 @@ var SettingsManager = {
             ? appState.automation_longpress_action
             : 'toggle';
 
+        // Whether to remember alarm panel codes after a successful entry
+        // (toggleable from the alarm page's Code menu)
+        appState.alarm_code_remember = Settings.option('alarm_code_remember') !== false;
+
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
         log('Automation long-press action: ' + appState.automation_longpress_action);
@@ -112,10 +117,28 @@ var SettingsManager = {
         appState.inactivity_timeout = parseInt(Settings.option('inactivity_timeout'), 10) || 0;
         InactivityTimer.configure(appState.inactivity_timeout);
 
+        // Calendar visibility and ordering from the config page. A null
+        // order means "use Home Assistant's order"
+        appState.calendar_order = Settings.option('calendar_order');
+        if (!Array.isArray(appState.calendar_order) || appState.calendar_order.length === 0) {
+            appState.calendar_order = null;
+        }
+        appState.hidden_calendars = Settings.option('hidden_calendars');
+        if (!Array.isArray(appState.hidden_calendars)) {
+            appState.hidden_calendars = [];
+        }
+
         // Menu scrolling wrap-around setting (default enabled)
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
+
+        // Touch input settings (both default enabled; only meaningful on
+        // watches with a touchscreen)
+        appState.touch_enabled = Settings.option('touch_enabled') !== false;
+        appState.touch_long_press = Settings.option('touch_long_press') !== false;
+        Touch.applySettings(appState.touch_enabled, appState.touch_long_press);
+        log('Touch: ' + appState.touch_enabled + ', long press: ' + appState.touch_long_press);
 
         // Main menu ordering settings
         appState.main_menu_custom_order_enabled = Settings.option('main_menu_custom_order_enabled') === true;

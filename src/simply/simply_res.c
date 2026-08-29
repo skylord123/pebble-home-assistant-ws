@@ -33,8 +33,50 @@ static void destroy_font(SimplyRes *self, SimplyFont *font) {
   free(font);
 }
 
+static uint8_t prv_palette_bpp_for_format(GBitmapFormat format) {
+  switch (format) {
+    case GBitmapFormat1BitPalette: return 1;
+    case GBitmapFormat2BitPalette: return 2;
+    case GBitmapFormat4BitPalette: return 4;
+    default: return 0;
+  }
+}
+
+//! Counts how many palette entries the bitmap's pixels actually reference.
+//! The firmware allocates exactly as many palette entries as the source PNG
+//! declared, and that count is not exposed by the gbitmap API, so it is
+//! recovered from the pixel data. PNG guarantees the indices stay within the
+//! declared palette, so this never exceeds the allocation.
+static uint16_t prv_get_palette_entry_count(GBitmap *bitmap) {
+  const uint8_t bpp = prv_palette_bpp_for_format(gbitmap_get_format(bitmap));
+  if (!bpp) {
+    return 0;
+  }
+  const uint8_t *data = gbitmap_get_data(bitmap);
+  const uint16_t row_size = gbitmap_get_bytes_per_row(bitmap);
+  const GRect bounds = gbitmap_get_bounds(bitmap);
+  if (!data) {
+    return 0;
+  }
+  uint8_t max_index = 0;
+  for (int16_t y = 0; y < bounds.size.h; ++y) {
+    const uint8_t *row = data + y * row_size;
+    for (int16_t x = 0; x < bounds.size.w; ++x) {
+      // Palettized pixels are packed most significant bits first
+      const uint16_t bit = (uint16_t)(x * bpp);
+      const uint8_t index =
+          (uint8_t)((row[bit / 8] >> (8 - bpp - (bit % 8))) & ((1 << bpp) - 1));
+      if (index > max_index) {
+        max_index = index;
+      }
+    }
+  }
+  return (uint16_t)(max_index + 1);
+}
+
 static void setup_image(SimplyImage *image) {
   image->is_palette_black_and_white = gbitmap_is_palette_black_and_white(image->bitmap);
+  image->palette_entries = prv_get_palette_entry_count(image->bitmap);
 
   if (!image->is_palette_black_and_white) {
     return;

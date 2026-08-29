@@ -1,5 +1,7 @@
 #include "simply_menu.h"
 
+#include "simply_touch.h"
+
 #include "simply_res.h"
 #include "simply_msg.h"
 #include "simply_window_stack.h"
@@ -33,6 +35,32 @@
 #define SCROLL_STEP_MS 100   // Scroll every X ms
 #define SCROLL_STEP_PX 8     // Scroll X pixels at a time
 #define SCROLL_IDLE_TIMEOUT_MS 60000  // Stop scrolling after 60 seconds of inactivity (configurable)
+#endif
+
+// The firmware selects the Large content size for displays 200px or taller
+// (PebbleOS preferred_content_size.h). SDK 4.17 does not expose
+// PBL_DISPLAY_HEIGHT, so name emery explicitly as well; newer SDKs pick up
+// any future large-screen platform through the display height automatically.
+#if defined(PBL_PLATFORM_EMERY) || (defined(PBL_DISPLAY_HEIGHT) && PBL_DISPLAY_HEIGHT >= 200)
+#define MENU_CONTENT_SIZE_LARGE 1
+#endif
+
+// Menu row fonts, matching what menu_cell_basic_draw uses for the platform's
+// content size so the custom-drawn scrolling selected row is identical to the
+// firmware-drawn static rows. Large content size (Pebble Time 2) means 61px
+// cells with Gothic 24 Bold titles and Gothic 24 subtitles (per Core Devices'
+// PebbleOS system theme); the other platforms use Medium (44px cells,
+// Gothic 24 Bold / Gothic 18).
+#if defined(MENU_CONTENT_SIZE_LARGE)
+#define MENU_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
+#define MENU_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_24
+#define MENU_TITLE_FONT_HEIGHT 24
+#define MENU_SUBTITLE_FONT_HEIGHT 24
+#else
+#define MENU_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
+#define MENU_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_18
+#define MENU_TITLE_FONT_HEIGHT 24
+#define MENU_SUBTITLE_FONT_HEIGHT 18
 #endif
 
 typedef Packet MenuClearPacket;
@@ -101,8 +129,19 @@ struct __attribute__((__packed__)) MenuSelectionPacket {
 };
 
 
-static GColor8 s_normal_palette[] = { { GColorBlackARGB8 }, { GColorClearARGB8 } };
-static GColor8 s_inverted_palette[] = { { GColorWhiteARGB8 }, { GColorClearARGB8 } };
+// Inverts every color in a palettized bitmap's palette in place, preserving
+// each entry's alpha so transparency and anti-aliasing survive. XORing the six
+// color bits maps every channel value v to 3-v (black <-> white, dark grey <->
+// light grey), and applying it twice restores the original palette.
+static void prv_invert_image_palette(SimplyImage *image) {
+  GColor8 *palette = gbitmap_get_palette(image->bitmap);
+  if (!palette) {
+    return;
+  }
+  for (uint16_t i = 0; i < image->palette_entries; ++i) {
+    palette[i].argb ^= 0b00111111;
+  }
+}
 
 
 static void simply_menu_clear_section_items(SimplyMenu *self, int section_index);
@@ -125,11 +164,14 @@ static void scroll_timer_callback(void *data);
 static void reset_scroll_callback(void *data);
 #endif
 
-static int64_t prv_get_milliseconds(void) {
+static uint32_t prv_get_milliseconds(void) {
   time_t now_s;
   uint16_t now_ms_part;
   time_ms(&now_s, &now_ms_part);
-  return ((int64_t) now_s) * 1000 + now_ms_part;
+  // Truncating to 32 bits is fine: this only feeds interval math, which
+  // stays correct across the wraparound, and it avoids pulling in libgcc's
+  // 64-bit division helpers (~900 bytes of app RAM)
+  return (uint32_t) now_s * 1000 + now_ms_part;
 }
 
 static bool prv_send_menu_item(Command type, uint16_t section, uint16_t item) {
@@ -174,6 +216,54 @@ static bool prv_item_filter(List1Node *node, void *data) {
 
 static bool prv_request_item_filter(List1Node *node, void *data) {
   return (((SimplyMenuItem *)node)->title == NULL);
+}
+
+#define ROW_COUNT_UNKNOWN 0xffff
+#define ROW_COUNT_HAS_HEADER 0x8000
+#define ROW_COUNT_MASK 0x7fff
+
+static void prv_row_counts_resize(SimplyMenu *self, uint16_t num_sections) {
+  SimplyMenuLayer *menu_layer = &self->menu_layer;
+  if (menu_layer->row_counts && menu_layer->row_counts_len == num_sections) { return; }
+  uint16_t *counts = malloc(num_sections * sizeof(uint16_t));
+  if (!counts) { return; }
+  for (uint16_t i = 0; i < num_sections; ++i) {
+    counts[i] = (menu_layer->row_counts && i < menu_layer->row_counts_len) ?
+        menu_layer->row_counts[i] : ROW_COUNT_UNKNOWN;
+  }
+  free(menu_layer->row_counts);
+  menu_layer->row_counts = counts;
+  menu_layer->row_counts_len = num_sections;
+}
+
+static void prv_row_counts_record(SimplyMenu *self, uint16_t section, uint16_t num_items,
+                                  bool has_header) {
+  if (section >= self->menu_layer.row_counts_len) {
+    prv_row_counts_resize(self, section + 1);
+  }
+  if (section < self->menu_layer.row_counts_len) {
+    self->menu_layer.row_counts[section] =
+        (num_items & ROW_COUNT_MASK) | (has_header ? ROW_COUNT_HAS_HEADER : 0);
+  }
+}
+
+//! Returns false when the section's row count has not been received yet
+static bool prv_row_counts_get(SimplyMenu *self, uint16_t section, uint16_t *num_items_out,
+                               bool *has_header_out) {
+  SimplyMenuLayer *menu_layer = &self->menu_layer;
+  if (!menu_layer->row_counts || section >= menu_layer->row_counts_len ||
+      menu_layer->row_counts[section] == ROW_COUNT_UNKNOWN) {
+    return false;
+  }
+  if (num_items_out) { *num_items_out = menu_layer->row_counts[section] & ROW_COUNT_MASK; }
+  if (has_header_out) { *has_header_out = (menu_layer->row_counts[section] & ROW_COUNT_HAS_HEADER); }
+  return true;
+}
+
+static void prv_row_counts_reset(SimplyMenu *self) {
+  for (uint16_t i = 0; i < self->menu_layer.row_counts_len; ++i) {
+    self->menu_layer.row_counts[i] = ROW_COUNT_UNKNOWN;
+  }
 }
 
 static SimplyMenuSection *prv_get_menu_section(SimplyMenu *self, int index) {
@@ -298,6 +388,7 @@ static void simply_menu_set_num_sections(SimplyMenu *self, uint16_t num_sections
     num_sections = 1;
   }
   self->menu_layer.num_sections = num_sections;
+  prv_row_counts_resize(self, num_sections);
   prv_reload_data(self);
 }
 
@@ -588,6 +679,10 @@ static uint16_t prv_menu_get_num_sections_callback(MenuLayer *menu_layer, void *
 static uint16_t prv_menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_index,
                                                void *data) {
   SimplyMenu *self = data;
+  uint16_t num_items;
+  if (prv_row_counts_get(self, section_index, &num_items, NULL)) {
+    return num_items;
+  }
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   return section ? section->num_items : 1;
 }
@@ -595,6 +690,10 @@ static uint16_t prv_menu_get_num_rows_callback(MenuLayer *menu_layer, uint16_t s
 static int16_t prv_menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t section_index,
                                                    void *data) {
   SimplyMenu *self = data;
+  bool has_header;
+  if (prv_row_counts_get(self, section_index, NULL, &has_header)) {
+    return has_header ? MENU_CELL_BASIC_HEADER_HEIGHT : 0;
+  }
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   return (section && section->title &&
           section->title != EMPTY_TITLE ? MENU_CELL_BASIC_HEADER_HEIGHT : 0);
@@ -671,7 +770,7 @@ static void simply_menu_draw_row_spinner(SimplyMenu *self, GContext *ctx,
   const int16_t num_lines = 16;
   const int16_t num_drawn_lines = 3;
 
-  const int64_t now_ms = prv_get_milliseconds();
+  const uint32_t now_ms = prv_get_milliseconds();
   const uint32_t start_index = (now_ms / SPINNER_MS) % num_lines;
 
   graphics_context_set_antialiased(ctx, true);
@@ -721,13 +820,15 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 #if !defined(PBL_PLATFORM_APLITE) // disable icons on APLITE as it causes crash
   image = simply_res_get_image(self->window.simply->res, item->icon);
 #endif
-  GColor8 *palette = NULL;
-
-  if (image && image->is_palette_black_and_white) {
-    palette = gbitmap_get_palette(image->bitmap);
-    const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
-    gbitmap_set_palette(image->bitmap, is_highlighted ? s_inverted_palette : s_normal_palette,
-                        false);
+  // Icons are designed for the normal row background, so invert their colors
+  // while drawing a highlighted row to keep them visible on the highlight
+  // background. This works for any palettized bitmap (the bundled icons decode
+  // to multi-entry palettes with transparency and anti-aliasing, not just
+  // 2-color black and white).
+  bool palette_inverted = false;
+  if (image && image->palette_entries && menu_cell_layer_is_highlighted(cell_layer)) {
+    prv_invert_image_palette(image);
+    palette_inverted = true;
   }
 
   graphics_context_set_alpha_blended(ctx, true);
@@ -750,23 +851,28 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     int16_t available_width = bounds.size.w;
 
 #if !defined(PBL_ROUND)
+#if defined(MENU_CONTENT_SIZE_LARGE)
+    // RECTANGULAR DISPLAY (Large content size): menu_cell_basic_draw uses a
+    // fixed 44px left text margin when an icon is present (10px inset plus
+    // 34px title/subtitle margin), 10px without
+    available_width -= (image && image->bitmap) ? 44 : 10;
+    available_width -= 10; // right margin
+#else
     // RECTANGULAR DISPLAY: Account for icon width
     if (image && image->bitmap) {
       GRect icon_rect = gbitmap_get_bounds(image->bitmap);
       available_width -= (icon_rect.size.w + 8); // icon width + margins
     }
     available_width -= 10; // text margins
+#endif
 #else
     // ROUND DISPLAY: Account for icon height and margins
     // Icon is centered at top, text is below it
     available_width -= 20; // left/right margins for centered text
 #endif
 
-    // Measure title text
-    // For round displays, use the system theme fonts which are:
-    // - Title: GOTHIC_24_BOLD (Medium content size)
-    // - Subtitle: GOTHIC_18 (Medium content size)
-    const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    // Measure title text with the same fonts the row is drawn with
+    const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
     GSize title_size = graphics_text_layout_get_content_size(
         item->title, title_font,
         GRect(0, 0, 1000, 100),
@@ -780,7 +886,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     bool subtitle_needs_scroll = false;
     int16_t subtitle_width = 0;
     if (item->subtitle) {
-      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      const GFont subtitle_font = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
       GSize subtitle_size = graphics_text_layout_get_content_size(
           item->subtitle, subtitle_font,
           GRect(0, 0, 1000, 100),
@@ -797,14 +903,14 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     self->subtitle_needs_scroll = subtitle_needs_scroll;
 
     // Cache font heights to avoid expensive measurements during drawing
-    const GFont title_font_for_height = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+    const GFont title_font_for_height = fonts_get_system_font(MENU_TITLE_FONT_KEY);
     GSize title_height_size = graphics_text_layout_get_content_size(
         "A", title_font_for_height, GRect(0, 0, 100, 100),
         GTextOverflowModeFill, GTextAlignmentLeft);
     self->title_height = title_height_size.h;
 
     if (item->subtitle) {
-      const GFont subtitle_font_for_height = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      const GFont subtitle_font_for_height = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
       GSize subtitle_height_size = graphics_text_layout_get_content_size(
           "A", subtitle_font_for_height, GRect(0, 0, 100, 100),
           GTextOverflowModeFill, GTextAlignmentLeft);
@@ -857,15 +963,24 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
 #if !defined(PBL_ROUND)
     // ===== RECTANGULAR DISPLAY: Scroll icon and text together =====
-    int16_t text_x = 4;
+#if defined(MENU_CONTENT_SIZE_LARGE)
+    // Large content size margins from menu_cell_basic_draw: icon inset 10px,
+    // text at a fixed 44px when an icon is present, 10px otherwise
+    const int16_t icon_x = 10;
+    const int16_t text_x = (image && image->bitmap) ? 44 : 10;
+#else
+    const int16_t icon_x = 4;
+    const int16_t text_x = (image && image->bitmap)
+        ? (int16_t)(4 + gbitmap_get_bounds(image->bitmap).size.w + 4) : 4;
+#endif
     if (image && image->bitmap) {
       GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
       graphics_context_set_compositing_mode(ctx, GCompOpSet);
       // Scroll the icon along with the text
       graphics_draw_bitmap_in_rect(ctx, image->bitmap,
-                                   GRect(4 - self->scroll_offset, (bounds.size.h - icon_bounds.size.h) / 2,
-                                        icon_bounds.size.w, icon_bounds.size.h));
-      text_x = 4 + icon_bounds.size.w + 4;
+                                   GRect(icon_x - self->scroll_offset,
+                                         (bounds.size.h - icon_bounds.size.h) / 2,
+                                         icon_bounds.size.w, icon_bounds.size.h));
     }
 
     // Text color - use configured highlight/normal colors
@@ -878,22 +993,24 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     const int16_t scroll_x = text_x - self->scroll_offset;
     const int16_t text_w = bounds.size.w - text_x + self->scroll_offset;
 
+    // Lay the text out exactly the way menu_cell_basic_draw does: the block of
+    // title + subtitle + 10px padding is vertically centered in the cell, the
+    // title box is font height + 4, and the subtitle starts one title height
+    // below the title. This keeps the custom-drawn scrolling row identical to
+    // the firmware-drawn static rows on every rectangular platform.
+    const int16_t subtitle_font_height = item->subtitle ? MENU_SUBTITLE_FONT_HEIGHT : 0;
+    const int16_t vertical_margin = (int16_t)
+        ((bounds.size.h - (MENU_TITLE_FONT_HEIGHT + subtitle_font_height + 10)) / 2);
+    graphics_draw_text(ctx, item->title,
+                      fonts_get_system_font(MENU_TITLE_FONT_KEY),
+                      GRect(scroll_x, vertical_margin, text_w, MENU_TITLE_FONT_HEIGHT + 4),
+                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
     if (item->subtitle) {
-      // Two lines - move UP 4 more pixels
-      graphics_draw_text(ctx, item->title,
-                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                        GRect(scroll_x, -4, text_w, 24),
-                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
       graphics_draw_text(ctx, item->subtitle,
-                        fonts_get_system_font(FONT_KEY_GOTHIC_18),
-                        GRect(scroll_x, 20, text_w, 18),
+                        fonts_get_system_font(MENU_SUBTITLE_FONT_KEY),
+                        GRect(scroll_x, vertical_margin + MENU_TITLE_FONT_HEIGHT, text_w,
+                              MENU_SUBTITLE_FONT_HEIGHT + 4),
                         GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    } else {
-      // Single line - move DOWN, use vertical alignment
-      graphics_draw_text(ctx, item->title,
-                        fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD),
-                        GRect(scroll_x, 4, text_w, bounds.size.h),
-                        GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
     }
 
 #else
@@ -924,11 +1041,8 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
     if (item->subtitle) {
       // Two lines of text
-      // Use system theme fonts for round displays (Medium content size):
-      // - Title: GOTHIC_24_BOLD
-      // - Subtitle: GOTHIC_18
-      const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
-      const GFont subtitle_font = fonts_get_system_font(FONT_KEY_GOTHIC_18);
+      const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
+      const GFont subtitle_font = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
 
       // Use cached font heights (measured once during measurement phase, not every frame)
       const int16_t title_height = self->title_height;
@@ -967,7 +1081,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       }
     } else {
       // Single line of text
-      const GFont title_font = fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD);
+      const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
 
       // Use cached font height (measured once during measurement phase, not every frame)
       const int16_t text_height = self->title_height;
@@ -999,8 +1113,8 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
   menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
 #endif
 
-  if (palette) {
-    gbitmap_set_palette(image->bitmap, palette, false);
+  if (palette_inverted) {
+    prv_invert_image_palette(image);
   }
 }
 
@@ -1014,6 +1128,116 @@ static void prv_menu_select_click_callback(MenuLayer *menu_layer, MenuIndex *cel
 #endif
   prv_send_menu_select_click(cell_index->section, cell_index->row);
 }
+
+// ---- Touch -----------------------------------------------------------------
+//
+// A MenuLayer renders itself and does not expose cell frames, so mapping a
+// finger to a row means recomputing the layout the same way the layer's own
+// callbacks declare it. The scroll offset comes from the MenuLayer's
+// ScrollLayer, so this stays correct however far the list has scrolled.
+
+#ifdef SIMPLY_HAS_TOUCH
+
+// Cell metrics must mirror exactly what the MenuLayer uses: round platforms
+// get our get_cell_height callback (the focused row is taller), large content
+// size platforms (Pebble Time 2) get the firmware's 61px default, everything
+// else the classic 44px
+static int16_t prv_touch_cell_height(SimplyMenu *self, MenuIndex index) {
+#if defined(PBL_ROUND)
+  const bool is_selected =
+      menu_layer_is_index_selected(self->menu_layer.menu_layer, &index);
+  return is_selected ? MENU_CELL_ROUND_FOCUSED_TALL_CELL_HEIGHT
+                     : MENU_CELL_ROUND_UNFOCUSED_SHORT_CELL_HEIGHT;
+#elif defined(MENU_CONTENT_SIZE_LARGE)
+  return 61;
+#else
+  return MENU_CELL_BASIC_CELL_HEIGHT;
+#endif
+}
+
+static bool prv_touch_hit_test(SimplyMenu *self, int16_t x, int16_t y,
+                               MenuIndex *index_out) {
+  (void) x;
+  if (!self || !self->menu_layer.menu_layer) { return false; }
+
+  MenuLayer *menu_layer = self->menu_layer.menu_layer;
+  Layer *layer = menu_layer_get_layer(menu_layer);
+  GRect frame = layer_get_frame(layer);
+  ScrollLayer *scroll_layer = menu_layer_get_scroll_layer(menu_layer);
+  GPoint offset =
+      scroll_layer ? scroll_layer_get_content_offset(scroll_layer) : GPointZero;
+
+  // Screen coordinates to content coordinates. The offset is negative once
+  // the list has scrolled, which is why it is subtracted rather than added
+  int content_y = y - frame.origin.y - offset.y;
+  if (content_y < 0) { return false; }
+
+  int cursor = 0;
+  const uint16_t num_sections = self->menu_layer.num_sections;
+  for (uint16_t s = 0; s < num_sections; ++s) {
+    // Match the layer callbacks: known sections report their shape from the
+    // persistent row counts, unknown ones fall back to the cache
+    bool has_header;
+    uint16_t num_items;
+    if (!prv_row_counts_get(self, s, &num_items, &has_header)) {
+      SimplyMenuSection *section = prv_get_menu_section(self, s);
+      has_header = (section && section->title && section->title != EMPTY_TITLE);
+      num_items = section ? section->num_items : 1;
+    }
+    const int header = has_header ? MENU_CELL_BASIC_HEADER_HEIGHT : 0;
+    if (content_y < cursor + header) {
+      return false;                        // the header itself is not a target
+    }
+    cursor += header;
+
+    for (uint16_t r = 0; r < num_items; ++r) {
+      MenuIndex index = { .section = s, .row = r };
+      const int height = prv_touch_cell_height(self, index);
+      if (content_y < cursor + height) {
+        *index_out = index;
+        return true;
+      }
+      cursor += height;
+    }
+  }
+
+  return false;                            // tap landed past the last row
+}
+
+static bool prv_touch_activate(SimplyMenu *self, int16_t x, int16_t y,
+                               bool long_click) {
+  MenuIndex index;
+  if (!prv_touch_hit_test(self, x, y, &index)) { return false; }
+  // Move the highlight first so the screen agrees with what is about to
+  // happen, then fire the same event the matching button action would
+  menu_layer_set_selected_index(self->menu_layer.menu_layer, index,
+                                MenuRowAlignNone, false);
+  simply_menu_touch_note_input(self);
+  if (long_click) {
+    prv_send_menu_select_long_click(index.section, index.row);
+  } else {
+    prv_send_menu_select_click(index.section, index.row);
+  }
+  return true;
+}
+
+bool simply_menu_handle_tap(SimplyMenu *self, int16_t x, int16_t y) {
+  return prv_touch_activate(self, x, y, false);
+}
+
+bool simply_menu_handle_long_press(SimplyMenu *self, int16_t x, int16_t y) {
+  return prv_touch_activate(self, x, y, true);
+}
+
+void simply_menu_touch_note_input(SimplyMenu *self) {
+  if (!self) { return; }
+#if !defined(PBL_PLATFORM_APLITE)
+  self->last_input_time = time(NULL);
+  self->scroll_idle = false;
+#endif
+}
+
+#endif  // SIMPLY_HAS_TOUCH
 
 static void prv_menu_select_long_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
                                                 void *data) {
@@ -1040,6 +1264,10 @@ static void prv_single_click_handler(ClickRecognizerRef recognizer, void *contex
 
 static uint16_t prv_get_section_num_rows(SimplyMenu *self, uint16_t section_index) {
   // Mirrors prv_menu_get_num_rows_callback: sections not yet loaded report 1 row
+  uint16_t num_items;
+  if (prv_row_counts_get(self, section_index, &num_items, NULL)) {
+    return num_items;
+  }
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   return section ? section->num_items : 1;
 }
@@ -1219,6 +1447,8 @@ static void simply_menu_clear_section_items(SimplyMenu *self, int section_index)
 }
 
 static void simply_menu_clear(SimplyMenu *self) {
+  prv_row_counts_reset(self);
+
   while (self->menu_layer.sections) {
     prv_destroy_section(self, (SimplyMenuSection *)self->menu_layer.sections);
   }
@@ -1269,6 +1499,8 @@ static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
 
 static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
   MenuSectionPacket *packet = (MenuSectionPacket *)data;
+  prv_row_counts_record(simply->menu, packet->section, packet->num_items,
+                        packet->title_length != 0);
   SimplyMenuSection *section = malloc(sizeof(*section));
   *section = (SimplyMenuSection) {
     .section = packet->section,
@@ -1388,5 +1620,6 @@ void simply_menu_destroy(SimplyMenu *self) {
 
   simply_window_deinit(&self->window);
 
+  free(self->menu_layer.row_counts);
   free(self);
 }
