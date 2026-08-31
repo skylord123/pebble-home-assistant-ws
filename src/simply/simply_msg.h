@@ -8,10 +8,6 @@
 
 #include <pebble.h>
 
-// Message keys for AppMessage
-#define MESSAGE_KEY_SCROLL_Y 1000
-#define MESSAGE_KEY_ANIMATED 1001
-
 typedef struct SimplyMsg SimplyMsg;
 
 struct SimplyMsg {

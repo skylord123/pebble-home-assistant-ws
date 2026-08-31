@@ -10,6 +10,7 @@ var Accel = require('ui/accel');
 var Touch = require('ui/touch');
 var Voice = require('ui/voice');
 var NumberField = require('ui/numberfield');
+var Assist = require('ui/assist');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
 var Window = require('ui/window');
@@ -853,6 +854,33 @@ var NumberSelectorChangeEventPacket = new struct([
   ['int32', 'value'],
 ]);
 
+var AssistShowPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'fontSize'],
+  ['uint8', 'flags'],
+]);
+
+var AssistHidePacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var AssistMessagePacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'role'],
+  ['cstring', 'text', StringType],
+]);
+
+var AssistTranscriptPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'limit'],
+  ['cstring', 'text'],
+]);
+
+var AssistActionPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'action'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -926,6 +954,11 @@ var CommandPackets = [
   NumberSelectorResultPacket,
   NumberSelectorClosedEventPacket,
   NumberSelectorChangeEventPacket,
+  AssistShowPacket,
+  AssistHidePacket,
+  AssistMessagePacket,
+  AssistTranscriptPacket,
+  AssistActionPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1633,6 +1666,22 @@ SimplyPebble.numberSelectorValue = function(value) {
   SimplyPebble.sendPacket(NumberSelectorValuePacket.value(value));
 };
 
+SimplyPebble.assistShow = function(opts) {
+  AssistShowPacket
+    .fontSize(opts.fontSize || 18)
+    .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0));
+  SimplyPebble.sendPacket(AssistShowPacket);
+};
+
+SimplyPebble.assistHide = function() {
+  SimplyPebble.sendPacket(AssistHidePacket);
+};
+
+SimplyPebble.assistMessage = function(role, text) {
+  AssistMessagePacket.role(role).text(text);
+  SimplyPebble.sendPacket(AssistMessagePacket);
+};
+
 SimplyPebble.splashMode = function(mode) {
   SimplyPebble.sendPacket(SplashModePacket.mode(mode));
 };
@@ -1757,6 +1806,8 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case NumberSelectorResultPacket:
     case NumberSelectorClosedEventPacket:
     case NumberSelectorChangeEventPacket:
+    case AssistTranscriptPacket:
+    case AssistActionPacket:
       if (SimplyPebble.onUserActivity) {
         SimplyPebble.onUserActivity();
       }
@@ -1785,6 +1836,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case NumberSelectorChangeEventPacket:
       NumberField.emitChange(packet.value());
+      break;
+    case AssistTranscriptPacket:
+      // The limit has to be read before the string in any case: a dynamic
+      // field can only be reached once the field in front of it has been
+      Assist.setReplyLimit(packet.limit());
+      Assist.emitTranscript(packet.text());
+      break;
+    case AssistActionPacket:
+      Assist.emitAction(packet.action());
       break;
     case SplashRevealPacket:
       // The splash was covering the current window, which reloaded empty on

@@ -3,6 +3,7 @@
 #ifdef SIMPLY_HAS_TOUCH
 
 #include "simply_msg.h"
+#include "simply_assist.h"
 #include "simply_menu.h"
 #include "simply_number.h"
 #include "simply_window.h"
@@ -230,11 +231,14 @@ static void handle_touch(const TouchEvent *event, void *context) {
     return;
   }
 
-  // The number selector is a native window that the JS window stack knows
-  // nothing about, so it has to resolve its own gestures. It also has to run
-  // before the generic handling below, which would otherwise swipe back the
-  // JS window sitting hidden underneath it.
+  // The number selector and the assist conversation are native windows that
+  // the JS window stack knows nothing about, so they resolve their own
+  // gestures. They also have to run before the generic handling below, which
+  // would otherwise swipe back the JS window sitting hidden underneath them.
   if (simply_number_handle_touch(s_touch->simply, event)) {
+    return;
+  }
+  if (simply_assist_handle_touch(s_touch->simply, event)) {
     return;
   }
 
