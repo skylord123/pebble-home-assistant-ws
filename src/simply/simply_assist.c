@@ -58,6 +58,12 @@
 // needs long enough between pages to read one before the next arrives.
 #define SCROLL_REPEAT_MS PBL_IF_ROUND_ELSE(400, 100)
 
+// ...and how long the button has to be down before any of that starts. An
+// ordinary press is a few hundred milliseconds, which is long enough to have
+// collected repeats and turned one press into three pages. Nothing repeats
+// until the press has clearly become a hold.
+#define SCROLL_HOLD_MS PBL_IF_ROUND_ELSE(700, 400)
+
 // Round draws its own up/down arrows in strips along the top and bottom of the
 // screen, the same "there is more this way" language the system menus use. The
 // conversation is inset by that much at both ends so a line of text is never
@@ -78,8 +84,26 @@ struct AssistMessage {
   //! redraws it ten times a second, so it is measured when the conversation
   //! changes and remembered for every frame in between.
   uint16_t height;
+  //! Where the last line of this turn begins, and how far down it sits. An
+  //! answer arriving a few words at a time would otherwise be re-wrapped from
+  //! its first word on every piece, which for a long one means measuring
+  //! thousands of words several times a second: enough to stop the watch
+  //! answering for itself and be killed for it. Adding to a turn resumes from
+  //! here and lays out only the line that changed and whatever follows it.
+  uint16_t wrap_offset;
+  uint16_t wrap_height;
   uint8_t role;
+  bool wrap_bold;
 };
+
+//! Everything measured about a turn stops being true when it moves, because a
+//! round display wraps each line to the width the glass allows at that height
+static void prv_forget_layout(AssistMessage *message) {
+  message->height = 0;
+  message->wrap_offset = 0;
+  message->wrap_height = 0;
+  message->wrap_bold = false;
+}
 
 struct SimplyAssist {
   Simply *simply;
@@ -108,6 +132,15 @@ struct SimplyAssist {
   uint8_t tick;
   uint8_t font_size;
   bool thinking;
+  //! An answer is arriving a piece at a time, so the dots belong directly
+  //! under the words rather than alone on a page of their own
+  bool streaming;
+  //! The wearer has scrolled this turn, by button or by finger, and the view
+  //! is theirs until the next thing they say
+  bool user_scrolled;
+  //! The settings menu has taken the screen. It is a JS window, so this one
+  //! has to leave the stack for it, but the conversation is not over.
+  bool awaiting_settings;
   bool dictation_confirm;
   bool backlight;
   bool dark;
@@ -132,7 +165,16 @@ typedef struct AssistMessagePacket AssistMessagePacket;
 struct __attribute__((__packed__)) AssistMessagePacket {
   Packet packet;
   uint8_t role;
+  uint8_t flags;
   char text[];
+};
+
+//! An answer can arrive a piece at a time as the agent writes it, so a message
+//! either starts a new turn or adds to the one already on screen, and either
+//! finishes that turn or leaves it open with more still coming.
+enum {
+  MessageFlagAppend = 1,
+  MessageFlagStreaming = 2,
 };
 
 typedef struct AssistTranscriptPacket AssistTranscriptPacket;
@@ -156,10 +198,31 @@ struct __attribute__((__packed__)) AssistActionPacket {
 
 typedef enum AssistAction {
   AssistActionClosed = 0,
-  AssistActionPipeline = 1,
+  //! The wearer asked for the assist settings. The conversation stays in
+  //! memory while they are away, so it is still here when they come back.
+  AssistActionSettings = 1,
 } AssistAction;
 
-static void prv_reflow(SimplyAssist *self, bool show_thinking);
+//! What the view should be looking at after the conversation changes
+typedef enum AssistFocus {
+  //! The first line of the newest turn
+  AssistFocusMessage,
+  //! The dots, while the phone is still working and there is nothing to read
+  //! yet
+  AssistFocusThinking,
+  //! Nothing at all. An answer arrives far faster than anyone reads it, so
+  //! once its first line is on screen the page belongs to whoever is reading
+  //! it, and the rest piles up below for them to scroll to in their own time.
+  AssistFocusHold,
+} AssistFocus;
+
+static void prv_reflow(SimplyAssist *self, AssistFocus want);
+
+#ifdef SIMPLY_HAS_TOUCH
+//! Defined with the rest of the touch handling, but the teardown up here has
+//! to be able to call off a press that is still being timed
+static void prv_cancel_long_press(void);
+#endif
 
 // MARK: - Conversation storage
 
@@ -171,6 +234,9 @@ static void prv_drop_oldest(SimplyAssist *self) {
   for (uint8_t i = 1; i < self->count; ++i) {
     self->messages[i].offset -= drop;
     self->messages[i - 1] = self->messages[i];
+    // Everything still here has moved up the screen, so on a round display
+    // none of it is the height it was
+    prv_forget_layout(&self->messages[i - 1]);
   }
   self->count--;
 }
@@ -208,6 +274,48 @@ static void prv_append(SimplyAssist *self, uint8_t role, const char *text) {
 //! measures and draws it, then puts the character back
 static char *prv_text(SimplyAssist *self, uint8_t index) {
   return self->arena + self->messages[index].offset;
+}
+
+//! Forget every measured height. A round display wraps each line to the width
+//! the glass allows at that height, so anything that moves a turn up or down
+//! changes how tall it is, and the cached figure no longer describes it.
+static void prv_invalidate_heights(SimplyAssist *self) {
+  for (uint8_t i = 0; i < self->count; ++i) {
+    prv_forget_layout(&self->messages[i]);
+  }
+}
+
+//! Add to the answer already on screen, as it is being written. The turn being
+//! extended is the last one in the arena, so its terminator is the last byte
+//! in use and the new text simply writes over it.
+static void prv_extend(SimplyAssist *self, const char *text) {
+  if (!self->arena || !text || !*text || self->count == 0) { return; }
+
+  AssistMessage *last = &self->messages[self->count - 1];
+  size_t add = strlen(text);
+
+  // One turn may not outgrow what this watch agreed to hold
+  if (last->length + add > ASSIST_MAX_MESSAGE_BYTES) {
+    add = (last->length >= ASSIST_MAX_MESSAGE_BYTES)
+        ? 0 : ASSIST_MAX_MESSAGE_BYTES - last->length;
+    while (add > 0 && (text[add] & 0xC0) == 0x80) { add--; }
+  }
+  if (add == 0) { return; }
+
+  // Older turns give way to the one being written, but never the turn itself
+  while (self->count > 1 && (size_t)(ASSIST_ARENA_SIZE - self->arena_used) < add) {
+    prv_drop_oldest(self);
+    last = &self->messages[self->count - 1];
+  }
+  if ((size_t)(ASSIST_ARENA_SIZE - self->arena_used) < add) { return; }
+
+  memcpy(self->arena + self->arena_used - 1, text, add);
+  self->arena[self->arena_used - 1 + add] = '\0';
+  self->arena_used += add;
+  last->length += add;
+  // Its height is no longer right, but where its last line begins still is,
+  // and that is what makes adding to it cheap
+  last->height = 0;
 }
 
 static const char *prv_role_label(uint8_t role) {
@@ -431,9 +539,18 @@ static void prv_flush_line(Wrapper *w) {
 }
 
 //! Lay out one message body, drawing it when a context is given, and return
-//! how tall it turned out
+//! how tall it turned out.
+//!
+//! `resume` is the turn being laid out, when the whole of it is wanted: it is
+//! picked up from wherever its last line began rather than from its first
+//! word, and left holding the new one. Pass NULL to lay out from the top and
+//! leave the turn's record alone.
+//!
+//! `stop_y` ends the pass once the lines have gone past it. Drawing only needs
+//! what the screen can show, and a long answer is mostly not on it.
 static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
-                             int16_t top, GRect frame) {
+                             int16_t top, GRect frame,
+                             AssistMessage *resume, int16_t stop_y) {
   Wrapper w = {
     .ctx = ctx,
     .frame = frame,
@@ -447,11 +564,27 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
       GTextAlignmentLeft).h;
   if (w.line_height < 8) { w.line_height = self->font_size + 2; }
 
-  prv_begin_line(&w);
-
   bool bold = false;
   bool spaced = false;
   char *p = text;
+
+  // Where the line currently being filled began, which is where a later
+  // append will pick the work up from
+  uint16_t line_offset = 0;
+  int16_t line_height = 0;
+  bool line_bold = false;
+
+  if (resume && resume->wrap_height > 0 && resume->wrap_offset <= resume->length) {
+    p = text + resume->wrap_offset;
+    w.y = top + resume->wrap_height;
+    bold = resume->wrap_bold;
+    line_offset = resume->wrap_offset;
+    line_height = resume->wrap_height;
+    line_bold = bold;
+  }
+
+  prv_begin_line(&w);
+
   while (*p) {
     if (*p == TEXT_BOLD_ON) { bold = true; p++; continue; }
     if (*p == TEXT_BOLD_OFF) { bold = false; p++; continue; }
@@ -502,6 +635,17 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
       }
     }
 
+    if (w.count == 0) {
+      // The first word of a line marks where that line starts
+      line_offset = (uint16_t)(word - text);
+      line_height = w.y - top;
+      line_bold = bold;
+      if (w.y > stop_y) {
+        // Everything from here down is off the bottom of the screen
+        return w.y - top;
+      }
+    }
+
     w.words[w.count] = (LineWord) {
       .text = word, .length = length, .width = width, .gap = gap, .bold = bold,
     };
@@ -510,6 +654,12 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
   }
 
   prv_flush_line(&w);
+
+  if (resume) {
+    resume->wrap_offset = line_offset;
+    resume->wrap_height = line_height;
+    resume->wrap_bold = line_bold;
+  }
   return w.y - top;
 }
 
@@ -585,12 +735,15 @@ static int16_t prv_layout(SimplyAssist *self, GContext *ctx) {
     self->last_message_y = y;
 
     // A turn never measured yet has to be laid out whatever the scroll
-    // position, since its height is what everything below it stands on
+    // position, since its height is what everything below it stands on. Once
+    // it is known, only drawing needs it again, and only if it is on screen:
+    // an answer growing a word at a time must not re-wrap the whole
+    // conversation behind it every time a few more characters land.
     const bool known = (self->messages[i].height > 0);
-    const bool onscreen = !ctx || !known ||
-        (y < view_bottom && y + label_h + self->messages[i].height > view_top);
+    const bool visible = (y < view_bottom &&
+                          y + label_h + self->messages[i].height > view_top);
 
-    if (ctx && onscreen) {
+    if (ctx && (visible || !known)) {
       graphics_context_set_text_color(ctx, prv_role_color(self, role));
       graphics_draw_text(ctx, prv_role_label(role), label_font,
                          GRect(margin, y, width, label_h),
@@ -598,12 +751,19 @@ static int16_t prv_layout(SimplyAssist *self, GContext *ctx) {
     }
     y += label_h + LABEL_GAP;
 
-    if (onscreen) {
-      if (ctx) {
-        graphics_context_set_text_color(ctx, role == AssistRoleError ?
-            prv_role_color(self, role) : prv_foreground(self));
-      }
-      self->messages[i].height = prv_wrap_body(self, ctx, text, y, frame);
+    if (ctx) {
+      graphics_context_set_text_color(ctx, role == AssistRoleError ?
+          prv_role_color(self, role) : prv_foreground(self));
+    }
+
+    if (!known) {
+      // Its height is what everything below it stands on, so it has to be laid
+      // out in full, picking up from its last line if only that has changed
+      self->messages[i].height =
+          prv_wrap_body(self, ctx, text, y, frame, &self->messages[i], INT16_MAX);
+    } else if (ctx && visible) {
+      // Height already known: place only as far down as the screen reaches
+      prv_wrap_body(self, ctx, text, y, frame, NULL, view_bottom);
     }
     y += self->messages[i].height;
     bottom = y;
@@ -622,10 +782,16 @@ static int16_t prv_layout(SimplyAssist *self, GContext *ctx) {
     // peeking over a page edge is worse than none at all. Having claimed a
     // page it sits in the middle of it, rather than clinging to the top edge
     // under the arrow.
-    const int16_t page = frame.size.h;
-    const int16_t used = y % page;
-    if (used > 0 && page - used < 2 * dot_max + MESSAGE_GAP) {
-      y += (page - used) + page / 2 - dot_max;
+    //
+    // None of that applies once an answer has started arriving. The dots are
+    // then saying "this sentence is not finished", and belong directly under
+    // the words they are about, wherever those happen to have reached.
+    if (!self->streaming) {
+      const int16_t page = frame.size.h;
+      const int16_t used = y % page;
+      if (used > 0 && page - used < 2 * dot_max + MESSAGE_GAP) {
+        y += (page - used) + page / 2 - dot_max;
+      }
     }
 #endif
 
@@ -658,7 +824,9 @@ static void prv_dots_update(Layer *layer, GContext *ctx) {
   graphics_context_set_fill_color(ctx, prv_accent(self));
   graphics_context_set_antialiased(ctx, true);
   for (uint8_t i = 0; i < 3; ++i) {
-    const int16_t r = dot_min + WAVE[(self->tick + 2 * i) % 6];
+    // Each dot to the right lags the one before it, so the swell starts on
+    // the left and travels right, the way the words underneath it do
+    const int16_t r = dot_min + WAVE[(self->tick + 2 * (2 - i)) % 6];
     graphics_fill_circle(ctx, GPoint(cx + (i - 1) * spacing, dot_max), r);
   }
 }
@@ -674,7 +842,7 @@ static void prv_content_update(Layer *layer, GContext *ctx) {
 //! phone is working, and the first line of the answer once it lands. Round
 //! shows the page that thing begins on; rectangular puts it at the top of the
 //! view, or as close to it as the end of the conversation allows.
-static void prv_reflow(SimplyAssist *self, bool show_thinking) {
+static void prv_reflow(SimplyAssist *self, AssistFocus want) {
   if (!self->window || !window_is_loaded(self->window)) { return; }
 
   const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
@@ -695,8 +863,29 @@ static void prv_reflow(SimplyAssist *self, bool show_thinking) {
                   GRect(0, self->thinking_y, frame.size.w, 2 * dot_max));
   layer_set_hidden(self->dots_layer, !self->thinking);
 
-  const int16_t focus = (show_thinking && self->thinking) ? self->thinking_y
-                                                          : self->last_message_y;
+  // Text landing below the bottom of the screen changes nothing anyone can
+  // see, and redrawing for it would place the words of every visible line
+  // again for nothing
+  const int16_t view_bottom = -scroll_layer_get_content_offset(
+      self->scroll_layer).y + page;
+  if (want != AssistFocusHold || self->last_message_y <= view_bottom) {
+    layer_mark_dirty(self->content_layer);
+  }
+
+  // An answer arrives faster than anyone reads it, so once its first line is
+  // on screen the rest piles up below rather than dragging the page along
+  if (want == AssistFocusHold) {
+    return;
+  }
+
+  // And the moment the wearer scrolls anywhere themselves, the view is theirs
+  // for the rest of the turn. Nothing that arrives afterwards takes it back.
+  if (self->user_scrolled) {
+    return;
+  }
+
+  const int16_t focus = (want == AssistFocusThinking && self->thinking)
+      ? self->thinking_y : self->last_message_y;
   const int16_t last = content_h - page;
 
   // Round rests only on page boundaries, so show the page the focus begins
@@ -708,7 +897,6 @@ static void prv_reflow(SimplyAssist *self, bool show_thinking) {
   if (target < 0) { target = 0; }
 
   scroll_layer_set_content_offset(self->scroll_layer, GPoint(0, -target), true);
-  layer_mark_dirty(self->content_layer);
 }
 
 // MARK: - Thinking state
@@ -716,7 +904,10 @@ static void prv_reflow(SimplyAssist *self, bool show_thinking) {
 static void prv_think_tick(void *data) {
   SimplyAssist *self = data;
   self->think_timer = NULL;
-  if (!self->thinking) { return; }
+  // The layers are gone while the settings menu has the screen, but the
+  // answer being waited on is not; the animation picks up again on the way
+  // back in rather than being torn down and restarted
+  if (!self->thinking || !self->dots_layer) { return; }
   // Wrapped to the wave's own length, so the phase cannot jump when a plain
   // counter would have rolled over
   self->tick = (self->tick + 1) % 6;
@@ -741,7 +932,7 @@ static void prv_think_timeout(void *data) {
   self->timeout_timer = NULL;
   prv_stop_thinking(self);
   prv_append(self, AssistRoleError, "No response from Home Assistant");
-  prv_reflow(self, false);
+  prv_reflow(self, AssistFocusMessage);
 }
 
 static void prv_start_thinking(SimplyAssist *self) {
@@ -749,6 +940,21 @@ static void prv_start_thinking(SimplyAssist *self) {
   self->thinking = true;
   self->tick = 0;
   self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
+  self->timeout_timer = app_timer_register(THINK_TIMEOUT_MS, prv_think_timeout, self);
+}
+
+//! Something arrived, and more is still coming. The animation carries on from
+//! wherever it had got to rather than jumping back to the start, and the wait
+//! for the phone begins again: an answer that takes a minute to write is not
+//! the same as a phone that has stopped answering.
+static void prv_keep_thinking(SimplyAssist *self) {
+  if (!self->thinking) {
+    prv_start_thinking(self);
+    return;
+  }
+  if (self->timeout_timer && app_timer_reschedule(self->timeout_timer, THINK_TIMEOUT_MS)) {
+    return;
+  }
   self->timeout_timer = app_timer_register(THINK_TIMEOUT_MS, prv_think_timeout, self);
 }
 
@@ -788,9 +994,10 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
 
   if (status == DictationSessionStatusSuccess && transcription && transcription[0]) {
     self->ever_spoke = true;
+    self->user_scrolled = false;
     prv_append(self, AssistRoleUser, transcription);
     prv_start_thinking(self);
-    prv_reflow(self, true);
+    prv_reflow(self, AssistFocusThinking);
     prv_send_transcript(transcription);
     return true;
   }
@@ -821,7 +1028,7 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
   }
 
   self->ever_spoke = true;
-  prv_reflow(self, false);
+  prv_reflow(self, AssistFocusMessage);
   return true;
 }
 
@@ -831,25 +1038,60 @@ static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
   prv_start_dictation(context);
 }
 
-static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
-  SimplyAssist *self = context;
-  // The pipeline picker is a JS menu, and JS windows cannot be pushed over a
-  // native one, so hand the screen back before asking for it
-  prv_send_action(AssistActionPipeline);
+//! Hand the screen to the settings menu. That menu is drawn by JS, and a JS
+//! window replaces whatever is on the stack rather than sitting on top of it,
+//! so this window has to step aside. It keeps everything it is holding: the
+//! conversation is still here when the wearer comes back to it, with whatever
+//! they changed applied to it.
+static void prv_open_settings(SimplyAssist *self) {
+  self->awaiting_settings = true;
+  prv_send_action(AssistActionSettings);
   window_stack_remove(self->window, false);
+}
+
+static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
+  prv_open_settings(context);
+}
+
+//! The press itself always counts. After that the recognizer reports how many
+//! times it has fired, which is how long the button has been held, and nothing
+//! moves until that adds up to a deliberate hold.
+static bool prv_scroll_now(ClickRecognizerRef recognizer) {
+  const uint8_t fired = click_number_of_clicks_counted(recognizer);
+  if (fired <= 1) {
+    return true;
+  }
+  return (uint32_t)(fired - 1) * SCROLL_REPEAT_MS >= SCROLL_HOLD_MS;
+}
+
+// The scroll layer's own handlers do the moving; these only decide when, and
+// note that it was the wearer who asked for it, which is what stops an answer
+// still arriving from taking the view back off them.
+static void prv_scroll_up_click(ClickRecognizerRef recognizer, void *context) {
+  SimplyAssist *self = context;
+  if (!prv_scroll_now(recognizer)) { return; }
+  self->user_scrolled = true;
+  scroll_layer_scroll_up_click_handler(recognizer, self->scroll_layer);
+}
+
+static void prv_scroll_down_click(ClickRecognizerRef recognizer, void *context) {
+  SimplyAssist *self = context;
+  if (!prv_scroll_now(recognizer)) { return; }
+  self->user_scrolled = true;
+  scroll_layer_scroll_down_click_handler(recognizer, self->scroll_layer);
 }
 
 static void prv_click_config_provider(void *context) {
   SimplyAssist *self = context;
-  window_set_click_context(BUTTON_ID_UP, self->scroll_layer);
-  window_set_click_context(BUTTON_ID_DOWN, self->scroll_layer);
+  window_set_click_context(BUTTON_ID_UP, self);
+  window_set_click_context(BUTTON_ID_DOWN, self);
   window_set_click_context(BUTTON_ID_SELECT, self);
   // Repeating, so holding a button keeps going the way it does everywhere
   // else on the watch, rather than needing a press per line
   window_single_repeating_click_subscribe(BUTTON_ID_UP, SCROLL_REPEAT_MS,
-                                          scroll_layer_scroll_up_click_handler);
+                                          prv_scroll_up_click);
   window_single_repeating_click_subscribe(BUTTON_ID_DOWN, SCROLL_REPEAT_MS,
-                                          scroll_layer_scroll_down_click_handler);
+                                          prv_scroll_down_click);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click);
   window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_select_long_click, NULL);
 }
@@ -884,6 +1126,12 @@ static void prv_window_load(Window *window) {
 
   window_set_click_config_provider_with_context(window, prv_click_config_provider, self);
 
+  // Coming back to an answer that is still being written: the dots pick up
+  // where they left off
+  if (self->thinking && !self->think_timer) {
+    self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
+  }
+
 #if defined(PBL_ROUND)
   // The system's own up/down arrows say "there is more this way" in the
   // language the round menus already use
@@ -914,6 +1162,11 @@ static void prv_window_load(Window *window) {
 
 static void prv_window_unload(Window *window) {
   SimplyAssist *self = window_get_user_data(window);
+  // Nothing may be left pointing at layers that are about to go
+  if (self->think_timer) {
+    app_timer_cancel(self->think_timer);
+    self->think_timer = NULL;
+  }
 #if defined(PBL_ROUND)
   layer_destroy(self->indicator_up_layer);
   self->indicator_up_layer = NULL;
@@ -930,10 +1183,18 @@ static void prv_window_unload(Window *window) {
 
 static void prv_window_appear(Window *window) {
   SimplyAssist *self = window_get_user_data(window);
-  prv_reflow(self, self->thinking);
+  // The conversation is coming back from under the dictation window, which
+  // can be dismissing long after an answer has started arriving. Nothing
+  // moved while it was covered, so this only has to measure and draw what is
+  // there: deciding where to look again here would drag the view off
+  // whatever the wearer is in the middle of reading.
+  prv_reflow(self, AssistFocusHold);
 }
 
 static void prv_destroy(SimplyAssist *self) {
+#ifdef SIMPLY_HAS_TOUCH
+  prv_cancel_long_press();
+#endif
   prv_stop_thinking(self);
   window_destroy(self->window);
   self->simply->assist = NULL;
@@ -954,6 +1215,11 @@ static void prv_window_disappear(Window *window) {
   // That is not the conversation ending, so hold everything and wait for it
   // to come back.
   if (simply_voice_dictation_in_progress()) { return; }
+  // Nor is stepping aside for the settings menu
+  if (self->awaiting_settings) {
+    self->awaiting_settings = false;
+    return;
+  }
   if (self->destroying) { return; }
   self->destroying = true;
   prv_stop_thinking(self);
@@ -1002,19 +1268,31 @@ static void prv_handle_show(Simply *simply, Packet *data) {
     simply->assist = self;
   }
 
+  // A different size means every turn wraps differently, so nothing measured
+  // under the old one still describes it
+  if (self->font_size != (packet->font_size ? packet->font_size : 18)) {
+    prv_invalidate_heights(self);
+  }
   self->font_size = packet->font_size ? packet->font_size : 18;
+  self->streaming = false;
+  self->user_scrolled = false;
   self->dictation_confirm = (packet->flags & 1);
   self->backlight = (packet->flags & 2);
   self->dark = (packet->flags & 4);
+  //! Whether to open the microphone straight away. Coming back from the
+  //! settings menu should land on the conversation, not on the dictation UI.
+  const bool listen = (packet->flags & 8);
   window_set_background_color(self->window, self->dark ? GColorBlack : GColorWhite);
 
   if (!window_stack_contains_window(self->window)) {
     window_stack_push(self->window, false);
   }
-  prv_reflow(self, false);
+  prv_reflow(self, AssistFocusMessage);
   // Opening Assist means the wearer wants to say something, so go straight to
   // the microphone rather than making them press select first
-  prv_start_dictation(self);
+  if (listen) {
+    prv_start_dictation(self);
+  }
 }
 
 static void prv_handle_message(Simply *simply, Packet *data) {
@@ -1022,13 +1300,37 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   if (!self || self->destroying) { return; }
   AssistMessagePacket *packet = (AssistMessagePacket *)data;
 
-  // An answer, however it turned out, ends the wait
-  prv_stop_thinking(self);
-  prv_append(self, packet->role, packet->text);
-  self->ever_spoke = true;
-  prv_reflow(self, false);
+  const bool streaming = (packet->flags & MessageFlagStreaming);
+  // Only a turn of the same voice can be added to, so a message that arrives
+  // late from an answer already finished with cannot graft itself onto the
+  // wrong speaker
+  const bool append = (packet->flags & MessageFlagAppend) && self->count > 0 &&
+      self->messages[self->count - 1].role == packet->role;
 
-  if (self->backlight) {
+  if (streaming) {
+    // Still writing. The dots carry on underneath, and the clock that gives up
+    // on a silent phone starts again from this piece rather than from the
+    // question, so a long answer is never mistaken for a dead one.
+    prv_keep_thinking(self);
+  } else {
+    prv_stop_thinking(self);
+  }
+  self->streaming = streaming;
+
+  if (append) {
+    prv_extend(self, packet->text);
+  } else {
+    prv_append(self, packet->role, packet->text);
+  }
+  self->ever_spoke = true;
+
+  // The first line of an answer is worth moving to. Everything after it is
+  // landing under the reader's eyes at several words a second, so the page
+  // stays where they left it and the arrow at the edge says there is more.
+  prv_reflow(self, append ? AssistFocusHold : AssistFocusMessage);
+
+  // Light up for an answer arriving, but not for every piece of one
+  if (self->backlight && !append) {
     light_enable_interaction();
   }
 }
@@ -1069,6 +1371,10 @@ bool simply_assist_handle_packet(Simply *simply, Packet *packet) {
 //! How far a fling carries: the liftoff speed projected this far forward
 #define TOUCH_FLING_MS 300
 
+//! Holding a finger still this long asks for the settings, the same as
+//! holding the select button. Kept in step with simply_touch.c.
+#define TOUCH_LONG_PRESS_MS 500
+
 typedef enum {
   AssistTouchIdle = 0,
   AssistTouchPending,   // finger down, gesture undecided
@@ -1076,6 +1382,7 @@ typedef enum {
 } AssistTouchMode;
 
 static AssistTouchMode s_touch_mode = AssistTouchIdle;
+static AppTimer *s_touch_long_press = NULL;
 static int16_t s_touch_down_x, s_touch_down_y;
 #if !defined(PBL_ROUND)
 //! Where the conversation stood when the finger landed, so a slide can be
@@ -1137,6 +1444,23 @@ static void prv_fling(SimplyAssist *self) {
 }
 #endif
 
+static void prv_cancel_long_press(void) {
+  if (s_touch_long_press) {
+    app_timer_cancel(s_touch_long_press);
+    s_touch_long_press = NULL;
+  }
+}
+
+static void prv_long_press_timeout(void *data) {
+  SimplyAssist *self = data;
+  s_touch_long_press = NULL;
+  // Still holding still on the conversation, having not turned into a drag or
+  // a swipe: the same thing holding select does
+  if (s_touch_mode != AssistTouchPending) { return; }
+  s_touch_mode = AssistTouchIdle;
+  prv_open_settings(self);
+}
+
 bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
   SimplyAssist *self = simply->assist;
   // Only while the conversation is the window actually on screen. Without this
@@ -1148,11 +1472,14 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
 
   switch (event->type) {
     case TouchEvent_Touchdown:
+      prv_cancel_long_press();
       if (event->non_navigational) {
         s_touch_mode = AssistTouchIdle;
         return true;
       }
       s_touch_mode = AssistTouchPending;
+      s_touch_long_press =
+          app_timer_register(TOUCH_LONG_PRESS_MS, prv_long_press_timeout, self);
       s_touch_down_x = event->x;
       s_touch_down_y = event->y;
       s_touch_down_ms = prv_now_ms();
@@ -1164,6 +1491,11 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
       return true;
 
     case TouchEvent_PositionUpdate:
+      if (abs(event->x - s_touch_down_x) >= TOUCH_TAP_SLOP ||
+          abs(event->y - s_touch_down_y) >= TOUCH_TAP_SLOP) {
+        // Too much travel to still be a finger held in one place
+        prv_cancel_long_press();
+      }
       if (s_touch_mode == AssistTouchPending &&
           abs(event->y - s_touch_down_y) >= TOUCH_DRAG_START) {
         s_touch_mode = AssistTouchDrag;
@@ -1185,6 +1517,7 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
       s_touch_last_ms = prv_now_ms();
 
       if (s_touch_mode == AssistTouchDrag) {
+        self->user_scrolled = true;
         const int16_t y = prv_clamp_offset(
             self, s_touch_down_offset.y + (event->y - s_touch_down_y));
         scroll_layer_set_content_offset(self->scroll_layer, GPoint(0, y), false);
@@ -1193,6 +1526,7 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
       return true;
 
     case TouchEvent_Liftoff: {
+      prv_cancel_long_press();
       const AssistTouchMode mode = s_touch_mode;
       s_touch_mode = AssistTouchIdle;
 
@@ -1207,6 +1541,7 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
         // One drag, one page, however far the finger actually went. Anything
         // shorter than a deliberate swipe leaves the page where it was.
         if (ady >= TOUCH_SWIPE_MIN && ady > adx) {
+          self->user_scrolled = true;
           prv_swipe_scroll(self, prv_position(self), dy);
         }
 #else
@@ -1233,6 +1568,7 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
       // A flick quick enough to arrive without any movement in between still
       // scrolls, so a fast swipe is never swallowed
       if (ady >= TOUCH_SWIPE_MIN && ady > adx) {
+        self->user_scrolled = true;
         prv_swipe_scroll(self, prv_position(self), dy);
       }
       return true;

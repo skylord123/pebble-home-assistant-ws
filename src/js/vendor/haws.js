@@ -708,8 +708,16 @@ class HAWS {
         return this.send({ type: 'assist_pipeline/pipeline/list' }, successCallback, errorCallback);
     }
 
-    // Add new method for running pipeline
-    runPipeline(data, successCallback, errorCallback) {
+    /**
+     * Run an assist pipeline.
+     *
+     * `progressCallback` is optional and only ever called where Home Assistant
+     * streams the answer as the agent writes it (intent-progress events, core
+     * 2025.3 and later). It receives each new piece of text on its own; an
+     * older instance simply never sends them and the answer arrives whole at
+     * the end as it always did.
+     */
+    runPipeline(data, successCallback, errorCallback, progressCallback) {
         const msg = {
             type: 'assist_pipeline/run',
             ...data
@@ -755,6 +763,19 @@ class HAWS {
                         });
                     }
                     this.unsubscribe(subscriptionId);
+                    return;
+                }
+
+                // A piece of the answer, while the agent is still writing it.
+                // The delta carries whatever the agent felt like reporting,
+                // including its own private reasoning under other keys, so
+                // only actual answer text is taken and only when it is text.
+                if (event.type === 'intent-progress' && progressCallback &&
+                    event.data && event.data.chat_log_delta) {
+                    const piece = event.data.chat_log_delta.content;
+                    if (typeof piece === 'string' && piece.length) {
+                        progressCallback(piece);
+                    }
                     return;
                 }
 

@@ -177,9 +177,14 @@ function showDomainFilterSettings() {
 
 /**
  * Show voice assistant settings menu
+ *
+ * `onClose` is called when the wearer leaves the menu for good, which is how
+ * the assist conversation knows to come back with whatever was changed. Going
+ * deeper into the pipeline picker hides this menu too, and does not count.
  */
-function showVoiceAssistantSettings() {
+function showVoiceAssistantSettings(onClose) {
     var appState = AppState.getInstance();
+    var goingDeeper = false;
 
     var voiceSettingsMenu = new UI.Menu({
         status: false,
@@ -242,6 +247,7 @@ function showVoiceAssistantSettings() {
             title: "Pipeline",
             subtitle: currentAgentName,
             on_click: function(e) {
+                goingDeeper = true;
                 showVoicePipelineMenu();
             }
         });
@@ -256,9 +262,28 @@ function showVoiceAssistantSettings() {
                 updateMenuItems();
             }
         });
+
+        // Whether the reply is shown building up or only once it is finished
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Stream Reply",
+            subtitle: appState.assist_stream_reply ? "True" : "False",
+            on_click: function(e) {
+                appState.assist_stream_reply = !appState.assist_stream_reply;
+                Settings.option('assist_stream_reply', appState.assist_stream_reply);
+                updateMenuItems();
+            }
+        });
     }
 
-    voiceSettingsMenu.on('show', updateMenuItems);
+    voiceSettingsMenu.on('show', function() {
+        goingDeeper = false;
+        updateMenuItems();
+    });
+
+    voiceSettingsMenu.on('hide', function() {
+        if (goingDeeper || !onClose) { return; }
+        onClose();
+    });
     voiceSettingsMenu.on('select', function(e) {
         if (typeof e.item.on_click === 'function') {
             e.item.on_click(e);

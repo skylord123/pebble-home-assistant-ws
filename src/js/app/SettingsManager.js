@@ -29,6 +29,7 @@ var SettingsManager = {
         appState.voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
         appState.voice_confirm = Settings.option('voice_confirm');
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
+        appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 
         // Quick launch settings

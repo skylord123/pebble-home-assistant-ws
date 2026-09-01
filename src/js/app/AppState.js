@@ -21,9 +21,15 @@ class AppState {
         this.ha_refresh_interval = 15;
         this.ha_order_by = 'attributes.friendly_name';
         this.ha_order_dir = 'asc';
+        // Reported by Home Assistant when the socket authenticates, and used
+        // to decide which of its newer conversation features are there to use
+        this.ha_version = null;
         this.voice_enabled = null;
         this.voice_confirm = null;
         this.voice_backlight_trigger = true;
+        // Show the assistant's reply building up as it is written, rather
+        // than waiting for the whole of it
+        this.assist_stream_reply = true;
         this.voice_agent = null;
         this.quick_launch_behavior = 'main_menu';
         this.quick_launch_favorite_entity = null;

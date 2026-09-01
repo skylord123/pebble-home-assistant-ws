@@ -867,6 +867,7 @@ var AssistHidePacket = new struct([
 var AssistMessagePacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'role'],
+  ['uint8', 'flags'],
   ['cstring', 'text', StringType],
 ]);
 
@@ -1669,7 +1670,8 @@ SimplyPebble.numberSelectorValue = function(value) {
 SimplyPebble.assistShow = function(opts) {
   AssistShowPacket
     .fontSize(opts.fontSize || 18)
-    .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0));
+    .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0) |
+           (opts.listen ? 8 : 0));
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 
@@ -1677,8 +1679,8 @@ SimplyPebble.assistHide = function() {
   SimplyPebble.sendPacket(AssistHidePacket);
 };
 
-SimplyPebble.assistMessage = function(role, text) {
-  AssistMessagePacket.role(role).text(text);
+SimplyPebble.assistMessage = function(role, text, flags) {
+  AssistMessagePacket.role(role).flags(flags || 0).text(text);
   SimplyPebble.sendPacket(AssistMessagePacket);
 };
 

@@ -164,6 +164,7 @@ var ConnectionService = {
 
         appState.haws.on('auth_ok', function(evt) {
             log("ws auth_ok: " + JSON.stringify(evt));
+            appState.ha_version = (evt.detail && evt.detail.ha_version) || null;
             if (self.onAuthOk) {
                 self.onAuthOk(evt);
             }

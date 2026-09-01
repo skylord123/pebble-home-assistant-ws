@@ -9,15 +9,18 @@ var simply = require('ui/simply');
  * anything: this side exists to carry the transcript to Home Assistant and
  * the answer back.
  *
- * Assist.show({ fontSize, confirm, backlight, dark, onTranscript, onPipeline,
- *               onClose })
+ * Assist.show({ fontSize, confirm, backlight, dark, listen, onTranscript,
+ *               onSettings, onClose })
  *   onTranscript(text) - the wearer said something. Run the pipeline and
- *                        answer with Assist.reply() or Assist.error(); the
- *                        watch is already showing its thinking animation and
- *                        stops as soon as either arrives.
- *   onPipeline()       - the wearer held select to change pipeline. The watch
- *                        has already given the screen back, so a JS window
- *                        can be pushed.
+ *                        answer with Assist.reply(), or stream it in with
+ *                        Assist.streamReply() and Assist.endReply(); the watch
+ *                        is already showing its thinking animation and keeps
+ *                        it running until the answer is finished.
+ *   onSettings()       - the wearer held select, or a finger on the screen, to
+ *                        change the assist settings. The watch has stepped
+ *                        aside so a JS window can be pushed, and is still
+ *                        holding the conversation: show() brings it back with
+ *                        whatever was changed applied to it.
  *   onClose()          - the conversation left the screen.
  */
 var Assist = {};
@@ -25,7 +28,7 @@ var Assist = {};
 var state = {
   active: false,
   onTranscript: null,
-  onPipeline: null,
+  onSettings: null,
   onClose: null,
 };
 
@@ -34,6 +37,10 @@ var state = {
 // from here.
 var RoleAssistant = 1;
 var RoleError = 2;
+
+// Must match the flags in simply_assist.c
+var FlagAppend = 1;      // add to the answer already on screen
+var FlagStreaming = 2;   // more is coming, keep the dots running
 
 // Must match TEXT_BOLD_ON/OFF in simply_assist.c. Home Assistant's
 // conversation agents answer in markdown, and the watch has no business
@@ -58,56 +65,102 @@ function utf8Length(text) {
   return unescape(encodeURIComponent(text)).length;
 }
 
-function truncate(text) {
-  if (utf8Length(text) <= replyLimit) {
+//! Whether `text` begins with `prefix`. indexOf would scan the whole string
+//! looking for a later match it can never need, which on an answer of several
+//! thousand characters is work squared for no reason.
+function startsWith(text, prefix) {
+  return prefix.length <= text.length &&
+      text.substring(0, prefix.length) === prefix;
+}
+
+//! Longest prefix of `text` that fits in `budget` bytes
+function prefixWithinBytes(text, budget) {
+  if (utf8Length(text) <= budget) {
     return text;
   }
-
-  // Longest prefix that fits, leaving room for the ellipsis
   var lo = 0;
   var hi = text.length;
   while (lo < hi) {
     var mid = (lo + hi + 1) >> 1;
-    if (utf8Length(text.substring(0, mid)) <= replyLimit - 4) {
+    if (utf8Length(text.substring(0, mid)) <= budget) {
       lo = mid;
     } else {
       hi = mid - 1;
     }
   }
+  return text.substring(0, lo);
+}
 
-  var cut = text.substring(0, lo);
+function truncate(text) {
+  if (utf8Length(text) <= replyLimit) {
+    return text;
+  }
+
+  var cut = prefixWithinBytes(text, replyLimit - 4);
 
   // Land on a word boundary rather than part way through one
   var space = cut.search(/\s\S*$/);
-  if (space > 0 && space > lo - 40) {
+  if (space > 0 && space > cut.length - 40) {
     cut = cut.substring(0, space);
   }
 
   // A cut inside an emphasised phrase would leave the rest of the answer bold
-  var opens = cut.split(BOLD_ON).length;
-  var closes = cut.split(BOLD_OFF).length;
-  if (opens > closes) {
+  if (cut.split(BOLD_ON).length > cut.split(BOLD_OFF).length) {
     cut += BOLD_OFF;
   }
 
   return cut + '…';
 }
 
-function toWatchText(markdown) {
+// Syntax that has arrived but cannot be read yet: a lone asterisk that may be
+// about to become a pair, a backtick with nothing behind it, or a line so far
+// consisting only of the characters that introduce a heading or a bullet.
+// Holding these back costs a character or two of punctuation and never a
+// character of text, and it is what keeps a growing answer append-only.
+function dropPendingSyntax(text) {
+  // A run of emphasis or code marks with nothing behind it yet. The whole run
+  // has to go: leaving half of a "**" behind would put a literal asterisk on
+  // screen and then take it away again a moment later.
+  var out = text.replace(/[`*_]+$/, '');
+  // A line that so far consists only of what introduces a heading or a bullet
+  return out.replace(/(^|\n)[ \t]*[#\-*+`]*[ \t]*$/, '$1');
+}
+
+/**
+ * Convert an agent's markdown into the watch's inline weight markers.
+ *
+ * `open` says the answer is still arriving, so its last line is a sentence in
+ * progress rather than a finished one. That single difference is what lets a
+ * growing answer be sent as a series of appends: emphasis or a heading that
+ * has opened but not yet closed emits its bold-on marker and nothing else, so
+ * the words inside it show in bold the moment they arrive and the closing
+ * marker is simply appended later when the agent gets there. Converting a
+ * longer buffer therefore always begins with the conversion of the shorter
+ * one, and the watch is only ever told what is new.
+ */
+function toWatchText(markdown, open) {
     if (markdown === undefined || markdown === null) {
         return '';
     }
 
     // Markers are ours alone; anything arriving with them is not to be trusted
-    var lines = String(markdown).replace(/[\u0001\u0002]/g, '').split('\n');
+    var source = String(markdown).replace(/[\u0001\u0002]/g, '');
+    if (open) {
+        source = dropPendingSyntax(source);
+    }
+
+    var lines = source.split('\n');
 
     for (var i = 0; i < lines.length; i++) {
         var line = lines[i].replace(/\s+$/, '');
+        // Only the very last line of a streaming answer is unfinished. Every
+        // line above it has had its newline, so it is closed like any other.
+        var unfinished = open && (i === lines.length - 1);
 
         // A heading is just a bold line on a screen this size
         var heading = /^\s*#{1,6}\s+(.*)$/.exec(line);
         if (heading) {
-            line = '**' + heading[1] + '**';
+            line = unfinished ? BOLD_ON + heading[1] : '**' + heading[1] + '**';
         }
 
         // Bullets become real ones. This runs before the emphasis pass so a
@@ -119,31 +172,66 @@ function toWatchText(markdown) {
         line = line.replace(/\*\*([^*]+)\*\*/g, BOLD_ON + '$1' + BOLD_OFF);
         line = line.replace(/__([^_]+)__/g, BOLD_ON + '$1' + BOLD_OFF);
 
-        // Whatever syntax is left was never a pair, so it is literal text
-        line = line.replace(/\*\*/g, '').replace(/__/g, '');
+        // Whatever syntax is left never found its partner. On the line still
+        // being written that is only because the closer has not arrived yet,
+        // so emphasis starts here and runs to the end of what there is; when
+        // the line is finished it is closed off at the end of that line rather
+        // than left to bleed through the rest of the answer. A lone backtick
+        // reads as the plain word it was wrapping either way.
+        line = line.replace(/\*\*|__/g, BOLD_ON).replace(/`/g, '');
+        if (!unfinished &&
+            line.split(BOLD_ON).length > line.split(BOLD_OFF).length) {
+            line += BOLD_OFF;
+        }
 
         lines[i] = line;
     }
 
     // One blank line is a paragraph break on the watch; more is just air
-    return truncate(
-        lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+|\n+$/g, ''));
+    var out = lines.join('\n').replace(/\n{3,}/g, '\n\n').replace(/^\n+/, '');
+    return open ? out.replace(/\n+$/, '') : truncate(out.replace(/\n+$/, ''));
 }
 
 // Must match AssistAction in simply_assist.c
 var ActionClosed = 0;
-var ActionPipeline = 1;
+var ActionSettings = 1;
 
+// The answer being streamed in: what the agent has written so far, and how
+// much of the converted form the watch has already been told about.
+var stream = {
+  raw: '',
+  sent: '',
+  started: false,
+  full: false,
+};
+
+function resetStream() {
+  stream.raw = '';
+  stream.sent = '';
+  stream.started = false;
+  stream.full = false;
+}
+
+/**
+ * Put the conversation on screen.
+ *
+ * `listen` opens the microphone straight away, which is what starting a
+ * conversation means. Leave it off to come back to one already in progress,
+ * such as returning from the settings menu: the watch still has everything
+ * that was said and will show it again with the new settings applied.
+ */
 Assist.show = function(opts) {
   state.active = true;
   state.onTranscript = opts.onTranscript;
-  state.onPipeline = opts.onPipeline;
+  state.onSettings = opts.onSettings;
   state.onClose = opts.onClose;
+  resetStream();
   simply.impl.assistShow({
     fontSize: opts.fontSize || 18,
     confirm: !!opts.confirm,
     backlight: !!opts.backlight,
     dark: !!opts.dark,
+    listen: opts.listen !== false,
   });
 };
 
@@ -152,20 +240,108 @@ Assist.hide = function() {
   simply.impl.assistHide();
 };
 
+/** A new turn is starting, so nothing of the last answer carries into it. */
+Assist.beginReply = function() {
+  resetStream();
+};
+
 /**
- * Home Assistant answered. Ends the thinking animation. The text is whatever
- * the conversation agent wrote, markdown and all; it is reduced to plain words
- * and bold spans on the way down.
+ * The agent has written more of its answer. Pass everything it has written so
+ * far, markdown and all; only what is new reaches the watch, and the thinking
+ * dots stay running underneath it until endReply.
+ *
+ * @returns {boolean} false once the answer has filled the watch, so the caller
+ *   can stop bothering to convert the rest of it
+ */
+Assist.streamReply = function(accumulatedMarkdown) {
+  if (!state.active || stream.full) { return false; }
+
+  stream.raw = accumulatedMarkdown;
+  var text = toWatchText(accumulatedMarkdown, true);
+
+  // Converting a longer answer always yields a longer version of the same
+  // text, so this only ever has something new on the end. If some markdown
+  // ever manages to break that, replacing what is on screen is still correct,
+  // just less tidy, and it must never be allowed to send a retraction as if
+  // it were an addition.
+  var append = startsWith(text, stream.sent);
+  var addition = append ? text.substring(stream.sent.length) : text;
+  if (!addition && append) { return true; }
+
+  // Room left for this answer, keeping back enough for the ellipsis that says
+  // it was cut short
+  var budget = replyLimit - utf8Length(append ? stream.sent : '') - 4;
+  if (budget <= 0) {
+    stream.full = true;
+    return false;
+  }
+  if (utf8Length(addition) > budget) {
+    var cut = prefixWithinBytes(addition, budget);
+    var space = cut.search(/\s\S*$/);
+    if (space > 0 && space > cut.length - 40) {
+      cut = cut.substring(0, space);
+    }
+    addition = cut + '…';
+    stream.full = true;
+  }
+
+  // Filling the watch ends the answer as far as it is concerned: the rest is
+  // never going to be shown, so the dots stop here rather than waiting on a
+  // phone that has stopped talking to it.
+  var flags = (stream.full ? 0 : FlagStreaming) |
+      ((stream.started && append) ? FlagAppend : 0);
+  simply.impl.assistMessage(RoleAssistant, addition, flags);
+  stream.started = true;
+  stream.sent = append ? stream.sent + addition : addition;
+  return !stream.full;
+};
+
+/**
+ * The agent has finished. Ends the thinking animation, and sends the answer in
+ * one piece if none of it was streamed.
+ */
+Assist.endReply = function(markdown) {
+  if (!state.active) { return; }
+
+  if (!stream.started) {
+    simply.impl.assistMessage(RoleAssistant, toWatchText(markdown), 0);
+    return;
+  }
+
+  // An answer that already filled the watch was finished off when it did, and
+  // saying so twice would only start a second empty turn
+  if (stream.full) {
+    resetStream();
+    return;
+  }
+
+  // Whatever is on screen was built from the same text the agent has just
+  // finished writing, so all that is left is to say so and stop the dots. The
+  // closed conversion can differ from the open one by a trailing marker, so
+  // any last scrap of it goes down with the same append.
+  var text = toWatchText(markdown);
+  var addition = startsWith(text, stream.sent)
+      ? text.substring(stream.sent.length) : '';
+  simply.impl.assistMessage(RoleAssistant, addition, FlagAppend);
+  resetStream();
+};
+
+/**
+ * Home Assistant answered in one piece. Ends the thinking animation. The text
+ * is whatever the conversation agent wrote, markdown and all; it is reduced to
+ * plain words and bold spans on the way down.
  */
 Assist.reply = function(markdown) {
   if (!state.active) { return; }
-  simply.impl.assistMessage(RoleAssistant, toWatchText(markdown));
+  resetStream();
+  simply.impl.assistMessage(RoleAssistant, toWatchText(markdown), 0);
 };
 
 /** Something went wrong. Also ends the thinking animation. */
 Assist.error = function(text) {
   if (!state.active) { return; }
-  simply.impl.assistMessage(RoleError, toWatchText(text));
+  resetStream();
+  simply.impl.assistMessage(RoleError, toWatchText(text), 0);
 };
 
 /** The watch reporting how long an answer it can hold, in bytes. */
@@ -180,17 +356,18 @@ Assist.emitTranscript = function(text) {
 };
 
 Assist.emitAction = function(action) {
-  if (action === ActionPipeline) {
-    if (state.onPipeline) {
-      state.onPipeline();
+  if (action === ActionSettings) {
+    if (state.onSettings) {
+      state.onSettings();
     }
     return;
   }
   if (action === ActionClosed) {
     var onClose = state.onClose;
     state.active = false;
+    resetStream();
     state.onTranscript = null;
-    state.onPipeline = null;
+    state.onSettings = null;
     state.onClose = null;
     if (onClose) {
       onClose();

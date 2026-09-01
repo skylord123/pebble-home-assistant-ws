@@ -105,11 +105,53 @@ function describeError(error) {
 }
 
 /**
+ * Home Assistant reports its version when the socket authenticates. Streaming
+ * answers as the agent writes them arrived in core 2025.3; an older instance
+ * never sends the events at all, so nothing would break either way, but asking
+ * for something a version cannot do is worth not doing.
+ */
+var STREAMING_SINCE = [2025, 3];
+
+function supportsStreaming(version) {
+    var parts = /^(\d+)\.(\d+)/.exec(String(version || ''));
+    if (!parts) {
+        return false;
+    }
+    var year = parseInt(parts[1], 10);
+    var month = parseInt(parts[2], 10);
+    return year > STREAMING_SINCE[0] ||
+        (year === STREAMING_SINCE[0] && month >= STREAMING_SINCE[1]);
+}
+
+// An agent can write faster than Bluetooth wants to be spoken to, and a local
+// model can emit a word at a time. Pieces that land together inside this many
+// milliseconds go down as one, which is short enough to read as live and long
+// enough that a fast writer cannot flood the link.
+var STREAM_COALESCE_MS = 120;
+
+var streamTimer = null;
+var streamText = '';
+
+function cancelStream() {
+    if (streamTimer) {
+        clearTimeout(streamTimer);
+        streamTimer = null;
+    }
+    streamText = '';
+}
+
+function flushStream() {
+    streamTimer = null;
+    if (streamText) {
+        Assist.streamReply(streamText);
+    }
+}
+
+/**
  * Run one turn of the conversation through Home Assistant
  */
 function runPipeline(transcription) {
     var appState = AppState.getInstance();
-
 
     var body = {
         start_stage: "intent",
@@ -122,29 +164,84 @@ function runPipeline(transcription) {
         timeout: 30
     };
 
-    helpers.log_message("Sending assist_pipeline/run request");
+    cancelStream();
+    Assist.beginReply();
+
+    var streaming = appState.assist_stream_reply !== false &&
+        supportsStreaming(appState.ha_version);
+    var onProgress = streaming ? function(piece) {
+        streamText += piece;
+        if (!streamTimer) {
+            streamTimer = setTimeout(flushStream, STREAM_COALESCE_MS);
+        }
+    } : null;
+
+    helpers.log_message("Sending assist_pipeline/run request" +
+        (streaming ? " (streaming)" : ""));
     appState.haws.runPipeline(body,
         function(data) {
+            if (streamTimer) {
+                clearTimeout(streamTimer);
+                streamTimer = null;
+            }
+
             if (!data.success) {
+                cancelStream();
                 Assist.error('Request failed');
                 return;
             }
 
             try {
-                Assist.reply(data.response.speech.plain.speech);
+                var speech = data.response.speech.plain.speech;
+                // Whatever was streamed came from this same answer, so ending
+                // on it settles any last piece and stops the dots. Nothing
+                // streamed and it goes down whole, exactly as it used to.
+                Assist.endReply(speech);
+                cancelStream();
                 if (data.conversation_id) {
                     conversation_id = data.conversation_id;
                 }
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
+                cancelStream();
                 Assist.error('Invalid response from Home Assistant');
             }
         },
         function(error) {
             helpers.log_message("assist_pipeline/run error: " + JSON.stringify(error));
+            cancelStream();
             Assist.error(describeError(error));
-        }
+        },
+        onProgress
     );
+}
+
+/**
+ * Put the conversation on screen with the settings as they stand.
+ *
+ * `listen` opens the microphone, which is what starting a conversation means.
+ * Coming back from the settings menu leaves it off: the watch still holds
+ * everything that was said, and shows it again with whatever was changed.
+ */
+function openAssist(listen) {
+    var appState = AppState.getInstance();
+
+    Assist.show({
+        fontSize: Settings.option('voice_font_size') || 18,
+        confirm: appState.voice_confirm,
+        backlight: appState.voice_backlight_trigger,
+        // Every menu in the app is white on black, so the conversation is too
+        dark: true,
+        listen: listen,
+        onTranscript: runPipeline,
+        onSettings: function() {
+            // Imported inline to avoid a circular dependency
+            var SettingsMenuPage = require('app/pages/SettingsMenuPage');
+            SettingsMenuPage.showVoiceAssistantSettings(function() {
+                openAssist(false);
+            });
+        }
+    });
 }
 
 /**
@@ -171,20 +268,8 @@ function showAssistMenu() {
     // Each visit to the screen is a fresh conversation, the same as it has
     // always been; the watch throws its own transcript away at the same time
     conversation_id = null;
-
-    Assist.show({
-        fontSize: Settings.option('voice_font_size') || 18,
-        confirm: appState.voice_confirm,
-        backlight: appState.voice_backlight_trigger,
-        // Every menu in the app is white on black, so the conversation is too
-        dark: true,
-        onTranscript: runPipeline,
-        onPipeline: function() {
-            // Imported inline to avoid a circular dependency
-            var SettingsMenuPage = require('app/pages/SettingsMenuPage');
-            SettingsMenuPage.showVoicePipelineMenu();
-        }
-    });
+    cancelStream();
+    openAssist(true);
 }
 
 module.exports.showAssistMenu = showAssistMenu;
