@@ -123,10 +123,6 @@ function showCoverEntity(entity_id) {
     // Create the cover menu
     let coverMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: coverData.friendly_name
         }]

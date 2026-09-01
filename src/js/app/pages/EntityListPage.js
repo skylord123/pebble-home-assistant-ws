@@ -32,10 +32,6 @@ class EntityListPage extends BasePage {
     createMenu() {
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: this.title
             }]
@@ -445,10 +441,6 @@ function showEntityDomainsFromList(entityIdList, title) {
 
     var domainListMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: title ? title : "Home Assistant"
         }]

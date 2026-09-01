@@ -11,6 +11,7 @@ var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var InactivityTimer = require('app/InactivityTimer');
 var Touch = require('ui/touch');
+var Theme = require('app/ui/Theme');
 
 class SettingsMenuPage extends BasePage {
     constructor() {
@@ -20,10 +21,6 @@ class SettingsMenuPage extends BasePage {
     createMenu() {
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Settings',
                 backgroundColor: Constants.colour.highlight,
@@ -71,6 +68,14 @@ class SettingsMenuPage extends BasePage {
         });
 
         this.menu.item(0, i++, {
+            title: "Menu Background",
+            subtitle: Theme.describe(appState.menu_background_mode),
+            on_click: function(e) {
+                showBackgroundMenu('Menu Background', 'menu_background_mode');
+            }
+        });
+
+        this.menu.item(0, i++, {
             title: "Inactivity Timeout",
             subtitle: formatInactivityTimeout(appState.inactivity_timeout),
             on_click: function(e) {
@@ -98,6 +103,56 @@ class SettingsMenuPage extends BasePage {
 }
 
 /**
+ * Show the background picker for one of the background settings.
+ *
+ * The choice applies the moment it is made, so the menu the wearer is standing
+ * in changes colour under them and they can see what they picked.
+ *
+ * @param {string} title - Section title for the picker
+ * @param {string} key - Which setting this picks: 'menu_background_mode' or
+ *                       'assist_background_mode'
+ */
+function showBackgroundMenu(title, key) {
+    var appState = AppState.getInstance();
+
+    var backgroundMenu = new UI.Menu({
+        status: false,
+        sections: [{
+            title: title
+        }]
+    });
+
+    function updateMenuItems() {
+        var modes = Theme.all();
+        var items = [];
+
+        for (var i = 0; i < modes.length; i++) {
+            items.push({
+                title: Theme.label(modes[i]),
+                subtitle: appState[key] === modes[i] ? 'Current' : '',
+                value: modes[i]
+            });
+        }
+
+        backgroundMenu.items(0, items);
+    }
+
+    backgroundMenu.on('show', updateMenuItems);
+
+    backgroundMenu.on('select', function(e) {
+        appState[key] = e.item.value;
+        Settings.option(key, e.item.value);
+        Theme.configure();
+        updateMenuItems();
+        setTimeout(function() {
+            backgroundMenu.hide();
+        }, 500);
+    });
+
+    backgroundMenu.show();
+}
+
+/**
  * Show domain filter settings menu
  */
 function showDomainFilterSettings() {
@@ -105,10 +160,6 @@ function showDomainFilterSettings() {
 
     var domainFilterMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Ignored Domains'
         }]
@@ -188,10 +239,6 @@ function showVoiceAssistantSettings(onClose) {
 
     var voiceSettingsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Assistant Settings'
         }]
@@ -273,6 +320,17 @@ function showVoiceAssistantSettings(onClose) {
                 updateMenuItems();
             }
         });
+
+        // The conversation is set apart from the menus, so a white app can
+        // still have a dark screen to read a long answer on
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Background",
+            subtitle: Theme.describe(appState.assist_background_mode),
+            on_click: function(e) {
+                goingDeeper = true;
+                showBackgroundMenu('Assistant Background', 'assist_background_mode');
+            }
+        });
     }
 
     voiceSettingsMenu.on('show', function() {
@@ -318,10 +376,6 @@ function showEntitySettings() {
 
     var entitySettingsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Entity Settings'
         }]
@@ -404,10 +458,6 @@ function showOrderByMenu() {
 
     var orderByMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Order By'
         }]
@@ -451,10 +501,6 @@ function showUnavailableEntitiesMenu() {
 
     var unavailableMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Unavailable Entities'
         }]
@@ -498,10 +544,6 @@ function showUnknownEntitiesMenu() {
 
     var unknownMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Unknown Entities'
         }]
@@ -545,10 +587,6 @@ function showAutomationLongpressMenu() {
 
     var automationMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Automation Long-Press'
         }]
@@ -614,10 +652,6 @@ function showInactivityTimeoutMenu() {
 
     var timeoutMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Inactivity Timeout'
         }]
@@ -676,10 +710,6 @@ function showTouchSettings() {
 
     var touchMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Touch'
         }]
@@ -747,10 +777,6 @@ function showQuickLaunchSettings() {
 
     var quickLaunchMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Quick Launch'
         }]
@@ -802,10 +828,6 @@ function showQuickLaunchActionMenu(onSelect) {
 
     var actionMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Select Action'
         }]
@@ -910,10 +932,6 @@ function showFavoriteEntitySelectionMenu(onSelect) {
 
     var favoriteMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Select Favorite'
         }]
@@ -956,10 +974,6 @@ function showVoicePipelineMenu() {
 
     var voicePipelineMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Assist Pipeline'
         }]

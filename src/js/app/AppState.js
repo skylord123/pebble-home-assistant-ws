@@ -31,6 +31,10 @@ class AppState {
         // than waiting for the whole of it
         this.assist_stream_reply = true;
         this.voice_agent = null;
+        // 'black', 'white' or 'sun'. Menus and the assistant conversation are
+        // set separately, so the conversation can stay dark in a white app
+        this.menu_background_mode = 'black';
+        this.assist_background_mode = 'black';
         this.quick_launch_behavior = 'main_menu';
         this.quick_launch_favorite_entity = null;
         this.quick_launch_exit_on_back = false;

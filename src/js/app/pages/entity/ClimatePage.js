@@ -82,10 +82,6 @@ function showClimateEntity(entity_id) {
     // Create the climate menu
     let climateMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: climate.attributes.friendly_name ? climate.attributes.friendly_name : entity_id
         }]
@@ -123,10 +119,6 @@ function showClimateEntity(entity_id) {
                     // Show menu to select high or low temp
                     let tempRangeMenu = new UI.Menu({
                         status: false,
-                        backgroundColor: 'black',
-                        textColor: 'white',
-                        highlightBackgroundColor: 'white',
-                        highlightTextColor: 'black',
                         sections: [{
                             title: 'Set Temperature Range'
                         }]
@@ -494,10 +486,6 @@ function showClimateEntity(entity_id) {
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'HVAC Mode'
             }]
@@ -605,10 +593,6 @@ function showClimateEntity(entity_id) {
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Fan Mode'
             }]
@@ -716,10 +700,6 @@ function showClimateEntity(entity_id) {
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Preset Mode'
             }]
@@ -827,10 +807,6 @@ function showClimateEntity(entity_id) {
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Swing Mode'
             }]

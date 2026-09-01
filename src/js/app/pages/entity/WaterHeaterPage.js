@@ -172,10 +172,6 @@ function showWaterHeaterEntity(entity_id) {
 
     let heaterMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -184,10 +180,6 @@ function showWaterHeaterEntity(entity_id) {
     function showOperationMenu() {
         let opMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Operation Mode'
             }]

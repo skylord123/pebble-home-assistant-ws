@@ -47,10 +47,6 @@ class AreaMenuPage extends BasePage {
 
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Floors'
             }]
@@ -121,10 +117,6 @@ class AreaMenuPage extends BasePage {
 
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Areas'
             }]
@@ -208,10 +200,6 @@ function showAreasForFloor(floor_id, floor_name) {
 
     var floorAreasMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: floor_name
         }]

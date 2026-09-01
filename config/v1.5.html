@@ -747,6 +747,17 @@
 						<small class="form-text">Select the font size for the assistant conversation</small>
 					</div>
 				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-background">Background</label>
+						<select class="form-select" id="ha-assist-background">
+							<option value="black">Black</option>
+							<option value="white">White</option>
+							<option value="sun">Follow the sun</option>
+						</select>
+						<small class="form-text">The conversation is set apart from the menus, so a white app can still have a dark screen to read a long answer on. Following the sun means white while the sun is up and black once it has set.</small>
+					</div>
+				</div>
 			</div>
 		</div>
 
@@ -754,6 +765,17 @@
 		<div class="section">
 			<div class="section-header">Display Settings</div>
 			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-menu-background">Menu Background</label>
+						<select class="form-select" id="ha-menu-background">
+							<option value="black">Black</option>
+							<option value="white">White</option>
+							<option value="sun">Follow the sun</option>
+						</select>
+						<small class="form-text">Menus are white on black by default. White inverts them to black text on white, and following the sun uses white while the sun is up where you are and black once it has set. The sun is worked out on your phone from its location.</small>
+					</div>
+				</div>
 				<div class="component">
 					<div class="form-switch">
 						<label class="form-check-label" for="ha-menu-scroll-wrap">Menu Scrolling - Wrap Around</label>
@@ -1284,6 +1306,8 @@
 				quickLaunchFavoriteEntity = $('#ha-quick-launch-favorite-entity'),
 				quickLaunchFavoriteEntityContainer = $('#quick-launch-favorite-entity-container'),
 				quickLaunchExitOnBack = $('#ha-quick-launch-exit-on-back'),
+				menuBackground = $('#ha-menu-background'),
+				assistBackground = $('#ha-assist-background'),
 				menuScrollWrap = $('#ha-menu-scroll-wrap'),
 				touchEnabled = $('#ha-touch-enabled'),
 				touchLongPress = $('#ha-touch-long-press'),
@@ -1341,6 +1365,8 @@
 				'quick_launch_behavior': quickLaunchBehavior.val(),
 				'quick_launch_favorite_entity': quickLaunchFavoriteEntity.val() || null,
 				'quick_launch_exit_on_back': quickLaunchExitOnBack.is(':checked'),
+				'menu_background_mode': menuBackground.val(),
+				'assist_background_mode': assistBackground.val(),
 				'menu_scroll_wrap': menuScrollWrap.is(':checked'),
 				'touch_enabled': touchEnabled.is(':checked'),
 				'touch_long_press': touchLongPress.is(':checked'),
@@ -1551,6 +1577,10 @@
 			} else {
 				quickLaunchExitOnBack.prop('checked', false);
 			}
+
+			// Background colours, black unless they have been changed
+			menuBackground.val(watch_config['menu_background_mode'] || 'black');
+			assistBackground.val(watch_config['assist_background_mode'] || 'black');
 
 			// Handle menu scroll wrap-around (default enabled)
 			menuScrollWrap.prop('checked', typeof watch_config['menu_scroll_wrap'] !== 'undefined' ? watch_config['menu_scroll_wrap'] : true);

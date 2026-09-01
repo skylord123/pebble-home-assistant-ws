@@ -215,10 +215,6 @@ function showAlarmEntity(entity_id) {
 
     let alarmMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: alarm.attributes.friendly_name || entity_id
         }]
@@ -241,10 +237,6 @@ function showAlarmEntity(entity_id) {
         let store = appState.alarmCodeStore;
         let codeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Alarm Code'
             }]

@@ -27,6 +27,7 @@ var Assist = {};
 
 var state = {
   active: false,
+  dark: true,
   onTranscript: null,
   onSettings: null,
   onClose: null,
@@ -225,12 +226,13 @@ Assist.show = function(opts) {
   state.onTranscript = opts.onTranscript;
   state.onSettings = opts.onSettings;
   state.onClose = opts.onClose;
+  state.dark = !!opts.dark;
   resetStream();
   simply.impl.assistShow({
     fontSize: opts.fontSize || 18,
     confirm: !!opts.confirm,
     backlight: !!opts.backlight,
-    dark: !!opts.dark,
+    dark: state.dark,
     listen: opts.listen !== false,
   });
 };
@@ -238,6 +240,17 @@ Assist.show = function(opts) {
 Assist.hide = function() {
   if (!state.active) { return; }
   simply.impl.assistHide();
+};
+
+/**
+ * Repaint the conversation light or dark. Used when the background follows the
+ * sun and the sun has just moved, so a conversation open at dusk turns dark
+ * around the words already in it.
+ */
+Assist.setDark = function(dark) {
+  if (!state.active || state.dark === !!dark) { return; }
+  state.dark = !!dark;
+  simply.impl.assistTheme(state.dark);
 };
 
 /** A new turn is starting, so nothing of the last answer carries into it. */

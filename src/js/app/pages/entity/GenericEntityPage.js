@@ -49,13 +49,8 @@ function showEntityMenu(entity_id) {
         return EntityService.getStateText(entity) + ' > ' + timeStr;
     }
 
-    // Set Menu colors
     let showEntityMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'white',
-        textColor: 'black',
-        highlightBackgroundColor: 'black',
-        highlightTextColor: 'white',
         sections: [
             {
                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id
@@ -811,10 +806,6 @@ function showEntityAttributesMenu(entity_id) {
     // Create a menu for the attributes
     let attributesMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'white',
-        textColor: 'black',
-        highlightBackgroundColor: 'black',
-        highlightTextColor: 'white',
         sections: [{
             title: 'Attributes'
         }]

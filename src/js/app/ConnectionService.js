@@ -7,6 +7,7 @@ var HAWS = require('vendor/haws');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
 
 var ConnectionService = {
     // Reference to loading card (set by app.js)
@@ -165,6 +166,12 @@ var ConnectionService = {
         appState.haws.on('auth_ok', function(evt) {
             log("ws auth_ok: " + JSON.stringify(evt));
             appState.ha_version = (evt.detail && evt.detail.ha_version) || null;
+
+            // A background following the sun needs to know where the watch is.
+            // The phone is asked first and its answer kept; this is for when it
+            // will not give one, since Home Assistant knows where home is.
+            Theme.requestHomeLocation();
+
             if (self.onAuthOk) {
                 self.onAuthOk(evt);
             }

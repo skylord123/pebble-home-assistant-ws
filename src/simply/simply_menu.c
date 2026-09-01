@@ -143,6 +143,27 @@ static void prv_invert_image_palette(SimplyImage *image) {
   }
 }
 
+// Icons that say what an entity is doing through which part of them is filled
+// in, rather than through their shape. A lit bulb is a bulb with white glass
+// and an unlit one is a bulb with black glass, so inverting either produces the
+// other's artwork, and the same lit bulb changed appearance as the selection
+// passed over its row. These are drawn exactly as they were authored on every
+// row, so a lit bulb is white inside with a black outline wherever it sits, and
+// the same goes for a switch and a cover.
+static bool prv_icon_keeps_its_colors(uint32_t icon) {
+  switch (icon) {
+    case RESOURCE_ID_IMAGE_ICON_BULB:
+    case RESOURCE_ID_IMAGE_ICON_BULB_ON:
+    case RESOURCE_ID_IMAGE_ICON_SWITCH_ON:
+    case RESOURCE_ID_IMAGE_ICON_SWITCH_OFF:
+    case RESOURCE_ID_IMAGE_ICON_BLIND_OPEN:
+    case RESOURCE_ID_IMAGE_ICON_BLIND_CLOSED:
+      return true;
+    default:
+      return false;
+  }
+}
+
 
 static void simply_menu_clear_section_items(SimplyMenu *self, int section_index);
 static void simply_menu_clear(SimplyMenu *self);
@@ -820,15 +841,21 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 #if !defined(PBL_PLATFORM_APLITE) // disable icons on APLITE as it causes crash
   image = simply_res_get_image(self->window.simply->res, item->icon);
 #endif
-  // Icons are designed for the normal row background, so invert their colors
-  // while drawing a highlighted row to keep them visible on the highlight
-  // background. This works for any palettized bitmap (the bundled icons decode
-  // to multi-entry palettes with transparency and anti-aliasing, not just
-  // 2-color black and white).
+  // Icons are drawn light, for the dark rows the app has always had. Invert
+  // them on a light row so they stay visible, whether that is the highlight
+  // under the selection or every row of a menu the wearer has turned white.
+  // This works for any palettized bitmap (the bundled icons decode to
+  // multi-entry palettes with transparency and anti-aliasing, not just 2-color
+  // black and white).
   bool palette_inverted = false;
-  if (image && image->palette_entries && menu_cell_layer_is_highlighted(cell_layer)) {
-    prv_invert_image_palette(image);
-    palette_inverted = true;
+  if (image && image->palette_entries && !prv_icon_keeps_its_colors(item->icon)) {
+    const GColor8 row_background = menu_cell_layer_is_highlighted(cell_layer) ?
+        self->menu_layer.highlight_background :
+        self->menu_layer.normal_background;
+    if (gcolor8_is_light(row_background)) {
+      prv_invert_image_palette(image);
+      palette_inverted = true;
+    }
   }
 
   graphics_context_set_alpha_blended(ctx, true);

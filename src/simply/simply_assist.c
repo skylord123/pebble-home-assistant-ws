@@ -160,6 +160,17 @@ struct __attribute__((__packed__)) AssistShowPacket {
   uint8_t flags;
 };
 
+//! What a show packet is asking for. ShowFlagThemeOnly means the conversation
+//! is already up and only its colors have changed, which happens when the
+//! background follows the sun and the sun has just moved.
+enum {
+  ShowFlagConfirm = 1,
+  ShowFlagBacklight = 2,
+  ShowFlagDark = 4,
+  ShowFlagListen = 8,
+  ShowFlagThemeOnly = 16,
+};
+
 typedef struct AssistMessagePacket AssistMessagePacket;
 
 struct __attribute__((__packed__)) AssistMessagePacket {
@@ -1098,6 +1109,43 @@ static void prv_click_config_provider(void *context) {
 
 // MARK: - Window
 
+//! Paint everything the theme decides. Called when the window is built and
+//! again whenever the background changes under a conversation already on
+//! screen, so both go through exactly the same code.
+static void prv_apply_theme(SimplyAssist *self) {
+  window_set_background_color(self->window, self->dark ? GColorBlack : GColorWhite);
+
+#if defined(PBL_ROUND)
+  // The system's own up/down arrows say "there is more this way" in the
+  // language the round menus already use
+  if (self->scroll_layer && self->indicator_up_layer && self->indicator_down_layer) {
+    ContentIndicator *indicator = scroll_layer_get_content_indicator(self->scroll_layer);
+    const GColor background = self->dark ? GColorBlack : GColorWhite;
+    const ContentIndicatorConfig up_config = {
+      .layer = self->indicator_up_layer,
+      .times_out = false,
+      .alignment = GAlignCenter,
+      .colors = { .foreground = prv_accent(self), .background = background },
+    };
+    const ContentIndicatorConfig down_config = {
+      .layer = self->indicator_down_layer,
+      .times_out = false,
+      .alignment = GAlignCenter,
+      .colors = { .foreground = prv_accent(self), .background = background },
+    };
+    content_indicator_configure_direction(indicator, ContentIndicatorDirectionUp, &up_config);
+    content_indicator_configure_direction(indicator, ContentIndicatorDirectionDown, &down_config);
+  }
+#endif
+
+  if (self->content_layer) {
+    layer_mark_dirty(self->content_layer);
+  }
+  if (self->dots_layer) {
+    layer_mark_dirty(self->dots_layer);
+  }
+}
+
 static void prv_window_load(Window *window) {
   SimplyAssist *self = window_get_user_data(window);
   Layer *root_layer = window_get_root_layer(window);
@@ -1133,31 +1181,14 @@ static void prv_window_load(Window *window) {
   }
 
 #if defined(PBL_ROUND)
-  // The system's own up/down arrows say "there is more this way" in the
-  // language the round menus already use
   self->indicator_up_layer = layer_create(GRect(0, 0, bounds.size.w, INDICATOR_HEIGHT));
   self->indicator_down_layer = layer_create(
       GRect(0, bounds.size.h - INDICATOR_HEIGHT, bounds.size.w, INDICATOR_HEIGHT));
   layer_add_child(root_layer, self->indicator_up_layer);
   layer_add_child(root_layer, self->indicator_down_layer);
-
-  ContentIndicator *indicator = scroll_layer_get_content_indicator(self->scroll_layer);
-  const GColor background = self->dark ? GColorBlack : GColorWhite;
-  const ContentIndicatorConfig up_config = {
-    .layer = self->indicator_up_layer,
-    .times_out = false,
-    .alignment = GAlignCenter,
-    .colors = { .foreground = prv_accent(self), .background = background },
-  };
-  const ContentIndicatorConfig down_config = {
-    .layer = self->indicator_down_layer,
-    .times_out = false,
-    .alignment = GAlignCenter,
-    .colors = { .foreground = prv_accent(self), .background = background },
-  };
-  content_indicator_configure_direction(indicator, ContentIndicatorDirectionUp, &up_config);
-  content_indicator_configure_direction(indicator, ContentIndicatorDirectionDown, &down_config);
 #endif
+
+  prv_apply_theme(self);
 }
 
 static void prv_window_unload(Window *window) {
@@ -1262,6 +1293,17 @@ static SimplyAssist *prv_create(Simply *simply) {
 static void prv_handle_show(Simply *simply, Packet *data) {
   AssistShowPacket *packet = (AssistShowPacket *)data;
   SimplyAssist *self = simply->assist;
+
+  // Only the colors have changed. There is nothing to do unless a conversation
+  // is already up, and everything it holds stays exactly where it is: the
+  // words, the scroll position and the answer still being written.
+  if (packet->flags & ShowFlagThemeOnly) {
+    if (!self || self->destroying) { return; }
+    self->dark = (packet->flags & ShowFlagDark);
+    prv_apply_theme(self);
+    return;
+  }
+
   if (!self) {
     self = prv_create(simply);
     if (!self) { return; }
@@ -1276,13 +1318,13 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->font_size = packet->font_size ? packet->font_size : 18;
   self->streaming = false;
   self->user_scrolled = false;
-  self->dictation_confirm = (packet->flags & 1);
-  self->backlight = (packet->flags & 2);
-  self->dark = (packet->flags & 4);
+  self->dictation_confirm = (packet->flags & ShowFlagConfirm);
+  self->backlight = (packet->flags & ShowFlagBacklight);
+  self->dark = (packet->flags & ShowFlagDark);
   //! Whether to open the microphone straight away. Coming back from the
   //! settings menu should land on the conversation, not on the dictation UI.
-  const bool listen = (packet->flags & 8);
-  window_set_background_color(self->window, self->dark ? GColorBlack : GColorWhite);
+  const bool listen = (packet->flags & ShowFlagListen);
+  prv_apply_theme(self);
 
   if (!window_stack_contains_window(self->window)) {
     window_stack_push(self->window, false);

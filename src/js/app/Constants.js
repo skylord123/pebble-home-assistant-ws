@@ -31,6 +31,14 @@ const Constants = {
     coalesce_messages_enabled: true,
     startup_cache_enabled: true,
 
+    // How a screen picks its background. 'sun' means white while the sun is up
+    // where the watch is and black once it has set.
+    backgroundModes: {
+        BLACK: 'black',
+        WHITE: 'white',
+        SUN: 'sun'
+    },
+
     // Colors
     colour: {
         highlight: Feature.color("#00AAFF", "#000000"),

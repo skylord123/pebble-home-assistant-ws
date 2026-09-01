@@ -198,11 +198,7 @@ class BasePage {
      */
     getDefaultMenuOptions() {
         return {
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black'
+            status: false
         };
     }
 

@@ -1675,6 +1675,13 @@ SimplyPebble.assistShow = function(opts) {
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 
+// Flag 16 says this is only about the colours: repaint the conversation that
+// is already on screen without disturbing a word of it or where it is scrolled
+SimplyPebble.assistTheme = function(dark) {
+  AssistShowPacket.fontSize(0).flags(16 | (dark ? 4 : 0));
+  SimplyPebble.sendPacket(AssistShowPacket);
+};
+
 SimplyPebble.assistHide = function() {
   SimplyPebble.sendPacket(AssistHidePacket);
 };

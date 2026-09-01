@@ -14,9 +14,16 @@ var Settings = require('settings');
 
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
 
 // Track conversation ID across the session
 var conversation_id = null;
+
+// A conversation open when the sun goes down turns dark around the words
+// already in it. Nothing happens unless the screen is up.
+Theme.onChange(function() {
+    Assist.setDark(Theme.assistIsDark());
+});
 
 /**
  * Load available assist pipelines from Home Assistant
@@ -230,8 +237,7 @@ function openAssist(listen) {
         fontSize: Settings.option('voice_font_size') || 18,
         confirm: appState.voice_confirm,
         backlight: appState.voice_backlight_trigger,
-        // Every menu in the app is white on black, so the conversation is too
-        dark: true,
+        dark: Theme.assistIsDark(),
         listen: listen,
         onTranscript: runPipeline,
         onSettings: function() {
