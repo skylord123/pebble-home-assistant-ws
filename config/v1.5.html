@@ -119,14 +119,82 @@
 			overflow: hidden;
 		}
 
+		/* Every section shuts, so the page reads as a list of what is in it
+		   rather than as a scroll you have to work your way down. The header is
+		   the summary of a details element, which does the opening and closing
+		   on its own. */
 		.section-header {
+			display: block;
+			position: relative;
 			background: var(--color-section-header);
-			padding: 0.6rem 0.75rem;
+			padding: 0.6rem 2rem 0.6rem 0.75rem;
+			color: var(--color-text);
+			cursor: pointer;
+			list-style: none;
+			user-select: none;
+			-webkit-user-select: none;
+			-webkit-tap-highlight-color: transparent;
+		}
+
+		.section-header::-webkit-details-marker {
+			display: none;
+		}
+
+		.section-title {
+			display: block;
 			font-size: 0.85rem;
 			font-weight: 600;
 			text-transform: uppercase;
 			letter-spacing: 0.02em;
-			color: var(--color-text);
+		}
+
+		/* A line of what is inside, so a shut section still says what it is
+		   for. Once it is open its contents say it better than the line does,
+		   so it folds away with the same movement the section opens with. The
+		   open class is set the moment the wearer asks for it, while the open
+		   attribute has to wait for the slide to finish. */
+		.section-hint {
+			display: block;
+			overflow: hidden;
+			max-height: 4em;
+			margin-top: 0.15rem;
+			font-size: 0.78rem;
+			color: var(--color-text-muted);
+			transition: max-height 0.22s ease, margin-top 0.22s ease, opacity 0.22s ease;
+		}
+
+		.section.open > .section-header .section-hint {
+			max-height: 0;
+			margin-top: 0;
+			opacity: 0;
+		}
+
+		.section-header::after {
+			content: "";
+			position: absolute;
+			right: 0.9rem;
+			top: 50%;
+			width: 0.45rem;
+			height: 0.45rem;
+			margin-top: -0.34rem;
+			border-right: 2px solid var(--color-text-muted);
+			border-bottom: 2px solid var(--color-text-muted);
+			transform: rotate(45deg);
+			transition: transform 0.22s ease, margin-top 0.22s ease;
+		}
+
+		.section.open > .section-header::after {
+			margin-top: -0.1rem;
+			transform: rotate(-135deg);
+		}
+
+		/* Anyone who has asked for less movement gets the sections snapping
+		   open the way they did before */
+		@media (prefers-reduced-motion: reduce) {
+			.section-hint,
+			.section-header::after {
+				transition: none;
+			}
 		}
 
 		.section-body {
@@ -590,8 +658,25 @@
 		.float-end { float: right; }
 
 		/* Save Button Container */
+		/* Save follows you down the page, so a long section never means
+		   scrolling back to the bottom to keep what you changed */
 		.save-container {
-			padding: 1rem 0;
+			position: sticky;
+			bottom: 0;
+			z-index: 5;
+			padding: 0.75rem 0;
+			background: var(--color-background);
+		}
+
+		.save-container::before {
+			content: "";
+			position: absolute;
+			left: 0;
+			right: 0;
+			bottom: 100%;
+			height: 1rem;
+			background: linear-gradient(to top, var(--color-background), rgba(127, 127, 127, 0));
+			pointer-events: none;
 		}
 
 		.save-container .btn {
@@ -664,9 +749,11 @@
 
 		<div id="alert-container"></div>
 
-		<!-- Connection Settings -->
-		<div class="section">
-			<div class="section-header">Connection Settings</div>
+		<details class="section open" id="connection-section" open>
+			<summary class="section-header">
+				<span class="section-title">Connection Settings</span>
+				<span class="section-hint">Where to find Home Assistant, and the token to reach it with</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="form-group">
@@ -691,11 +778,13 @@
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Voice Assistant Settings -->
-		<div class="section">
-			<div class="section-header">Voice Assistant Settings</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Voice Assistant Settings</span>
+				<span class="section-hint">The pipeline, the font size, and how the conversation is drawn</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="form-switch">
@@ -759,11 +848,13 @@
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Display Settings -->
-		<div class="section">
-			<div class="section-header">Display Settings</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Display Settings</span>
+				<span class="section-hint">Menu background, scrolling, touch, and the inactivity timeout</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="form-group">
@@ -805,11 +896,13 @@
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Quick Launch Settings -->
-		<div class="section">
-			<div class="section-header">Quick Launch Settings</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Quick Launch Settings</span>
+				<span class="section-hint">What opens when the app is launched from a button</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="form-group">
@@ -844,11 +937,13 @@
 					<small class="form-text">When enabled, pressing back on a quick launched screen will exit the app instead of going to the main menu</small>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Main Menu Order -->
-		<div class="section">
-			<div class="section-header">Main Menu Order</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Main Menu Order</span>
+				<span class="section-hint">Which rows the main menu shows, and the order they come in</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="form-switch">
@@ -866,11 +961,47 @@
 					</ul>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Calendars -->
-		<div class="section" id="calendars-section" style="display:none;">
-			<div class="section-header">Calendars</div>
+		<details class="section" id="favorites-container" style="display:none;">
+			<summary class="section-header">
+				<span class="section-title">Favorite Entities</span>
+				<span class="section-hint">The order your favourites are listed in</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+						Drag and drop items to reorder them
+					</div>
+					<ul id="favorites-sortable" class="list-group">
+						</ul>
+				</div>
+			</div>
+		</details>
+
+		<details class="section" id="pinned-container" style="display:none;">
+			<summary class="section-header">
+				<span class="section-title">Pinned Entities</span>
+				<span class="section-hint">The entities pinned to the top of the main menu</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
+						Entities pinned to the Main Menu. Drag to reorder, or remove them here.
+					</div>
+					<ul id="pinned-sortable" class="list-group">
+					</ul>
+				</div>
+			</div>
+		</details>
+
+		<details class="section" id="calendars-section" style="display:none;">
+			<summary class="section-header">
+				<span class="section-title">Calendars</span>
+				<span class="section-hint">Which calendars appear, and the order they come in</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="alert alert-info" role="alert">
@@ -883,26 +1014,13 @@
 					<small class="form-text">The default order matches Home Assistant</small>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Pinned Entities -->
-		<div class="section" id="pinned-container" style="display:none;">
-			<div class="section-header">Pinned Entities</div>
-			<div class="section-body">
-				<div class="component">
-					<div class="alert alert-info" role="alert">
-						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
-						Entities pinned to the Main Menu. Drag to reorder, or remove them here.
-					</div>
-					<ul id="pinned-sortable" class="list-group">
-					</ul>
-				</div>
-			</div>
-		</div>
-
-		<!-- Entity Settings -->
-		<div class="section">
-			<div class="section-header">Entity Settings</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Entity Settings</span>
+				<span class="section-hint">How entities are sorted, and what happens to unavailable ones</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="row">
@@ -962,11 +1080,13 @@
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Entity Domain Grouping -->
-		<div class="section">
-			<div class="section-header">Entity Domain Grouping</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Entity Domain Grouping</span>
+				<span class="section-hint">When a list is broken up by domain instead of shown flat</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<p class="form-text mb-2" style="margin-top:0;">Group entities by domain when viewing:</p>
@@ -1019,26 +1139,13 @@
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Favorite Entities -->
-		<div class="section" id="favorites-container" style="display:none;">
-			<div class="section-header">Favorite Entities</div>
-			<div class="section-body">
-				<div class="component">
-					<div class="alert alert-info" role="alert">
-						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use xlink:href="#info-fill"/></svg>
-						Drag and drop items to reorder them
-					</div>
-					<ul id="favorites-sortable" class="list-group">
-						</ul>
-				</div>
-			</div>
-		</div>
-
-		<!-- Domain Filters -->
-		<div class="section">
-			<div class="section-header">Domain Filters</div>
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Domain Filters</span>
+				<span class="section-hint">Domains to leave out of every list</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<p class="form-text" style="margin-top:0;">Domains listed here will be hidden from the interface</p>
@@ -1057,11 +1164,13 @@
 					</div>
 				</div>
 			</div>
-		</div>
+		</details>
 
-		<!-- Timeline Section -->
-		<div class="section" id="timeline-section" style="display:none;">
-			<div class="section-header">Timeline</div>
+		<details class="section" id="timeline-section" style="display:none;">
+			<summary class="section-header">
+				<span class="section-title">Timeline</span>
+				<span class="section-hint">The token that lets Home Assistant push pins to your timeline</span>
+			</summary>
 			<div class="section-body">
 				<div class="component">
 					<label class="form-label" for="timeline-token-display">Timeline Token</label>
@@ -1071,7 +1180,7 @@
 					</button>
 				</div>
 			</div>
-		</div>
+		</details>
 
 		<!-- Save Button -->
 		<div class="save-container">
@@ -2122,6 +2231,49 @@
 			conditionalSettings.toggle(showConditional);
 		});
 
+		// A details element shows and hides its contents outright, so the slide
+		// is driven from here: the open attribute goes on before the contents
+		// slide down, and comes off only once they have slid back up. The open
+		// class follows the wearer's press rather than the attribute, so the
+		// chevron and the hint move with the section rather than after it.
+		var SLIDE_MS = (window.matchMedia &&
+				window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 0 : 220;
+
+		function setSectionOpen(section, shouldOpen) {
+			var $section = $(section);
+			var $body = $section.children('.section-body');
+
+			if (shouldOpen) {
+				if ($section.hasClass('open')) { return; }
+				$section.prop('open', true).addClass('open');
+				$body.stop(true, true).hide().slideDown(SLIDE_MS);
+			} else {
+				if (!$section.hasClass('open')) { return; }
+				$section.removeClass('open');
+				$body.stop(true, true).slideUp(SLIDE_MS, function() {
+					$section.prop('open', false);
+					$body.css('display', '');
+				});
+			}
+		}
+
+		$('.section-header').click(function(e) {
+			// The element would otherwise snap open by itself, with nothing to
+			// animate by the time we heard about it
+			e.preventDefault();
+			var $section = $(this).closest('details.section');
+			setSectionOpen($section, !$section.hasClass('open'));
+		});
+
+		// A field that has been missed can be inside a shut section, and the
+		// alert saying so is at the top of a page that has been scrolled away
+		// from, so say it where it can actually be seen and acted on
+		function revealConnectionSettings() {
+			setSectionOpen($('#connection-section'), true);
+			document.getElementById('alert-container')
+					.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		}
+
 		$('#save-btn').click(function(e) {
 			e.preventDefault();
 			display_alert();
@@ -2129,11 +2281,13 @@
 
 			if(!watch_config['ha_url']) {
 				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant URL`);
+				revealConnectionSettings();
 				return;
 			}
 
 			if(!watch_config['token']) {
 				display_alert('danger', `<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token`);
+				revealConnectionSettings();
 				return;
 			}
 
