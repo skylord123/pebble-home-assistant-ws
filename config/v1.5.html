@@ -1192,6 +1192,19 @@
 <script src="vendor/jquery-3.6.0.min.js"></script>
 <script src="vendor/jquery-ui-1.13.2.min.js"></script>
 <script type="text/javascript">
+	// A watch with no timeline sync behind it, which is every emulator and any
+	// phone without a Rebble subscription, still answers getTimelineToken. It
+	// hands back this placeholder rather than failing, and a token that reaches
+	// nothing is worse than no section at all: it invites you to paste it into
+	// Home Assistant and wait for pins that can never arrive.
+	var DUMMY_TIMELINE_TOKEN = 'emulated-dummy-token';
+
+	function hasTimelineToken(token) {
+		return typeof token === 'string' &&
+			token.trim() !== '' &&
+			token.trim() !== DUMMY_TIMELINE_TOKEN;
+	}
+
 	// Functions for Timeline Token
 	function selectTimelineToken() {
 		const tokenElement = document.getElementById('timeline-token-display');
@@ -2139,8 +2152,8 @@
 				});
 			}
 
-			// Set up the timeline token section if it exists
-			if(watch_config['timeline_token'] && typeof watch_config['timeline_token'] === 'string') {
+			// Set up the timeline token section if there is a token worth showing
+			if(hasTimelineToken(watch_config['timeline_token'])) {
 				timelineTokenDisplay.text(watch_config['timeline_token']);
 				timelineSection.show();
 			}
