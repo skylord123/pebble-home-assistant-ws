@@ -158,10 +158,14 @@ function toWatchText(markdown, open) {
         // line above it has had its newline, so it is closed like any other.
         var unfinished = open && (i === lines.length - 1);
 
-        // A heading is just a bold line on a screen this size
-        var heading = /^\s*#{1,6}\s+(.*)$/.exec(line);
+        // A heading is just a bold line on a screen this size. Its text goes
+        // through everything below like any other line and is wrapped at the
+        // end, rather than being handed back to the emphasis pass wearing a
+        // pair of asterisks, which only worked while the heading contained no
+        // asterisks of its own.
+        var heading = /^\s*#{1,6}\s+([\s\S]*)$/.exec(line);
         if (heading) {
-            line = unfinished ? BOLD_ON + heading[1] : '**' + heading[1] + '**';
+            line = heading[1];
         }
 
         // Bullets become real ones. This runs before the emphasis pass so a
@@ -170,16 +174,53 @@ function toWatchText(markdown, open) {
 
         line = line.replace(/`([^`]*)`/g, '$1');
         line = line.replace(/\[([^\]]*)\]\([^)]*\)/g, '$1');
-        line = line.replace(/\*\*([^*]+)\*\*/g, BOLD_ON + '$1' + BOLD_OFF);
-        line = line.replace(/__([^_]+)__/g, BOLD_ON + '$1' + BOLD_OFF);
 
-        // Whatever syntax is left never found its partner. On the line still
-        // being written that is only because the closer has not arrived yet,
-        // so emphasis starts here and runs to the end of what there is; when
-        // the line is finished it is closed off at the end of that line rather
-        // than left to bleed through the rest of the answer. A lone backtick
-        // reads as the plain word it was wrapping either way.
-        line = line.replace(/\*\*|__/g, BOLD_ON).replace(/`/g, '');
+        // Bold, which the watch can draw. Non-greedy over anything, so a span
+        // survives an asterisk of its own inside it; "anything but an
+        // asterisk" used to give up on those and leave the pair to be read as
+        // two unmatched openers. Triple markers are bold and italic at once,
+        // and bold is the half we have.
+        line = line.replace(/\*\*\*([\s\S]+?)\*\*\*/g, BOLD_ON + '$1' + BOLD_OFF);
+        line = line.replace(/___([\s\S]+?)___/g, BOLD_ON + '$1' + BOLD_OFF);
+        line = line.replace(/\*\*([\s\S]+?)\*\*/g, BOLD_ON + '$1' + BOLD_OFF);
+        line = line.replace(/__([\s\S]+?)__/g, BOLD_ON + '$1' + BOLD_OFF);
+
+        // A bold marker with no partner, which on the line still being written
+        // only means the closer has not arrived yet: bold starts here and runs
+        // to the end of what there is. This has to happen before italic is
+        // considered, or the first two asterisks of an unclosed "***" read as
+        // an italic pair, the words come out plain, and they would turn bold
+        // later when the run closed, which is the one thing a growing answer
+        // must never do.
+        line = line.replace(/\*\*|__/g, BOLD_ON);
+
+        // Italic, down to the words it was wrapping. There is one weight on
+        // this screen and bold has it: drawing the weaker emphasis in the
+        // strongest thing the display can do would leave the two saying the
+        // same thing, and what bold marks in an answer, a reading or a term,
+        // is worth more than the decoration italic usually carries.
+        //
+        // The content has to begin and end with something other than a space,
+        // so "2 * 3" stays arithmetic. Underscores additionally have to sit at
+        // the edge of a word, or entity ids would come apart.
+        line = line.replace(/\*(\S|\S[\s\S]*?\S)\*/g, '$1');
+        line = line.replace(/(^|\s)_(\S|\S[\s\S]*?\S)_(?=$|[\s.,;:!?)])/g, '$1$2');
+
+        // Whatever is left never found a partner at all. An italic or code
+        // marker goes altogether: markdown would call it a literal, but
+        // showing it would mean taking it away again the moment its partner
+        // arrives, and an answer being written has to only ever grow.
+        line = line.replace(/\*(\S)/g, '$1').replace(/(\S)\*/g, '$1');
+        line = line.replace(/(^|\s)_(\S)/g, '$1$2').replace(/(\S)_(\s|$)/g, '$1$2');
+        line = line.replace(/`/g, '');
+
+        if (heading && line) {
+            // One clean run of bold, so emphasis inside a heading cannot close
+            // it early
+            line = BOLD_ON + line.split(BOLD_ON).join('').split(BOLD_OFF).join('') +
+                (unfinished ? '' : BOLD_OFF);
+        }
+
         if (!unfinished &&
             line.split(BOLD_ON).length > line.split(BOLD_OFF).length) {
             line += BOLD_OFF;
