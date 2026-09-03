@@ -50,12 +50,21 @@ struct SimplyNumber {
   char unit[12];
 };
 
+#if defined(PBL_PLATFORM_APLITE)
+
+#define simply_number_handle_packet(simply, packet) (false)
+#define simply_number_is_covering(simply) (false)
+
+#else
+
 bool simply_number_handle_packet(Simply *simply, Packet *packet);
 
 //! True while the selector window is on the native stack. Windows covered by
 //! it must not report hide events to JS: the JS window stack keeps the page
 //! beneath so it is restored when the selector closes.
 bool simply_number_is_covering(Simply *simply);
+
+#endif
 
 #ifdef SIMPLY_HAS_TOUCH
 

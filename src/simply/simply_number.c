@@ -7,6 +7,8 @@
 
 #include <pebble.h>
 
+#if !defined(PBL_PLATFORM_APLITE)
+
 // Repeat cadence while a button is held, and how many repeats before the
 // step multiplier kicks in. The multipliers only engage when the range is
 // large enough that flying is actually useful; small ranges stay precise.
@@ -752,3 +754,5 @@ bool simply_number_handle_packet(Simply *simply, Packet *packet) {
   }
   return false;
 }
+
+#endif  // !PBL_PLATFORM_APLITE
