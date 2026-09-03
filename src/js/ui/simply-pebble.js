@@ -825,6 +825,8 @@ var NumberSelectorShowPacket = new struct([
   ['int32', 'step'],
   ['uint8', 'decimals'],
   ['uint8', 'flags'],
+  ['uint8', 'backgroundColor', ColorType],
+  ['uint8', 'textColor', ColorType],
   ['uint16', 'titleLength', StringLengthType],
   ['uint16', 'unitLength', StringLengthType],
   ['cstring', 'title', StringType],
@@ -1652,6 +1654,8 @@ SimplyPebble.numberSelectorShow = function(opts) {
     .decimals(opts.decimals)
     .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0) | (opts.timeOfDay ? 4 : 0) |
            (opts.live ? 8 : 0))
+    .backgroundColor(opts.backgroundColor)
+    .textColor(opts.textColor)
     .titleLength(opts.title)
     .unitLength(opts.unit)
     .title(opts.title)

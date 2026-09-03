@@ -41,6 +41,20 @@ var Vector2 = require('vector2');
 
 var NumberField = {};
 
+//! The menu's colours, so the selector is not a white window thrown up over a
+//! dark list. Theme pushes these in the same breath as Menu.setColorDefaults;
+//! until it does, the white window the selector has always drawn.
+var colors = {
+  backgroundColor: 'white',
+  textColor: 'black',
+};
+
+NumberField.setColors = function(next) {
+  if (!next) { return; }
+  colors.backgroundColor = next.backgroundColor;
+  colors.textColor = next.textColor;
+};
+
 var state = {
   active: false,
   hiding: false,
@@ -256,7 +270,7 @@ var Fallback = (function() {
       s.els.highlight.size(new Vector2(box.w, FIELD_H));
       for (var i = 0; i < s.els.fields.length; i++) {
         s.els.fields[i].text(fieldText(i));
-        s.els.fields[i].color(i === s.field ? 'white' : 'black');
+        s.els.fields[i].color(i === s.field ? s.bg : s.fg);
       }
       return;
     }
@@ -275,12 +289,12 @@ var Fallback = (function() {
     s.w = resolution.x;
     s.h = resolution.y;
 
-    s.win = new Window({ backgroundColor: 'white', status: false });
+    s.win = new Window({ backgroundColor: s.bg, status: false });
     s.els = {};
 
     s.els.title = new Text({
       text: s.title,
-      color: 'black',
+      color: s.fg,
       font: 'gothic_24_bold',
       position: new Vector2(INSET, 2),
       size: new Vector2(s.w - 2 * INSET, 52),
@@ -297,7 +311,7 @@ var Fallback = (function() {
       s.els.highlight = new Rect({
         position: new Vector2(s.boxes[0].x, s.boxes[0].y),
         size: new Vector2(s.boxes[0].w, FIELD_H),
-        backgroundColor: 'black',
+        backgroundColor: s.fg,
         borderColor: 'clear',
         radius: FIELD_RADIUS,
       });
@@ -308,7 +322,7 @@ var Fallback = (function() {
         var box = s.boxes[i];
         var field = new Text({
           text: fieldText(i),
-          color: 'black',
+          color: s.fg,
           font: layout.font,
           position: new Vector2(box.x, box.y - 3),
           size: new Vector2(box.w, FIELD_H),
@@ -321,7 +335,7 @@ var Fallback = (function() {
         if (i + 1 < layout.numeric) {
           s.win.add(new Text({
             text: ':',
-            color: 'black',
+            color: s.fg,
             font: layout.font,
             position: new Vector2(box.x + box.w, box.y - 3),
             size: new Vector2(FIELD_COLON_W, FIELD_H),
@@ -332,7 +346,7 @@ var Fallback = (function() {
     } else {
       s.els.value = new Text({
         text: formatValue(),
-        color: 'black',
+        color: s.fg,
         font: 'gothic_28_bold',
         position: new Vector2(0, trunc(s.h / 2) - 22),
         size: new Vector2(s.w, FIELD_H),
@@ -349,13 +363,13 @@ var Fallback = (function() {
           position: new Vector2(BAR_MARGIN, trackY),
           size: new Vector2(s.w - 2 * BAR_MARGIN, BAR_HEIGHT),
           backgroundColor: 'clear',
-          borderColor: 'black',
+          borderColor: s.fg,
           borderWidth: 1,
         }));
         s.els.fill = new Rect({
           position: new Vector2(BAR_MARGIN + 2, trackY + 2),
           size: new Vector2(0, BAR_HEIGHT - 4),
-          backgroundColor: 'black',
+          backgroundColor: s.fg,
           borderColor: 'clear',
         });
         s.win.add(s.els.fill);
@@ -364,7 +378,7 @@ var Fallback = (function() {
 
     s.win.add(new Text({
       text: s.duration ? HINT_DURATION : HINT_NUMBER,
-      color: 'black',
+      color: s.fg,
       font: 'gothic_14',
       position: new Vector2(INSET, s.h - 40),
       size: new Vector2(s.w - 2 * INSET, 36),
@@ -475,6 +489,8 @@ var Fallback = (function() {
         lastInput: 0,
         settleTimer: null,
         hiding: false,
+        bg: colors.backgroundColor,
+        fg: colors.textColor,
         win: null,
         els: null,
         boxes: null,
@@ -526,6 +542,8 @@ NumberField.show = function(opts) {
     decimals: opts.decimals || 0,
     showBar: opts.showBar !== false,
     duration: false,
+    backgroundColor: colors.backgroundColor,
+    textColor: colors.textColor,
     title: opts.title || '',
     unit: opts.unit || '',
   });
@@ -576,6 +594,8 @@ function showFields(opts, timeOfDay) {
     showBar: false,
     duration: true,
     timeOfDay: timeOfDay,
+    backgroundColor: colors.backgroundColor,
+    textColor: colors.textColor,
     title: opts.title || '',
     unit: '',
   });

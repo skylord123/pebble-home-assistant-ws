@@ -28,6 +28,7 @@ var UI = require('ui');
 var Vector = require('vector2');
 var Feature = require('platform/feature');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
 
 var MAX_DIGITS = 8;
 
@@ -42,15 +43,18 @@ function show(opts) {
     var busy = false;         // submission in flight; input ignored
     var closed = false;
 
+    // Reached from a menu, so it wears the menu's colours
+    var colors = Theme.menuColors();
+
     var pinWindow = new UI.Window({
-        backgroundColor: 'black',
+        backgroundColor: colors.backgroundColor,
         status: false,
         scrollable: false
     });
 
     pinWindow.add(new UI.Text({
         text: opts.title || 'Enter Code',
-        color: 'white',
+        color: colors.textColor,
         font: 'gothic_14_bold',
         position: new Vector(0, 4),
         size: new Vector(res.x, 18),
@@ -63,7 +67,7 @@ function show(opts) {
     if (opts.subtitle) {
         pinWindow.add(new UI.Text({
             text: opts.subtitle,
-            color: 'white',
+            color: colors.textColor,
             font: 'gothic_14',
             position: new Vector(0, 22),
             size: new Vector(res.x, 18),
@@ -81,7 +85,7 @@ function show(opts) {
     var highlight = new UI.Rect({
         position: new Vector(0, 0),
         size: new Vector(10, 10),
-        backgroundColor: 'white'
+        backgroundColor: colors.textColor
     });
     pinWindow.add(highlight);
 
@@ -91,7 +95,7 @@ function show(opts) {
     for (var i = 0; i < MAX_DIGITS; i++) {
         var text = new UI.Text({
             text: '',
-            color: 'white',
+            color: colors.textColor,
             font: 'gothic_24_bold',
             position: new Vector(0, fieldY - 6),
             size: new Vector(10, FIELD_H),
@@ -103,7 +107,7 @@ function show(opts) {
 
     var statusText = new UI.Text({
         text: opts.error || hintText,
-        color: 'white',
+        color: colors.textColor,
         font: 'gothic_14',
         position: new Vector(0, res.y - 44),
         size: new Vector(res.x, 40),
@@ -135,7 +139,7 @@ function show(opts) {
                 fieldTexts[i].size(new Vector(boxW, FIELD_H));
                 fieldTexts[i].text(isCursor ? cursorText()
                     : (masked ? '*' : String(digits[i])));
-                fieldTexts[i].color(isCursor ? 'black' : 'white');
+                fieldTexts[i].color(isCursor ? colors.backgroundColor : colors.textColor);
                 if (isCursor) {
                     highlight.position(new Vector(x, fieldY - 2));
                     highlight.size(new Vector(boxW, FIELD_H));

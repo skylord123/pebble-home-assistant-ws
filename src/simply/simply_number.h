@@ -46,6 +46,11 @@ struct SimplyNumber {
   //! value dialled away from and back to does not report twice
   AppTimer *settle_timer;
   int32_t last_sent_value;
+  //! The menu's own colours, so the selector is not a white window thrown up
+  //! over a dark list. The selected duration field swaps them rather than
+  //! assuming black on white.
+  GColor8 background_color;
+  GColor8 text_color;
   char title[32];
   char unit[12];
 };

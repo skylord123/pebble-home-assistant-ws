@@ -11,6 +11,7 @@ var Constants = require('app/Constants');
 var AppState = require('app/AppState');
 var LocationService = require('app/LocationService');
 var Menu = require('ui/menu');
+var NumberField = require('ui/numberfield');
 var WindowStack = require('ui/windowstack');
 var SunCalc = require('vendor/suncalc');
 var helpers = require('app/helpers');
@@ -162,6 +163,9 @@ function apply(announce) {
 
     var colors = Theme.menuColors();
     Menu.setColorDefaults(colors);
+    // The number selector is reached from a menu and takes its colours, so a
+    // dark list does not open onto a white window
+    NumberField.setColors(colors);
 
     if (menuIsDark !== wasMenuDark || announce) {
         WindowStack.each(function(window) {
