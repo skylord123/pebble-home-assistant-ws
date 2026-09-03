@@ -82,6 +82,18 @@
 #endif
 
 #if defined(PBL_ROUND)
+//! Gap between the title and the subtitle under it on a round row
+#define MENU_ROUND_TEXT_GAP 2
+
+//! menu_cell_basic_draw pulls its text up by the title font's cap offset, and
+//! the app SDK exposes no way to ask a font for one. These are the differences
+//! measured against a row the firmware drew, on the same list on the same
+//! watch, so a row that has to marquee lands on the same pixels as one that
+//! does not. Each is measured from where the block would naturally sit, so
+//! moving one does not drag the other along with it.
+#define MENU_ROUND_ICON_NUDGE 1
+#define MENU_ROUND_TEXT_NUDGE (-4)
+
 // One pair of names for the row heights this round platform actually uses, so
 // the cell callback, the touch hit test, the scroll range and the settle can
 // never disagree about them
@@ -92,6 +104,27 @@
 #define MENU_ROUND_FOCUSED_HEIGHT MENU_CELL_ROUND_FOCUSED_TALL_CELL_HEIGHT
 #define MENU_ROUND_UNFOCUSED_HEIGHT MENU_CELL_ROUND_UNFOCUSED_SHORT_CELL_HEIGHT
 #endif
+
+//! menu_cell_basic_draw insets a round row before it lays anything out in it,
+//! 16px either side of the focused row and 34 either side of the rest
+//! (MENU_CELL_ROUND_FOCUSED_HORIZONTAL_INSET and its unfocused twin in
+//! PebbleOS's applib/ui/menu_cell_layer.h, which the app SDK does not export).
+//! A title has to fit the room that leaves, not the whole width of the cell,
+//! so a title the firmware would have to cut short is one that marquees.
+#define MENU_ROUND_CELL_FOCUSED_INSET 16
+#define MENU_ROUND_CELL_UNFOCUSED_INSET 34
+
+//! How far in from the glass the marquee starts a round row's text, the same
+//! 8px the firmware's own text flow uses (TEXT_FLOW_DEFAULT_INSET)
+#define MENU_ROUND_TEXT_EDGE_INSET 8
+
+//! A focused round row is held at the middle of the screen, so its text sits
+//! where the circle is at its widest and is only clipped within a few pixels
+//! of the glass. That is the width a line has to beat before it has any reason
+//! to move, and it is a good deal wider than the width the firmware's own
+//! inset leaves: a line between the two is one menu_cell_basic_draw would cut
+//! short and this row can still show whole, standing still, by drawing itself.
+#define MENU_ROUND_TEXT_CLIP_INSET 4
 
 //! Height of one line of the header font
 #define MENU_HEADER_LINE_HEIGHT 18
@@ -1039,9 +1072,11 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       }
     }
 #else
-    // ROUND DISPLAY: Account for icon height and margins
-    // Icon is centered at top, text is below it
-    available_width -= 20; // left/right margins for centered text
+    // ROUND DISPLAY: the selected row is the one that marquees, and
+    // menu_cell_basic_draw draws a focused round row inside an inset of
+    // MENU_ROUND_CELL_FOCUSED_INSET either side. The icon sits above the text
+    // rather than beside it, so it takes no width away.
+    available_width -= 2 * MENU_ROUND_CELL_FOCUSED_INSET;
 #endif
 #endif
 
@@ -1053,10 +1088,52 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
         GTextOverflowModeTrailingEllipsis,
         GTextAlignmentCenter);
 
+    // Whether the row has outgrown the layout the firmware would give it, and
+    // so has to be drawn here instead of by menu_cell_basic_draw. On a round
+    // display that is a different question from whether the text fits the
+    // screen, and the two are separated below.
+    bool title_overflows_cell = title_size.w > available_width;
+
+#if defined(PBL_ROUND) && !defined(MENU_ROUND_LAUNCHER_STYLE)
+    //! The width the glass leaves a round row, as against the narrower width
+    //! menu_cell_basic_draw's inset leaves it
+    const int16_t screen_text_width = bounds.size.w - 2 * MENU_ROUND_TEXT_CLIP_INSET;
+
+    // menu_cell_basic_draw gives a round title two lines to itself when the row
+    // has neither an icon nor a subtitle to share the cell with, so a title
+    // that wraps into those two lines is laid out fine as it is, and is left to
+    // the firmware to draw.
+    if (title_overflows_cell && !item->subtitle && !(image && image->bitmap)) {
+      const GSize wrapped = graphics_text_layout_get_content_size(
+          item->title, title_font,
+          GRect(0, 0, available_width, 1000),
+          GTextOverflowModeWordWrap,
+          GTextAlignmentCenter);
+      const int16_t line_height = graphics_text_layout_get_content_size(
+          "A", title_font,
+          GRect(0, 0, available_width, 100),
+          GTextOverflowModeFill,
+          GTextAlignmentLeft).h;
+      title_overflows_cell = (wrapped.w > available_width) ||
+                             (wrapped.h > 2 * line_height + line_height / 2);
+    }
+#endif
+
     // Check if title needs scrolling
-    bool title_needs_scroll = title_size.w > available_width;
+    bool title_needs_scroll = title_overflows_cell;
+
+#if defined(PBL_ROUND) && !defined(MENU_ROUND_LAUNCHER_STYLE)
+    // A title wider than the firmware's inset but no wider than the screen is
+    // one this row can show whole by taking the drawing over and centring it,
+    // so it is not made to slide past a reader for no reason. Only text that
+    // genuinely runs off the glass moves.
+    if (title_needs_scroll) {
+      title_needs_scroll = title_size.w > screen_text_width;
+    }
+#endif
 
     // Measure subtitle if present
+    bool subtitle_overflows_cell = false;
     bool subtitle_needs_scroll = false;
     int16_t subtitle_width = 0;
     if (item->subtitle) {
@@ -1067,7 +1144,13 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
           GTextOverflowModeTrailingEllipsis,
           GTextAlignmentCenter);
       subtitle_width = subtitle_size.w;
-      subtitle_needs_scroll = subtitle_size.w > available_width;
+      subtitle_overflows_cell = subtitle_size.w > available_width;
+      subtitle_needs_scroll = subtitle_overflows_cell;
+#if defined(PBL_ROUND) && !defined(MENU_ROUND_LAUNCHER_STYLE)
+      if (subtitle_needs_scroll) {
+        subtitle_needs_scroll = subtitle_size.w > screen_text_width;
+      }
+#endif
     }
 
     // Set needs_scrolling flag and calculate max offset
@@ -1093,21 +1176,34 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       self->subtitle_height = 0;
     }
 
+    // How far the text has to travel is measured against the width it is
+    // actually drawn into, which for a row drawn here is the screen less the
+    // margin the marquee starts from, not the firmware's narrower inset.
+#if defined(MENU_ROUND_LAUNCHER_STYLE)
+    const int16_t marquee_visible_width = available_width;
+#else
+    const int16_t marquee_visible_width = bounds.size.w - MENU_ROUND_TEXT_EDGE_INSET;
+#endif
+
     if (title_needs_scroll) {
-      self->title_max_scroll_offset = title_size.w - available_width + 40;
+      self->title_max_scroll_offset = title_size.w - marquee_visible_width + 40;
     } else {
       self->title_max_scroll_offset = 0;
     }
 
     if (subtitle_needs_scroll) {
-      self->subtitle_max_scroll_offset = subtitle_width - available_width + 40;
+      self->subtitle_max_scroll_offset = subtitle_width - marquee_visible_width + 40;
     } else {
       self->subtitle_max_scroll_offset = 0;
     }
 
-    self->needs_scrolling = title_needs_scroll || subtitle_needs_scroll;
+    // Drawing the row here is what rescues a title the firmware's inset would
+    // have clipped, whether or not the text then has to move
+    self->needs_scrolling = title_overflows_cell || subtitle_overflows_cell;
 #else
     // For rectangular displays: use combined scroll offset
+    (void) title_overflows_cell;
+    (void) subtitle_overflows_cell;
     self->needs_scrolling = title_needs_scroll || subtitle_needs_scroll;
     if (self->needs_scrolling) {
       // Calculate how far we need to scroll to show all text
@@ -1285,8 +1381,19 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
         self->menu_layer.normal_foreground;
     graphics_context_set_text_color(ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
 
-    // Draw icon centered at top (static, no scroll)
-    int16_t icon_y = 2;
+    // The icon, the title and the subtitle are one block centred in the cell,
+    // with the title directly under the icon. That is what menu_cell_basic_draw
+    // does on a round display, and this row has to match it: the firmware draws
+    // every row that fits, and only a row whose title has to marquee comes
+    // through here, so a layout of our own would move the icon up and the text
+    // down as the selection passed between one kind of row and the other.
+    const int16_t icon_height =
+        (image && image->bitmap) ? gbitmap_get_bounds(image->bitmap).size.h : 0;
+    const int16_t block_text_height = item->subtitle ?
+        (self->title_height + self->subtitle_height + MENU_ROUND_TEXT_GAP) : self->title_height;
+    const int16_t block_top = (bounds.size.h - (icon_height + block_text_height)) / 2;
+
+    int16_t icon_y = block_top + MENU_ROUND_ICON_NUDGE;
     if (image && image->bitmap) {
       GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
       graphics_context_set_compositing_mode(ctx, GCompOpSet);
@@ -1299,9 +1406,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     // For round display scrolling, we need to draw text in a much wider rect
     // so that when we apply scroll offset, the text moves through the visible area
     const int16_t text_rect_width = 2000; // very wide rect for scrolling
-    const int16_t text_center_x = bounds.size.w / 2;
-    const int16_t visible_width = bounds.size.w;
-    const int16_t left_margin = 8; // Small left margin so text doesn't start cut off
+    const int16_t left_margin = MENU_ROUND_TEXT_EDGE_INSET;
 
     if (item->subtitle) {
       // Two lines of text
@@ -1311,8 +1416,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
       // Use cached font heights (measured once during measurement phase, not every frame)
       const int16_t title_height = self->title_height;
       const int16_t subtitle_height = self->subtitle_height;
-      const int16_t total_text_height = title_height + subtitle_height + 2;
-      const int16_t text_start_y = icon_y + (bounds.size.h - icon_y - total_text_height) / 2;
+      const int16_t text_start_y = block_top + icon_height + MENU_ROUND_TEXT_NUDGE;
 
       // Draw title - either centered (if fits) or scrolling (if too long)
       if (self->title_needs_scroll) {
@@ -1334,13 +1438,13 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
         // Subtitle is too long - scroll it with left margin
         graphics_draw_text(ctx, item->subtitle,
                           subtitle_font,
-                          GRect(bounds.origin.x + left_margin - self->subtitle_scroll_offset, text_start_y + title_height + 2, text_rect_width, subtitle_height),
+                          GRect(bounds.origin.x + left_margin - self->subtitle_scroll_offset, text_start_y + title_height + MENU_ROUND_TEXT_GAP, text_rect_width, subtitle_height),
                           GTextOverflowModeFill, GTextAlignmentLeft, NULL);
       } else {
         // Subtitle fits - draw it centered
         graphics_draw_text(ctx, item->subtitle,
                           subtitle_font,
-                          GRect(bounds.origin.x, text_start_y + title_height + 2, bounds.size.w, subtitle_height),
+                          GRect(bounds.origin.x, text_start_y + title_height + MENU_ROUND_TEXT_GAP, bounds.size.w, subtitle_height),
                           GTextOverflowModeFill, GTextAlignmentCenter, NULL);
       }
     } else {
@@ -1349,7 +1453,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
       // Use cached font height (measured once during measurement phase, not every frame)
       const int16_t text_height = self->title_height;
-      const int16_t text_start_y = icon_y + (bounds.size.h - icon_y - text_height) / 2;
+      const int16_t text_start_y = block_top + icon_height + MENU_ROUND_TEXT_NUDGE;
 
       // Draw title - either centered (if fits) or scrolling (if too long)
       if (self->title_needs_scroll) {
