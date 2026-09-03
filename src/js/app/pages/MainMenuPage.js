@@ -355,7 +355,7 @@ class MainMenuPage extends BasePage {
                         if (shouldShowDomains) {
                             EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
                         } else {
-                            EntityListPage.showEntityList("All Entities", false, true, true, true);
+                            EntityListPage.showEntityList("All Entities", entityKeys, true, true, true);
                         }
                     }
                 };

@@ -61,7 +61,28 @@ var StateService = {
 
         appState.haws.getStates(
             function(data) {
-                appState.ha_state_cache = data.result;
+                var incoming = (data && data.result) ? data.result : [];
+
+                // Home Assistant accepts websocket connections and answers
+                // get_states well before it has finished starting, and what it
+                // answers with then is a fraction of the house or none of it.
+                // Believing an empty answer wipes every list in the app and
+                // republishes an empty calendar list over the real one, and
+                // nothing refetches afterwards. An empty answer is only taken
+                // as the truth when there is nothing to lose by it, which is a
+                // genuinely empty instance on a cold start.
+                var known = appState.ha_state_dict
+                    ? Object.keys(appState.ha_state_dict).length : 0;
+                if (incoming.length === 0 && known > 0) {
+                    log('HA States came back empty while ' + known +
+                        ' entities were known; keeping the states we have');
+                    if (typeof errorCallback === 'function') {
+                        errorCallback('empty state list', null, null);
+                    }
+                    return;
+                }
+
+                appState.ha_state_cache = incoming;
                 var new_state_map = {};
                 for (var i = 0; i < appState.ha_state_cache.length; i++) {
                     var entity = appState.ha_state_cache[i];
@@ -78,7 +99,7 @@ var StateService = {
                 publishAvailableCalendars(appState);
 
                 if (typeof successCallback === 'function') {
-                    successCallback(data.result);
+                    successCallback(incoming);
                 }
             },
             function(error, status, request) {

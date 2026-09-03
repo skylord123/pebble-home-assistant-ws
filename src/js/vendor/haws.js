@@ -434,6 +434,28 @@ class HAWS {
         return msg_id;
     }
 
+    // Subscribe to events on the bus, optionally of one type only
+    // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-events
+    subscribeEvents(event_type, successCallback, errorCallback) {
+        let msg = { type: 'subscribe_events' };
+        if (event_type) {
+            msg.event_type = event_type;
+        }
+
+        let msg_id = this.send(msg, successCallback, errorCallback);
+        // send returns false while disconnected, and false never matches an
+        // incoming id, so tracking it only grows the list
+        if (msg_id !== false) {
+            this._subscriptions.push(msg_id);
+        }
+
+        if(this.debug) {
+            console.log(`[HAWS] subscribe: ${JSON.stringify(msg, null, 4)}`);
+        }
+
+        return msg_id;
+    }
+
     // Subscribe to entity state changes
     // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-entity-changes
     subscribeEntities(entity_ids, successCallback, errorCallback) {

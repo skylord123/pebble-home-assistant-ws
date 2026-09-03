@@ -69,14 +69,78 @@ SettingsManager.initConfigHandler({
     }
 });
 
+// === Home Assistant core state gate ===
+//
+// Home Assistant accepts websocket connections and authenticates them well
+// before it has finished starting, and a get_states asked in that window comes
+// back with a fraction of the house or none of it at all. CoreState is
+// reported as `state` in the get_config payload, and the move to RUNNING fires
+// homeassistant_started, so the fetch waits for one or the other rather than
+// racing a server that is still booting.
+var CORE_GATE_CEILING_MS = 180000;
+var coreGateGeneration = 0;
+
+function whenCoreRunning(proceed) {
+    var log = helpers.log_message;
+    var generation = ++coreGateGeneration;
+    var subscription = null;
+    var ceiling = null;
+    var settled = false;
+
+    function release(reason) {
+        // A connection that dropped while this gate was waiting has already
+        // authenticated again and opened a gate of its own, and this one must
+        // not fire a second data fetch in behind it
+        if (settled || generation !== coreGateGeneration) { return; }
+        settled = true;
+        if (ceiling) { clearTimeout(ceiling); ceiling = null; }
+        if (subscription) {
+            appState.haws.unsubscribe(subscription);
+            subscription = null;
+        }
+        if (reason) { log('Core state gate: ' + reason); }
+        proceed();
+    }
+
+    // Subscribe before asking. Home Assistant can reach RUNNING in between the
+    // two, and the event is then the only thing that would ever tell us.
+    subscription = appState.haws.subscribeEvents('homeassistant_started', function() {
+        release('homeassistant_started received');
+    }) || null;
+
+    appState.haws.getConfig(function(data) {
+        var state = (data && data.result) ? data.result.state : null;
+        if (!state) {
+            release('no core state reported, fetching anyway');
+        } else if (state === 'RUNNING') {
+            release(null);
+        } else {
+            log('Home Assistant is ' + state + ', waiting for it to finish starting');
+            loadingCard.subtitle('Starting up');
+            // A Home Assistant that never finishes starting must not strand
+            // the app on the splash for good
+            ceiling = setTimeout(function() {
+                release('gave up waiting after ' +
+                    Math.round(CORE_GATE_CEILING_MS / 1000) + 's');
+            }, CORE_GATE_CEILING_MS);
+        }
+    }, function(err) {
+        release('get_config failed (' + JSON.stringify(err) + '), fetching anyway');
+    });
+}
+
 // === Post-Authentication Handler ===
 function on_auth_ok(evt) {
+    appState.ha_connected = true;
+    Settings.option('ha_connected', true);
+
+    whenCoreRunning(start_data_fetch);
+}
+
+function start_data_fetch() {
     var log = helpers.log_message;
     var fetch_start_time = Date.now();
     log("Starting data fetch...");
-
-    appState.ha_connected = true;
-    Settings.option('ha_connected', true);
 
     // Try to load from cache first.
     //
