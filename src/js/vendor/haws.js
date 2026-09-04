@@ -792,11 +792,19 @@ class HAWS {
                 // The delta carries whatever the agent felt like reporting,
                 // including its own private reasoning under other keys, so
                 // only actual answer text is taken and only when it is text.
+                //
+                // A delta carrying a role closes the message before it and
+                // opens a new one, and the same delta may carry the first of
+                // the new message's content. Only the assistant writes what
+                // the wearer reads, so a tool result's role is a boundary to
+                // pass over rather than report.
                 if (event.type === 'intent-progress' && progressCallback &&
                     event.data && event.data.chat_log_delta) {
-                    const piece = event.data.chat_log_delta.content;
-                    if (typeof piece === 'string' && piece.length) {
-                        progressCallback(piece);
+                    const delta = event.data.chat_log_delta;
+                    const opens = delta.role === 'assistant';
+                    const piece = typeof delta.content === 'string' ? delta.content : '';
+                    if (opens || piece.length) {
+                        progressCallback(piece, opens);
                     }
                     return;
                 }

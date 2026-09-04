@@ -333,6 +333,17 @@ function showVoiceAssistantSettings(onClose) {
         });
     }
 
+    // Pipelines are otherwise read once, when the socket authenticates. One
+    // renamed or removed in Home Assistant since then leaves this picker
+    // offering something that is no longer there, and choosing it fails the
+    // next turn with an error the wearer cannot act on. Opening this screen is
+    // the moment to ask again, and the menu is rebuilt if the answer differs.
+    // Required here rather than at the top of the file: AssistPage reaches back
+    // into this module, so a top level import would close the circle.
+    require('app/pages/AssistPage').loadAssistPipelines(function(ok) {
+        if (ok) { updateMenuItems(); }
+    });
+
     voiceSettingsMenu.on('show', function() {
         goingDeeper = false;
         updateMenuItems();

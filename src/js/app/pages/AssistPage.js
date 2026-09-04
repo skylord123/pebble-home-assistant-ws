@@ -94,7 +94,19 @@ function describeError(error) {
         return 'Connection error';
     }
 
-    switch (error.code) {
+    // Two shapes reach here. A pipeline error event is already flattened to
+    // {error, code}. A failed result carries Home Assistant's own
+    // {code, message} nested under .error, and that is the shape every
+    // validation failure takes: websocket_run reports those before the run
+    // starts, so a renamed pipeline or an unloaded agent arrives this way.
+    // Reading the outer object alone yielded the nested one, which the watch
+    // then drew as "[object Object]".
+    var detail = (error.error && typeof error.error === 'object') ? error.error : error;
+    var code = detail.code || error.code;
+    var message = (typeof detail.message === 'string' && detail.message) ||
+        (typeof error.error === 'string' && error.error) || '';
+
+    switch (code) {
         case 'wake-engine-missing': return 'No wake word engine installed';
         case 'wake-provider-missing': return 'Wake word provider not available';
         case 'wake-stream-failed': return 'Wake word detection failed';
@@ -107,7 +119,13 @@ function describeError(error) {
         case 'intent-failed': return 'Intent recognition failed';
         case 'tts-not-supported': return 'Text-to-speech not available';
         case 'tts-failed': return 'Text-to-speech failed';
-        default: return error.error || 'Connection error';
+        // These are the ones a watch actually meets, since it asks for the
+        // intent stage alone and the wake, speech and voice codes above can
+        // never fire
+        case 'timeout': return 'Home Assistant took too long';
+        case 'pipeline-not-found': return 'That assistant is no longer set up';
+        case 'intent-agent-not-found': return 'Conversation agent not found';
+        default: return message || 'Connection error';
     }
 }
 
@@ -168,7 +186,13 @@ function runPipeline(transcription) {
         },
         pipeline: appState.selected_pipeline,
         conversation_id: conversation_id,
-        timeout: 30
+        // Home Assistant's own default is 300 seconds. The watch gives up
+        // after 45 of silence, but it restarts that clock on every streamed
+        // piece, so it will happily wait out a long answer that is still
+        // arriving. The server's cap has to sit above the watch's, not below
+        // it: at 30 an agent working through a few tool calls was being cut
+        // off mid-answer.
+        timeout: 120
     };
 
     cancelStream();
@@ -176,7 +200,16 @@ function runPipeline(transcription) {
 
     var streaming = appState.assist_stream_reply !== false &&
         supportsStreaming(appState.ha_version);
-    var onProgress = streaming ? function(piece) {
+    var onProgress = streaming ? function(piece, opensMessage) {
+        // An agent that stops to call a tool writes twice in one turn: a line
+        // about what it is going off to look up, then the answer once it has.
+        // Home Assistant reports those as separate messages, so they are kept
+        // apart here rather than run together. It also puts the second message
+        // back at the start of a line, which is where the markdown converter
+        // has to see a list or a heading to recognise it as one.
+        if (opensMessage && streamText) {
+            streamText += '\n\n';
+        }
         streamText += piece;
         if (!streamTimer) {
             streamTimer = setTimeout(flushStream, STREAM_COALESCE_MS);
@@ -199,15 +232,32 @@ function runPipeline(transcription) {
             }
 
             try {
-                var speech = data.response.speech.plain.speech;
+                if (data.conversation_id) {
+                    conversation_id = data.conversation_id;
+                }
+
+                // Home Assistant always sends a speech key but leaves it empty
+                // when no agent set one, so this is read a piece at a time
+                // rather than assumed all the way down
+                var response = data.response || {};
+                var plain = (response.speech && response.speech.plain) || {};
+                var speech = typeof plain.speech === 'string' ? plain.speech : '';
+
+                if (response.response_type === 'error') {
+                    // A successful run whose response is an error, which is how
+                    // the agent's own failures arrive: an expired key or a rate
+                    // limit from the model. Drawn as an answer it is
+                    // indistinguishable from one.
+                    cancelStream();
+                    Assist.error(speech || 'The assistant could not answer');
+                    return;
+                }
+
                 // Whatever was streamed came from this same answer, so ending
                 // on it settles any last piece and stops the dots. Nothing
                 // streamed and it goes down whole, exactly as it used to.
                 Assist.endReply(speech);
                 cancelStream();
-                if (data.conversation_id) {
-                    conversation_id = data.conversation_id;
-                }
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
                 cancelStream();

@@ -350,6 +350,22 @@ Assist.streamReply = function(accumulatedMarkdown) {
   return !stream.full;
 };
 
+//! A match of a character or two at the seam is far more likely to be a
+//! coincidence than a real overlap that short, and acting on one eats the
+//! start of the answer. Anything below this counts as no overlap at all,
+//! unless it is the whole of what is being matched.
+var MIN_OVERLAP = 4;
+
+//! How much of the end of `sent` is also the start of `text`, so an answer
+//! that was partly streamed is finished off rather than sent twice
+function commonOverlap(sent, text) {
+  var max = sent.length < text.length ? sent.length : text.length;
+  for (var n = max; n > 0; n--) {
+    if (sent.substring(sent.length - n) === text.substring(0, n)) { return n; }
+  }
+  return 0;
+}
+
 /**
  * The agent has finished. Ends the thinking animation, and sends the answer in
  * one piece if none of it was streamed.
@@ -369,13 +385,30 @@ Assist.endReply = function(markdown) {
     return;
   }
 
-  // Whatever is on screen was built from the same text the agent has just
-  // finished writing, so all that is left is to say so and stop the dots. The
-  // closed conversion can differ from the open one by a trailing marker, so
-  // any last scrap of it goes down with the same append.
+  // Usually what is on screen was built from the same text the agent has just
+  // finished writing, so all that is left is the last scrap of it: the closed
+  // conversion can differ from the open one by a trailing marker.
   var text = toWatchText(markdown);
-  var addition = startsWith(text, stream.sent)
-      ? text.substring(stream.sent.length) : '';
+  var addition;
+  if (startsWith(text, stream.sent)) {
+    addition = text.substring(stream.sent.length);
+  } else {
+    // An agent that calls a tool writes twice in one turn: a line saying what
+    // it is about to go and look up, then the answer once it has. Home
+    // Assistant reports only the last of those as the speech, so what arrives
+    // here is not a continuation of what was streamed. Appending nothing,
+    // which is what used to happen, left the watch holding the preamble and
+    // none of the answer whenever the last pieces had not been flushed yet.
+    // Send whatever of the answer has not already gone down.
+    var overlap = commonOverlap(stream.sent, text);
+    if (overlap < MIN_OVERLAP && overlap < text.length) { overlap = 0; }
+    addition = text.substring(overlap);
+    if (overlap === 0 && addition && stream.sent && !/\s$/.test(stream.sent)) {
+      // Two separate messages rather than one sentence, so they do not run
+      // together as "...areas:Here are the temperatures"
+      addition = '\n' + addition;
+    }
+  }
   simply.impl.assistMessage(RoleAssistant, addition, FlagAppend);
   resetStream();
 };
