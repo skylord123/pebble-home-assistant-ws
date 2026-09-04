@@ -1675,7 +1675,7 @@ SimplyPebble.assistShow = function(opts) {
   AssistShowPacket
     .fontSize(opts.fontSize || 18)
     .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0) |
-           (opts.listen ? 8 : 0));
+           (opts.listen ? 8 : 0) | (opts.reset ? 32 : 0));
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 

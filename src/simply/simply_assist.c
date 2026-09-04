@@ -169,6 +169,11 @@ enum {
   ShowFlagDark = 4,
   ShowFlagListen = 8,
   ShowFlagThemeOnly = 16,
+  //! Start the conversation over without leaving the screen. Backing out of
+  //! Assist tears the window down, which is what usually empties it, but the
+  //! settings menu comes back to the same window and the transcript has to be
+  //! thrown away in place.
+  ShowFlagReset = 32,
 };
 
 typedef struct AssistMessagePacket AssistMessagePacket;
@@ -1340,6 +1345,18 @@ static SimplyAssist *prv_create(Simply *simply) {
 
 // MARK: - Packets
 
+//! Throw the conversation away, leaving the screen itself alone
+static void prv_clear_conversation(SimplyAssist *self) {
+  prv_stop_thinking(self);
+  self->count = 0;
+  self->arena_used = 0;
+  self->last_message_y = 0;
+  self->thinking_y = 0;
+  self->streaming = false;
+  self->user_scrolled = false;
+  self->ever_spoke = false;
+}
+
 static void prv_handle_show(Simply *simply, Packet *data) {
   AssistShowPacket *packet = (AssistShowPacket *)data;
   SimplyAssist *self = simply->assist;
@@ -1374,6 +1391,9 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   //! Whether to open the microphone straight away. Coming back from the
   //! settings menu should land on the conversation, not on the dictation UI.
   const bool listen = (packet->flags & ShowFlagListen);
+  if (packet->flags & ShowFlagReset) {
+    prv_clear_conversation(self);
+  }
   prv_apply_theme(self);
 
   if (!window_stack_contains_window(self->window)) {

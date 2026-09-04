@@ -280,7 +280,7 @@ function runPipeline(transcription) {
  * Coming back from the settings menu leaves it off: the watch still holds
  * everything that was said, and shows it again with whatever was changed.
  */
-function openAssist(listen) {
+function openAssist(listen, reset) {
     var appState = AppState.getInstance();
 
     Assist.show({
@@ -289,12 +289,25 @@ function openAssist(listen) {
         backlight: appState.voice_backlight_trigger,
         dark: Theme.assistIsDark(),
         listen: listen,
+        reset: reset,
         onTranscript: runPipeline,
         onSettings: function() {
             // Imported inline to avoid a circular dependency
             var SettingsMenuPage = require('app/pages/SettingsMenuPage');
+            var pipelineBefore = appState.selected_pipeline;
             SettingsMenuPage.showVoiceAssistantSettings(function() {
-                openAssist(false);
+                // A conversation belongs to the pipeline it was started on:
+                // Home Assistant keys it to the agent that answered, and it
+                // cannot be carried over to a different one. Switching
+                // pipelines therefore starts again, transcript and all, which
+                // is what the Home Assistant frontend does too. Changing
+                // anything else leaves the conversation where it was.
+                var switched = appState.selected_pipeline !== pipelineBefore;
+                if (switched) {
+                    conversation_id = null;
+                    cancelStream();
+                }
+                openAssist(false, switched);
             });
         }
     });

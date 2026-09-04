@@ -275,6 +275,7 @@ Assist.show = function(opts) {
     backlight: !!opts.backlight,
     dark: state.dark,
     listen: opts.listen !== false,
+    reset: !!opts.reset,
   });
 };
 
