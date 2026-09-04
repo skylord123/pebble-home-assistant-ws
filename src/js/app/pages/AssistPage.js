@@ -157,11 +157,35 @@ var STREAM_COALESCE_MS = 120;
 var streamTimer = null;
 var streamText = '';
 
+// The watch stops waiting after 45 seconds of hearing nothing and says so. A
+// conversation agent that does not stream says nothing at all until it has
+// finished, and one that does can still go quiet for a while between tool
+// calls, so while a request is genuinely in flight the phone says as much.
+// Silence then means what the watch's message claims it means: the phone has
+// stopped talking, not that the answer is taking a while.
+var KEEPALIVE_MS = 20000;
+var keepAliveTimer = null;
+
+function startKeepAlive() {
+    stopKeepAlive();
+    keepAliveTimer = setInterval(function() {
+        Assist.keepAlive();
+    }, KEEPALIVE_MS);
+}
+
+function stopKeepAlive() {
+    if (keepAliveTimer) {
+        clearInterval(keepAliveTimer);
+        keepAliveTimer = null;
+    }
+}
+
 function cancelStream() {
     if (streamTimer) {
         clearTimeout(streamTimer);
         streamTimer = null;
     }
+    stopKeepAlive();
     streamText = '';
 }
 
@@ -218,8 +242,10 @@ function runPipeline(transcription) {
 
     helpers.log_message("Sending assist_pipeline/run request" +
         (streaming ? " (streaming)" : ""));
+    startKeepAlive();
     appState.haws.runPipeline(body,
         function(data) {
+            stopKeepAlive();
             if (streamTimer) {
                 clearTimeout(streamTimer);
                 streamTimer = null;
@@ -265,6 +291,7 @@ function runPipeline(transcription) {
             }
         },
         function(error) {
+            stopKeepAlive();
             helpers.log_message("assist_pipeline/run error: " + JSON.stringify(error));
             cancelStream();
             Assist.error(describeError(error));

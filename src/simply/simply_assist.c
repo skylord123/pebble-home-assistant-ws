@@ -191,6 +191,12 @@ struct __attribute__((__packed__)) AssistMessagePacket {
 enum {
   MessageFlagAppend = 1,
   MessageFlagStreaming = 2,
+  //! Nothing to add: the phone is still waiting on Home Assistant. The clock
+  //! that gives up on a silent phone starts again, and nothing else moves.
+  //! Without this a conversation agent that does not stream would go quiet
+  //! for the whole of its answer, and a slow one would be declared dead while
+  //! it was still being written.
+  MessageFlagKeepAlive = 4,
 };
 
 typedef struct AssistTranscriptPacket AssistTranscriptPacket;
@@ -1411,6 +1417,11 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   SimplyAssist *self = simply->assist;
   if (!self || self->destroying) { return; }
   AssistMessagePacket *packet = (AssistMessagePacket *)data;
+
+  if (packet->flags & MessageFlagKeepAlive) {
+    prv_keep_thinking(self);
+    return;
+  }
 
   const bool streaming = (packet->flags & MessageFlagStreaming);
   // Only a turn of the same voice can be added to, so a message that arrives

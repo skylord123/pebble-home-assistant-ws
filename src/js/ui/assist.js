@@ -42,6 +42,7 @@ var RoleError = 2;
 // Must match the flags in simply_assist.c
 var FlagAppend = 1;      // add to the answer already on screen
 var FlagStreaming = 2;   // more is coming, keep the dots running
+var FlagKeepAlive = 4;   // nothing to add, but the phone is still working
 
 // Must match TEXT_BOLD_ON/OFF in simply_assist.c. Home Assistant's
 // conversation agents answer in markdown, and the watch has no business
@@ -293,6 +294,17 @@ Assist.setDark = function(dark) {
   if (!state.active || state.dark === !!dark) { return; }
   state.dark = !!dark;
   simply.impl.assistTheme(state.dark);
+};
+
+/**
+ * Still waiting on Home Assistant, with nothing to show for it yet. The watch
+ * gives up on a phone that has gone quiet, and an agent that does not stream
+ * says nothing at all until it is finished, so silence has to be told apart
+ * from a dead link.
+ */
+Assist.keepAlive = function() {
+  if (!state.active) { return; }
+  simply.impl.assistMessage(RoleAssistant, '', FlagKeepAlive);
 };
 
 /** A new turn is starting, so nothing of the last answer carries into it. */
