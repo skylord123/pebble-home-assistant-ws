@@ -477,6 +477,32 @@ static int16_t prv_slice_width(char *text, uint16_t length, GFont font) {
   return width;
 }
 
+//! The end of the UTF-8 sequence starting at `i`, so a word is never broken
+//! part way through a character
+static uint16_t prv_utf8_next(const char *text, uint16_t length, uint16_t i) {
+  if (i >= length) { return length; }
+  i++;
+  while (i < length && ((unsigned char)text[i] & 0xC0) == 0x80) { i++; }
+  return i;
+}
+
+//! The longest prefix of a word that fits `max` pixels, never shorter than one
+//! character so breaking a word always makes progress. The caller has already
+//! established that the whole of it does not fit.
+static uint16_t prv_fit_prefix(char *text, uint16_t length, GFont font, int16_t max) {
+  const uint16_t first = prv_utf8_next(text, length, 0);
+  if (first >= length) { return length; }
+  uint16_t lo = first;      //!< a boundary that fits, or the one character minimum
+  uint16_t hi = length;     //!< a length known not to fit
+  while (true) {
+    uint16_t mid = (uint16_t)(lo + (hi - lo) / 2);
+    while (mid > lo && ((unsigned char)text[mid] & 0xC0) == 0x80) { mid--; }
+    if (mid == lo) { break; }
+    if (prv_slice_width(text, mid, font) <= max) { lo = mid; } else { hi = mid; }
+  }
+  return lo;
+}
+
 //! A space on its own measures as nothing, so take it as the difference two
 //! letters make with and without one between them
 static int16_t prv_space_width(GFont font) {
@@ -534,11 +560,11 @@ static void prv_flush_line(Wrapper *w) {
       x += word->gap;
       const char save = word->text[word->length];
       word->text[word->length] = '\0';
-      // A single word wider than the line gets ellipsised rather than run off
-      // the edge of the screen
-      const int16_t box_w = word->width + 4 > w->span ? w->span : word->width + 4;
+      // Words are broken to fit before they get here, so the box is whatever
+      // the word measured. Clamping it to the line was what used to cut a
+      // spelled out word short and end it in an ellipsis.
       graphics_draw_text(w->ctx, word->text, w->fonts[word->bold],
-                         GRect(x, w->y, box_w, w->line_height + 4),
+                         GRect(x, w->y, word->width + 4, w->line_height + 4),
                          GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
       word->text[word->length] = save;
       x += word->width;
@@ -621,10 +647,34 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
     while (*p && *p != ' ' && *p != '\n' && *p != TEXT_BOLD_ON && *p != TEXT_BOLD_OFF) {
       p++;
     }
-    const uint16_t length = p - word;
-    const int16_t width = prv_slice_width(word, length, w.fonts[bold]);
+    uint16_t length = p - word;
+    int16_t width = prv_slice_width(word, length, w.fonts[bold]);
     int16_t gap = (w.count > 0 && spaced) ? w.space_width[bold] : 0;
     spaced = false;
+
+    // A word wider than a whole line cannot be made to fit by moving it down,
+    // so it is broken across lines here. A spelled out answer, B-A-S-S-I-N-E-T,
+    // and a long URL are both one word to the splitter below: neither has a
+    // space in it and neither breaks at a hyphen. The rest of the word is
+    // picked up as the next word on the next turn of the loop, and broken
+    // again if it is still too long.
+    if (width > w.span) {
+      if (w.count > 0) {
+        // Start it on a line of its own, which on a round display may be a
+        // wider one than the line it was going to share
+        prv_flush_line(&w);
+        prv_begin_line(&w);
+        gap = 0;
+      }
+      if (width > w.span) {
+        const uint16_t fit = prv_fit_prefix(word, length, w.fonts[bold], w.span);
+        if (fit > 0 && fit < length) {
+          length = fit;
+          width = prv_slice_width(word, length, w.fonts[bold]);
+          p = word + length;
+        }
+      }
+    }
 
     if ((w.count > 0 && w.width + gap + width > w.span) ||
         w.count >= MAX_LINE_WORDS) {
