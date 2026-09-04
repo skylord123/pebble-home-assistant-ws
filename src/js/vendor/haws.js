@@ -434,6 +434,28 @@ class HAWS {
         return msg_id;
     }
 
+    // Subscribe to events on the bus, optionally of one type only
+    // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-events
+    subscribeEvents(event_type, successCallback, errorCallback) {
+        let msg = { type: 'subscribe_events' };
+        if (event_type) {
+            msg.event_type = event_type;
+        }
+
+        let msg_id = this.send(msg, successCallback, errorCallback);
+        // send returns false while disconnected, and false never matches an
+        // incoming id, so tracking it only grows the list
+        if (msg_id !== false) {
+            this._subscriptions.push(msg_id);
+        }
+
+        if(this.debug) {
+            console.log(`[HAWS] subscribe: ${JSON.stringify(msg, null, 4)}`);
+        }
+
+        return msg_id;
+    }
+
     // Subscribe to entity state changes
     // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-entity-changes
     subscribeEntities(entity_ids, successCallback, errorCallback) {
@@ -708,8 +730,16 @@ class HAWS {
         return this.send({ type: 'assist_pipeline/pipeline/list' }, successCallback, errorCallback);
     }
 
-    // Add new method for running pipeline
-    runPipeline(data, successCallback, errorCallback) {
+    /**
+     * Run an assist pipeline.
+     *
+     * `progressCallback` is optional and only ever called where Home Assistant
+     * streams the answer as the agent writes it (intent-progress events, core
+     * 2025.3 and later). It receives each new piece of text on its own; an
+     * older instance simply never sends them and the answer arrives whole at
+     * the end as it always did.
+     */
+    runPipeline(data, successCallback, errorCallback, progressCallback) {
         const msg = {
             type: 'assist_pipeline/run',
             ...data
@@ -755,6 +785,27 @@ class HAWS {
                         });
                     }
                     this.unsubscribe(subscriptionId);
+                    return;
+                }
+
+                // A piece of the answer, while the agent is still writing it.
+                // The delta carries whatever the agent felt like reporting,
+                // including its own private reasoning under other keys, so
+                // only actual answer text is taken and only when it is text.
+                //
+                // A delta carrying a role closes the message before it and
+                // opens a new one, and the same delta may carry the first of
+                // the new message's content. Only the assistant writes what
+                // the wearer reads, so a tool result's role is a boundary to
+                // pass over rather than report.
+                if (event.type === 'intent-progress' && progressCallback &&
+                    event.data && event.data.chat_log_delta) {
+                    const delta = event.data.chat_log_delta;
+                    const opens = delta.role === 'assistant';
+                    const piece = typeof delta.content === 'string' ? delta.content : '';
+                    if (opens || piece.length) {
+                        progressCallback(piece, opens);
+                    }
                     return;
                 }
 

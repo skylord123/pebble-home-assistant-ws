@@ -22,10 +22,6 @@ function showToDoLists() {
     var appState = AppState.getInstance();
     let toDoListsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'To-Do Lists'
         }]
@@ -147,10 +143,6 @@ function showToDoList(entity_id) {
 
     let todoListMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [
             {
                 title: 'To Do'
@@ -627,10 +619,6 @@ function confirmAction(message, successCallback, failureCallback) {
 
     let confirmMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: message
         }]
@@ -683,10 +671,6 @@ function showToDoItemMenu(entity_id, item) {
 
     let itemMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [
             {
                 title: 'Item'
@@ -926,10 +910,6 @@ function showToDoItemDescriptionOptionsMenu(entity_id, item) {
 
     let descOptionsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Description'
         }]

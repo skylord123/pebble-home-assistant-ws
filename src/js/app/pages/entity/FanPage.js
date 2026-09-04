@@ -94,10 +94,6 @@ function showFanEntity(entity_id) {
     // Create the fan menu
     let fanMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: fanData.friendly_name
         }]
@@ -387,10 +383,6 @@ function showFanEntity(entity_id) {
         // Create preset mode selection menu
         let presetMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Preset'
             }]

@@ -102,10 +102,6 @@ function showSirenEntity(entity_id) {
 
     let sirenMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -150,10 +146,6 @@ function showSirenEntity(entity_id) {
         let data = getSirenData(appState.ha_state_dict[entity_id] || entity);
         let toneMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Tone'
             }]

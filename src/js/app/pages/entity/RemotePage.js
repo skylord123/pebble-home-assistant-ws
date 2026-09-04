@@ -152,10 +152,6 @@ function showRemoteEntity(entity_id) {
 
     let remoteMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -166,10 +162,6 @@ function showRemoteEntity(entity_id) {
     function showActivityMenu() {
         let activityMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Activity'
             }]
@@ -222,10 +214,6 @@ function showRemoteEntity(entity_id) {
         let data = getRemoteData(appState.ha_state_dict[entity_id] || entity);
         let deviceMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Device'
             }]

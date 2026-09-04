@@ -13,6 +13,7 @@ struct Simply {
   struct SimplyWindowStack *window_stack;
   struct SimplySplash *splash;
   struct SimplyNumber *number;
+  struct SimplyAssist *assist;
   union {
     struct {
       struct SimplyStage *stage;

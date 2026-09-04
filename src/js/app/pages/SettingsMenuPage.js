@@ -11,6 +11,7 @@ var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var InactivityTimer = require('app/InactivityTimer');
 var Touch = require('ui/touch');
+var Theme = require('app/ui/Theme');
 
 class SettingsMenuPage extends BasePage {
     constructor() {
@@ -20,10 +21,6 @@ class SettingsMenuPage extends BasePage {
     createMenu() {
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Settings',
                 backgroundColor: Constants.colour.highlight,
@@ -71,6 +68,14 @@ class SettingsMenuPage extends BasePage {
         });
 
         this.menu.item(0, i++, {
+            title: "Menu Background",
+            subtitle: Theme.describe(appState.menu_background_mode),
+            on_click: function(e) {
+                showBackgroundMenu('Menu Background', 'menu_background_mode');
+            }
+        });
+
+        this.menu.item(0, i++, {
             title: "Inactivity Timeout",
             subtitle: formatInactivityTimeout(appState.inactivity_timeout),
             on_click: function(e) {
@@ -98,6 +103,56 @@ class SettingsMenuPage extends BasePage {
 }
 
 /**
+ * Show the background picker for one of the background settings.
+ *
+ * The choice applies the moment it is made, so the menu the wearer is standing
+ * in changes colour under them and they can see what they picked.
+ *
+ * @param {string} title - Section title for the picker
+ * @param {string} key - Which setting this picks: 'menu_background_mode' or
+ *                       'assist_background_mode'
+ */
+function showBackgroundMenu(title, key) {
+    var appState = AppState.getInstance();
+
+    var backgroundMenu = new UI.Menu({
+        status: false,
+        sections: [{
+            title: title
+        }]
+    });
+
+    function updateMenuItems() {
+        var modes = Theme.all();
+        var items = [];
+
+        for (var i = 0; i < modes.length; i++) {
+            items.push({
+                title: Theme.label(modes[i]),
+                subtitle: appState[key] === modes[i] ? 'Current' : '',
+                value: modes[i]
+            });
+        }
+
+        backgroundMenu.items(0, items);
+    }
+
+    backgroundMenu.on('show', updateMenuItems);
+
+    backgroundMenu.on('select', function(e) {
+        appState[key] = e.item.value;
+        Settings.option(key, e.item.value);
+        Theme.configure();
+        updateMenuItems();
+        setTimeout(function() {
+            backgroundMenu.hide();
+        }, 500);
+    });
+
+    backgroundMenu.show();
+}
+
+/**
  * Show domain filter settings menu
  */
 function showDomainFilterSettings() {
@@ -105,10 +160,6 @@ function showDomainFilterSettings() {
 
     var domainFilterMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Ignored Domains'
         }]
@@ -177,16 +228,17 @@ function showDomainFilterSettings() {
 
 /**
  * Show voice assistant settings menu
+ *
+ * `onClose` is called when the wearer leaves the menu for good, which is how
+ * the assist conversation knows to come back with whatever was changed. Going
+ * deeper into the pipeline picker hides this menu too, and does not count.
  */
-function showVoiceAssistantSettings() {
+function showVoiceAssistantSettings(onClose) {
     var appState = AppState.getInstance();
+    var goingDeeper = false;
 
     var voiceSettingsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Assistant Settings'
         }]
@@ -242,6 +294,7 @@ function showVoiceAssistantSettings() {
             title: "Pipeline",
             subtitle: currentAgentName,
             on_click: function(e) {
+                goingDeeper = true;
                 showVoicePipelineMenu();
             }
         });
@@ -256,9 +309,50 @@ function showVoiceAssistantSettings() {
                 updateMenuItems();
             }
         });
+
+        // Whether the reply is shown building up or only once it is finished
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Stream Reply",
+            subtitle: appState.assist_stream_reply ? "True" : "False",
+            on_click: function(e) {
+                appState.assist_stream_reply = !appState.assist_stream_reply;
+                Settings.option('assist_stream_reply', appState.assist_stream_reply);
+                updateMenuItems();
+            }
+        });
+
+        // The conversation is set apart from the menus, so a white app can
+        // still have a dark screen to read a long answer on
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Background",
+            subtitle: Theme.describe(appState.assist_background_mode),
+            on_click: function(e) {
+                goingDeeper = true;
+                showBackgroundMenu('Assistant Background', 'assist_background_mode');
+            }
+        });
     }
 
-    voiceSettingsMenu.on('show', updateMenuItems);
+    // Pipelines are otherwise read once, when the socket authenticates. One
+    // renamed or removed in Home Assistant since then leaves this picker
+    // offering something that is no longer there, and choosing it fails the
+    // next turn with an error the wearer cannot act on. Opening this screen is
+    // the moment to ask again, and the menu is rebuilt if the answer differs.
+    // Required here rather than at the top of the file: AssistPage reaches back
+    // into this module, so a top level import would close the circle.
+    require('app/pages/AssistPage').loadAssistPipelines(function(ok) {
+        if (ok) { updateMenuItems(); }
+    });
+
+    voiceSettingsMenu.on('show', function() {
+        goingDeeper = false;
+        updateMenuItems();
+    });
+
+    voiceSettingsMenu.on('hide', function() {
+        if (goingDeeper || !onClose) { return; }
+        onClose();
+    });
     voiceSettingsMenu.on('select', function(e) {
         if (typeof e.item.on_click === 'function') {
             e.item.on_click(e);
@@ -293,10 +387,6 @@ function showEntitySettings() {
 
     var entitySettingsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Entity Settings'
         }]
@@ -379,10 +469,6 @@ function showOrderByMenu() {
 
     var orderByMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Order By'
         }]
@@ -426,10 +512,6 @@ function showUnavailableEntitiesMenu() {
 
     var unavailableMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Unavailable Entities'
         }]
@@ -473,10 +555,6 @@ function showUnknownEntitiesMenu() {
 
     var unknownMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Unknown Entities'
         }]
@@ -520,10 +598,6 @@ function showAutomationLongpressMenu() {
 
     var automationMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Automation Long-Press'
         }]
@@ -589,10 +663,6 @@ function showInactivityTimeoutMenu() {
 
     var timeoutMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Inactivity Timeout'
         }]
@@ -651,10 +721,6 @@ function showTouchSettings() {
 
     var touchMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Touch'
         }]
@@ -722,10 +788,6 @@ function showQuickLaunchSettings() {
 
     var quickLaunchMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Quick Launch'
         }]
@@ -777,10 +839,6 @@ function showQuickLaunchActionMenu(onSelect) {
 
     var actionMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Select Action'
         }]
@@ -885,10 +943,6 @@ function showFavoriteEntitySelectionMenu(onSelect) {
 
     var favoriteMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Select Favorite'
         }]
@@ -931,10 +985,6 @@ function showVoicePipelineMenu() {
 
     var voicePipelineMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Assist Pipeline'
         }]

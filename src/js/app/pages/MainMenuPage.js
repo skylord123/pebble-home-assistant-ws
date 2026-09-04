@@ -43,10 +43,6 @@ class MainMenuPage extends BasePage {
     createMenu() {
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Home Assistant',
                 backgroundColor: Constants.colour.highlight,
@@ -359,7 +355,7 @@ class MainMenuPage extends BasePage {
                         if (shouldShowDomains) {
                             EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
                         } else {
-                            EntityListPage.showEntityList("All Entities", false, true, true, true);
+                            EntityListPage.showEntityList("All Entities", entityKeys, true, true, true);
                         }
                     }
                 };

@@ -16,6 +16,7 @@ var Vibe = require('ui/vibe');
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
 // Menu selection tracking
@@ -123,10 +124,6 @@ function showCoverEntity(entity_id) {
     // Create the cover menu
     let coverMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: coverData.friendly_name
         }]
@@ -308,11 +305,14 @@ function showCoverEntity(entity_id) {
         let returnToIndex = selectedIndex;
         let current_value = opts.current;
 
+        // Reached from a menu, so it wears the menu's colours
+        let colors = Theme.menuColors();
+
         let sliderWindow = new UI.Window({
-            backgroundColor: 'white',
+            backgroundColor: colors.backgroundColor,
             status: {
-                color: 'black',
-                backgroundColor: 'white',
+                color: colors.textColor,
+                backgroundColor: colors.backgroundColor,
                 seperator: "dotted"
             }
         });
@@ -320,7 +320,7 @@ function showCoverEntity(entity_id) {
         // Add title
         let title = new UI.Text({
             text: opts.title,
-            color: "black",
+            color: colors.textColor,
             font: "gothic_24_bold",
             position: new Vector(0, 0),
             size: new Vector(Feature.resolution().x, 30),
@@ -331,7 +331,7 @@ function showCoverEntity(entity_id) {
         // Add current value text
         let valueText = new UI.Text({
             text: `${current_value}%`,
-            color: "black",
+            color: colors.textColor,
             font: "gothic_24",
             position: new Vector(0, 35),
             size: new Vector(Feature.resolution().x, 30),
@@ -343,7 +343,9 @@ function showCoverEntity(entity_id) {
         let sliderBg = new UI.Rect({
             position: new Vector(20, 70),
             size: new Vector(Feature.resolution().x - 40, 20),
-            backgroundColor: 'lightGray'
+            backgroundColor: 'clear',
+            borderColor: colors.textColor,
+            borderWidth: 1
         });
 
         // Add slider foreground (progress)
@@ -351,13 +353,14 @@ function showCoverEntity(entity_id) {
         let sliderFg = new UI.Rect({
             position: new Vector(20, 70),
             size: new Vector(sliderWidth, 20),
-            backgroundColor: 'black'
+            backgroundColor: colors.textColor,
+            borderColor: 'clear'
         });
 
         // Add instructions
         let instructions = new UI.Text({
             text: "UP/DOWN: Adjust | SELECT: Set",
-            color: "black",
+            color: colors.textColor,
             font: "gothic_14",
             position: new Vector(0, 100),
             size: new Vector(Feature.resolution().x, 20),

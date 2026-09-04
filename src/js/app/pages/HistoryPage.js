@@ -416,10 +416,6 @@ function showHistoryGraph(entity_id) {
         graphWindow.on('click', 'select', function() {
             var periodMenu = new UI.Menu({
                 status: false,
-                backgroundColor: 'black',
-                textColor: 'white',
-                highlightBackgroundColor: 'white',
-                highlightTextColor: 'black',
                 sections: [{
                     title: 'Time Period'
                 }]
@@ -464,10 +460,6 @@ function showHistoryChanges(entity_id) {
 
     var changesMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: title + ' - updating ...'
         }]

@@ -344,10 +344,6 @@ function showCalendarList() {
 
     var calendarMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Calendars'
         }]
@@ -403,10 +399,6 @@ function showCalendarEvents(title, entityIds) {
 
     var eventsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: title + ' - updating ...'
         }]
@@ -422,10 +414,6 @@ function showCalendarEvents(title, entityIds) {
 
         var pickerMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Add to calendar'
             }]
@@ -711,10 +699,6 @@ function confirmDeleteEvent(event, onDeleted) {
 
     var confirmMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Delete event?'
         }]
@@ -817,10 +801,6 @@ function showEventForm(event, detailWindow, calendarEntityId) {
 
     var editMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: isCreate ? 'New Event' : 'Edit Event'
         }]

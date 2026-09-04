@@ -46,9 +46,21 @@ struct SimplyNumber {
   //! value dialled away from and back to does not report twice
   AppTimer *settle_timer;
   int32_t last_sent_value;
+  //! The menu's own colours, so the selector is not a white window thrown up
+  //! over a dark list. The selected duration field swaps them rather than
+  //! assuming black on white.
+  GColor8 background_color;
+  GColor8 text_color;
   char title[32];
   char unit[12];
 };
+
+#if defined(PBL_PLATFORM_APLITE)
+
+#define simply_number_handle_packet(simply, packet) (false)
+#define simply_number_is_covering(simply) (false)
+
+#else
 
 bool simply_number_handle_packet(Simply *simply, Packet *packet);
 
@@ -56,6 +68,8 @@ bool simply_number_handle_packet(Simply *simply, Packet *packet);
 //! it must not report hide events to JS: the JS window stack keeps the page
 //! beneath so it is restored when the selector closes.
 bool simply_number_is_covering(Simply *simply);
+
+#endif
 
 #ifdef SIMPLY_HAS_TOUCH
 

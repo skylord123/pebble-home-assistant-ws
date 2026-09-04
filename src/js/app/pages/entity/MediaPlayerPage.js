@@ -603,10 +603,6 @@ class MediaPlayerPage extends BaseEntityPage {
         var self = this;
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{ title: title }]
         });
 
@@ -649,10 +645,6 @@ class MediaPlayerPage extends BaseEntityPage {
         var self = this;
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{ title: 'Play In Sync' }]
         });
 
@@ -724,10 +716,6 @@ class MediaPlayerPage extends BaseEntityPage {
         var selectedIndex = 0;
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{ title: 'Options' }]
         });
 

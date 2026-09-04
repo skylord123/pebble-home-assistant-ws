@@ -9,6 +9,17 @@ var Touch = require('ui/touch');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
+
+/**
+ * Read one of the background settings, falling back to black for anything
+ * unrecognised so an older or hand-edited value cannot leave the app unreadable
+ */
+function readBackgroundMode(key) {
+    var modes = Constants.backgroundModes;
+    var value = Settings.option(key);
+    return (value === modes.WHITE || value === modes.SUN) ? value : modes.BLACK;
+}
 
 var SettingsManager = {
     /**
@@ -29,6 +40,7 @@ var SettingsManager = {
         appState.voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
         appState.voice_confirm = Settings.option('voice_confirm');
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
+        appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 
         // Quick launch settings
@@ -132,6 +144,12 @@ var SettingsManager = {
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
+
+        // Background colour, black unless it has been changed. Applying it here
+        // covers both startup and a change made on the config page.
+        appState.menu_background_mode = readBackgroundMode('menu_background_mode');
+        appState.assist_background_mode = readBackgroundMode('assist_background_mode');
+        Theme.configure();
 
         // Touch input settings (both default enabled; only meaningful on
         // watches with a touchscreen)

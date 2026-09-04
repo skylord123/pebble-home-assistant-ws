@@ -1,5 +1,6 @@
 #include "simply_voice.h"
 
+#include "simply_assist.h"
 #include "simply_msg.h"
 
 #include "simply.h"
@@ -49,9 +50,17 @@ static bool send_voice_data(int status, char *transcription) {
 }
 
 // Define a callback for the dictation session
-static void dictation_session_callback(DictationSession *session, DictationSessionStatus status, 
+static void dictation_session_callback(DictationSession *session, DictationSessionStatus status,
                                        char *transcription, void *context) {
   s_voice->in_progress = false;
+
+  // The assist screen draws its own result, so it never crosses the bridge as
+  // a Voice.dictate() callback
+  if (s_voice->for_assist) {
+    s_voice->for_assist = false;
+    simply_assist_handle_dictation(s_voice->simply, status, transcription);
+    return;
+  }
 
   // Send the result
   send_voice_data(status, transcription);
@@ -61,6 +70,18 @@ static void timer_callback_start_dictation(void *data) {
   dictation_session_start(s_voice->session);
 }
 
+bool simply_voice_start(Simply *simply, bool enable_confirmation, bool for_assist) {
+  if (!s_voice || s_voice->in_progress) {
+    return false;
+  }
+
+  // Start on a timer so the caller can return as quickly as possible
+  s_voice->in_progress = true;
+  s_voice->for_assist = for_assist;
+  dictation_session_enable_confirmation(s_voice->session, enable_confirmation);
+  s_voice->timer = app_timer_register(0, timer_callback_start_dictation, NULL);
+  return true;
+}
 
 static void handle_voice_start_packet(Simply *simply, Packet *data) {
   // Send an immediate response if there's already a dictation session in progress
@@ -70,13 +91,8 @@ static void handle_voice_start_packet(Simply *simply, Packet *data) {
     return;
   }
 
-  // Otherwise, start the timer as soon as possible
-  // (we start a timer so we can return true as quickly as possible)
-  s_voice->in_progress = true;
-
   VoiceStartPacket *packet = (VoiceStartPacket*) data;
-  dictation_session_enable_confirmation(s_voice->session, packet->enable_confirmation);
-  s_voice->timer = app_timer_register(0, timer_callback_start_dictation, NULL);
+  simply_voice_start(simply, packet->enable_confirmation, false);
 }
 
 static void handle_voice_stop_packet(Simply *simply, Packet *data) {
@@ -107,6 +123,7 @@ SimplyVoice *simply_voice_create(Simply *simply) {
   *self = (SimplyVoice) {
     .simply = simply,
     .in_progress = false,
+    .for_assist = false,
   };
 
   self->session = dictation_session_create(SIMPLY_VOICE_BUFFER_LENGTH, dictation_session_callback, NULL);

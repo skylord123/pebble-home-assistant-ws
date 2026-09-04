@@ -3,6 +3,7 @@
 #ifdef SIMPLY_HAS_TOUCH
 
 #include "simply_msg.h"
+#include "simply_assist.h"
 #include "simply_menu.h"
 #include "simply_number.h"
 #include "simply_window.h"
@@ -128,12 +129,21 @@ static ScrollLayer *prv_top_scroll_layer(Simply *simply, bool *is_menu_out) {
   return top->is_scrollable ? top->scroll_layer : NULL;
 }
 
-static GPoint prv_clamp_offset(ScrollLayer *scroll_layer, int y) {
-  const GSize content = scroll_layer_get_content_size(scroll_layer);
-  const GRect frame = layer_get_frame(scroll_layer_get_layer(scroll_layer));
-  int min = frame.size.h - content.h;
-  if (min > 0) { min = 0; }
-  if (y > 0) { y = 0; }
+// Where a drag may take the content. A round menu keeps the selected row in
+// the middle of the screen, so its ends are half a screen beyond the content
+// bounds a scroll layer reports and it answers for itself; everything else
+// runs from the top of its content to the bottom.
+static GPoint prv_clamp_offset(ScrollLayer *scroll_layer, bool is_menu, int y) {
+  int min, max;
+  SimplyMenu *menu = is_menu ? s_touch->simply->menu : NULL;
+  if (!menu || !simply_menu_scroll_limits(menu, &min, &max)) {
+    const GSize content = scroll_layer_get_content_size(scroll_layer);
+    const GRect frame = layer_get_frame(scroll_layer_get_layer(scroll_layer));
+    max = 0;
+    min = frame.size.h - content.h;
+    if (min > 0) { min = 0; }
+  }
+  if (y > max) { y = max; }
   if (y < min) { y = min; }
   return GPoint(0, y);
 }
@@ -169,7 +179,7 @@ static void prv_drag_move(int16_t y) {
     s_mode = TouchModeConsumed;
     return;
   }
-  const GPoint offset = prv_clamp_offset(scroll_layer,
+  const GPoint offset = prv_clamp_offset(scroll_layer, is_menu,
                                          s_down_offset.y + (y - s_down_y));
   scroll_layer_set_content_offset(scroll_layer, offset, false);
   if (is_menu) {
@@ -177,20 +187,36 @@ static void prv_drag_move(int16_t y) {
   }
 }
 
-static void prv_drag_fling(void) {
+// Where the finger was heading when it left the screen, projected forward
+static int prv_fling_carry(void) {
+  const uint32_t dt = s_last_ms - s_prev_ms;
+  if (dt == 0 || dt > 100) { return 0; }  // stale samples: finger had stopped
+  return (s_last_y - s_prev_y) * (int) FLING_MS / (int) dt;
+}
+
+static void prv_drag_release(void) {
   bool is_menu = false;
   ScrollLayer *scroll_layer = prv_top_scroll_layer(s_touch->simply, &is_menu);
   if (!scroll_layer || scroll_layer != s_drag_layer) { return; }
 
-  const uint32_t dt = s_last_ms - s_prev_ms;
-  if (dt == 0 || dt > 100) { return; }  // stale samples: finger had stopped
-  const int dy = s_last_y - s_prev_y;
-  const int carry = dy * (int) FLING_MS / (int) dt;
-  if (carry == 0) { return; }
-
   const GPoint current = scroll_layer_get_content_offset(scroll_layer);
-  const GPoint target = prv_clamp_offset(scroll_layer, current.y + carry);
-  scroll_layer_set_content_offset(scroll_layer, target, true);
+  const GPoint target = prv_clamp_offset(scroll_layer, is_menu, current.y + prv_fling_carry());
+
+  // The list is left exactly where the finger put it, selection untouched, the
+  // same as on a rectangular watch. A round menu could hand the selection to
+  // whichever row ended up in the middle, but that means the list jumps as it
+  // settles, and a drag that was meant to be a look around turns into a
+  // choice.
+  if (target.y != current.y) {
+    scroll_layer_set_content_offset(scroll_layer, target, true);
+  }
+
+  // The row the list comes to rest on is the one being read, whether or not it
+  // is the selected one, so on a round watch it takes over the marquee and a
+  // title too long to fit can still be read without choosing the row first
+  if (is_menu && s_touch->simply->menu) {
+    simply_menu_marquee_at(s_touch->simply->menu, target.y);
+  }
 }
 
 // @return true if the liftoff completed a gesture here and must not go to JS
@@ -230,11 +256,14 @@ static void handle_touch(const TouchEvent *event, void *context) {
     return;
   }
 
-  // The number selector is a native window that the JS window stack knows
-  // nothing about, so it has to resolve its own gestures. It also has to run
-  // before the generic handling below, which would otherwise swipe back the
-  // JS window sitting hidden underneath it.
+  // The number selector and the assist conversation are native windows that
+  // the JS window stack knows nothing about, so they resolve their own
+  // gestures. They also have to run before the generic handling below, which
+  // would otherwise swipe back the JS window sitting hidden underneath them.
   if (simply_number_handle_touch(s_touch->simply, event)) {
+    return;
+  }
+  if (simply_assist_handle_touch(s_touch->simply, event)) {
     return;
   }
 
@@ -294,7 +323,7 @@ static void handle_touch(const TouchEvent *event, void *context) {
       const TouchMode mode = s_mode;
       s_mode = TouchModeIdle;
       if (mode == TouchModeDrag) {
-        prv_drag_fling();
+        prv_drag_release();
         return;                            // the drag was the gesture
       }
       if (mode == TouchModeConsumed) {

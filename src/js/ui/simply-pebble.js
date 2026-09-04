@@ -10,6 +10,7 @@ var Accel = require('ui/accel');
 var Touch = require('ui/touch');
 var Voice = require('ui/voice');
 var NumberField = require('ui/numberfield');
+var Assist = require('ui/assist');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
 var Window = require('ui/window');
@@ -824,6 +825,8 @@ var NumberSelectorShowPacket = new struct([
   ['int32', 'step'],
   ['uint8', 'decimals'],
   ['uint8', 'flags'],
+  ['uint8', 'backgroundColor', ColorType],
+  ['uint8', 'textColor', ColorType],
   ['uint16', 'titleLength', StringLengthType],
   ['uint16', 'unitLength', StringLengthType],
   ['cstring', 'title', StringType],
@@ -851,6 +854,34 @@ var NumberSelectorClosedEventPacket = new struct([
 var NumberSelectorChangeEventPacket = new struct([
   [Packet, 'packet'],
   ['int32', 'value'],
+]);
+
+var AssistShowPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'fontSize'],
+  ['uint8', 'flags'],
+]);
+
+var AssistHidePacket = new struct([
+  [Packet, 'packet'],
+]);
+
+var AssistMessagePacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'role'],
+  ['uint8', 'flags'],
+  ['cstring', 'text', StringType],
+]);
+
+var AssistTranscriptPacket = new struct([
+  [Packet, 'packet'],
+  ['uint16', 'limit'],
+  ['cstring', 'text'],
+]);
+
+var AssistActionPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'action'],
 ]);
 
 var CommandPackets = [
@@ -926,6 +957,11 @@ var CommandPackets = [
   NumberSelectorResultPacket,
   NumberSelectorClosedEventPacket,
   NumberSelectorChangeEventPacket,
+  AssistShowPacket,
+  AssistHidePacket,
+  AssistMessagePacket,
+  AssistTranscriptPacket,
+  AssistActionPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1618,6 +1654,8 @@ SimplyPebble.numberSelectorShow = function(opts) {
     .decimals(opts.decimals)
     .flags((opts.showBar ? 1 : 0) | (opts.duration ? 2 : 0) | (opts.timeOfDay ? 4 : 0) |
            (opts.live ? 8 : 0))
+    .backgroundColor(opts.backgroundColor)
+    .textColor(opts.textColor)
     .titleLength(opts.title)
     .unitLength(opts.unit)
     .title(opts.title)
@@ -1631,6 +1669,30 @@ SimplyPebble.numberSelectorHide = function() {
 
 SimplyPebble.numberSelectorValue = function(value) {
   SimplyPebble.sendPacket(NumberSelectorValuePacket.value(value));
+};
+
+SimplyPebble.assistShow = function(opts) {
+  AssistShowPacket
+    .fontSize(opts.fontSize || 18)
+    .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0) |
+           (opts.listen ? 8 : 0) | (opts.reset ? 32 : 0));
+  SimplyPebble.sendPacket(AssistShowPacket);
+};
+
+// Flag 16 says this is only about the colours: repaint the conversation that
+// is already on screen without disturbing a word of it or where it is scrolled
+SimplyPebble.assistTheme = function(dark) {
+  AssistShowPacket.fontSize(0).flags(16 | (dark ? 4 : 0));
+  SimplyPebble.sendPacket(AssistShowPacket);
+};
+
+SimplyPebble.assistHide = function() {
+  SimplyPebble.sendPacket(AssistHidePacket);
+};
+
+SimplyPebble.assistMessage = function(role, text, flags) {
+  AssistMessagePacket.role(role).flags(flags || 0).text(text);
+  SimplyPebble.sendPacket(AssistMessagePacket);
 };
 
 SimplyPebble.splashMode = function(mode) {
@@ -1757,6 +1819,8 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case NumberSelectorResultPacket:
     case NumberSelectorClosedEventPacket:
     case NumberSelectorChangeEventPacket:
+    case AssistTranscriptPacket:
+    case AssistActionPacket:
       if (SimplyPebble.onUserActivity) {
         SimplyPebble.onUserActivity();
       }
@@ -1785,6 +1849,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case NumberSelectorChangeEventPacket:
       NumberField.emitChange(packet.value());
+      break;
+    case AssistTranscriptPacket:
+      // The limit has to be read before the string in any case: a dynamic
+      // field can only be reached once the field in front of it has been
+      Assist.setReplyLimit(packet.limit());
+      Assist.emitTranscript(packet.text());
+      break;
+    case AssistActionPacket:
+      Assist.emitAction(packet.action());
       break;
     case SplashRevealPacket:
       // The splash was covering the current window, which reloaded empty on

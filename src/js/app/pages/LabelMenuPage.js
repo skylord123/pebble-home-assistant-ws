@@ -19,10 +19,6 @@ class LabelMenuPage extends BasePage {
 
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Labels'
             }]

@@ -172,10 +172,6 @@ function showLightEntity(entity_id) {
     // Create the light menu
     let lightMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: lightData.friendly_name
         }]
@@ -491,10 +487,6 @@ function showLightEntity(entity_id) {
         // Create a menu for color selection
         let colorMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Color'
             }]
@@ -820,10 +812,6 @@ function showLightEntity(entity_id) {
         // Create effect selection menu
         let effectMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Effect'
             }]

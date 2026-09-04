@@ -7,6 +7,8 @@
 
 #include <pebble.h>
 
+#if !defined(PBL_PLATFORM_APLITE)
+
 // Repeat cadence while a button is held, and how many repeats before the
 // step multiplier kicks in. The multipliers only engage when the range is
 // large enough that flying is actually useful; small ranges stay precise.
@@ -37,6 +39,8 @@ struct __attribute__((__packed__)) NumberSelectorShowPacket {
   int32_t step;
   uint8_t decimals;
   uint8_t flags;
+  GColor8 background_color;
+  GColor8 text_color;
   uint16_t title_length;
   uint16_t unit_length;
   char buffer[];
@@ -218,18 +222,18 @@ static void prv_draw_fields(SimplyNumber *self, GContext *ctx, GRect bounds) {
     prv_field_text(self, i, buf, sizeof(buf));
 
     if (i == self->field) {
-      graphics_context_set_fill_color(ctx, GColorBlack);
+      graphics_context_set_fill_color(ctx, self->text_color);
       graphics_fill_rect(ctx, box, 3, GCornersAll);
-      graphics_context_set_text_color(ctx, GColorWhite);
+      graphics_context_set_text_color(ctx, self->background_color);
     } else {
-      graphics_context_set_text_color(ctx, GColorBlack);
+      graphics_context_set_text_color(ctx, self->text_color);
     }
     graphics_draw_text(ctx, buf, font, GRect(box.origin.x, box.origin.y - 3, box.size.w, box.size.h),
         GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 
     // Colons separate the numeric fields; AM/PM stands on its own
     if (i + 1 < numeric) {
-      graphics_context_set_text_color(ctx, GColorBlack);
+      graphics_context_set_text_color(ctx, self->text_color);
       graphics_draw_text(ctx, ":", font,
           GRect(box.origin.x + box.size.w, box.origin.y - 3, FIELD_COLON_W, box.size.h),
           GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
@@ -246,10 +250,10 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
 
   // Overriding the root layer's update proc replaces the default proc that
   // paints the window background, so clear the frame ourselves
-  graphics_context_set_fill_color(ctx, GColorWhite);
+  graphics_context_set_fill_color(ctx, self->background_color);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
-  graphics_context_set_text_color(ctx, GColorBlack);
+  graphics_context_set_text_color(ctx, self->text_color);
 
   // Title
   graphics_draw_text(ctx, self->title,
@@ -273,20 +277,21 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
   // every display without needing gray
   if (self->show_bar && !self->duration_mode) {
     const GRect track = prv_track_rect(bounds);
-    graphics_context_set_stroke_color(ctx, GColorBlack);
+    graphics_context_set_stroke_color(ctx, self->text_color);
     graphics_draw_rect(ctx, track);
     const int32_t range = self->max - self->min;
     if (range > 0) {
       const int16_t fill_w = (int16_t)((int64_t)(track.size.w - 4) * (self->value - self->min) / range);
       if (fill_w > 0) {
-        graphics_context_set_fill_color(ctx, GColorBlack);
+        graphics_context_set_fill_color(ctx, self->text_color);
         graphics_fill_rect(ctx, GRect(track.origin.x + 2, track.origin.y + 2, fill_w, track.size.h - 4),
             0, GCornerNone);
       }
     }
   }
 
-  // Hint
+  // Hint. The fields leave the text colour wherever the last one put it
+  graphics_context_set_text_color(ctx, self->text_color);
   graphics_draw_text(ctx,
       self->duration_mode ? "UP/DOWN set, SELECT next\nBACK prev, hold SELECT done"
                           : "UP/DOWN adjust, hold to fly\nSELECT to set",
@@ -520,6 +525,8 @@ static SimplyNumber *prv_create(Simply *simply) {
   self->window = window_create();
   window_set_user_data(self->window, self);
   window_set_background_color(self->window, GColorWhite);
+  self->background_color = GColorWhite;
+  self->text_color = GColorBlack;
   window_set_window_handlers(self->window, (WindowHandlers) {
     .disappear = prv_window_disappear,
   });
@@ -552,6 +559,11 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->duration_mode = (packet->flags & 2);
   self->time_of_day = (packet->flags & 4);
   self->live = (packet->flags & 8);
+  // A packet from before the selector was themed carries no colours at all,
+  // so an unset pair keeps the white window it has always drawn
+  self->background_color = packet->background_color.a ? packet->background_color : GColorWhite;
+  self->text_color = packet->text_color.a ? packet->text_color : GColorBlack;
+  window_set_background_color(self->window, self->background_color);
   // A reused selector must not carry the previous entity's pending report or
   // its idea of what has already been sent
   prv_cancel_settle(self);
@@ -752,3 +764,5 @@ bool simply_number_handle_packet(Simply *simply, Packet *packet) {
   }
   return false;
 }
+
+#endif  // !PBL_PLATFORM_APLITE
