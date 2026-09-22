@@ -806,6 +806,13 @@
 				</div>
 				<div class="component">
 					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-backlight-hold">Auto backlight while replying</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-backlight-hold">
+					</div>
+					<small class="form-text">Keep the screen lit while the assistant reply is being written</small>
+				</div>
+				<div class="component">
+					<div class="form-switch">
 						<label class="form-check-label" for="ha-assist-stream-reply">Stream reply as it is written</label>
 						<input class="form-check-input" type="checkbox" id="ha-assist-stream-reply" checked>
 					</div>
@@ -1406,6 +1413,7 @@
 				voiceEnabled = $('#ha-voice-enabled'),
 				voiceConfirm = $('#ha-voice-confirm'),
 				voiceBacklightTrigger = $('#ha-voice-backlight-trigger'),
+				voiceBacklightHold = $('#ha-voice-backlight-hold'),
 				assistStreamReply = $('#ha-assist-stream-reply'),
 				voiceFontSize = $('#ha-voice-font-size'),
 				pipelineSelect = $('#ha-pipeline-select'),
@@ -1481,6 +1489,7 @@
 				'voice_enabled': voiceEnabled.is(':checked'),
 				'voice_confirm': voiceConfirm.is(':checked'),
 				'voice_backlight_trigger': voiceBacklightTrigger.is(':checked'),
+				'voice_backlight_hold': voiceBacklightHold.is(':checked'),
 				'assist_stream_reply': assistStreamReply.is(':checked'),
 				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'selected_pipeline': pipelineSelect.val(),
@@ -1604,6 +1613,7 @@
 			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
 			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
 			voiceBacklightTrigger.attr('checked', typeof watch_config['voice_backlight_trigger'] !== 'undefined' ? watch_config['voice_backlight_trigger'] : true);
+			voiceBacklightHold.attr('checked', watch_config['voice_backlight_hold'] === true);
 			assistStreamReply.attr('checked', typeof watch_config['assist_stream_reply'] !== 'undefined' ? watch_config['assist_stream_reply'] : true);
 			if (watch_config['voice_font_size']) {
 				voiceFontSize.val(watch_config['voice_font_size']);
