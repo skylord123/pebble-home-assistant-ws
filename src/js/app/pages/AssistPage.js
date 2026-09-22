@@ -13,6 +13,7 @@ var Assist = require('ui/assist');
 var Settings = require('settings');
 
 var AppState = require('app/AppState');
+var ConnectionService = require('app/ConnectionService');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
 
@@ -254,6 +255,7 @@ function runPipeline(transcription) {
             if (!data.success) {
                 cancelStream();
                 Assist.error('Request failed');
+                ConnectionService.showPendingReconnectDialog();
                 return;
             }
 
@@ -276,6 +278,7 @@ function runPipeline(transcription) {
                     // indistinguishable from one.
                     cancelStream();
                     Assist.error(speech || 'The assistant could not answer');
+                    ConnectionService.showPendingReconnectDialog();
                     return;
                 }
 
@@ -284,10 +287,12 @@ function runPipeline(transcription) {
                 // streamed and it goes down whole, exactly as it used to.
                 Assist.endReply(speech);
                 cancelStream();
+                ConnectionService.showPendingReconnectDialog();
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
                 cancelStream();
                 Assist.error('Invalid response from Home Assistant');
+                ConnectionService.showPendingReconnectDialog();
             }
         },
         function(error) {
@@ -295,6 +300,7 @@ function runPipeline(transcription) {
             helpers.log_message("assist_pipeline/run error: " + JSON.stringify(error));
             cancelStream();
             Assist.error(describeError(error));
+            ConnectionService.showPendingReconnectDialog();
         },
         onProgress
     );
@@ -310,10 +316,16 @@ function runPipeline(transcription) {
 function openAssist(listen, reset) {
     var appState = AppState.getInstance();
 
+    // Wrap onClose to check for pending reconnect dialog when Assist closes
+    var originalOnClose = function() {
+        ConnectionService.showPendingReconnectDialog();
+    };
+
     Assist.show({
         fontSize: Settings.option('voice_font_size') || 18,
         confirm: appState.voice_confirm,
         backlight: appState.voice_backlight_trigger,
+        backlightHold: appState.voice_backlight_hold,
         dark: Theme.assistIsDark(),
         listen: listen,
         reset: reset,
@@ -336,7 +348,8 @@ function openAssist(listen, reset) {
                 }
                 openAssist(false, switched);
             });
-        }
+        },
+        onClose: originalOnClose
     });
 }
 
