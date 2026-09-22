@@ -8,6 +8,7 @@ var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
+var Assist = require('ui/assist');
 
 var ConnectionService = {
     // Reference to loading card (set by app.js)
@@ -24,6 +25,8 @@ var ConnectionService = {
     // Track whether we're reconnecting from an active session
     reconnecting: false,
     hadWindowsBeforeDisconnect: false,
+    // Flag to defer reconnecting dialog until dictation completes
+    pendingReconnectDialog: false,
 
     /**
      * Initialize the connection service
@@ -37,6 +40,7 @@ var ConnectionService = {
         this.backHandlerAttached = false;
         this.reconnecting = false;
         this.hadWindowsBeforeDisconnect = false;
+        this.pendingReconnectDialog = false;
     },
 
     /**
@@ -54,6 +58,7 @@ var ConnectionService = {
         this.isRestarting = true;
         this.reconnecting = false;
         this.hadWindowsBeforeDisconnect = false;
+        this.pendingReconnectDialog = false;
 
         // Disconnect HAWS whether or not it is currently up. A instance that is
         // mid-reconnect is not "connected", but it still holds a pending retry
@@ -167,6 +172,13 @@ var ConnectionService = {
             log("ws auth_ok: " + JSON.stringify(evt));
             appState.ha_version = (evt.detail && evt.detail.ha_version) || null;
 
+            // Clear pending reconnect dialog if connection recovered before dictation completed.
+            // This prevents showing the reconnecting dialog when the connection is already active.
+            if (self.pendingReconnectDialog) {
+                log('Connection recovered - clearing pending reconnect dialog');
+                self.pendingReconnectDialog = false;
+            }
+
             // A background following the sun needs to know where the watch is.
             // The phone is asked first and its answer kept; this is for when it
             // will not give one, since Home Assistant knows where home is.
@@ -190,6 +202,17 @@ var ConnectionService = {
         // If we're restarting, don't try to save/restore windows
         if (this.isRestarting) {
             log('Connection closed during restart - skipping window save');
+            return;
+        }
+
+        // If dictation is in progress, defer the reconnecting dialog until it completes
+        if (Assist.isDictating()) {
+            log('Connection lost while dictating - deferring reconnect dialog');
+            this.pendingReconnectDialog = true;
+            this.reconnecting = true;
+            this.hadWindowsBeforeDisconnect = WindowStack._items.some(function(window) {
+                return window._id() !== self.loadingCard._id();
+            });
             return;
         }
 
@@ -227,9 +250,33 @@ var ConnectionService = {
         return this.reconnecting && this.hadWindowsBeforeDisconnect && !this.isRestarting;
     },
 
+    /**
+     * Show the reconnecting dialog if it was deferred due to dictation
+     */
+    showPendingReconnectDialog: function() {
+        if (!this.pendingReconnectDialog) {
+            return;
+        }
+
+        helpers.log_message('Showing deferred reconnecting dialog after dictation completed');
+        this.pendingReconnectDialog = false;
+        this.loadingCard.subtitle('Reconnecting');
+        this.loadingCard.show();
+
+        if (!this.backHandlerAttached) {
+            var self = this;
+            this.backHandlerAttached = true;
+            this.loadingCard.on('click', 'back', function(e) {
+                self.loadingCard.subtitle('Hold back to exit');
+                return true;
+            });
+        }
+    },
+
     clearReconnectState: function() {
         this.reconnecting = false;
         this.hadWindowsBeforeDisconnect = false;
+        this.pendingReconnectDialog = false;
     }
 };
 
