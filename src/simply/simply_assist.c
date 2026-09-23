@@ -976,9 +976,21 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
     layer_mark_dirty(self->content_layer);
   }
 
-  // An answer arrives faster than anyone reads it, so once its first line is
-  // on screen the rest piles up below rather than dragging the page along
+  // While streaming, auto-scroll to keep the message start visible. Stop if
+  // the user scrolls or once the message no longer needs scrolling (fits on screen).
   if (want == AssistFocusHold) {
+    // User scroll takes priority: once they scroll, they control the view
+    if (self->user_scrolled) {
+      return;
+    }
+    // Auto-scroll to the start of the message while streaming, keeping it visible
+    // as new text arrives. The scroll stops naturally when the message fits on
+    // a single screen, since scrolling to its start puts the whole message in view.
+    int16_t target = self->last_message_y;
+    const int16_t last = content_h - page;
+    if (target > last) { target = last; }
+    if (target < 0) { target = 0; }
+    scroll_layer_set_content_offset(self->scroll_layer, GPoint(0, -target), true);
     return;
   }
 
