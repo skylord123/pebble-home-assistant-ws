@@ -12,6 +12,7 @@
  */
 
 var simply = require('ui/simply');
+var Light = require('ui/light');
 var WindowStack = require('ui/windowstack');
 
 // Whether the splash is currently covering a JS window. The native splash
@@ -70,6 +71,17 @@ var SplashScreen = {
     },
     hide: function() {
         covering = false;
+        // Whatever this screen was waiting on can take a while - a slow
+        // connection, a Home Assistant still starting up - and the wearer
+        // opened the app expecting to read something at the end of it. The
+        // backlight they lit by pressing to launch has usually timed out by
+        // then, so the app arrives on a dark screen and has to be woken by
+        // hand. Count coming out of the splash as an interaction of its own:
+        // the system starts its own timer from here, the same as it does for
+        // a button press, and turns the light off in its own time. Nothing is
+        // held, and a wearer who has turned the backlight off entirely, or is
+        // out in daylight, still gets no light: the watch decides.
+        Light.trigger();
         // The matching 'show' is emitted when the watch reports the splash has
         // actually come down, in the SplashRevealPacket handler
         simply.impl.splashHide();

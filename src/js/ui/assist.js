@@ -9,8 +9,8 @@ var simply = require('ui/simply');
  * anything: this side exists to carry the transcript to Home Assistant and
  * the answer back.
  *
- * Assist.show({ fontSize, confirm, backlight, dark, listen, onTranscript,
- *               onSettings, onClose })
+ * Assist.show({ fontSize, confirm, backlight, backlightHold, dark, listen,
+ *               onTranscript, onSettings, onClose })
  *   onTranscript(text) - the wearer said something. Run the pipeline and
  *                        answer with Assist.reply(), or stream it in with
  *                        Assist.streamReply() and Assist.endReply(); the watch
@@ -31,6 +31,7 @@ var state = {
   onTranscript: null,
   onSettings: null,
   onClose: null,
+  isDictating: false,
 };
 
 // Must match AssistRole in simply_assist.h. The wearer's own turn is written
@@ -269,11 +270,14 @@ Assist.show = function(opts) {
   state.onSettings = opts.onSettings;
   state.onClose = opts.onClose;
   state.dark = !!opts.dark;
+  // Track if dictation is actively in progress
+  state.isDictating = opts.listen !== false;
   resetStream();
   simply.impl.assistShow({
     fontSize: opts.fontSize || 18,
     confirm: !!opts.confirm,
     backlight: !!opts.backlight,
+    backlightHold: !!opts.backlightHold,
     dark: state.dark,
     listen: opts.listen !== false,
     reset: !!opts.reset,
@@ -450,9 +454,19 @@ Assist.setReplyLimit = function(bytes) {
 };
 
 Assist.emitTranscript = function(text) {
+  // Dictation has completed when transcript arrives
+  state.isDictating = false;
   if (state.onTranscript) {
     state.onTranscript(text);
   }
+};
+
+/**
+ * Check if dictation is currently active
+ * @returns {boolean} true if user is actively speaking into the microphone
+ */
+Assist.isDictating = function() {
+  return state.isDictating;
 };
 
 Assist.emitAction = function(action) {
@@ -465,6 +479,8 @@ Assist.emitAction = function(action) {
   if (action === ActionClosed) {
     var onClose = state.onClose;
     state.active = false;
+    // Clear dictating flag if window closes while user is speaking
+    state.isDictating = false;
     resetStream();
     state.onTranscript = null;
     state.onSettings = null;

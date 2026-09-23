@@ -43,6 +43,103 @@ TimelineLaunch.registerHandler(TimelineLaunch.ACTION_CALENDAR_EVENT, function(pa
     CalendarPage.showCalendarEventByLaunchCode(launchCode);
 });
 
+/**
+ * True when the entity is still in Home Assistant. A pin can outlive the
+ * thing it points at, and every entity page in this app throws when its
+ * entity is missing from ha_state_dict, so check before opening one: the
+ * launch must land on the main menu, not on an exception raised inside the
+ * websocket message pump.
+ */
+function timelineTargetEntityExists(entity_id) {
+    if (appState.getEntity(entity_id)) {
+        return true;
+    }
+    helpers.log_message('Timeline launch: ' + entity_id + ' is no longer in Home Assistant');
+    return false;
+}
+
+/**
+ * Open whatever a resolve_launch result names. Unknown kinds are not an
+ * error: log and stay on the main menu, which is already on screen. That is
+ * how a watchapp built today survives a kind added to the integration later.
+ */
+function openTimelineTarget(target) {
+    if (!target || !target.kind) {
+        helpers.log_message('Timeline launch: resolve returned no target');
+        return;
+    }
+    helpers.log_message('Timeline launch: target kind ' + target.kind +
+        (target.entity_id ? ' ' + target.entity_id : ''));
+    switch (target.kind) {
+        case 'entity':
+            if (!target.entity_id) {
+                helpers.log_message('Timeline launch: entity target with no entity_id');
+            } else if (timelineTargetEntityExists(target.entity_id)) {
+                EntityService.show(target.entity_id);
+            }
+            break;
+        case 'todo_list':
+            if (!target.entity_id) {
+                ToDoListPage.showToDoLists();
+            } else if (timelineTargetEntityExists(target.entity_id)) {
+                ToDoListPage.showToDoList(target.entity_id);
+            }
+            break;
+        case 'assistant':
+            // Matches the quick-launch gate above: a watch with voice off or
+            // no microphone must not be dropped into a page it cannot use
+            if (appState.voice_enabled) {
+                AssistPage.showAssistMenu();
+            } else {
+                helpers.log_message('Timeline launch: assistant requested but voice is disabled');
+            }
+            break;
+        case 'calendar':
+            if (!target.entity_id) {
+                CalendarPage.showCalendarList();
+            } else if (timelineTargetEntityExists(target.entity_id)) {
+                var entity = appState.getEntity(target.entity_id);
+                var name = (entity && entity.attributes && entity.attributes.friendly_name) ||
+                    target.entity_id.substring(target.entity_id.indexOf('.') + 1);
+                CalendarPage.showCalendarEvents(name, [target.entity_id]);
+            }
+            break;
+        case 'none':
+            helpers.log_message('Timeline launch: pin has no target');
+            break;
+        default:
+            helpers.log_message('Timeline launch: unknown target kind ' + target.kind);
+            break;
+    }
+}
+
+// A Home Assistant pin's payload is its launchRef; the destination is not
+// encoded in the launch code, so ask Home Assistant what the pin points at.
+// Every failure (no connection, integration uninstalled, unknown ref) just
+// logs and leaves the user on the main menu - never a blank screen, never a
+// retry loop.
+TimelineLaunch.registerHandler(TimelineLaunch.ACTION_HA_PIN, function(payload) {
+    var msg = { type: 'pebble/timeline/resolve_launch', ref: payload };
+    var sent = appState.haws && appState.haws.send(msg, function(data) {
+        // This runs on the websocket message pump, where an exception would
+        // also swallow the rest of a coalesced batch, so nothing may escape
+        try {
+            // haws hands the success callback the whole result frame
+            openTimelineTarget(data && data.result);
+        } catch (e) {
+            helpers.log_message('Timeline launch: opening target failed: ' +
+                ((e && e.message) || e));
+        }
+    }, function(data) {
+        var error = (data && data.error) || {};
+        helpers.log_message('Timeline launch: resolve failed for ref ' + payload + ': ' +
+            (error.code || 'unknown') + ' ' + (error.message || ''));
+    });
+    if (!sent) {
+        helpers.log_message('Timeline launch: not connected, cannot resolve ref ' + payload);
+    }
+});
+
 // === Initialize AppState ===
 var appState = AppState.getInstance();
 
@@ -94,7 +191,7 @@ function whenCoreRunning(proceed) {
         if (settled || generation !== coreGateGeneration) { return; }
         settled = true;
         if (ceiling) { clearTimeout(ceiling); ceiling = null; }
-        if (subscription) {
+        if (subscription && appState.haws) {
             appState.haws.unsubscribe(subscription);
             subscription = null;
         }

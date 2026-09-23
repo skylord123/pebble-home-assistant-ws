@@ -44,6 +44,26 @@
 // would otherwise pulse forever, so the watch gives up on its own and says so.
 #define THINK_TIMEOUT_MS 45000
 
+// How often the screen is asked to stay lit while words are landing on it, for
+// the wearer who has turned that on. Only while they are actually landing: an
+// answer that arrives in one piece is lit once as it lands and needs no
+// keeping alive, and neither does the silence before one starts.
+//
+// The system is left in charge of the backlight throughout. Rather than
+// forcing the light on, which overrides the wearer's own backlight settings
+// and blacks the screen the instant it is let go, this repeats the same
+// interaction the system already sees from a button press: each one restarts
+// the system's own fade-out timer. The shortest timeout the watch offers is
+// three seconds, so ticking faster than that holds the light, and simply
+// stopping hands it straight back - the last tick fades out on the wearer's
+// own timeout, exactly as if they had pressed a button just then.
+//
+// It also means the light can never be left on by mistake. Nothing here holds
+// it: whatever stops the ticks - the conversation closing, the phone
+// vanishing, this app being killed outright - the light is already on its way
+// out, with at most one timeout left to run.
+#define BACKLIGHT_HOLD_TICK_MS 2000
+
 // Space between the role label and its text, and between one message and the
 // next
 #define LABEL_GAP 1
@@ -119,6 +139,9 @@ struct SimplyAssist {
 #endif
   AppTimer *think_timer;
   AppTimer *timeout_timer;
+  //! Ticks while an answer is streaming in, keeping the screen lit. See
+  //! BACKLIGHT_HOLD_TICK_MS.
+  AppTimer *backlight_timer;
   char *arena;
   uint16_t arena_used;
   //! Content y of the last message, so a new one can be scrolled to its own
@@ -143,6 +166,10 @@ struct SimplyAssist {
   bool awaiting_settings;
   bool dictation_confirm;
   bool backlight;
+  //! Keep the screen lit for as long as an answer is streaming in, and light
+  //! it once more as the last of it lands, rather than only flashing it up
+  //! when the answer starts
+  bool backlight_hold;
   bool dark;
   bool destroying;
   //! A turn was started but the wearer walked away from the microphone with
@@ -174,6 +201,7 @@ enum {
   //! settings menu comes back to the same window and the transcript has to be
   //! thrown away in place.
   ShowFlagReset = 32,
+  ShowFlagBacklightHold = 64,
 };
 
 typedef struct AssistMessagePacket AssistMessagePacket;
@@ -279,6 +307,10 @@ static void prv_append(SimplyAssist *self, uint8_t role, const char *text) {
   }
   while (self->count > 0 && (size_t)(ASSIST_ARENA_SIZE - self->arena_used) < length + 1) {
     prv_drop_oldest(self);
+  }
+  // Ensure space is available after dropping messages
+  if ((size_t)(ASSIST_ARENA_SIZE - self->arena_used) < length + 1) {
+    return;
   }
 
   memcpy(self->arena + self->arena_used, text, length);
@@ -987,8 +1019,44 @@ static void prv_think_tick(void *data) {
   self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
 }
 
+//! Give the backlight back to the system. There is nothing to undo: the ticks
+//! simply stop, and the last one fades out on the wearer's own timeout.
+static void prv_stop_backlight_hold(SimplyAssist *self) {
+  if (self->backlight_timer) {
+    app_timer_cancel(self->backlight_timer);
+    self->backlight_timer = NULL;
+  }
+}
+
+static void prv_backlight_tick(void *data) {
+  SimplyAssist *self = data;
+  self->backlight_timer = NULL;
+  // The answer stopped arriving, or the screen went away, between one tick and
+  // the next. Either way this is where the holding stops; the last piece to
+  // land lights the screen on its own way past.
+  if (!self->streaming || !self->backlight_hold) { return; }
+  light_enable_interaction();
+  self->backlight_timer = app_timer_register(BACKLIGHT_HOLD_TICK_MS,
+                                             prv_backlight_tick, self);
+}
+
+//! Start keeping the screen lit, if the wearer asked for that. Lighting it
+//! here as well as on the tick means the answer is readable from the piece
+//! that started it rather than a couple of seconds into it.
+static void prv_start_backlight_hold(SimplyAssist *self) {
+  if (!self->backlight_hold || self->backlight_timer) { return; }
+  light_enable_interaction();
+  self->backlight_timer = app_timer_register(BACKLIGHT_HOLD_TICK_MS,
+                                             prv_backlight_tick, self);
+}
+
 static void prv_stop_thinking(SimplyAssist *self) {
   self->thinking = false;
+  // Nothing is arriving any more, whichever way the wait ended. Saying so
+  // matters for the phone that simply stopped talking, where no last piece
+  // ever comes to settle it: the dots are gone, and the screen must not be
+  // held for an answer that is not being written.
+  self->streaming = false;
   if (self->think_timer) {
     app_timer_cancel(self->think_timer);
     self->think_timer = NULL;
@@ -997,6 +1065,7 @@ static void prv_stop_thinking(SimplyAssist *self) {
     app_timer_cancel(self->timeout_timer);
     self->timeout_timer = NULL;
   }
+  prv_stop_backlight_hold(self);
 }
 
 static void prv_think_timeout(void *data) {
@@ -1275,6 +1344,11 @@ static void prv_window_unload(Window *window) {
 
 static void prv_window_appear(Window *window) {
   SimplyAssist *self = window_get_user_data(window);
+  // Whatever was covering the conversation has gone and an answer may still
+  // be arriving underneath it, so take the screen back up again
+  if (self->streaming) {
+    prv_start_backlight_hold(self);
+  }
   // The conversation is coming back from under the dictation window, which
   // can be dismissing long after an answer has started arriving. Nothing
   // moved while it was covered, so this only has to measure and draw what is
@@ -1303,6 +1377,11 @@ static void prv_destroy_later(void *data) {
 
 static void prv_window_disappear(Window *window) {
   SimplyAssist *self = window_get_user_data(window);
+  // Nothing off screen has any business holding the backlight, whether the
+  // conversation is over or only stepping aside for a moment. This is ahead of
+  // every early return below on purpose: the answer may well still be coming,
+  // and the wait resumes in appear.
+  prv_stop_backlight_hold(self);
   // The system dictation UI covers this window for the length of a session.
   // That is not the conversation ending, so hold everything and wait for it
   // to come back.
@@ -1393,6 +1472,7 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->user_scrolled = false;
   self->dictation_confirm = (packet->flags & ShowFlagConfirm);
   self->backlight = (packet->flags & ShowFlagBacklight);
+  self->backlight_hold = (packet->flags & ShowFlagBacklightHold);
   self->dark = (packet->flags & ShowFlagDark);
   //! Whether to open the microphone straight away. Coming back from the
   //! settings menu should land on the conversation, not on the dictation UI.
@@ -1405,6 +1485,13 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   if (!window_stack_contains_window(self->window)) {
     window_stack_push(self->window, false);
   }
+  // A show packet always puts the dots back on their own line (self->streaming
+  // was cleared above), so as far as this screen is concerned nothing is
+  // arriving just now. An answer that is in fact still being written takes the
+  // screen back up on its next piece, which is also how the setting being
+  // turned on from the settings menu starts applying to a turn already in
+  // flight.
+  prv_stop_backlight_hold(self);
   prv_reflow(self, AssistFocusMessage);
   // Opening Assist means the wearer wants to say something, so go straight to
   // the microphone rather than making them press select first
@@ -1452,8 +1539,21 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   // stays where they left it and the arrow at the edge says there is more.
   prv_reflow(self, append ? AssistFocusHold : AssistFocusMessage);
 
-  // Light up for an answer arriving, but not for every piece of one
-  if (self->backlight && !append) {
+  if (self->backlight_hold) {
+    if (streaming) {
+      // Words are still landing. Keep the screen lit under them rather than
+      // letting it time out part way through an answer being written.
+      prv_start_backlight_hold(self);
+    } else {
+      // The last of the answer, whether it streamed in or arrived whole. Stop
+      // holding and light the screen one final time, so the wearer gets a full
+      // backlight timeout to read the finished answer counted from here rather
+      // than from whichever piece of it happened to land last.
+      prv_stop_backlight_hold(self);
+      light_enable_interaction();
+    }
+  } else if (self->backlight && !append) {
+    // Light up for an answer arriving, but not for every piece of one
     light_enable_interaction();
   }
 }

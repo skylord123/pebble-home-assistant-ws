@@ -27,6 +27,10 @@ class AppState {
         this.voice_enabled = null;
         this.voice_confirm = null;
         this.voice_backlight_trigger = true;
+        // Keep the screen lit while an answer streams in, and light it once
+        // more as it finishes, then leave it to the system. Costs battery, so
+        // it is asked for rather than assumed.
+        this.voice_backlight_hold = false;
         // Show the assistant's reply building up as it is written, rather
         // than waiting for the whole of it
         this.assist_stream_reply = true;

@@ -321,6 +321,20 @@ function showVoiceAssistantSettings(onClose) {
             }
         });
 
+        // Hold the screen lit while an answer streams in, and light it once
+        // more as the last of it lands. The system is still the one that turns
+        // it off, so the finished answer gets a full backlight timeout to be
+        // read in, exactly as if a button had been pressed just then.
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Auto Backlight",
+            subtitle: appState.voice_backlight_hold ? "True" : "False",
+            on_click: function(e) {
+                appState.voice_backlight_hold = !appState.voice_backlight_hold;
+                Settings.option('voice_backlight_hold', appState.voice_backlight_hold);
+                updateMenuItems();
+            }
+        });
+
         // The conversation is set apart from the menus, so a white app can
         // still have a dark screen to read a long answer on
         voiceSettingsMenu.item(0, menuIndex++, {

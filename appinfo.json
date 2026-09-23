@@ -3,6 +3,16 @@
   "capabilities": [
     "configurable"
   ],
+  "companionApp": {
+    "android": {
+      "apps": [
+        {
+          "package": "tech.skylar.pebbleha"
+        }
+      ],
+      "required": false
+    }
+  },
   "companyName": "skylar.tech",
   "longName": "Home Assistant WS",
   "resources": {

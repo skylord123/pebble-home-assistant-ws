@@ -1656,8 +1656,8 @@ SimplyPebble.numberSelectorShow = function(opts) {
            (opts.live ? 8 : 0))
     .backgroundColor(opts.backgroundColor)
     .textColor(opts.textColor)
-    .titleLength(opts.title)
-    .unitLength(opts.unit)
+    .titleLength(opts.title.length)
+    .unitLength(opts.unit.length)
     .title(opts.title)
     .unit(opts.unit);
   SimplyPebble.sendPacket(NumberSelectorShowPacket);
@@ -1675,7 +1675,8 @@ SimplyPebble.assistShow = function(opts) {
   AssistShowPacket
     .fontSize(opts.fontSize || 18)
     .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0) |
-           (opts.listen ? 8 : 0) | (opts.reset ? 32 : 0));
+           (opts.listen ? 8 : 0) | (opts.reset ? 32 : 0) |
+           (opts.backlightHold ? 64 : 0));
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 
