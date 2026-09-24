@@ -153,7 +153,7 @@ function supportsStreaming(version) {
 // model can emit a word at a time. Pieces that land together inside this many
 // milliseconds go down as one, which is short enough to read as live and long
 // enough that a fast writer cannot flood the link.
-var STREAM_COALESCE_MS = 120;
+var STREAM_COALESCE_MS = 60;
 
 var streamTimer = null;
 var streamText = '';

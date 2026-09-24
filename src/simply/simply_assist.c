@@ -153,6 +153,8 @@ struct SimplyAssist {
   int16_t thinking_y;
   uint8_t count;
   uint8_t tick;
+  //! Chunk counter for vibration sampling during streaming
+  uint8_t stream_chunk_count;
   uint8_t font_size;
   bool thinking;
   //! An answer is arriving a piece at a time, so the dots belong directly
@@ -1018,6 +1020,15 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
   scroll_layer_set_content_offset(self->scroll_layer, GPoint(0, -target), true);
 }
 
+// MARK: - Vibration
+
+// ChatGPT Android vibration pattern: double-tap with 80ms vibration, 100ms gap, 80ms vibration
+static const uint32_t s_vibration_pattern[] = { 80, 100, 80 };
+static const VibePattern s_stream_vibe = {
+  .durations = s_vibration_pattern,
+  .num_segments = ARRAY_LENGTH(s_vibration_pattern),
+};
+
 // MARK: - Thinking state
 
 static void prv_think_tick(void *data) {
@@ -1455,6 +1466,7 @@ static void prv_clear_conversation(SimplyAssist *self) {
   self->streaming = false;
   self->user_scrolled = false;
   self->ever_spoke = false;
+  self->stream_chunk_count = 0;
 }
 
 static void prv_handle_show(Simply *simply, Packet *data) {
@@ -1570,6 +1582,19 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   } else if (self->backlight && !append) {
     // Light up for an answer arriving, but not for every piece of one
     light_enable_interaction();
+  }
+
+  // Vibration feedback for streaming replies: click pattern (vibration + gap)
+  // Creates distinct tactile feedback that matches ChatGPT Android's refined approach
+  if (append && streaming) {
+    // Vibrate on every other chunk to create rhythm and avoid overlapping patterns
+    if (++self->stream_chunk_count % 2 == 0) {
+      vibes_enqueue_custom_pattern(s_stream_vibe);
+    }
+  } else if (!streaming && self->stream_chunk_count > 0) {
+    // Reply finished: single vibration pulse to signal completion
+    vibes_short_pulse();
+    self->stream_chunk_count = 0;
   }
 }
 
