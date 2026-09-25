@@ -172,6 +172,8 @@ struct SimplyAssist {
   //! it once more as the last of it lands, rather than only flashing it up
   //! when the answer starts
   bool backlight_hold;
+  //! Vibration feedback during streaming replies
+  bool vibration_feedback;
   bool dark;
   bool destroying;
   //! A turn was started but the wearer walked away from the microphone with
@@ -204,6 +206,7 @@ enum {
   //! thrown away in place.
   ShowFlagReset = 32,
   ShowFlagBacklightHold = 64,
+  ShowFlagVibrationFeedback = 128,
 };
 
 typedef struct AssistMessagePacket AssistMessagePacket;
@@ -1022,8 +1025,9 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
 
 // MARK: - Vibration
 
-// ChatGPT Android vibration pattern: double-tap with 80ms vibration, 100ms gap, 80ms vibration
-static const uint32_t s_vibration_pattern[] = { 80, 100, 80 };
+// ChatGPT Android vibration pattern (original): { 80, 100, 80 } (80ms vibrate, 100ms gap, 80ms vibrate)
+// Further reduced for even lighter, more subtle feedback
+static const uint32_t s_vibration_pattern[] = { 20, 100, 20 };
 static const VibePattern s_stream_vibe = {
   .durations = s_vibration_pattern,
   .num_segments = ARRAY_LENGTH(s_vibration_pattern),
@@ -1500,6 +1504,7 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->dictation_confirm = (packet->flags & ShowFlagConfirm);
   self->backlight = (packet->flags & ShowFlagBacklight);
   self->backlight_hold = (packet->flags & ShowFlagBacklightHold);
+  self->vibration_feedback = (packet->flags & ShowFlagVibrationFeedback);
   self->dark = (packet->flags & ShowFlagDark);
   //! Whether to open the microphone straight away. Coming back from the
   //! settings menu should land on the conversation, not on the dictation UI.
@@ -1584,17 +1589,29 @@ static void prv_handle_message(Simply *simply, Packet *data) {
     light_enable_interaction();
   }
 
-  // Vibration feedback for streaming replies: click pattern (vibration + gap)
-  // Creates distinct tactile feedback that matches ChatGPT Android's refined approach
-  if (append && streaming) {
-    // Vibrate on every other chunk to create rhythm and avoid overlapping patterns
-    if (++self->stream_chunk_count % 2 == 0) {
-      vibes_enqueue_custom_pattern(s_stream_vibe);
+  // Vibration feedback for streaming replies: double-tap pattern (vibration + gap + vibration)
+  // Creates consistent tactile feedback matching ChatGPT Android's approach
+  if (self->vibration_feedback) {
+    if (append && streaming) {
+      // Vibrate on every other chunk to create rhythm and avoid overlapping patterns
+      if (++self->stream_chunk_count % 2 == 0) {
+        vibes_enqueue_custom_pattern(s_stream_vibe);
+      }
+    } else if (!streaming) {
+      if (self->stream_chunk_count > 0) {
+        // Reply finished after streaming: use same pattern for consistent feel
+        vibes_enqueue_custom_pattern(s_stream_vibe);
+        self->stream_chunk_count = 0;
+      } else if (!append) {
+        // Short reply came all at once without streaming: vibrate on arrival
+        vibes_enqueue_custom_pattern(s_stream_vibe);
+      }
     }
-  } else if (!streaming && self->stream_chunk_count > 0) {
-    // Reply finished: single vibration pulse to signal completion
-    vibes_short_pulse();
-    self->stream_chunk_count = 0;
+  } else {
+    // Vibration disabled: just reset the chunk counter
+    if (!streaming && self->stream_chunk_count > 0) {
+      self->stream_chunk_count = 0;
+    }
   }
 }
 
@@ -1736,10 +1753,11 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
   switch (event->type) {
     case TouchEvent_Touchdown:
       prv_cancel_long_press();
-      if (event->non_navigational) {
-        s_touch_mode = AssistTouchIdle;
-        return true;
-      }
+      // TODO: Fix TouchEvent->non_navigational field compatibility issue
+      // if (event->non_navigational) {
+      //   s_touch_mode = AssistTouchIdle;
+      //   return true;
+      // }
       s_touch_mode = AssistTouchPending;
       s_touch_long_press =
           app_timer_register(TOUCH_LONG_PRESS_MS, prv_long_press_timeout, self);

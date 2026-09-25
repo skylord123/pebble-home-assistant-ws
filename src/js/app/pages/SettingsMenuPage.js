@@ -335,6 +335,17 @@ function showVoiceAssistantSettings(onClose) {
             }
         });
 
+        // Vibration feedback while streaming replies
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Vibration Feedback",
+            subtitle: appState.assist_vibration_feedback ? "True" : "False",
+            on_click: function(e) {
+                appState.assist_vibration_feedback = !appState.assist_vibration_feedback;
+                Settings.option('assist_vibration_feedback', appState.assist_vibration_feedback);
+                updateMenuItems();
+            }
+        });
+
         // The conversation is set apart from the menus, so a white app can
         // still have a dark screen to read a long answer on
         voiceSettingsMenu.item(0, menuIndex++, {

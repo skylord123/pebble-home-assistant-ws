@@ -42,6 +42,7 @@ var SettingsManager = {
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
         appState.voice_backlight_hold = Settings.option('voice_backlight_hold') === true;
         appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
+        appState.assist_vibration_feedback = Settings.option('assist_vibration_feedback') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 
         // Quick launch settings

@@ -34,6 +34,8 @@ class AppState {
         // Show the assistant's reply building up as it is written, rather
         // than waiting for the whole of it
         this.assist_stream_reply = true;
+        // Vibration feedback during streaming replies
+        this.assist_vibration_feedback = true;
         this.voice_agent = null;
         // 'black', 'white' or 'sun'. Menus and the assistant conversation are
         // set separately, so the conversation can stay dark in a white app

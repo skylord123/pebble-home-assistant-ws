@@ -278,6 +278,7 @@ Assist.show = function(opts) {
     confirm: !!opts.confirm,
     backlight: !!opts.backlight,
     backlightHold: !!opts.backlightHold,
+    vibrationFeedback: !!opts.vibrationFeedback,
     dark: state.dark,
     listen: opts.listen !== false,
     reset: !!opts.reset,

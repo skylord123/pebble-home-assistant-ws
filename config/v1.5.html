@@ -818,6 +818,13 @@
 					</div>
 					<small class="form-text">Show the assistant's reply building up as it is written, rather than waiting for the whole of it. Needs Home Assistant 2025.3 or newer; older versions always wait.</small>
 				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-assist-vibration-feedback">Vibration feedback</label>
+						<input class="form-check-input" type="checkbox" id="ha-assist-vibration-feedback" checked>
+					</div>
+					<small class="form-text">Vibrate while the assistant reply is being written, matching ChatGPT's tactile feedback</small>
+				</div>
 				<div class="component" id="pipeline-container">
 					<div class="form-group">
 						<label class="form-label" for="ha-pipeline-select">Assist Pipeline</label>
@@ -1415,6 +1422,7 @@
 				voiceBacklightTrigger = $('#ha-voice-backlight-trigger'),
 				voiceBacklightHold = $('#ha-voice-backlight-hold'),
 				assistStreamReply = $('#ha-assist-stream-reply'),
+				assistVibrationFeedback = $('#ha-assist-vibration-feedback'),
 				voiceFontSize = $('#ha-voice-font-size'),
 				pipelineSelect = $('#ha-pipeline-select'),
 				pipelineWarning = $('#pipeline-warning'),
@@ -1491,6 +1499,7 @@
 				'voice_backlight_trigger': voiceBacklightTrigger.is(':checked'),
 				'voice_backlight_hold': voiceBacklightHold.is(':checked'),
 				'assist_stream_reply': assistStreamReply.is(':checked'),
+				'assist_vibration_feedback': assistVibrationFeedback.is(':checked'),
 				'voice_font_size': parseInt(voiceFontSize.val(), 10),
 				'selected_pipeline': pipelineSelect.val(),
 				'quick_launch_behavior': quickLaunchBehavior.val(),
@@ -1615,6 +1624,7 @@
 			voiceBacklightTrigger.attr('checked', typeof watch_config['voice_backlight_trigger'] !== 'undefined' ? watch_config['voice_backlight_trigger'] : true);
 			voiceBacklightHold.attr('checked', watch_config['voice_backlight_hold'] === true);
 			assistStreamReply.attr('checked', typeof watch_config['assist_stream_reply'] !== 'undefined' ? watch_config['assist_stream_reply'] : true);
+			assistVibrationFeedback.attr('checked', typeof watch_config['assist_vibration_feedback'] !== 'undefined' ? watch_config['assist_vibration_feedback'] : true);
 			if (watch_config['voice_font_size']) {
 				voiceFontSize.val(watch_config['voice_font_size']);
 			} else {
