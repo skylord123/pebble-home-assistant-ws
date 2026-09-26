@@ -284,6 +284,13 @@ function showLightEntity(entity_id) {
                 GenericEntityPage.showEntityMenu(updatedData.entity_id);
             }
         });
+
+        // Rows are written one at a time, so when one drops out (the effect
+        // list goes away while unavailable, say) the old last row is left over
+        let rows = lightMenu.items(0);
+        if (rows && rows.length > menuIndex) {
+            lightMenu.items(0, rows.slice(0, menuIndex));
+        }
     }
 
     /**
