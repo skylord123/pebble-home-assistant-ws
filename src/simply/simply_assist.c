@@ -288,6 +288,9 @@ typedef enum AssistFocus {
   //! once its first line is on screen the page belongs to whoever is reading
   //! it, and the rest piles up below for them to scroll to in their own time.
   AssistFocusHold,
+  //! More of an answer landed. Hold, except that a rectangular display keeps
+  //! the start of the answer in view until the wearer scrolls.
+  AssistFocusStream,
 } AssistFocus;
 
 static void prv_reflow(SimplyAssist *self, AssistFocus want);
@@ -1018,22 +1021,23 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
   // again for nothing
   const int16_t view_bottom = -scroll_layer_get_content_offset(
       self->scroll_layer).y + page;
-  if (want != AssistFocusHold || self->last_message_y <= view_bottom) {
+  const bool holding = (want == AssistFocusHold || want == AssistFocusStream);
+  if (!holding || self->last_message_y <= view_bottom) {
     layer_mark_dirty(self->content_layer);
   }
 
   // While streaming, auto-scroll to keep the message start visible on rectangular
   // displays. Round displays paginate and don't need this - they already show the
   // page the reply starts on.
-  if (want == AssistFocusHold) {
+  if (holding) {
     // User scroll takes priority: once they scroll, they control the view
-    if (self->user_scrolled) {
+    if (want == AssistFocusHold || self->user_scrolled) {
       return;
     }
     // Auto-scroll on rectangular displays only: rectangular watches benefit from
     // smooth scrolling to keep the message visible while it's being written.
     // Round watches paginate, so they don't need auto-scroll.
-#if !PBL_ROUND
+#if !defined(PBL_ROUND)
     int16_t target = self->last_message_y;
     const int16_t last = content_h - page;
     if (target > last) { target = last; }
@@ -1628,7 +1632,7 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   // The first line of an answer is worth moving to. Everything after it is
   // landing under the reader's eyes at several words a second, so the page
   // stays where they left it and the arrow at the edge says there is more.
-  prv_reflow(self, append ? AssistFocusHold : AssistFocusMessage);
+  prv_reflow(self, append ? AssistFocusStream : AssistFocusMessage);
 
   // Pieces still land while the settings menu is up, and a conversation that
   // is not on screen has no business lighting or buzzing the watch
