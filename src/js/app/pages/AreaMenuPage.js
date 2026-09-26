@@ -143,7 +143,7 @@ class AreaMenuPage extends BasePage {
                 if (!area_name) continue;
 
                 var areaObjects = RegistryService.getEntitiesForArea(area_id);
-                var areaObjectCount = Object.keys(areaObjects).length;
+                var areaObjectCount = helpers.shownRegistryEntityIds(areaObjects).length;
 
                 areaEntries.push({
                     area_id: area_id,
@@ -161,7 +161,7 @@ class AreaMenuPage extends BasePage {
                             ((entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'),
                         on_click: function(e) {
                             var areaObjects = RegistryService.getEntitiesForArea(entry.area_id);
-                            var entityKeys = Object.keys(areaObjects);
+                            var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
 
                             var shouldShowDomains = helpers.shouldShowDomainMenu(
                                 entityKeys,
@@ -229,7 +229,7 @@ function showAreasForFloor(floor_id, floor_name) {
             if (!area_name) continue;
 
             var areaObjects = RegistryService.getEntitiesForArea(area_id);
-            var areaObjectCount = Object.keys(areaObjects).length;
+            var areaObjectCount = helpers.shownRegistryEntityIds(areaObjects).length;
 
             areaEntries.push({
                 area_id: area_id,
@@ -247,7 +247,7 @@ function showAreasForFloor(floor_id, floor_name) {
                         ((entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'),
                     on_click: function(e) {
                         var areaObjects = RegistryService.getEntitiesForArea(entry.area_id);
-                        var entityKeys = Object.keys(areaObjects);
+                        var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
 
                         var shouldShowDomains = helpers.shouldShowDomainMenu(
                             entityKeys,

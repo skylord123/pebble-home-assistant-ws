@@ -149,6 +149,20 @@ function getNextHumanDiffChangeMs(lastChanged) {
 }
 
 /**
+ * Entity ids from a set of entity registry entries, leaving out the ones HA's
+ * own area and label views leave out: hidden, disabled, and config or
+ * diagnostic entities
+ * @param {Object} entries - Registry entries keyed by entity_id
+ * @returns {Array} Entity IDs
+ */
+function shownRegistryEntityIds(entries) {
+    return Object.keys(entries || {}).filter(function(entity_id) {
+        var entry = entries[entity_id];
+        return !entry.hidden_by && !entry.disabled_by && !entry.entity_category;
+    });
+}
+
+/**
  * Helper function to determine if we should show domain menu based on settings
  * @param {Array} entities - Array of entity IDs
  * @param {string} menuSetting - 'yes', 'no', or 'conditional'
@@ -295,5 +309,6 @@ module.exports = {
     humanDiff: humanDiff,
     getNextHumanDiffChangeMs: getNextHumanDiffChangeMs,
     shouldShowDomainMenu: shouldShowDomainMenu,
+    shownRegistryEntityIds: shownRegistryEntityIds,
     log_message: log_message
 };

@@ -52,7 +52,7 @@ class LabelMenuPage extends BasePage {
             for (var i = 0; i < sortedLabels.length; i++) {
                 (function(label) {
                     var entities = RegistryService.getEntitiesForLabel(label.label_id);
-                    var entityCount = Object.keys(entities).length;
+                    var entityCount = helpers.shownRegistryEntityIds(entities).length;
 
                     self.menu.item(0, i, {
                         title: label.name,
@@ -91,7 +91,7 @@ function showEntitiesForLabel(label_id) {
         return;
     }
 
-    var entityKeys = Object.keys(entities);
+    var entityKeys = helpers.shownRegistryEntityIds(entities);
 
     // Use the specific setting for Labels
     var shouldShowDomains = helpers.shouldShowDomainMenu(
