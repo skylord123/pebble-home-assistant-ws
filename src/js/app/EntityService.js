@@ -275,10 +275,12 @@ var EntityService = {
      * replace would drop everything that didn't change).
      * @param {string} entity_id - The entity the subscription is for
      * @param {Object} data - The raw subscription callback payload
+     * @param {Object} [base] - The caller's last known copy of the entity,
+     *                          used when the state dict doesn't have it
      * @returns {Object|null} The updated entity, or null if the event
      *                        didn't concern this entity
      */
-    applyCompressedEvent: function(entity_id, data) {
+    applyCompressedEvent: function(entity_id, data, base) {
         var appState = AppState.getInstance();
         var ev = data.event || {};
         var updated = null;
@@ -294,15 +296,18 @@ var EntityService = {
             };
         } else if (ev.c && ev.c[entity_id]) {
             var plus = ev.c[entity_id]['+'] || {};
-            var cur = appState.ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
-            var attributes = cur.attributes;
-            if (plus.a !== undefined) {
+            var cur = appState.getEntity(entity_id) || base || { entity_id: entity_id, state: '', attributes: {} };
+            var attributes = cur.attributes || {};
+            var minus = ev.c[entity_id]['-'];
+            var removesAttrs = minus && Array.isArray(minus.a);
+            // Copy before touching so the previous object (which other
+            // holders may share) is left as it was
+            if (plus.a !== undefined || removesAttrs) {
                 attributes = {};
                 for (var k in cur.attributes) { attributes[k] = cur.attributes[k]; }
                 for (var k2 in plus.a) { attributes[k2] = plus.a[k2]; }
             }
-            var minus = ev.c[entity_id]['-'];
-            if (minus && Array.isArray(minus.a)) {
+            if (removesAttrs) {
                 minus.a.forEach(function(removedKey) { delete attributes[removedKey]; });
             }
             updated = {

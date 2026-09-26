@@ -413,21 +413,8 @@ class MainMenuPage extends BasePage {
             if (ev.c) {
                 for (var entity_id in ev.c) {
                     if (self.pinnedEntityIndexes[entity_id] !== undefined) {
-                        var patch = ev.c[entity_id];
-                        var plus = patch["+"] || {};
-                        var cur = self.entityStates[entity_id] ||
-                                  self.appState.getEntity(entity_id) ||
-                                  { entity_id: entity_id, state: '', attributes: {} };
-
-                        var entityData = {
-                            entity_id: entity_id,
-                            state: plus.s !== undefined ? plus.s : cur.state,
-                            attributes: plus.a !== undefined ? plus.a : cur.attributes,
-                            last_changed: plus.lc !== undefined
-                                ? new Date(plus.lc * 1000).toISOString()
-                                : cur.last_changed
-                        };
-                        self.appState.setEntity(entity_id, entityData);
+                        var entityData = EntityService.applyCompressedEvent(entity_id, data, self.entityStates[entity_id]);
+                        if (!entityData) { continue; }
                         self.entityStates[entity_id] = entityData;
 
                         helpers.log_message('Main menu: entity update for ' + entity_id + ': ' + entityData.state);

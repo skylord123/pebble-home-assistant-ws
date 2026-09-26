@@ -368,7 +368,7 @@ class EntityListPage extends BasePage {
                 helpers.log_message('subscribeEntities: received ' + Object.keys(ev.c).length + ' changed entities');
             }
             if (ev.r) {
-                helpers.log_message('subscribeEntities: received ' + Object.keys(ev.r).length + ' removed entities');
+                helpers.log_message('subscribeEntities: received ' + ev.r.length + ' removed entities');
             }
 
             // Handle added entities (initial snapshot)
@@ -392,36 +392,24 @@ class EntityListPage extends BasePage {
             // Handle changed entities (updates)
             if (ev.c) {
                 for (var changedId in ev.c) {
-                    var patch = ev.c[changedId];
-                    var plus = patch["+"] || {};
+                    var updated = EntityService.applyCompressedEvent(changedId, data, entityStates[changedId]);
+                    if (!updated) { continue; }
+                    entityStates[changedId] = updated;
 
-                    // Get existing state or create new one
-                    var cur = entityStates[changedId] || { entity_id: changedId, state: '', attributes: {} };
-
-                    // Merge the changes
-                    entityStates[changedId] = {
-                        entity_id: changedId,
-                        state: plus.s !== undefined ? plus.s : cur.state,
-                        attributes: plus.a !== undefined ? plus.a : cur.attributes,
-                        context: plus.c !== undefined ? plus.c : cur.context,
-                        last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
-                    };
-                    appState.setEntity(changedId, entityStates[changedId]);
-
-                    helpers.log_message('Entity update for ' + changedId + ': ' + entityStates[changedId].state);
+                    helpers.log_message('Entity update for ' + changedId + ': ' + updated.state);
                     updateEntityInMenu(changedId);
                 }
             }
 
-            // Handle removed entities
-            if (ev.r) {
-                for (var removedId in ev.r) {
+            // Handle removed entities ("r" is a list of ids)
+            if (Array.isArray(ev.r) && ev.r.length) {
+                ev.r.forEach(function(removedId) {
                     delete entityStates[removedId];
                     helpers.log_message('Entity removed: ' + removedId);
-                    // Re-render menu if an entity was removed
-                    if (initialSnapshotReceived) {
-                        renderMenu();
-                    }
+                });
+                // Re-render menu if an entity was removed
+                if (initialSnapshotReceived) {
+                    renderMenu();
                 }
             }
         }, function(error) {
