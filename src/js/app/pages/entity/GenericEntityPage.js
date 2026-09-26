@@ -532,35 +532,6 @@ function showEntityMenu(entity_id) {
         });
     }
 
-    if(
-        domain === "automation" ||
-        domain === "script" ||
-        domain === "button" ||
-        domain === "input_boolean"
-    ) {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Reload',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'reload',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        helpers.log_message(JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-    }
-
     if(domain === "vacuum") {
         showEntityMenu.item(1, servicesCount++, {
             title: 'Start',
