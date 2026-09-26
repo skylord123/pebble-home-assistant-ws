@@ -89,6 +89,9 @@ static void setup_image(SimplyImage *image) {
 
   GColor8 *palette = gbitmap_get_palette(image->bitmap);
   GColor8 *palette_copy = malloc0(2 * sizeof(GColor8));
+  if (!palette_copy) {
+    return;
+  }
   memcpy(palette_copy, palette, 2 * sizeof(GColor8));
   gbitmap_set_palette(image->bitmap, palette_copy, false);
   image->palette = palette_copy;

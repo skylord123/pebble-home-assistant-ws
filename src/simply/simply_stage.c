@@ -450,6 +450,10 @@ static SimplyElementCommon *prv_create_element(SimplyElementType type) {
     case SimplyElementTypeInverter: {
       SimplyElementInverter *element = (SimplyElementInverter *)common;
       element->inverter_layer = inverter_layer_create(GRect(0, 0, 0, 0));
+      if (!element->inverter_layer) {
+        free(common);
+        return NULL;
+      }
       return common;
     }
   }
@@ -485,8 +489,11 @@ SimplyElementCommon *simply_stage_insert_element(SimplyStage *self, int index, S
   switch (element->type) {
     default: break;
     case SimplyElementTypeInverter:
-      layer_add_child(self->stage_layer.layer,
-          inverter_layer_get_layer(((SimplyElementInverter*) element)->inverter_layer));
+      // The stage layer only exists while the window is loaded
+      if (self->stage_layer.layer) {
+        layer_add_child(self->stage_layer.layer,
+            inverter_layer_get_layer(((SimplyElementInverter*) element)->inverter_layer));
+      }
       break;
   }
   return (SimplyElementCommon*) list1_insert(&self->stage_layer.elements, index, &element->node);
