@@ -1992,6 +1992,16 @@ static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
                                   gcolor8_get_or(menu_layer->highlight_foreground, GColorWhite));
 }
 
+//! Copy a string out of a packet, or NULL when it is empty or its length
+//! would reach past the end of the packet
+static char *prv_packet_string(const Packet *packet, const char *str, uint16_t length) {
+  const char *end = (const char *)packet + packet->length;
+  if (!length || str >= end || length >= (size_t)(end - str)) {
+    return NULL;
+  }
+  return strndup2(str, length);
+}
+
 static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
   MenuSectionPacket *packet = (MenuSectionPacket *)data;
   prv_row_counts_record(simply->menu, packet->section, packet->num_items,
@@ -2003,7 +2013,7 @@ static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
     .num_items = packet->num_items,
     .title_foreground = packet->text_color,
     .title_background = packet->background_color,
-    .title = packet->title_length ? strdup2(packet->title) : NULL,
+    .title = prv_packet_string(data, packet->title, packet->title_length),
   };
   simply_menu_add_section(simply->menu, section);
 }
@@ -2015,8 +2025,9 @@ static void prv_handle_menu_item_packet(Simply *simply, Packet *data) {
   *item = (SimplyMenuItem) {
     .section = packet->section,
     .item = packet->item,
-    .title = packet->title_length ? strdup2(packet->buffer) : NULL,
-    .subtitle = packet->subtitle_length ? strdup2(packet->buffer + packet->title_length + 1) : NULL,
+    .title = prv_packet_string(data, packet->buffer, packet->title_length),
+    .subtitle = prv_packet_string(data, packet->buffer + packet->title_length + 1,
+                                  packet->subtitle_length),
     .icon = packet->icon,
   };
   simply_menu_add_item(simply->menu, item);
