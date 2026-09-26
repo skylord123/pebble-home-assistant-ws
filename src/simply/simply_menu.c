@@ -882,6 +882,10 @@ static void prv_menu_draw_header_callback(GContext *ctx, const Layer *cell_layer
     prv_request_menu_section(self, section_index);
     return;
   }
+  // Still waiting on the phone for it
+  if (!section->title) {
+    return;
+  }
 
   list1_remove(&self->menu_layer.sections, &section->node);
   list1_prepend(&self->menu_layer.sections, &section->node);
