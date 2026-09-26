@@ -725,11 +725,18 @@ static void handle_element_polyline_packet(Simply *simply, Packet *data) {
   free(element->points);
   element->points = NULL;
   element->num_points = 0;
-  if (packet->num_points) {
-    element->points = malloc(packet->num_points);
+  // Never copy more points than the packet actually carries
+  uint16_t num_points = packet->num_points;
+  const uint16_t carried = (packet->packet.length > sizeof(*packet)) ?
+      (uint16_t)(packet->packet.length - sizeof(*packet)) : 0;
+  if (num_points > carried) {
+    num_points = carried;
+  }
+  if (num_points) {
+    element->points = malloc(num_points);
     if (element->points) {
-      memcpy(element->points, packet->points, packet->num_points);
-      element->num_points = packet->num_points;
+      memcpy(element->points, packet->points, num_points);
+      element->num_points = num_points;
     }
   }
   simply_stage_update(simply->stage);
