@@ -73,8 +73,8 @@ function showClimateEntity(entity_id) {
             fan_mode: !!(supported_features & 8), // FAN_MODE
             preset_mode: !!(supported_features & 16), // PRESET_MODE
             swing_mode: !!(supported_features & 32), // SWING_MODE
-            turn_on: !!(supported_features & 128), // TURN_ON
-            turn_off: !!(supported_features & 256) // TURN_OFF
+            turn_off: !!(supported_features & 128), // TURN_OFF
+            turn_on: !!(supported_features & 256) // TURN_ON
         };
     }
 
