@@ -11,6 +11,10 @@ class HAWS {
         // separate flag a reconnect attempt can start a second socket while
         // the first is still negotiating
         this.connecting = false;
+        // Set on auth_ok. Home Assistant answers anything other than the auth
+        // message itself with auth_invalid, so commands wait for this, not
+        // for the socket to open.
+        this.authenticated = false;
         this.reconnectTimeout = null;
         this.selfDisconnect = false;
         this.ha_url = ha_url;
@@ -88,6 +92,7 @@ class HAWS {
         let dead = this.ws;
         this.ws = null;
         this.connected = false;
+        this.authenticated = false;
         this.connecting = false;
         this.stopHeartbeat();
         this._resetConnectionState();
@@ -109,8 +114,9 @@ class HAWS {
         }
     }
 
+    // Usable for commands, which is later than the socket being open
     isConnected() {
-        return this.connected;
+        return this.authenticated;
     }
 
     /**
@@ -175,6 +181,7 @@ class HAWS {
             // to a socket that had already closed, which throws and aborts the
             // rest of the listener before it could release its timers.
             that.connected = false;
+            that.authenticated = false;
             that.stopHeartbeat();
             that._resetConnectionState();
 
@@ -252,6 +259,7 @@ class HAWS {
                 // and its result was then discarded instead of delivered - the
                 // reconnect data fetch would stall there forever.
                 this._resetConnectionState();
+                this.authenticated = true;
 
                 // Send supported_features if coalesce_messages is enabled
                 if(this.coalesce_messages) {
@@ -375,7 +383,7 @@ class HAWS {
     }
 
     send(msg, successCallback, errorCallback) {
-        if(this.connected) {
+        if(this.authenticated) {
             if(!msg.id) {
                 msg.id = this._genCmdId();
             }
@@ -384,7 +392,17 @@ class HAWS {
             return msg.id;
         }
 
+        // Nothing will ever answer this, so say so now rather than leave the
+        // caller waiting on a callback that cannot come
+        if (typeof errorCallback === 'function') {
+            errorCallback(HAWS._failure(msg.id, 'not_connected', 'Not connected to Home Assistant'));
+        }
         return false;
+    }
+
+    // Shaped like a failed result frame, which is what error callbacks get
+    static _failure(id, code, message) {
+        return { id: id, type: 'result', success: false, error: { code: code, message: message } };
     }
 
     unsubscribe(msg_id) {
@@ -712,6 +730,7 @@ class HAWS {
         if(this.connected) {
             this.ws.close();
             this.connected = false;
+            this.authenticated = false;
             this._resetConnectionState();
         }
     }
@@ -744,6 +763,16 @@ class HAWS {
             type: 'assist_pipeline/run',
             ...data
         };
+
+        // Writing straight to the socket skipped every check send() makes: a
+        // dropped connection either threw or swallowed the request, and
+        // neither callback ever ran
+        if (!this.authenticated) {
+            if (errorCallback) {
+                errorCallback(HAWS._failure(undefined, 'not_connected', 'Not connected to Home Assistant'));
+            }
+            return false;
+        }
 
         msg.id = this._genCmdId();
 
