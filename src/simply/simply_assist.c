@@ -1573,7 +1573,11 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   // stays where they left it and the arrow at the edge says there is more.
   prv_reflow(self, append ? AssistFocusHold : AssistFocusMessage);
 
-  if (self->backlight_hold) {
+  // Pieces still land while the settings menu is up, and a conversation that
+  // is not on screen has no business lighting or buzzing the watch
+  const bool on_screen = (window_stack_get_top_window() == self->window);
+
+  if (on_screen && self->backlight_hold) {
     if (streaming) {
       // Words are still landing. Keep the screen lit under them rather than
       // letting it time out part way through an answer being written.
@@ -1586,7 +1590,7 @@ static void prv_handle_message(Simply *simply, Packet *data) {
       prv_stop_backlight_hold(self);
       light_enable_interaction();
     }
-  } else if (self->backlight && !append) {
+  } else if (on_screen && self->backlight && !append) {
     // Light up for an answer arriving, but not for every piece of one
     light_enable_interaction();
   }
@@ -1607,7 +1611,7 @@ static void prv_handle_message(Simply *simply, Packet *data) {
       // A whole reply at once
       vibe = (packet->text[0] != '\0');
     }
-    if (vibe && self->vibration_feedback) {
+    if (vibe && on_screen && self->vibration_feedback) {
       vibes_enqueue_custom_pattern(s_stream_vibe);
     }
   }
