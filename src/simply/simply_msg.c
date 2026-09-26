@@ -270,11 +270,13 @@ static void received_callback(DictionaryIterator *iter, void *context) {
   uint8_t *buffer = tuple->value->data;
   while (true) {
     Packet *packet = (Packet*) buffer;
-    handle_packet(context, packet);
-
-    if (packet->length == 0) {
+    // A packet that claims more than is left, or less than its own header,
+    // would send the walk off the end of the message
+    if (length < sizeof(Packet) || packet->length < sizeof(Packet) ||
+        packet->length > length) {
       break;
     }
+    handle_packet(context, packet);
 
     length -= packet->length;
     if (length == 0) {

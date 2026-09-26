@@ -1595,6 +1595,11 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   SimplyAssist *self = simply->assist;
   if (!self || self->destroying) { return; }
   AssistMessagePacket *packet = (AssistMessagePacket *)data;
+  // The text is used as a C string, so it has to end inside the packet
+  if (data->length <= sizeof(*packet) ||
+      !memchr(packet->text, '\0', data->length - sizeof(*packet))) {
+    return;
+  }
 
   if (packet->flags & MessageFlagKeepAlive) {
     // Only a wait still under way is kept going. One that already ended, by
