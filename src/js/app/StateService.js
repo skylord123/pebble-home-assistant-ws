@@ -91,9 +91,12 @@ var StateService = {
                 appState.ha_state_dict = new_state_map;
                 appState.ha_state_cache_updated = new Date();
 
-                // Update favorite entity friendly names from current state data
+                // Update favorite and pinned entity friendly names from current state data
                 if (appState.favoriteEntityStore) {
                     appState.favoriteEntityStore.updateFriendlyNames(appState.ha_state_dict);
+                }
+                if (appState.pinnedEntityStore) {
+                    appState.pinnedEntityStore.updateFriendlyNames(appState.ha_state_dict);
                 }
 
                 publishAvailableCalendars(appState);
