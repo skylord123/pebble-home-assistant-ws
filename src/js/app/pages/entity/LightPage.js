@@ -154,6 +154,9 @@ function showLightEntity(entity_id) {
             result.color = supported_color_modes.some(mode =>
                 ["hs", "xy", "rgb", "rgbw", "rgbww"].includes(mode)
             );
+
+            // ColorMode.WHITE: a white channel reached with the white parameter
+            result.white = supported_color_modes.includes("white");
         } else {
             // Fallback for older Home Assistant versions that don't use color modes
             // These use the deprecated SUPPORT_* constants
@@ -255,6 +258,31 @@ function showLightEntity(entity_id) {
                     let rgbColor = updatedData.rgb_color || [255, 255, 255];
                     helpers.log_message(`Opening color menu with color: ${JSON.stringify(rgbColor)}`);
                     showColorMenu(updatedData.entity_id, rgbColor);
+                }
+            });
+        }
+
+        // Switch back to the white channel
+        if (features.white) {
+            lightMenu.item(0, menuIndex++, {
+                title: 'White',
+                subtitle: updatedData.is_on && updatedLight.attributes.color_mode === 'white' ? 'Current' : '',
+                on_click: function() {
+                    // white takes the brightness to use; keep the current one
+                    let brightness = currentLight().attributes.brightness;
+                    appState.haws.callService(
+                        "light",
+                        "turn_on",
+                        { white: brightness ? brightness : 255 },
+                        { entity_id: updatedData.entity_id },
+                        function(data) {
+                            Vibe.vibrate('short');
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message(`Error setting white: ${JSON.stringify(error)}`);
+                        }
+                    );
                 }
             });
         }
