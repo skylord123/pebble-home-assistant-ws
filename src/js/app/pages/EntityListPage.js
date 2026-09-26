@@ -153,13 +153,16 @@ class EntityListPage extends BasePage {
 
         // Helper to convert subscribeEntities format to standard entity format
         function convertEntityData(entity_id, data) {
-            return {
+            var entity = {
                 entity_id: entity_id,
                 state: data.s,
                 attributes: data.a || {},
                 context: data.c,
                 last_changed: data.lc ? new Date(data.lc * 1000).toISOString() : new Date().toISOString()
             };
+            // lu is only sent when it differs from lc
+            entity.last_updated = data.lu ? new Date(data.lu * 1000).toISOString() : entity.last_changed;
+            return entity;
         }
 
         // Helper to render the menu from entityStates
@@ -201,9 +204,13 @@ class EntityListPage extends BasePage {
 
             // Sort each group
             if (self.sortItems) {
-                normalEntities = sortJSON(normalEntities, appState.ha_order_by, appState.ha_order_dir);
-                unavailableToEnd = sortJSON(unavailableToEnd, appState.ha_order_by, appState.ha_order_dir);
-                unknownToEnd = sortJSON(unknownToEnd, appState.ha_order_by, appState.ha_order_dir);
+                // The stored setting says attributes.last_updated, but
+                // last_updated is a top-level state field
+                var orderBy = appState.ha_order_by === 'attributes.last_updated'
+                    ? 'last_updated' : appState.ha_order_by;
+                normalEntities = sortJSON(normalEntities, orderBy, appState.ha_order_dir);
+                unavailableToEnd = sortJSON(unavailableToEnd, orderBy, appState.ha_order_dir);
+                unknownToEnd = sortJSON(unknownToEnd, orderBy, appState.ha_order_dir);
             } else if (self.entityIdList) {
                 // Sort items in same order as they appear in entity_id_list
                 var sortByList = function(a, b) {

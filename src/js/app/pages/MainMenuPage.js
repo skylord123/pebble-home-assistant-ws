@@ -390,10 +390,14 @@ class MainMenuPage extends BasePage {
                             entity_id: entity_id,
                             state: ev.a[entity_id].s,
                             attributes: ev.a[entity_id].a || {},
+                            context: ev.a[entity_id].c,
                             last_changed: ev.a[entity_id].lc
                                 ? new Date(ev.a[entity_id].lc * 1000).toISOString()
                                 : new Date().toISOString()
                         };
+                        entityData.last_updated = ev.a[entity_id].lu
+                            ? new Date(ev.a[entity_id].lu * 1000).toISOString()
+                            : entityData.last_changed;
                         self.appState.setEntity(entity_id, entityData);
                         self.entityStates[entity_id] = entityData;
                         EntityService.updateMenuItem(
