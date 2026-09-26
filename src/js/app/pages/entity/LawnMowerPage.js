@@ -2,9 +2,9 @@
  * LawnMowerPage - lawn_mower entity control page
  *
  * Close to the vacuum handling but not the same domain: a mower has only
- * three services, each gated on its own feature bit, and no toggle. Its
+ * four services, each gated on its own feature bit, and no toggle. Its
  * state is the activity it is performing, one of mowing, paused, docked,
- * returning or error.
+ * returning, idle or error.
  */
 var UI = require('ui');
 var Vibe = require('ui/vibe');
@@ -20,7 +20,8 @@ var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 var LawnMowerEntityFeature = {
     START_MOWING: 1,
     PAUSE: 2,
-    DOCK: 4
+    DOCK: 4,
+    STOP: 8
 };
 
 // LawnMowerActivity values
@@ -29,6 +30,7 @@ var ACTIVITY = {
     PAUSED: 'paused',
     DOCKED: 'docked',
     RETURNING: 'returning',
+    IDLE: 'idle',
     ERROR: 'error'
 };
 
@@ -50,7 +52,8 @@ function getMowerData(entity) {
         battery: battery,
         can_start: !!(features & LawnMowerEntityFeature.START_MOWING),
         can_pause: !!(features & LawnMowerEntityFeature.PAUSE),
-        can_dock: !!(features & LawnMowerEntityFeature.DOCK)
+        can_dock: !!(features & LawnMowerEntityFeature.DOCK),
+        can_stop: !!(features & LawnMowerEntityFeature.STOP)
     };
 }
 
@@ -97,12 +100,13 @@ function quickActionService(data) {
     if (!data.unknown &&
         (data.activity === ACTIVITY.MOWING || data.activity === ACTIVITY.RETURNING)) {
         if (data.can_pause) return 'pause';
+        if (data.can_stop) return 'stop';
         if (data.can_dock && data.activity !== ACTIVITY.RETURNING) return 'dock';
         // Nothing here can stop it, so fall through rather than doing
         // nothing while the menu below plainly offers an action
     }
 
-    // Docked, paused, in error, or a state we do not recognise: get it
+    // Docked, paused, idle, in error, or a state we do not recognise: get it
     // going again, or failing that send it home
     if (data.can_start && data.activity !== ACTIVITY.MOWING) return 'start_mowing';
     if (data.can_dock &&
@@ -178,6 +182,13 @@ function showLawnMowerEntity(entity_id) {
                 menuItems.push({
                     title: 'Pause',
                     on_click: function() { callMowerService(entity_id, 'pause'); }
+                });
+            }
+            if (data.can_stop && (data.unknown ||
+                data.activity === ACTIVITY.MOWING || data.activity === ACTIVITY.RETURNING)) {
+                menuItems.push({
+                    title: 'Stop',
+                    on_click: function() { callMowerService(entity_id, 'stop'); }
                 });
             }
             // Returning is docking already under way, so it counts as
