@@ -244,7 +244,7 @@ function eventLaunchCode(entity_id, event) {
  */
 function getCalendarFeatures(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     var sf = (entity && entity.attributes && entity.attributes.supported_features) || 0;
     return {
         create: !!(sf & 1),

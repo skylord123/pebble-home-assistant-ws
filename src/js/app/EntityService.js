@@ -419,6 +419,14 @@ var EntityService = {
             return;
         }
 
+        // Every page reads the entity on open, and throws without it: before
+        // get_states lands, or once the entity is gone from HA
+        if (!AppState.getInstance().getEntity(entity_id)) {
+            helpers.log_message('showEntity: ' + entity_id + ' is not in the state dict');
+            Vibe.vibrate('double');
+            return;
+        }
+
         var domain = entity_id.split('.')[0];
 
         // Lazy-load page modules to avoid circular dependency

@@ -81,7 +81,7 @@ function show(entity_id) {
         return;
     }
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('History: entity ' + entity_id + ' not found');
         return;
@@ -109,7 +109,7 @@ function show(entity_id) {
  */
 function showHistoryGraph(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     var unit = (entity.attributes && entity.attributes.unit_of_measurement) || '';
 
     var res = Feature.resolution();
@@ -455,7 +455,7 @@ function showHistoryGraph(entity_id) {
  */
 function showHistoryChanges(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     var title = entityName(entity);
 
     var changesMenu = new UI.Menu({

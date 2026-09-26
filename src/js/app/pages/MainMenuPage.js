@@ -332,7 +332,7 @@ class MainMenuPage extends BasePage {
                     id: 'people',
                     title: "People",
                     on_click: function(e) {
-                        var personEntities = Object.keys(self.appState.ha_state_dict).filter(function(entity_id) {
+                        var personEntities = Object.keys(self.appState.ha_state_dict || {}).filter(function(entity_id) {
                             return entity_id.indexOf('person.') === 0;
                         });
                         EntityListPage.showEntityList("People", personEntities, true, true, true);
@@ -343,7 +343,7 @@ class MainMenuPage extends BasePage {
                     id: 'all_entities',
                     title: "All Entities",
                     on_click: function(e) {
-                        var entityKeys = Object.keys(self.appState.ha_state_dict);
+                        var entityKeys = Object.keys(self.appState.ha_state_dict || {});
                         var shouldShowDomains = helpers.shouldShowDomainMenu(
                             entityKeys,
                             self.appState.domain_menu_all_entities,
