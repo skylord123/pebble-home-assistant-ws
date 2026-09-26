@@ -704,10 +704,26 @@ static void handle_element_common_packet(Simply *simply, Packet *data) {
   simply_stage_update(simply->stage);
 }
 
+//! Whether an element starts with SimplyElementRect, and so has a radius
+static bool prv_has_radius(SimplyElementCommon *element) {
+  switch (element->type) {
+    case SimplyElementTypeRect:
+    case SimplyElementTypeCircle:
+    case SimplyElementTypeRadial:
+    case SimplyElementTypeText:
+    case SimplyElementTypeImage:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Each property below only exists on some element types, and writing it into
+// any other would land past the end of that element
 static void handle_element_radius_packet(Simply *simply, Packet *data) {
   ElementRadiusPacket *packet = (ElementRadiusPacket*) data;
   SimplyElementRect *element = (SimplyElementRect*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || !prv_has_radius(&element->common)) {
     return;
   }
   element->radius = packet->radius;
@@ -747,7 +763,7 @@ static void handle_element_angle_packet(Simply *simply, Packet *data) {
   ElementAnglePacket *packet = (ElementAnglePacket *)data;
   SimplyElementRadial *element =
       (SimplyElementRadial *)simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeRadial) {
     return;
   }
   element->angle = packet->angle;
@@ -758,7 +774,7 @@ static void handle_element_angle2_packet(Simply *simply, Packet *data) {
   ElementAngle2Packet *packet = (ElementAngle2Packet *)data;
   SimplyElementRadial *element =
       (SimplyElementRadial *)simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeRadial) {
     return;
   }
   element->angle2 = packet->angle;
@@ -768,7 +784,7 @@ static void handle_element_angle2_packet(Simply *simply, Packet *data) {
 static void handle_element_text_packet(Simply *simply, Packet *data) {
   ElementTextPacket *packet = (ElementTextPacket*) data;
   SimplyElementText *element = (SimplyElementText*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeText) {
     return;
   }
   if (element->time_units != packet->time_units) {
@@ -782,7 +798,7 @@ static void handle_element_text_packet(Simply *simply, Packet *data) {
 static void handle_element_text_style_packet(Simply *simply, Packet *data) {
   ElementTextStylePacket *packet = (ElementTextStylePacket*) data;
   SimplyElementText *element = (SimplyElementText*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeText) {
     return;
   }
   element->text_color = packet->color;
@@ -799,7 +815,7 @@ static void handle_element_text_style_packet(Simply *simply, Packet *data) {
 static void handle_element_image_packet(Simply *simply, Packet *data) {
   ElementImagePacket *packet = (ElementImagePacket*) data;
   SimplyElementImage *element = (SimplyElementImage*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeImage) {
     return;
   }
   element->image = packet->image;
