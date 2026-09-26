@@ -1102,6 +1102,7 @@ static void prv_think_timeout(void *data) {
   SimplyAssist *self = data;
   self->timeout_timer = NULL;
   prv_stop_thinking(self);
+  self->stream_chunk_count = 0;
   prv_append(self, AssistRoleError, "No response from Home Assistant");
   prv_reflow(self, AssistFocusMessage);
 }
@@ -1166,6 +1167,7 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
   if (status == DictationSessionStatusSuccess && transcription && transcription[0]) {
     self->ever_spoke = true;
     self->user_scrolled = false;
+    self->stream_chunk_count = 0;
     prv_append(self, AssistRoleUser, transcription);
     prv_start_thinking(self);
     prv_reflow(self, AssistFocusThinking);
@@ -1589,29 +1591,28 @@ static void prv_handle_message(Simply *simply, Packet *data) {
     light_enable_interaction();
   }
 
-  // Vibration feedback for streaming replies: double-tap pattern (vibration + gap + vibration)
-  // Creates consistent tactile feedback matching ChatGPT Android's approach
-  if (self->vibration_feedback) {
-    if (append && streaming) {
-      // Vibrate on every other chunk to create rhythm and avoid overlapping patterns
-      if (++self->stream_chunk_count % 2 == 0) {
-        vibes_enqueue_custom_pattern(s_stream_vibe);
-      }
-    } else if (!streaming) {
-      if (self->stream_chunk_count > 0) {
-        // Reply finished after streaming: use same pattern for consistent feel
-        vibes_enqueue_custom_pattern(s_stream_vibe);
-        self->stream_chunk_count = 0;
-      } else if (!append) {
-        // Short reply came all at once without streaming: vibrate on arrival
-        vibes_enqueue_custom_pattern(s_stream_vibe);
-      }
+  // Vibration feedback: a pulse when a reply starts arriving, another on every
+  // other piece while it streams, and one when it finishes. Errors are not
+  // replies, and keep-alives returned above.
+  if (packet->role == AssistRoleAssistant) {
+    bool vibe;
+    if (streaming) {
+      // Pieces 1, 3, 5... so the first piece of an answer is felt
+      vibe = (++self->stream_chunk_count % 2 == 1);
+    } else if (self->stream_chunk_count > 0) {
+      // The end of a streamed reply. One that came as a single piece was
+      // already felt when that piece landed.
+      vibe = (self->stream_chunk_count > 1);
+    } else {
+      // A whole reply at once
+      vibe = (packet->text[0] != '\0');
     }
-  } else {
-    // Vibration disabled: just reset the chunk counter
-    if (!streaming && self->stream_chunk_count > 0) {
-      self->stream_chunk_count = 0;
+    if (vibe && self->vibration_feedback) {
+      vibes_enqueue_custom_pattern(s_stream_vibe);
     }
+  }
+  if (!streaming) {
+    self->stream_chunk_count = 0;
   }
 }
 
