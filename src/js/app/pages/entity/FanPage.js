@@ -111,6 +111,11 @@ function showFanEntity(entity_id) {
             subtitle: `${updatedData.is_on ? 'on' : 'off'} > ${updatedData.last_changed_time}`,
             icon: updatedData.is_on ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png',
             on_click: function() {
+                // fan.toggle needs TURN_OFF or TURN_ON
+                if (!((updatedFan.attributes.supported_features || 0) & (16 | 32))) {
+                    Vibe.vibrate('double');
+                    return;
+                }
                 // Toggle fan on/off
                 appState.haws.callService(
                     "fan",

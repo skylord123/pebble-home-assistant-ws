@@ -564,9 +564,31 @@ var EntityService = {
             domain === "cover" ||
             domain === "humidifier"
         ) {
+            var toggleService = 'toggle';
+            var toggled = appState.ha_state_dict ? appState.ha_state_dict[entity_id] : null;
+            var toggleFeatures = toggled ? toggled.attributes.supported_features || 0 : 0;
+            if (toggled && domain === "cover") {
+                // cover.toggle needs OPEN and CLOSE; a cover that only
+                // does one (a gate opener) gets that one
+                if ((toggleFeatures & 3) === 1) {
+                    toggleService = 'open_cover';
+                } else if ((toggleFeatures & 3) === 2) {
+                    toggleService = 'close_cover';
+                } else if ((toggleFeatures & 3) === 0) {
+                    toggleService = null;
+                }
+            } else if (toggled && domain === "fan" && !(toggleFeatures & (16 | 32))) {
+                // fan.toggle needs TURN_OFF or TURN_ON
+                toggleService = null;
+            }
+            if (!toggleService) {
+                log('handleEntityLongPress: ' + entity_id + ' supports no toggle - no action taken');
+                Vibe.vibrate('double');
+                return;
+            }
             appState.haws.callService(
                 domain,
-                'toggle',
+                toggleService,
                 {},
                 { entity_id: entity_id },
                 function(data) {
