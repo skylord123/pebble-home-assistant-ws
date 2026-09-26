@@ -308,6 +308,14 @@ class HAWS {
                 break;
 
             case 'auth_invalid':
+                // Retrying a token Home Assistant has just refused only piles
+                // up failed logins, and with ip_ban_enabled enough of those
+                // ban the phone. A new token comes with a new instance.
+                this.selfDisconnect = true;
+                if (this.reconnectTimeout) {
+                    clearTimeout(this.reconnectTimeout);
+                    this.reconnectTimeout = null;
+                }
                 this.trigger("auth_invalid", {detail: data});
                 this.close();
                 break;

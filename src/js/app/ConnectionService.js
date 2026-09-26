@@ -27,6 +27,9 @@ var ConnectionService = {
     hadWindowsBeforeDisconnect: false,
     // Flag to defer reconnecting dialog until dictation completes
     pendingReconnectDialog: false,
+    // Home Assistant refused the token. Nothing reconnects after that, and the
+    // failure has to stay on screen rather than turn into "Reconnecting".
+    authFailed: false,
 
     /**
      * Initialize the connection service
@@ -101,6 +104,8 @@ var ConnectionService = {
 
         // Show loading card
         this.loadingCard.show();
+        this.loadingCard.title('Home Assistant');
+        this.loadingCard.body('');
         this.loadingCard.subtitle('Restarting...');
 
         // Reinitialize after a small delay
@@ -117,6 +122,11 @@ var ConnectionService = {
         var self = this;
         var appState = AppState.getInstance();
         var log = helpers.log_message;
+
+        // An earlier auth failure or setup prompt must not linger into this attempt
+        this.authFailed = false;
+        this.loadingCard.title('Home Assistant');
+        this.loadingCard.body('');
 
         // Check if configured
         if (!appState.ha_url || !appState.ha_password) {
@@ -160,6 +170,7 @@ var ConnectionService = {
         });
 
         appState.haws.on('auth_invalid', function(evt) {
+            self.authFailed = true;
             self.loadingCard.title('Auth Failure');
             self.loadingCard.subtitle('Check your access token');
             // The full message from Home Assistant can be long; the detail
@@ -202,6 +213,11 @@ var ConnectionService = {
         // If we're restarting, don't try to save/restore windows
         if (this.isRestarting) {
             log('Connection closed during restart - skipping window save');
+            return;
+        }
+
+        if (this.authFailed) {
+            log('Connection closed after an auth failure - not reconnecting');
             return;
         }
 
