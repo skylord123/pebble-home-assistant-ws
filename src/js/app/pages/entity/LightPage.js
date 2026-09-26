@@ -20,10 +20,9 @@ var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
-// Menu selection tracking
-var menuSelections = {
-    lightMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
@@ -918,7 +917,7 @@ function showLightEntity(entity_id) {
     lightMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.lightMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Light menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {
@@ -981,9 +980,9 @@ function showLightEntity(entity_id) {
         // Restore the previously selected index
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.lightMenu > 0 && menuSelections.lightMenu < lightMenu.items(0).length) {
-                lightMenu.selection(0, menuSelections.lightMenu);
-                selectedIndex = menuSelections.lightMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < lightMenu.items(0).length) {
+                lightMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < lightMenu.items(0).length) {

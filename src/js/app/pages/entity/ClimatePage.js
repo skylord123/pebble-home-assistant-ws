@@ -18,10 +18,9 @@ var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 
-// Menu selection tracking
-var menuSelections = {
-    climateMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
@@ -356,9 +355,9 @@ function showClimateEntity(entity_id) {
         // Restore the previously selected index after a short delay
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.climateMenu > 0 && menuSelections.climateMenu < climateMenu.items(0).length) {
-                climateMenu.selection(0, menuSelections.climateMenu);
-                selectedIndex = menuSelections.climateMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < climateMenu.items(0).length) {
+                climateMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < climateMenu.items(0).length) {
@@ -370,7 +369,7 @@ function showClimateEntity(entity_id) {
     climateMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.climateMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Climate menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {

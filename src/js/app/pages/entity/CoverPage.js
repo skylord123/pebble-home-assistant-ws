@@ -20,10 +20,9 @@ var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
-// Menu selection tracking
-var menuSelections = {
-    coverMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
@@ -451,7 +450,7 @@ function showCoverEntity(entity_id) {
     coverMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.coverMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Cover menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {
@@ -509,9 +508,9 @@ function showCoverEntity(entity_id) {
         // Restore the previously selected index
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.coverMenu > 0 && menuSelections.coverMenu < coverMenu.items(0).length) {
-                coverMenu.selection(0, menuSelections.coverMenu);
-                selectedIndex = menuSelections.coverMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < coverMenu.items(0).length) {
+                coverMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < coverMenu.items(0).length) {
