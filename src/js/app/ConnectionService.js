@@ -245,6 +245,11 @@ var ConnectionService = {
         // If dictation is in progress, defer the reconnecting dialog until it completes
         if (Assist.isDictating()) {
             log('Connection lost while dictating - deferring reconnect dialog');
+            // The page under the conversation still holds subscriptions on
+            // the dead socket and has to let go of them now. If the
+            // connection comes back before the dialog is shown, hiding the
+            // splash gives the page its 'show' back.
+            this.loadingCard.cover();
             this.pendingReconnectDialog = true;
             this.reconnecting = true;
             this.hadWindowsBeforeDisconnect = WindowStack._items.some(function(window) {

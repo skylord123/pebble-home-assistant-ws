@@ -19,6 +19,19 @@ var WindowStack = require('ui/windowstack');
 // never joins the JS window stack, so this side has to remember.
 var covering = false;
 
+// Whether the native splash has been asked onto the screen. It can be covering
+// without being shown, when a disconnect during dictation defers it.
+var shown = false;
+
+function cover() {
+    if (covering) { return; }
+    covering = true;
+    var top = WindowStack.top();
+    if (top) {
+        WindowStack._emitHide(top);
+    }
+}
+
 var texts = {
     title: 'Home Assistant',
     status: '',
@@ -53,13 +66,8 @@ var SplashScreen = {
         // longer existed, so their states froze until the user navigated away
         // and back. Emitting only the event, never WindowStack._hide, keeps
         // the window in place on the watch underneath the splash.
-        if (!covering) {
-            covering = true;
-            var top = WindowStack.top();
-            if (top) {
-                WindowStack._emitHide(top);
-            }
-        }
+        cover();
+        shown = true;
 
         // A fresh show is a fresh attempt, so always reset to the pulsing
         // connecting state
@@ -69,8 +77,28 @@ var SplashScreen = {
         sendStatus();
         return this;
     },
+    /**
+     * Release the page underneath as show() would, without putting the
+     * splash up. For a disconnect while the wearer is dictating: the page
+     * must still drop subscriptions that died with the socket.
+     */
+    cover: function() {
+        cover();
+        return this;
+    },
     hide: function() {
+        var wasCovering = covering;
         covering = false;
+        if (!shown) {
+            // Never came up, so the watch has nothing to take down and will
+            // send no reveal. The page gets its 'show' from here instead.
+            var top = wasCovering && WindowStack.top();
+            if (top) {
+                WindowStack._emitShow(top);
+            }
+            return this;
+        }
+        shown = false;
         // Whatever this screen was waiting on can take a while - a slow
         // connection, a Home Assistant still starting up - and the wearer
         // opened the app expecting to read something at the end of it. The
