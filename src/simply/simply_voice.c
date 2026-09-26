@@ -67,7 +67,24 @@ static void dictation_session_callback(DictationSession *session, DictationSessi
 }
 
 static void timer_callback_start_dictation(void *data) {
-  dictation_session_start(s_voice->session);
+  s_voice->timer = NULL;
+  // The session can only be created while the phone is connected, so one that
+  // failed at launch is tried again here
+  if (!s_voice->session) {
+    s_voice->session = dictation_session_create(SIMPLY_VOICE_BUFFER_LENGTH,
+                                                dictation_session_callback, NULL);
+  }
+  if (!s_voice->session) {
+    dictation_session_callback(NULL, DictationSessionStatusFailureConnectivityError, NULL, NULL);
+    return;
+  }
+  dictation_session_enable_confirmation(s_voice->session, (bool)(uintptr_t) data);
+  // A session that refuses to start never calls back, which would leave
+  // in_progress set for good
+  const DictationSessionStatus status = dictation_session_start(s_voice->session);
+  if (status != DictationSessionStatusSuccess) {
+    dictation_session_callback(s_voice->session, status, NULL, NULL);
+  }
 }
 
 bool simply_voice_start(Simply *simply, bool enable_confirmation, bool for_assist) {
@@ -78,15 +95,15 @@ bool simply_voice_start(Simply *simply, bool enable_confirmation, bool for_assis
   // Start on a timer so the caller can return as quickly as possible
   s_voice->in_progress = true;
   s_voice->for_assist = for_assist;
-  dictation_session_enable_confirmation(s_voice->session, enable_confirmation);
-  s_voice->timer = app_timer_register(0, timer_callback_start_dictation, NULL);
+  s_voice->timer = app_timer_register(0, timer_callback_start_dictation,
+                                      (void *)(uintptr_t) enable_confirmation);
   return true;
 }
 
 static void handle_voice_start_packet(Simply *simply, Packet *data) {
   // Send an immediate response if there's already a dictation session in progress
   // Status 64 = SessionAlreadyInProgress
-  if (s_voice->in_progress) {
+  if (!s_voice || s_voice->in_progress) {
     send_voice_data(64, "");
     return;
   }
@@ -96,8 +113,11 @@ static void handle_voice_start_packet(Simply *simply, Packet *data) {
 }
 
 static void handle_voice_stop_packet(Simply *simply, Packet *data) {
+  if (!s_voice) { return; }
   // Stop the session and clear the in_progress flag
-  dictation_session_stop(s_voice->session);
+  if (s_voice->session) {
+    dictation_session_stop(s_voice->session);
+  }
   s_voice->in_progress = false;
 }
 
@@ -120,6 +140,9 @@ SimplyVoice *simply_voice_create(Simply *simply) {
   }
 
   SimplyVoice *self = malloc(sizeof(*self));
+  if (!self) {
+    return NULL;
+  }
   *self = (SimplyVoice) {
     .simply = simply,
     .in_progress = false,
@@ -142,6 +165,6 @@ void simply_voice_destroy(SimplyVoice *self) {
 }
 
 bool simply_voice_dictation_in_progress() {
-  return s_voice->in_progress;
+  return s_voice && s_voice->in_progress;
 }
 #endif
