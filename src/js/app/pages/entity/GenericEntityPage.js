@@ -156,66 +156,40 @@ function showEntityMenu(entity_id) {
         domain === "humidifier"
     )
     {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Toggle',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'toggle',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Turn On',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'turn_on',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Turn Off',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'turn_off',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
+        // Fans register turn_on and turn_off behind FanEntityFeature
+        // TURN_ON (32) and TURN_OFF (16), and toggle behind either
+        let fanFeatures = entity.attributes.supported_features || 0;
+        let canTurnOn = domain !== "fan" || !!(fanFeatures & 32);
+        let canTurnOff = domain !== "fan" || !!(fanFeatures & 16);
+        let onOffServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function(){
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        if (canTurnOn || canTurnOff) {
+            showEntityMenu.item(1, servicesCount++, onOffServiceItem('Toggle', 'toggle'));
+        }
+        if (canTurnOn) {
+            showEntityMenu.item(1, servicesCount++, onOffServiceItem('Turn On', 'turn_on'));
+        }
+        if (canTurnOff) {
+            showEntityMenu.item(1, servicesCount++, onOffServiceItem('Turn Off', 'turn_off'));
+        }
     }
 
     if(domain === "cover") {
@@ -296,7 +270,9 @@ function showEntityMenu(entity_id) {
         };
         let alarmFeatures = entity.attributes.supported_features || 0;
 
-        showEntityMenu.item(1, servicesCount++, alarmServiceItem('Disarm', 'alarm_disarm'));
+        if (entity.state !== 'disarmed') {
+            showEntityMenu.item(1, servicesCount++, alarmServiceItem('Disarm', 'alarm_disarm'));
+        }
         AlarmPanelPage.ARM_MODES.forEach(function(mode) {
             if (alarmFeatures & mode.feature) {
                 showEntityMenu.item(1, servicesCount++, alarmServiceItem(mode.title, mode.service));
