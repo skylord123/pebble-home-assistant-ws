@@ -226,6 +226,15 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
       self->window.simply->res, self->ui_layer.imagefields[UiSubtitleIcon]);
   SimplyImage *body_image = simply_res_get_image(
       self->window.simply->res, self->ui_layer.imagefields[UiBodyImage]);
+  // Loading one image can evict another fetched just before it. Loading
+  // schedules another render, which draws whatever is missing this time.
+  List1Node * const images = self->window.simply->res->images;
+  if (title_icon && list1_index(images, &title_icon->node) < 0) {
+    title_icon = NULL;
+  }
+  if (subtitle_icon && list1_index(images, &subtitle_icon->node) < 0) {
+    subtitle_icon = NULL;
+  }
 
   GRect title_icon_bounds =
       title_icon ? gbitmap_get_bounds(title_icon->bitmap) : GRectZero;
