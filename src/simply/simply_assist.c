@@ -91,6 +91,10 @@
 // nothing that was comfortable to read anyway.
 #define INDICATOR_HEIGHT 14
 
+//! The tallest the conversation may lay out to, kept clear of INT16_MAX with
+//! room for round to pad the last page
+#define ASSIST_MAX_CONTENT_H 30000
+
 typedef struct AssistMessage AssistMessage;
 
 //! One line of the conversation, pointing into the text arena. Messages are
@@ -146,11 +150,11 @@ struct SimplyAssist {
   uint16_t arena_used;
   //! Content y of the last message, so a new one can be scrolled to its own
   //! first line rather than to the bottom of a wall of text
-  int16_t last_message_y;
+  int32_t last_message_y;
   //! Content y of the thinking dots, so the wait can be scrolled to as well.
   //! They sit past the end of what was just said, which on a round display is
   //! usually a page further on than the words themselves.
-  int16_t thinking_y;
+  int32_t thinking_y;
   uint8_t count;
   uint8_t tick;
   //! Chunk counter for vibration sampling during streaming
@@ -485,7 +489,7 @@ struct Wrapper {
   GFont fonts[2];           //!< [0] regular, [1] bold
   int16_t space_width[2];
   int16_t line_height;
-  int16_t y;                //!< content y of the line being filled
+  int32_t y;                //!< content y of the line being filled
   int16_t span;             //!< usable width of that line
   int16_t x0;               //!< where that width starts
   LineWord words[MAX_LINE_WORDS];
@@ -634,8 +638,8 @@ static void prv_flush_line(Wrapper *w) {
 //! `stop_y` ends the pass once the lines have gone past it. Drawing only needs
 //! what the screen can show, and a long answer is mostly not on it.
 static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
-                             int16_t top, GRect frame,
-                             AssistMessage *resume, int16_t stop_y) {
+                             int32_t top, GRect frame,
+                             AssistMessage *resume, int32_t stop_y) {
   Wrapper w = {
     .ctx = ctx,
     .frame = frame,
@@ -780,7 +784,7 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
 //!
 //! Without a context this also re-measures every message and caches the
 //! result; with one it trusts that cache, so a redraw costs only the drawing.
-static int16_t prv_layout(SimplyAssist *self, GContext *ctx) {
+static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
 
   if (self->count == 0 && !self->thinking) {
@@ -816,12 +820,12 @@ static int16_t prv_layout(SimplyAssist *self, GContext *ctx) {
   const int16_t view_top = -offset.y - frame.size.h / 2;
   const int16_t view_bottom = -offset.y + frame.size.h + frame.size.h / 2;
 
-  int16_t y = CONTENT_MARGIN_TOP;
+  int32_t y = CONTENT_MARGIN_TOP;
   // Where the last thing drawn actually ends, as opposed to where the cursor
   // has been left. The gap trailing the final turn is not content, and on a
   // round display counting it would buy a whole extra page of nothing to page
   // down into.
-  int16_t bottom = y;
+  int32_t bottom = y;
   self->last_message_y = 0;
   self->thinking_y = 0;
 
@@ -956,7 +960,13 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
 
   const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
   const int16_t page = frame.size.h;
-  const int16_t drawn_h = prv_layout(self, NULL);
+  int32_t drawn_h = prv_layout(self, NULL);
+  // Layer coordinates are 16 bit, so a conversation taller than that gives up
+  // its oldest turns. Only long answers in a large font get anywhere near it.
+  while (drawn_h > ASSIST_MAX_CONTENT_H && self->count > 1) {
+    prv_drop_oldest(self);
+    drawn_h = prv_layout(self, NULL);
+  }
 
   // Round moves a whole screen at a time, so the content is rounded up to a
   // whole number of them: the last page is then reachable and every offset
