@@ -3,9 +3,10 @@
  *
  * Features:
  * - Disarm / arm modes filtered by supported_features
- * - Code entry (PinEntryPage) when the panel requires one, mirroring the
- *   HA frontend rules: disarm needs a code whenever code_format is set,
- *   arming only when code_arm_required is also true
+ * - Code entry (CodeEntry: PinEntryPage, or dictation for text codes) when
+ *   the panel requires one, mirroring the HA frontend rules: disarm needs a
+ *   code whenever code_format is set, arming only when code_arm_required is
+ *   also true, and never when HA holds a default code for the panel
  * - Remembered codes and a per-entity "never ask" option (AlarmCodeStore)
  * - Trigger behind a confirmation card
  * - Real-time state subscription
@@ -18,7 +19,7 @@ var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
-var PinEntryPage = require('app/pages/PinEntryPage');
+var CodeEntry = require('app/CodeEntry');
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
@@ -78,98 +79,25 @@ function needsCode(entity, service) {
     return true;
 }
 
-// haws fails a command with one of these when the socket is down or drops
-function isConnectionError(error) {
-    var code = error && error.error ? error.error.code : null;
-    return code === 'not_connected' || code === 'connection_lost';
-}
-
-function errorMessage(error) {
-    if (error && error.error && error.error.message) {
-        return error.error.message;
-    }
-    return 'Action failed';
-}
-
 /**
- * Run an alarm service with the full code flow: no prompt when the panel
- * doesn't need a code, remembered/never-ask codes from the store, and a
- * PIN page (with retry on a wrong code) otherwise.
+ * Run an alarm service with the full code flow (CodeEntry): no prompt when
+ * the panel doesn't need a code or HA holds a default one, remembered or
+ * never-ask codes from the store, and a prompt otherwise.
  */
 function performAction(entity_id, service) {
-    var appState = AppState.getInstance();
-    var entity = appState.getEntity(entity_id);
+    var entity = AppState.getInstance().getEntity(entity_id);
     if (!entity) {
         helpers.log_message('performAction: entity ' + entity_id + ' not found in state dict');
         return;
     }
-    var store = appState.alarmCodeStore;
-
-    function send(code, successCallback, errorCallback) {
-        var service_data = (code !== null && code !== undefined) ? { code: String(code) } : {};
-        appState.haws.callService(
-            'alarm_control_panel',
-            service,
-            service_data,
-            { entity_id: entity_id },
-            function(data) {
-                helpers.log_message('alarm_control_panel.' + service + ' called for ' + entity_id);
-                successCallback(data);
-            },
-            function(error) {
-                helpers.log_message('Error calling alarm_control_panel.' + service + ': ' + JSON.stringify(error));
-                errorCallback(error);
-            }
-        );
-    }
-
-    function promptForCode(initialError) {
-        PinEntryPage.show({
-            title: SERVICE_LABELS[service] || service,
-            subtitle: entity.attributes.friendly_name || entity_id,
-            error: initialError,
-            onSubmit: function(code, done) {
-                send(code, function() {
-                    Vibe.vibrate('short');
-                    if (store && appState.alarm_code_remember !== false) {
-                        store.setCode(entity_id, code);
-                    }
-                    done(null);
-                }, function(error) {
-                    Vibe.vibrate('double');
-                    done(errorMessage(error));
-                });
-            }
-        });
-    }
-
-    if (!needsCode(entity, service)) {
-        send(null,
-            function() { Vibe.vibrate('short'); },
-            function() { Vibe.vibrate('double'); });
-        return;
-    }
-
-    var saved = store ? store.get(entity_id) : undefined;
-    if (saved) {
-        send(saved.code, function() {
-            Vibe.vibrate('short');
-        }, function(error) {
-            Vibe.vibrate('double');
-            // A connection failure says nothing about the code, but a
-            // server rejection gets a prompt showing why (both for a
-            // stale remembered code and a "never ask" panel that turned
-            // out to need one). The stored entry is left alone: transient
-            // server errors shouldn't wipe a good code, and a successful
-            // retry overwrites a stale one anyway.
-            if (!isConnectionError(error)) {
-                promptForCode(errorMessage(error));
-            }
-        });
-        return;
-    }
-
-    promptForCode(null);
+    CodeEntry.run({
+        entity_id: entity_id,
+        domain: 'alarm_control_panel',
+        service: service,
+        title: SERVICE_LABELS[service] || service,
+        needsCode: needsCode(entity, service),
+        textCode: entity.attributes.code_format === 'text'
+    });
 }
 
 /**
@@ -367,7 +295,8 @@ function showAlarmEntity(entity_id) {
             });
         }
 
-        if (updatedAlarm.attributes.code_format) {
+        if (updatedAlarm.attributes.code_format &&
+            !CodeEntry.hasDefaultCode(entity_id, 'alarm_control_panel')) {
             let saved = appState.alarmCodeStore ? appState.alarmCodeStore.get(entity_id) : undefined;
             menuItems.push({
                 title: 'Code',
