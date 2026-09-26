@@ -29,7 +29,7 @@
 #define SEND_DELAY_MAX_MS 1000
 
 static const size_t APP_MSG_SIZE_INBOUND = IF_APLITE_ELSE(1024, 2044);
-static const size_t APP_MSG_SIZE_OUTBOUND = 1024;
+static const size_t APP_MSG_SIZE_OUTBOUND = IF_APLITE_ELSE(512, 1024);
 
 typedef enum VibeType VibeType;
 
