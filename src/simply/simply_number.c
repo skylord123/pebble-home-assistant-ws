@@ -554,7 +554,8 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->max = packet->max;
   self->step = packet->step > 0 ? packet->step : 1;
   self->value = prv_clamp(packet->value, self->min, self->max);
-  self->decimals = packet->decimals;
+  // Past 9 the scale no longer fits the 32-bit value
+  self->decimals = packet->decimals > 9 ? 9 : packet->decimals;
   self->show_bar = (packet->flags & 1);
   self->duration_mode = (packet->flags & 2);
   self->time_of_day = (packet->flags & 4);
