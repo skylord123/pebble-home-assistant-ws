@@ -1753,11 +1753,10 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
   switch (event->type) {
     case TouchEvent_Touchdown:
       prv_cancel_long_press();
-      // TODO: Fix TouchEvent->non_navigational field compatibility issue
-      // if (event->non_navigational) {
-      //   s_touch_mode = AssistTouchIdle;
-      //   return true;
-      // }
+      if (event->non_navigational) {
+        s_touch_mode = AssistTouchIdle;
+        return true;
+      }
       s_touch_mode = AssistTouchPending;
       s_touch_long_press =
           app_timer_register(TOUCH_LONG_PRESS_MS, prv_long_press_timeout, self);
