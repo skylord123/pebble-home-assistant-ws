@@ -827,6 +827,11 @@ class HAWS {
         const subscriptionId = msg.id;
         this._subscriptions.push(subscriptionId);
 
+        // Which message the streamed deltas currently belong to. A delta with
+        // a role opens a new one and the ones after it continue it, the same
+        // as Home Assistant's chat log and its own frontend read them.
+        let deltaRole = '';
+
         // A run answers once, so losing the connection after the answer
         // arrived must not report a failure as well
         let settled = false;
@@ -879,11 +884,17 @@ class HAWS {
                 // A delta carrying a role closes the message before it and
                 // opens a new one, and the same delta may carry the first of
                 // the new message's content. Only the assistant writes what
-                // the wearer reads, so a tool result's role is a boundary to
-                // pass over rather than report.
+                // the wearer reads, so anything said under another role, a
+                // tool result's included, is passed over.
                 if (event.type === 'intent-progress' && progressCallback &&
                     event.data && event.data.chat_log_delta) {
                     const delta = event.data.chat_log_delta;
+                    if (delta.role) {
+                        deltaRole = delta.role;
+                    }
+                    if (deltaRole !== 'assistant') {
+                        return;
+                    }
                     const opens = delta.role === 'assistant';
                     const piece = typeof delta.content === 'string' ? delta.content : '';
                     if (opens || piece.length) {
@@ -899,7 +910,10 @@ class HAWS {
                         successCallback({
                             success: true,
                             response: event.data.intent_output.response,
-                            conversation_id: event.data.intent_output.conversation_id
+                            conversation_id: event.data.intent_output.conversation_id,
+                            // The agent asked something back and expects the
+                            // mic to reopen for the answer
+                            continue_conversation: !!event.data.intent_output.continue_conversation
                         });
                     }
                 }
