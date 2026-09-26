@@ -442,6 +442,20 @@ function showCalendarEvents(title, entityIds) {
         pickerMenu.show();
     }
 
+    // Sections are written one by one, so a shorter list than last time has
+    // to drop the leftover days (holding events that may be gone) itself
+    var renderedSections = 1;
+    function dropSectionsFrom(count) {
+        if (renderedSections > count) {
+            var kept = [];
+            for (var s = 0; s < count; s++) {
+                kept.push(eventsMenu.section(s));
+            }
+            eventsMenu.sections(kept);
+        }
+        renderedSections = count;
+    }
+
     function renderEvents(events) {
         var firstDaySection = 0;
         if (createableIds.length) {
@@ -459,6 +473,7 @@ function showCalendarEvents(title, entityIds) {
                 title: 'No upcoming events',
                 subtitle: 'Next ' + EVENT_WINDOW_DAYS + ' days'
             }]);
+            dropSectionsFrom(firstDaySection + 1);
             return;
         }
 
@@ -504,6 +519,7 @@ function showCalendarEvents(title, entityIds) {
             eventsMenu.section(firstDaySection + i, { title: dayLabel(sections[i].day) });
             eventsMenu.items(firstDaySection + i, sections[i].items);
         }
+        dropSectionsFrom(firstDaySection + sections.length);
     }
 
     // The native menu keeps the previously shown menu's selected index (the
@@ -524,7 +540,7 @@ function showCalendarEvents(title, entityIds) {
 
         fetchEvents(entityIds, start, end, function(events) {
             renderEvents(events);
-            if (restoreSelection) {
+            if (restoreSelection && restoreSelection.sectionIndex < renderedSections) {
                 eventsMenu.selection(restoreSelection.sectionIndex, restoreSelection.itemIndex);
             } else if (!hasRendered) {
                 eventsMenu.selection(0, 0);
