@@ -256,6 +256,7 @@ GFont simply_res_add_custom_font(SimplyRes *self, uint32_t id) {
 
   ResHandle handle = resource_get_handle(id);
   if (!handle) {
+    free(font);
     return NULL;
   }
 

@@ -510,8 +510,10 @@ void simply_ui_destroy(SimplyUi *self) {
 
   simply_ui_clear(self, ~0);
 
-  fonts_unload_custom_font(self->ui_layer.custom_body_font);
-  self->ui_layer.custom_body_font = NULL;
+  if (self->ui_layer.custom_body_font) {
+    fonts_unload_custom_font(self->ui_layer.custom_body_font);
+    self->ui_layer.custom_body_font = NULL;
+  }
 
   simply_window_deinit(&self->window);
 
