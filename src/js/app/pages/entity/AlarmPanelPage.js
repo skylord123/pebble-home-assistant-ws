@@ -78,6 +78,12 @@ function needsCode(entity, service) {
     return true;
 }
 
+// haws fails a command with one of these when the socket is down or drops
+function isConnectionError(error) {
+    var code = error && error.error ? error.error.code : null;
+    return code === 'not_connected' || code === 'connection_lost';
+}
+
 function errorMessage(error) {
     if (error && error.error && error.error.message) {
         return error.error.message;
@@ -101,7 +107,7 @@ function performAction(entity_id, service) {
 
     function send(code, successCallback, errorCallback) {
         var service_data = (code !== null && code !== undefined) ? { code: String(code) } : {};
-        var sent = appState.haws.callService(
+        appState.haws.callService(
             'alarm_control_panel',
             service,
             service_data,
@@ -115,9 +121,6 @@ function performAction(entity_id, service) {
                 errorCallback(error);
             }
         );
-        if (sent === false) {
-            errorCallback({ error: { message: 'Not connected' }, not_connected: true });
-        }
     }
 
     function promptForCode(initialError) {
@@ -159,7 +162,7 @@ function performAction(entity_id, service) {
             // out to need one). The stored entry is left alone: transient
             // server errors shouldn't wipe a good code, and a successful
             // retry overwrites a stale one anyway.
-            if (!error.not_connected) {
+            if (!isConnectionError(error)) {
                 promptForCode(errorMessage(error));
             }
         });
