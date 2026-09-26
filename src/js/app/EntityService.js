@@ -23,6 +23,24 @@ function pressedText(entity) {
     return wasPressed(entity) ? 'Pressed' : 'Never pressed';
 }
 
+// Compressed states send a context that is only an id as a bare string, and
+// a diff sends only the context fields that changed
+function mergeContext(cur, c) {
+    var merged = {};
+    if (typeof cur === 'string') {
+        merged = { id: cur, parent_id: null, user_id: null };
+    } else if (cur) {
+        for (var k in cur) { merged[k] = cur[k]; }
+    }
+    if (typeof c === 'string') {
+        merged.id = c;
+        if (!cur) { merged.parent_id = null; merged.user_id = null; }
+    } else if (c) {
+        for (var k2 in c) { merged[k2] = c[k2]; }
+    }
+    return merged;
+}
+
 var EntityService = {
     /**
      * Get the display title for an entity
@@ -291,7 +309,7 @@ var EntityService = {
                 entity_id: entity_id,
                 state: d.s,
                 attributes: d.a || {},
-                context: d.c,
+                context: mergeContext(null, d.c),
                 last_changed: d.lc ? new Date(d.lc * 1000).toISOString() : new Date().toISOString()
             };
             // lu is only sent when it differs from lc
@@ -316,7 +334,7 @@ var EntityService = {
                 entity_id: entity_id,
                 state: plus.s !== undefined ? plus.s : cur.state,
                 attributes: attributes,
-                context: plus.c !== undefined ? plus.c : cur.context,
+                context: plus.c !== undefined ? mergeContext(cur.context, plus.c) : cur.context,
                 last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
             };
             // A diff carries lc when it changed (lu then equals it), else lu
