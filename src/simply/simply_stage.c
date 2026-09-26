@@ -593,7 +593,15 @@ SimplyAnimation *simply_stage_animate_element(SimplyStage *self,
     .stopped = animation_stopped,
   }, self);
 
-  animation_schedule(base_animation);
+  if (!animation_schedule(base_animation)) {
+    // Never started, so it would never stop and clean up after itself. Land
+    // on the end frame and report it done, as a finished one would.
+    destroy_animation(self, animation);
+    simply_stage_set_element_frame(self, element, to_frame);
+    simply_stage_update(self);
+    send_animate_element_done(self->window.simply->msg, element->id);
+    return NULL;
+  }
 
   return animation;
 }
