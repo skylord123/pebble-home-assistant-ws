@@ -4,6 +4,8 @@
 #include "simply_res.h"
 #include "simply_msg.h"
 #include "simply_window_stack.h"
+#include "simply_number.h"
+#include "simply_assist.h"
 
 #include "simply.h"
 
@@ -618,8 +620,13 @@ static void window_appear(Window *window) {
 static void window_disappear(Window *window) {
   SimplyStage *self = window_get_user_data(window);
   if (simply_window_disappear(&self->window)) {
-    simply_res_clear(self->window.simply->res);
-    simply_stage_clear(self);
+    Simply *simply = self->window.simply;
+    simply_res_clear(simply->res);
+    // Under the native number selector or assist, JS is never told this window
+    // went away, so it will not redraw it on the way back
+    if (!simply_number_is_covering(simply) && !simply_assist_is_covering(simply)) {
+      simply_stage_clear(self);
+    }
   }
 }
 
