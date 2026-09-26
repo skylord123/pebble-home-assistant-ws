@@ -80,8 +80,9 @@ function showValuePicker(entity_id) {
     var data = getCounterData(entity);
 
     // Both bounds are optional on a counter, so the picker falls back to
-    // something it can actually work between
-    var min = data.minimum !== null ? data.minimum : 0;
+    // something it can actually work between (a counter without a minimum
+    // can go negative)
+    var min = data.minimum !== null ? data.minimum : Math.min(-UNBOUNDED_MAX, data.value);
     var max = data.maximum !== null ? data.maximum : Math.max(UNBOUNDED_MAX, data.value);
 
     NumberField.show({
