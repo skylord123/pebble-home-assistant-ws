@@ -197,6 +197,16 @@ SimplyImage *simply_res_add_image(SimplyRes *self, uint32_t id, int16_t width, i
     destroy_image(self, image);
   }
 
+  // A failed decode is taken for a full heap and empties the cache, so data
+  // that can never decode (a placeholder, or something that is not a PNG)
+  // must not get that far
+  static const uint8_t s_png_signature[] = { 0x89, 'P', 'N', 'G' };
+  if (!pixels || IF_SDK_3_ELSE(pixels_length < sizeof(s_png_signature) ||
+                               memcmp(pixels, s_png_signature, sizeof(s_png_signature)),
+                               !pixels_length)) {
+    return NULL;
+  }
+
   CreateDataContext context = {
     .size = GSize(width, height),
     .data_length = pixels_length,
