@@ -192,7 +192,8 @@ static void prv_update_layer_placement(SimplyWindow *self, GRect *frame_out) {
   if (self->status_bar_layer) {
     Layer * const status_bar_base_layer = status_bar_layer_get_layer(self->status_bar_layer);
     const bool has_status_bar = (layer_get_window(status_bar_base_layer) != NULL);
-    const bool has_action_bar =
+    // The action bar is created after the status bar during load
+    const bool has_action_bar = self->action_bar_layer &&
         (layer_get_window(action_bar_layer_get_layer(self->action_bar_layer)) != NULL);
     if (has_status_bar) {
       GRect status_frame = { .size = { frame.size.w, STATUS_BAR_LAYER_HEIGHT } };
