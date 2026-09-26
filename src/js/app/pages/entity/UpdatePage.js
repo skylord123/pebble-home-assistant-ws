@@ -219,14 +219,18 @@ function showUpdateEntity(entity_id) {
                             on_click: function() { confirmInstall(true); }
                         });
                     }
-                    menuItems.push({
-                        title: 'Skip',
-                        subtitle: 'Stop asking for this version',
-                        on_click: function() { callUpdateService(entity_id, 'skip'); }
-                    });
+                    // Home Assistant refuses skip and clear_skipped while
+                    // the entity updates itself
+                    if (!data.auto_update) {
+                        menuItems.push({
+                            title: 'Skip',
+                            subtitle: 'Stop asking for this version',
+                            on_click: function() { callUpdateService(entity_id, 'skip'); }
+                        });
+                    }
                 }
                 // Only reachable while skipped, which reads as off
-                if (data.skipped_version) {
+                if (data.skipped_version && !data.auto_update) {
                     menuItems.push({
                         title: 'Clear Skipped',
                         subtitle: data.skipped_version,
