@@ -463,6 +463,11 @@ SimplyElementCommon *simply_stage_auto_element(SimplyStage *self, uint32_t id, S
   if (element) {
     return element;
   }
+  // A plain lookup (type None) or an unknown type has nothing to create, and
+  // a zero-size element would be written past its end
+  if (!prv_get_element_size(type)) {
+    return NULL;
+  }
   while (!(element = prv_create_element(type))) {
     if (!simply_res_evict_image(self->window.simply->res)) {
       return NULL;
