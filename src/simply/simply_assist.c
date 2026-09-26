@@ -291,6 +291,7 @@ typedef enum AssistFocus {
 } AssistFocus;
 
 static void prv_reflow(SimplyAssist *self, AssistFocus want);
+static void prv_close(SimplyAssist *self);
 
 #ifdef SIMPLY_HAS_TOUCH
 //! Defined with the rest of the touch handling, but the teardown up here has
@@ -1227,7 +1228,7 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
       // conversation would be a dead end, so the screen goes with them; with
       // something already said it stays put so they can read it again.
       if (!self->ever_spoke) {
-        window_stack_remove(self->window, false);
+        prv_close(self);
       }
       return true;
     case DictationSessionStatusFailureNoSpeechDetected:
@@ -1451,6 +1452,20 @@ static void prv_destroy_later(void *data) {
   prv_destroy(self);
 }
 
+//! End the conversation. Disappear does this for a window leaving the screen,
+//! but one covered by the dictation UI is no longer on screen, and removing it
+//! from there never calls disappear at all.
+static void prv_close(SimplyAssist *self) {
+  if (self->destroying) { return; }
+  self->destroying = true;
+  prv_stop_thinking(self);
+  prv_send_action(AssistActionClosed);
+  // Defer the teardown: destroying a window from inside its own disappear
+  // handler is unsafe while the window stack is mid-transition. This also
+  // takes the window off the stack.
+  app_timer_register(0, prv_destroy_later, self);
+}
+
 static void prv_window_disappear(Window *window) {
   SimplyAssist *self = window_get_user_data(window);
   // Nothing off screen has any business holding the backlight, whether the
@@ -1467,13 +1482,7 @@ static void prv_window_disappear(Window *window) {
     self->awaiting_settings = false;
     return;
   }
-  if (self->destroying) { return; }
-  self->destroying = true;
-  prv_stop_thinking(self);
-  prv_send_action(AssistActionClosed);
-  // Defer the teardown: destroying a window from inside its own disappear
-  // handler is unsafe while the window stack is mid-transition
-  app_timer_register(0, prv_destroy_later, self);
+  prv_close(self);
 }
 
 static SimplyAssist *prv_create(Simply *simply) {
@@ -1675,8 +1684,7 @@ bool simply_assist_handle_packet(Simply *simply, Packet *packet) {
       return true;
     case CommandAssistHide:
       if (simply->assist) {
-        // disappear tears the conversation down
-        window_stack_remove(simply->assist->window, false);
+        prv_close(simply->assist);
       }
       return true;
     case CommandAssistMessage:
