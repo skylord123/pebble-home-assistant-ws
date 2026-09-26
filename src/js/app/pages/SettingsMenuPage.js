@@ -346,6 +346,17 @@ function showVoiceAssistantSettings(onClose) {
             }
         });
 
+        // Open the microphone again when the agent asks a question back
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Listen for Reply",
+            subtitle: appState.assist_continue_conversation !== false ? "True" : "False",
+            on_click: function(e) {
+                appState.assist_continue_conversation = appState.assist_continue_conversation === false;
+                Settings.option('assist_continue_conversation', appState.assist_continue_conversation);
+                updateMenuItems();
+            }
+        });
+
         // The conversation is set apart from the menus, so a white app can
         // still have a dark screen to read a long answer on
         voiceSettingsMenu.item(0, menuIndex++, {

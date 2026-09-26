@@ -20,6 +20,9 @@ var Theme = require('app/ui/Theme');
 // Track conversation ID across the session
 var conversation_id = null;
 
+// The settings menu is up in place of the conversation
+var inSettings = false;
+
 // A conversation open when the sun goes down turns dark around the words
 // already in it. Nothing happens unless the screen is up.
 Theme.onChange(function() {
@@ -346,6 +349,17 @@ function runPipeline(transcription) {
                 Assist.endReply(speech);
                 cancelStream();
                 ConnectionService.showPendingReconnectDialog();
+
+                // An agent that has asked something back, such as "which
+                // room?", is waiting on an answer, and Home Assistant's own
+                // voice screen opens the microphone for it straight away.
+                // Only on the socket the answer came in on: had it dropped,
+                // the reconnect screen is going up over the conversation.
+                if (data.continue_conversation &&
+                    appState.assist_continue_conversation !== false &&
+                    !inSettings && haws === appState.haws && haws.connected) {
+                    Assist.listen();
+                }
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
                 cancelStream();
@@ -401,7 +415,9 @@ function openAssist(listen, reset) {
             // Imported inline to avoid a circular dependency
             var SettingsMenuPage = require('app/pages/SettingsMenuPage');
             var pipelineBefore = appState.selected_pipeline;
+            inSettings = true;
             SettingsMenuPage.showVoiceAssistantSettings(function() {
+                inSettings = false;
                 // A conversation belongs to the pipeline it was started on:
                 // Home Assistant keys it to the agent that answered, and it
                 // cannot be carried over to a different one. Switching
@@ -444,6 +460,7 @@ function showAssistMenu() {
     // Each visit to the screen is a fresh conversation, the same as it has
     // always been; the watch throws its own transcript away at the same time
     conversation_id = null;
+    inSettings = false;
     abandonRun();
     openAssist(true);
 }
