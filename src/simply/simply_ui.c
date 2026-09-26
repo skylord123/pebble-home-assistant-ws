@@ -139,6 +139,9 @@ void simply_ui_set_style(SimplyUi *self, int style_index) {
     fonts_unload_custom_font(self->ui_layer.custom_body_font);
     self->ui_layer.custom_body_font = NULL;
   }
+  if (style_index < 0 || style_index >= StyleIndexCount) {
+    style_index = StyleIndex_Default;
+  }
   self->ui_layer.style = &STYLES[style_index];
   if (self->ui_layer.style->custom_body_font_id) {
     self->ui_layer.custom_body_font = fonts_load_custom_font(
