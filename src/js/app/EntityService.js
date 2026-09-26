@@ -294,6 +294,8 @@ var EntityService = {
                 context: d.c,
                 last_changed: d.lc ? new Date(d.lc * 1000).toISOString() : new Date().toISOString()
             };
+            // lu is only sent when it differs from lc
+            updated.last_updated = d.lu ? new Date(d.lu * 1000).toISOString() : updated.last_changed;
         } else if (ev.c && ev.c[entity_id]) {
             var plus = ev.c[entity_id]['+'] || {};
             var cur = appState.getEntity(entity_id) || base || { entity_id: entity_id, state: '', attributes: {} };
@@ -317,12 +319,37 @@ var EntityService = {
                 context: plus.c !== undefined ? plus.c : cur.context,
                 last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
             };
+            // A diff carries lc when it changed (lu then equals it), else lu
+            updated.last_updated = plus.lc !== undefined ? updated.last_changed
+                : plus.lu !== undefined ? new Date(plus.lu * 1000).toISOString()
+                : cur.last_updated;
         }
 
         if (updated) {
             appState.setEntity(entity_id, updated);
         }
         return updated;
+    },
+
+    /**
+     * Follow one entity with subscribe_entities (subscribe_trigger needs an
+     * admin token). The first event is a snapshot of the current state, so
+     * onUpdate runs once straight away and then on every change.
+     * @param {string} entity_id
+     * @param {Function} onUpdate - Called with the merged entity, and true
+     *                              when it is the initial snapshot
+     * @returns {number|false} The subscription id, for haws.unsubscribe
+     */
+    subscribeEntity: function(entity_id, onUpdate) {
+        var self = this;
+        return AppState.getInstance().haws.subscribeEntities([entity_id], function(data) {
+            var updated = self.applyCompressedEvent(entity_id, data);
+            if (updated) {
+                onUpdate(updated, !!(data.event && data.event.a));
+            }
+        }, function(error) {
+            helpers.log_message('ENTITY UPDATE ERROR [' + entity_id + ']: ' + JSON.stringify(error));
+        });
     },
 
     /**

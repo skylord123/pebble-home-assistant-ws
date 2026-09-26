@@ -16,6 +16,7 @@ var Vibe = require('ui/vibe');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
@@ -340,26 +341,16 @@ function showFanEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let speed_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let speed_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan, isSnapshot) {
+            // The slider opened on this same state; only follow changes, so
+            // presses made before the snapshot lands are not undone
+            if (isSnapshot) { return; }
             helpers.log_message(`Fan entity update for speed menu ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedFan = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedFan;
-
-                let updatedData = getFanData(updatedFan);
-                if (updatedData.is_on && updatedData.percentage !== null) {
-                    current_percentage = updatedData.percentage;
-                    updateSpeedUI();
-                }
+            let updatedData = getFanData(updatedFan);
+            if (updatedData.is_on && updatedData.percentage !== null) {
+                current_percentage = updatedData.percentage;
+                updateSpeedUI();
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         speedWindow.on('hide', function() {
@@ -432,23 +423,10 @@ function showFanEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let preset_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let preset_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan) {
             helpers.log_message(`Fan entity update for preset menu ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedFan = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedFan;
-
-                // Update menu items directly
-                updatePresetMenuItems(updatedFan);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            // Update menu items directly
+            updatePresetMenuItems(updatedFan);
         });
 
         presetMenu.on('hide', function() {
@@ -503,28 +481,15 @@ function showFanEntity(entity_id) {
         relativeTimeUpdater.register(entity_id, fan.last_changed);
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan) {
             helpers.log_message(`Fan entity update for ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedFan = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedFan;
+            // Update the menu items directly without redrawing the entire menu
+            updateFanMenuItems(updatedFan);
 
-                // Update the menu items directly without redrawing the entire menu
-                updateFanMenuItems(updatedFan);
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedFan.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedFan.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         // Restore the previously selected index

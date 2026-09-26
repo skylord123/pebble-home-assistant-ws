@@ -15,6 +15,7 @@ var Vibe = require('ui/vibe');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
@@ -409,26 +410,16 @@ function showCoverEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let slider_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": opts.entity_id,
-            },
-        }, function(data) {
+        let slider_subscription_msg_id = EntityService.subscribeEntity(opts.entity_id, function(updatedCover, isSnapshot) {
+            // The slider opened on this same state; only follow changes, so
+            // presses made before the snapshot lands are not undone
+            if (isSnapshot) { return; }
             helpers.log_message(`Cover entity update for ${opts.title} slider ${opts.entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedCover = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[opts.entity_id] = updatedCover;
-
-                let value = opts.getCurrent(getCoverData(updatedCover));
-                if (value !== null) {
-                    current_value = value;
-                    updateSliderUI();
-                }
+            let value = opts.getCurrent(getCoverData(updatedCover));
+            if (value !== null) {
+                current_value = value;
+                updateSliderUI();
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${opts.entity_id}]: ${JSON.stringify(error)}`);
         });
 
         sliderWindow.on('hide', function() {
@@ -480,28 +471,15 @@ function showCoverEntity(entity_id) {
         relativeTimeUpdater.register(entity_id, cover.last_changed);
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedCover) {
             helpers.log_message(`Cover entity update for ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedCover = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedCover;
+            // Update the menu items directly without redrawing the entire menu
+            updateCoverMenuItems(updatedCover);
 
-                // Update the menu items directly without redrawing the entire menu
-                updateCoverMenuItems(updatedCover);
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedCover.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedCover.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         // Restore the previously selected index

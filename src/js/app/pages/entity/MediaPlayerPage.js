@@ -496,16 +496,8 @@ class MediaPlayerPage extends BaseEntityPage {
             // Re-entered whenever a sub-menu closes, so never stack a second
             // subscription on top of a live one
             self.unsubscribeMedia();
-            self.subscription_msg_id = appState.haws.subscribeTrigger({
-                "type": "subscribe_trigger",
-                "trigger": {
-                    "platform": "state",
-                    "entity_id": self.entityId,
-                },
-            }, function(data) {
-                self.updateMediaWindow(data.event.variables.trigger.to_state);
-            }, function(error) {
-                helpers.log_message("ENTITY UPDATE ERROR [" + self.entityId + "]: " + JSON.stringify(error));
+            self.subscription_msg_id = require('app/EntityService').subscribeEntity(self.entityId, function(updated) {
+                self.updateMediaWindow(updated);
             });
 
             self.updateMediaWindow(appState.ha_state_dict[self.entityId] || mediaPlayer);

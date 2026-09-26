@@ -16,6 +16,7 @@ var NumberField = require('ui/numberfield');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
@@ -287,24 +288,13 @@ function showLightEntity(entity_id) {
      * a button is actually adjusting, so it cannot fight the user.
      */
     function followLight(entity_id, pick) {
-        let msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger &&
-                data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
-                let value = pick(getLightData(updatedLight));
-                if (value !== null && value !== undefined) {
-                    NumberField.value(value);
-                }
+        let msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight, isSnapshot) {
+            // The selector opened on this same state; only follow changes
+            if (isSnapshot) { return; }
+            let value = pick(getLightData(updatedLight));
+            if (value !== null && value !== undefined) {
+                NumberField.value(value);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         return function cleanup() {
@@ -747,40 +737,26 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let color_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let color_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight) {
             helpers.log_message(`Light entity update for color menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
+            // Update menu items directly
+            updateColorMenuItems(updatedLight);
 
-                // Update menu items directly
-                updateColorMenuItems(updatedLight);
-
-                // The menu above is only on screen on watches without colour;
-                // elsewhere the slider window is what the user is looking at,
-                // and it used to sit frozen while the light changed under it
-                let newColor = getLightData(updatedLight).rgb_color;
-                if (!userMovedSlider && newColor) {
-                    let nearest = 0, nearestDistance = 999999;
-                    for (let i = 0; i < colors.length; i++) {
-                        let d = colorDistance(colors[i].rgb, newColor);
-                        if (d < nearestDistance) { nearestDistance = d; nearest = i; }
-                    }
-                    if (nearest !== colorIndex) {
-                        colorIndex = nearest;
-                        updateColorUI();
-                    }
+            // The menu above is only on screen on watches without colour;
+            // elsewhere the slider window is what the user is looking at,
+            // and it used to sit frozen while the light changed under it
+            let newColor = getLightData(updatedLight).rgb_color;
+            if (!userMovedSlider && newColor) {
+                let nearest = 0, nearestDistance = 999999;
+                for (let i = 0; i < colors.length; i++) {
+                    let d = colorDistance(colors[i].rgb, newColor);
+                    if (d < nearestDistance) { nearestDistance = d; nearest = i; }
+                }
+                if (nearest !== colorIndex) {
+                    colorIndex = nearest;
+                    updateColorUI();
                 }
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         colorMenu.on('hide', function() {
@@ -894,24 +870,9 @@ function showLightEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        let effect_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let effect_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight) {
             helpers.log_message(`Light entity update for effect menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
-
-                // Update menu items directly
-                updateEffectMenuItems(updatedLight);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            updateEffectMenuItems(updatedLight);
         });
 
         effectMenu.on('hide', function() {
@@ -966,29 +927,16 @@ function showLightEntity(entity_id) {
         relativeTimeUpdater.register(entity_id, light.last_changed);
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight) {
             helpers.log_message(`Light entity update for ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
 
-                // Update the menu items directly without redrawing the entire menu
-                updateLightMenuItems(updatedLight);
+            // Update the menu items directly without redrawing the entire menu
+            updateLightMenuItems(updatedLight);
 
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedLight.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedLight.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         // Restore the previously selected index

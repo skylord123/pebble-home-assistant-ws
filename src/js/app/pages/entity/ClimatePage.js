@@ -169,24 +169,10 @@ function showClimateEntity(entity_id) {
                     }
 
                     // Subscribe to entity updates
-                    let temp_range_subscription_msg_id = appState.haws.subscribeTrigger({
-                        "type": "subscribe_trigger",
-                        "trigger": {
-                            "platform": "state",
-                            "entity_id": entity_id,
-                        },
-                    }, function(data) {
+                    let temp_range_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
                         helpers.log_message(`Climate entity update for temperature range menu ${entity_id}`);
-                        // Update the climate entity in the cache
-                        if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                            let updatedClimate = data.event.variables.trigger.to_state;
-                            appState.ha_state_dict[entity_id] = updatedClimate;
-
-                            // Update menu items directly
-                            updateTempRangeMenuItems(updatedClimate);
-                        }
-                    }, function(error) {
-                        helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+                        // Update menu items directly
+                        updateTempRangeMenuItems(updatedClimate);
                     });
 
                     tempRangeMenu.on('select', function(e) {
@@ -335,24 +321,10 @@ function showClimateEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
             helpers.log_message(`Climate entity update for ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
-
-                // Update the menu items directly without redrawing the entire menu
-                updateClimateMenuItems(updatedClimate);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            // Update the menu items directly without redrawing the entire menu
+            updateClimateMenuItems(updatedClimate);
         });
 
         // Restore the previously selected index after a short delay
@@ -530,37 +502,23 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let hvac_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let hvac_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
             helpers.log_message(`Climate entity update for HVAC mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+            // Get updated climate data
+            let updatedData = getClimateData(updatedClimate);
 
-                // Get updated climate data
-                let updatedData = getClimateData(updatedClimate);
+            // Update menu items to reflect current state
+            for (let i = 0; i < available_modes.length; i++) {
+                let mode = available_modes[i];
+                let isCurrentMode = mode === updatedData.hvac_mode;
 
-                // Update menu items to reflect current state
-                for (let i = 0; i < available_modes.length; i++) {
-                    let mode = available_modes[i];
-                    let isCurrentMode = mode === updatedData.hvac_mode;
-
-                    modeMenu.item(0, i, {
-                        title: helpers.ucwords(mode.replace('_', ' ')),
-                        subtitle: isCurrentMode ? 'Current' : '',
-                        mode: mode,
-                        on_click: modeMenu.items(0)[i].on_click
-                    });
-                }
+                modeMenu.item(0, i, {
+                    title: helpers.ucwords(mode.replace('_', ' ')),
+                    subtitle: isCurrentMode ? 'Current' : '',
+                    mode: mode,
+                    on_click: modeMenu.items(0)[i].on_click
+                });
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         modeMenu.on('select', function(e) {
@@ -637,37 +595,23 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let fan_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let fan_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
             helpers.log_message(`Climate entity update for fan mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+            // Get updated climate data
+            let updatedData = getClimateData(updatedClimate);
 
-                // Get updated climate data
-                let updatedData = getClimateData(updatedClimate);
+            // Update menu items to reflect current state
+            for (let i = 0; i < available_modes.length; i++) {
+                let mode = available_modes[i];
+                let isCurrentMode = mode === updatedData.fan_mode;
 
-                // Update menu items to reflect current state
-                for (let i = 0; i < available_modes.length; i++) {
-                    let mode = available_modes[i];
-                    let isCurrentMode = mode === updatedData.fan_mode;
-
-                    modeMenu.item(0, i, {
-                        title: helpers.ucwords(mode.replace('_', ' ')),
-                        subtitle: isCurrentMode ? 'Current' : '',
-                        mode: mode,
-                        on_click: modeMenu.items(0)[i].on_click
-                    });
-                }
+                modeMenu.item(0, i, {
+                    title: helpers.ucwords(mode.replace('_', ' ')),
+                    subtitle: isCurrentMode ? 'Current' : '',
+                    mode: mode,
+                    on_click: modeMenu.items(0)[i].on_click
+                });
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         modeMenu.on('select', function(e) {
@@ -744,37 +688,23 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let preset_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let preset_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
             helpers.log_message(`Climate entity update for preset mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+            // Get updated climate data
+            let updatedData = getClimateData(updatedClimate);
 
-                // Get updated climate data
-                let updatedData = getClimateData(updatedClimate);
+            // Update menu items to reflect current state
+            for (let i = 0; i < available_modes.length; i++) {
+                let mode = available_modes[i];
+                let isCurrentMode = mode === updatedData.preset_mode;
 
-                // Update menu items to reflect current state
-                for (let i = 0; i < available_modes.length; i++) {
-                    let mode = available_modes[i];
-                    let isCurrentMode = mode === updatedData.preset_mode;
-
-                    modeMenu.item(0, i, {
-                        title: helpers.ucwords(mode.replace('_', ' ')),
-                        subtitle: isCurrentMode ? 'Current' : '',
-                        mode: mode,
-                        on_click: modeMenu.items(0)[i].on_click
-                    });
-                }
+                modeMenu.item(0, i, {
+                    title: helpers.ucwords(mode.replace('_', ' ')),
+                    subtitle: isCurrentMode ? 'Current' : '',
+                    mode: mode,
+                    on_click: modeMenu.items(0)[i].on_click
+                });
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         modeMenu.on('select', function(e) {
@@ -851,37 +781,23 @@ function showClimateEntity(entity_id) {
         modeMenu.selection(0, currentIndex);
 
         // Subscribe to entity updates
-        let swing_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        let swing_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
             helpers.log_message(`Climate entity update for swing mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+            // Get updated climate data
+            let updatedData = getClimateData(updatedClimate);
 
-                // Get updated climate data
-                let updatedData = getClimateData(updatedClimate);
+            // Update menu items to reflect current state
+            for (let i = 0; i < available_modes.length; i++) {
+                let mode = available_modes[i];
+                let isCurrentMode = mode === updatedData.swing_mode;
 
-                // Update menu items to reflect current state
-                for (let i = 0; i < available_modes.length; i++) {
-                    let mode = available_modes[i];
-                    let isCurrentMode = mode === updatedData.swing_mode;
-
-                    modeMenu.item(0, i, {
-                        title: helpers.ucwords(mode.replace('_', ' ')),
-                        subtitle: isCurrentMode ? 'Current' : '',
-                        mode: mode,
-                        on_click: modeMenu.items(0)[i].on_click
-                    });
-                }
+                modeMenu.item(0, i, {
+                    title: helpers.ucwords(mode.replace('_', ' ')),
+                    subtitle: isCurrentMode ? 'Current' : '',
+                    mode: mode,
+                    on_click: modeMenu.items(0)[i].on_click
+                });
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         modeMenu.on('select', function(e) {

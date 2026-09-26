@@ -752,40 +752,27 @@ function showEntityMenu(entity_id) {
         });
         relativeTimeUpdater.register(entity_id, entity.last_changed);
 
-        msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity.entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedEntity = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedEntity;
+        msg_id = EntityService.subscribeEntity(entity.entity_id, function(updatedEntity) {
+            // Update state field with new state and relative time
+            showEntityMenu.item(0, stateIndex, {
+                title: 'State',
+                subtitle: getStateSubtitle(updatedEntity)
+            });
 
-                // Update state field with new state and relative time
-                showEntityMenu.item(0, stateIndex, {
-                    title: 'State',
-                    subtitle: getStateSubtitle(updatedEntity)
-                });
+            // Update last changed and last updated fields
+            showEntityMenu.item(0, stateIndex + 1, {
+                title: 'Last Changed',
+                subtitle: formatDateTime(updatedEntity.last_changed)
+            });
+            showEntityMenu.item(0, stateIndex + 2, {
+                title: 'Last Updated',
+                subtitle: formatDateTime(updatedEntity.last_updated)
+            });
 
-                // Update last changed and last updated fields
-                showEntityMenu.item(0, stateIndex + 1, {
-                    title: 'Last Changed',
-                    subtitle: formatDateTime(updatedEntity.last_changed)
-                });
-                showEntityMenu.item(0, stateIndex + 2, {
-                    title: 'Last Updated',
-                    subtitle: formatDateTime(updatedEntity.last_updated)
-                });
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedEntity.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedEntity.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
         });
     });
     // 'hide', not 'close': the runtime has no close event, so what used to be
@@ -835,31 +822,18 @@ function showEntityAttributesMenu(entity_id) {
         }
 
         // Subscribe to entity updates
-        msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedEntity = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedEntity;
-
-                // Update all attribute values
-                for (let i = 0; i < attributesMenu.items(0).length; i++) {
-                    const item = attributesMenu.item(0, i);
-                    if (item.attribute_name && updatedEntity.attributes[item.attribute_name] !== undefined) {
-                        attributesMenu.item(0, i, {
-                            title: item.attribute_name,
-                            subtitle: updatedEntity.attributes[item.attribute_name],
-                            attribute_name: item.attribute_name
-                        });
-                    }
+        msg_id = EntityService.subscribeEntity(entity_id, function(updatedEntity) {
+            // Update all attribute values
+            for (let i = 0; i < attributesMenu.items(0).length; i++) {
+                const item = attributesMenu.item(0, i);
+                if (item.attribute_name && updatedEntity.attributes[item.attribute_name] !== undefined) {
+                    attributesMenu.item(0, i, {
+                        title: item.attribute_name,
+                        subtitle: updatedEntity.attributes[item.attribute_name],
+                        attribute_name: item.attribute_name
+                    });
                 }
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
     });
 
