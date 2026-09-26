@@ -536,9 +536,13 @@ static SimplyNumber *prv_create(Simply *simply) {
   return self;
 }
 
-static void prv_copy_string(char *out, size_t out_size, const char *in) {
-  strncpy(out, in, out_size - 1);
-  out[out_size - 1] = '\0';
+//! Copy a string out of a packet, reading no further than the packet's end
+static void prv_copy_string(char *out, size_t out_size, const char *in, const Packet *packet) {
+  const char *end = (const char *)packet + packet->length;
+  size_t n = (in < end) ? (size_t)(end - in) : 0;
+  if (n > out_size - 1) { n = out_size - 1; }
+  strncpy(out, in, n);
+  out[n] = '\0';
 }
 
 static void prv_handle_show(Simply *simply, Packet *data) {
@@ -577,8 +581,8 @@ static void prv_handle_show(Simply *simply, Packet *data) {
 
   const char *title = packet->buffer;
   const char *unit = title + packet->title_length + 1;
-  prv_copy_string(self->title, sizeof(self->title), title);
-  prv_copy_string(self->unit, sizeof(self->unit), unit);
+  prv_copy_string(self->title, sizeof(self->title), title, data);
+  prv_copy_string(self->unit, sizeof(self->unit), unit, data);
 
   if (!window_stack_contains_window(self->window)) {
     window_stack_push(self->window, false);
