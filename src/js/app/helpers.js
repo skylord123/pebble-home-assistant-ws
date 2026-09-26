@@ -159,8 +159,12 @@ function getNextHumanDiffChangeMs(lastChanged) {
  */
 function shouldShowDomainMenu(entities, menuSetting, options) {
     options = options || {};
-    var minEntities = options.minEntities || 10;
-    var minDomains = options.minDomains || 2;
+    // 0 is what the config page saves for a condition that is switched off,
+    // so only a missing value falls back to the default
+    var minEntities = parseInt(options.minEntities, 10);
+    var minDomains = parseInt(options.minDomains, 10);
+    if (isNaN(minEntities)) minEntities = 10;
+    if (isNaN(minDomains)) minDomains = 2;
 
     var Platform = require('platform');
 
