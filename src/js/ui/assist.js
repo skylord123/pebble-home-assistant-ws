@@ -280,7 +280,12 @@ Assist.show = function(opts) {
   state.dark = !!opts.dark;
   // Track if dictation is actively in progress
   state.isDictating = opts.listen !== false;
-  resetStream();
+  // Coming back from the settings menu the watch still holds whatever of an
+  // answer has already gone down, and forgetting that here would send the
+  // whole answer again underneath it
+  if (opts.listen !== false || opts.reset) {
+    resetStream();
+  }
   simply.impl.assistShow({
     fontSize: opts.fontSize || 18,
     confirm: !!opts.confirm,
