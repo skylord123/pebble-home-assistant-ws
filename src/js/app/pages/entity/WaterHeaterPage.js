@@ -34,7 +34,9 @@ function stepDecimals(step) {
 function getWaterHeaterData(entity) {
     var attrs = entity.attributes || {};
     var features = attrs.supported_features || 0;
-    var step = parseFloat(attrs.target_temp_step) || 0.5;
+    // The frontend's fallback when the entity doesn't publish a step
+    var step = parseFloat(attrs.target_temp_step) ||
+        (AppState.getInstance().ha_temperature_unit === '\u00b0F' ? 1 : 0.5);
     var num = function(v) {
         return (v !== undefined && v !== null) ? parseFloat(v) : null;
     };

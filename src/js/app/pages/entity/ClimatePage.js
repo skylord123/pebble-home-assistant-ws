@@ -57,7 +57,9 @@ function showClimateEntity(entity_id) {
             swing_modes: climate.attributes.swing_modes || [],
             min_temp: climate.attributes.min_temp || 7,
             max_temp: climate.attributes.max_temp || 35,
-            temp_step: climate.attributes.target_temperature_step || 0.5,
+            // The frontend's fallback when the entity doesn't publish a step
+            temp_step: climate.attributes.target_temp_step ||
+                (appState.ha_temperature_unit === '\u00b0F' ? 1 : 0.5),
             supported_features: climate.attributes.supported_features || 0
         };
     }

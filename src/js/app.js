@@ -207,6 +207,9 @@ function whenCoreRunning(proceed) {
 
     function check() {
         haws.getConfig(function(data) {
+            if (data && data.result && data.result.unit_system) {
+                appState.ha_temperature_unit = data.result.unit_system.temperature || null;
+            }
             if (settled) { return; }
             var state = (data && data.result) ? data.result.state : null;
             if (!state) {

@@ -24,6 +24,7 @@ class AppState {
         // Reported by Home Assistant when the socket authenticates, and used
         // to decide which of its newer conversation features are there to use
         this.ha_version = null;
+        this.ha_temperature_unit = null; // unit_system.temperature from get_config
         this.voice_enabled = null;
         this.voice_confirm = null;
         this.voice_backlight_trigger = true;
