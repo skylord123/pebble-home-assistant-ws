@@ -277,6 +277,7 @@ function runPipeline(transcription) {
             if (gen !== runGeneration) { return; }
             activeRun = null;
             stopKeepAlive();
+            var unflushed = !!streamTimer;
             if (streamTimer) {
                 clearTimeout(streamTimer);
                 streamTimer = null;
@@ -310,6 +311,19 @@ function runPipeline(transcription) {
                     Assist.error(speech || 'The assistant could not answer');
                     ConnectionService.showPendingReconnectDialog();
                     return;
+                }
+
+                // The speech is only the last message of the turn, so a piece
+                // still waiting to go down may belong to an earlier one, such
+                // as the line an agent writes before calling a tool. It has to
+                // go now or it is never sent at all.
+                if (unflushed) {
+                    flushStream();
+                }
+
+                if (!speech && !streamText) {
+                    speech = response.response_type === 'action_done' ?
+                        'Done' : 'The assistant gave no answer';
                 }
 
                 // Whatever was streamed came from this same answer, so ending
