@@ -83,9 +83,11 @@ class LabelMenuPage extends BasePage {
 function showEntitiesForLabel(label_id) {
     var appState = AppState.getInstance();
     var entities = RegistryService.getEntitiesForLabel(label_id);
-    var label = appState.label_registry_cache[label_id];
+    // A registry refresh or a restart can remove the label (or the whole
+    // cache) while the list that led here is still on screen
+    var label = (appState.label_registry_cache || {})[label_id];
 
-    if (!entities) {
+    if (!entities || !label) {
         return;
     }
 
