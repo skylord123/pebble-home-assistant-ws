@@ -21,6 +21,7 @@ class HAWS {
         this.token = token;
         this.ws = null;
         this._last_cmd_id = 0;
+        this._featuresId = null;
         this._commands = new Map();
         this._subscriptions = [];
         this.reconnectInterval = 2500;
@@ -138,12 +139,11 @@ class HAWS {
     /**
      * Drop everything that only made sense on the socket that just died.
      *
-     * Command ids, pending callbacks and subscription ids are all scoped to a
-     * single connection: Home Assistant forgets every subscription when the
-     * socket drops, and the id counter starts again on the next one. Keeping
-     * the old ids around meant a fresh command could be handed an id that was
-     * still listed as a subscription, and _handleMessage would then swallow
-     * its result instead of calling back.
+     * Pending callbacks and subscription ids are scoped to a single
+     * connection: Home Assistant forgets every subscription when the socket
+     * drops. The id counter is not reset. Pages keep their subscription ids
+     * across a reconnect and unsubscribe them later, and an id reused on the
+     * new socket would cancel whatever now holds it.
      *
      * Commands still waiting on an answer are failed rather than forgotten,
      * so their callers can stop waiting. Subscriptions are left alone: pages
@@ -159,7 +159,6 @@ class HAWS {
 
         this._commands = new Map();
         this._subscriptions = [];
-        this._last_cmd_id = 0;
 
         pending.forEach(function(entry) {
             if (typeof entry[1] !== 'function') { return; }
@@ -273,20 +272,15 @@ class HAWS {
 
             case 'auth_ok':
                 // Nothing issued on a previous socket can be answered on this
-                // one, and Home Assistant restarts its own id counter for each
-                // connection. Carrying the old bookkeeping over meant a fresh
-                // command could be handed an id still listed as a subscription,
-                // and its result was then discarded instead of delivered - the
-                // reconnect data fetch would stall there forever.
+                // one
                 this._resetConnectionState();
                 this.authenticated = true;
 
                 // Send supported_features if coalesce_messages is enabled
                 if(this.coalesce_messages) {
-                    // Set _last_cmd_id to 1 so the first real command will be id 2
-                    this._last_cmd_id = 1;
+                    this._featuresId = this._genCmdId();
                     this.ws.send(JSON.stringify({
-                        id: 1,
+                        id: this._featuresId,
                         type: 'supported_features',
                         features: { coalesce_messages: 1 }
                     }));
@@ -330,8 +324,8 @@ class HAWS {
                 break;
 
             case 'result':
-                // Ignore the result from supported_features message (id: 1)
-                if(data.id === 1 && this.coalesce_messages) {
+                // Ignore the result from supported_features
+                if(data.id === this._featuresId) {
                     if(this.debug) {
                         console.log('[HAWS] Received supported_features response');
                     }
@@ -757,10 +751,8 @@ class HAWS {
 
     _genCmdId() {
         // No wrap. Home Assistant rejects any id that is not greater than the
-        // last one it saw on this connection (error code id_reuse), so rolling
-        // back to 0 after 9999 commands would get every later command refused
-        // for the rest of the session. The counter is per-connection and
-        // starts again on the next socket, so letting it climb is correct.
+        // last one it saw on this connection (error code id_reuse). It only
+        // asks that they climb, so one counter serves every connection.
         return ++this._last_cmd_id;
     }
 
