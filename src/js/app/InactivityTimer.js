@@ -10,6 +10,7 @@
  */
 var WindowStack = require('ui/windowstack');
 var simply = require('ui/simply');
+var Assist = require('ui/assist');
 var helpers = require('app/helpers');
 
 var InactivityTimer = {
@@ -67,13 +68,19 @@ var InactivityTimer = {
             this._timeoutSeconds + 's, exiting app');
 
         // Hiding the top window without showing another pops the only window
-        // the watch keeps on its native stack, which exits the app. If a
-        // system window (e.g. dictation) is on top, the watch ignores the
-        // hide and the app stays open; dictation counts as activity anyway.
+        // the watch keeps on its native stack, which exits the app. The
+        // conversation is drawn natively over that window, so it goes first
+        // or the watch ignores the hide.
+        Assist.hide();
         var top = WindowStack.top();
         if (top && simply.impl && simply.impl.windowHide) {
             simply.impl.windowHide(top._id());
         }
+
+        // Anything else native on top (the splash, the number selector, a
+        // system window) also makes the watch ignore the hide. Try again
+        // later rather than leave the app running with no timer at all.
+        this.reset();
     }
 };
 
