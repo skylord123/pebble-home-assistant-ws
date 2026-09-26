@@ -76,22 +76,30 @@ function startsWith(text, prefix) {
       text.substring(0, prefix.length) === prefix;
 }
 
-//! Longest prefix of `text` that fits in `budget` bytes
+//! Longest prefix of `text` that fits in `budget` bytes. Counted by hand a
+//! character at a time: encodeURIComponent throws on half of an emoji, so
+//! probing arbitrary cut points with it could not be allowed to land between
+//! the two halves of one, and neither can the cut itself.
 function prefixWithinBytes(text, budget) {
-  if (utf8Length(text) <= budget) {
-    return text;
-  }
-  var lo = 0;
-  var hi = text.length;
-  while (lo < hi) {
-    var mid = (lo + hi + 1) >> 1;
-    if (utf8Length(text.substring(0, mid)) <= budget) {
-      lo = mid;
-    } else {
-      hi = mid - 1;
+  var bytes = 0;
+  for (var i = 0; i < text.length; i++) {
+    var c = text.charCodeAt(i);
+    var size = c < 0x80 ? 1 : (c < 0x800 ? 2 : 3);
+    var units = 1;
+    if (c >= 0xD800 && c <= 0xDBFF && i + 1 < text.length) {
+      var low = text.charCodeAt(i + 1);
+      if (low >= 0xDC00 && low <= 0xDFFF) {
+        size = 4;
+        units = 2;
+      }
     }
+    if (bytes + size > budget) {
+      return text.substring(0, i);
+    }
+    bytes += size;
+    i += units - 1;
   }
-  return text.substring(0, lo);
+  return text;
 }
 
 function truncate(text) {
