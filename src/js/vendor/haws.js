@@ -228,7 +228,13 @@ class HAWS {
 
         socket.onmessage = function(evt) {
             if (!isCurrent()) { return; }
-            let data = JSON.parse(evt.data);
+            let data;
+            try {
+                data = JSON.parse(evt.data);
+            } catch (e) {
+                console.log(`[HAWS] could not parse message: ${e}`);
+                return;
+            }
 
             // Handle coalesced messages (array of messages)
             if(Array.isArray(data)) {
@@ -236,10 +242,10 @@ class HAWS {
                     console.log(`[HAWS] WebSocket received ${data.length} coalesced messages`);
                 }
                 for(let message of data) {
-                    that._handleMessage(message);
+                    that._handleMessageSafely(message);
                 }
             } else {
-                that._handleMessage(data);
+                that._handleMessageSafely(data);
             }
         };
 
@@ -256,6 +262,16 @@ class HAWS {
             // is a no-op
             socket.close();
         };
+    }
+
+    // A callback that throws must not take the rest of a coalesced batch
+    // with it, command results included
+    _handleMessageSafely(data) {
+        try {
+            this._handleMessage(data);
+        } catch (e) {
+            console.log(`[HAWS] handling ${data && data.type} ${data && data.id} threw: ${e && e.stack || e}`);
+        }
     }
 
     _handleMessage(data) {
@@ -348,19 +364,21 @@ class HAWS {
                 if(typeof data.id !== 'undefined' && this._commands.has(data.id)) {
                     let callback = this._commands.get(data.id);
 
+                    // Answered either way, so removed before a callback can
+                    // throw and leave it to be failed again on disconnect
                     if (data.success) {
                         // ignore subscription success messages
                         if(this._subscriptions.indexOf(data.id) === -1) {
+                            this._commands.delete(data.id);
                             if(typeof callback[0] == "function") {
                                 callback[0](data);
                             }
-                            this._commands.delete(data.id);
                         }
                     } else {
-                        if(typeof callback[1] !== 'undefined') {
+                        this._commands.delete(data.id);
+                        if(typeof callback[1] === 'function') {
                             callback[1](data);
                         }
-                        this._commands.delete(data.id);
                     }
                 }
 
