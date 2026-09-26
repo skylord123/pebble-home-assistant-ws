@@ -128,16 +128,18 @@ function describeError(error) {
         case 'stt-provider-unsupported-metadata': return 'Unsupported audio format';
         case 'stt-stream-failed': return 'Speech-to-text failed';
         case 'stt-no-text-recognized': return 'No speech detected';
+        case 'cloud-auth-failed': return 'Home Assistant Cloud is not logged in';
         case 'intent-not-supported': return 'Conversation agent not available';
-        case 'intent-failed': return 'Intent recognition failed';
+        case 'intent-failed': return 'The assistant hit an error. Check the Home Assistant log';
         case 'tts-not-supported': return 'Text-to-speech not available';
-        case 'tts-failed': return 'Text-to-speech failed';
         // These are the ones a watch actually meets, since it asks for the
         // intent stage alone and the wake, speech and voice codes above can
         // never fire
         case 'timeout': return 'Home Assistant took too long';
         case 'pipeline-not-found': return 'That assistant is no longer set up';
         case 'intent-agent-not-found': return 'Conversation agent not found';
+        case 'unauthorized': return 'This user may not use the assistant';
+        case 'connection_lost': return 'Lost the connection to Home Assistant';
         default: return message || 'Connection error';
     }
 }
