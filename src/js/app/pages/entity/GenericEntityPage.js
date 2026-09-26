@@ -533,119 +533,37 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "vacuum") {
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Start',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.start for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'start',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.start success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.start failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Pause',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.pause for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'pause',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.pause success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.pause failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Stop',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.stop for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'stop',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.stop success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.stop failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Return to Base',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.return_to_base for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'return_to_base',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.return_to_base success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.return_to_base failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Locate',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.locate for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'locate',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.locate success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.locate failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Clean Spot',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.clean_spot for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'clean_spot',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.clean_spot success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.clean_spot failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
+        // Home Assistant registers each vacuum service behind its own
+        // VacuumEntityFeature bit
+        let vacuumFeatures = entity.attributes.supported_features || 0;
+        [
+            { title: 'Start', service: 'start', feature: 8192 },
+            { title: 'Pause', service: 'pause', feature: 4 },
+            { title: 'Stop', service: 'stop', feature: 8 },
+            { title: 'Return to Base', service: 'return_to_base', feature: 16 },
+            { title: 'Locate', service: 'locate', feature: 512 },
+            { title: 'Clean Spot', service: 'clean_spot', feature: 1024 }
+        ].forEach(function(action) {
+            if (!(vacuumFeatures & action.feature)) { return; }
+            showEntityMenu.item(1, servicesCount++, {
+                title: action.title,
+                on_click: function(){
+                    helpers.log_message('Calling vacuum.' + action.service + ' for ' + entity.entity_id);
+                    appState.haws.callService(
+                        'vacuum',
+                        action.service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            helpers.log_message('vacuum.' + action.service + ' success: ' + JSON.stringify(data));
+                            Vibe.vibrate('short');
+                        },
+                        function(error) {
+                            helpers.log_message('vacuum.' + action.service + ' failed: ' + JSON.stringify(error));
+                            Vibe.vibrate('double');
+                        });
+                }
+            });
         });
     }
 

@@ -617,13 +617,24 @@ var EntityService = {
                 return;
             }
             var state = entity.state;
+            var vacuumFeatures = entity.attributes.supported_features || 0;
             var service = null;
 
-            // Determine which service to call based on state
+            // Determine which service to call based on state, using only
+            // the services this vacuum supports (PAUSE 4, STOP 8,
+            // RETURN_HOME 16, START 8192)
             if (state === "cleaning" || state === "returning") {
-                service = "pause";
+                if (vacuumFeatures & 4) {
+                    service = "pause";
+                } else if (vacuumFeatures & 8) {
+                    service = "stop";
+                } else if (state === "cleaning" && (vacuumFeatures & 16)) {
+                    service = "return_to_base";
+                }
             } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
-                service = "start";
+                if (vacuumFeatures & 8192) {
+                    service = "start";
+                }
             }
 
             if (service) {
