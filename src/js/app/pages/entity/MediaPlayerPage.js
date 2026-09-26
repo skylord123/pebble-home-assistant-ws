@@ -417,7 +417,7 @@ class MediaPlayerPage extends BaseEntityPage {
         });
 
         this.mediaControlWindow.on('click', 'up', function(e) {
-            appState.haws.mediaPlayerVolumeUp(self.entityId, function(d) {});
+            self.stepVolume('up');
         });
 
         this.mediaControlWindow.on('longClick', 'up', function(e) {
@@ -432,7 +432,7 @@ class MediaPlayerPage extends BaseEntityPage {
         });
 
         this.mediaControlWindow.on('click', 'down', function(e) {
-            appState.haws.mediaPlayerVolumeDown(self.entityId, function(d) {});
+            self.stepVolume('down');
         });
 
         this.mediaControlWindow.on('longClick', 'down', function(e) {
@@ -1013,6 +1013,25 @@ class MediaPlayerPage extends BaseEntityPage {
         }
         this.previewDrag();
         return true;
+    }
+
+    /**
+     * volume_up / volume_down, which Home Assistant only registers for
+     * players with VOLUME_SET or VOLUME_STEP
+     */
+    stepVolume(direction) {
+        var appState = AppState.getInstance();
+        var current = appState.getEntity(this.entityId);
+        if (!supports(current, FEATURE.VOLUME_SET) && !supports(current, FEATURE.VOLUME_STEP)) {
+            Vibe.vibrate('double');
+            helpers.log_message('Media player ' + this.entityId + ' has no volume control');
+            return;
+        }
+        var call = direction === 'up' ? 'mediaPlayerVolumeUp' : 'mediaPlayerVolumeDown';
+        appState.haws[call](this.entityId, function(d) {}, function(error) {
+            Vibe.vibrate('double');
+            helpers.log_message('Volume ' + direction + ' failed: ' + JSON.stringify(error));
+        });
     }
 
     /**
