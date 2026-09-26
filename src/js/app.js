@@ -239,6 +239,55 @@ function whenCoreRunning(proceed) {
     check();
 }
 
+// === Registries ===
+//
+// Fetched with every connection, and again whenever Home Assistant reports one
+// changed, so an area or label added mid-session shows up without a restart.
+// Each registry is kept as a map from its id to its entry.
+var REGISTRIES = [
+    { name: 'areas', fetch: 'getConfigAreas', cache: 'area_registry_cache', key: 'area_id', event: 'area_registry_updated' },
+    { name: 'floors', fetch: 'getConfigFloors', cache: 'floor_registry_cache', key: 'floor_id', event: 'floor_registry_updated' },
+    { name: 'devices', fetch: 'getConfigDevices', cache: 'device_registry_cache', key: 'id', event: 'device_registry_updated' },
+    { name: 'entities', fetch: 'getConfigEntities', cache: 'entity_registry_cache', key: 'entity_id', event: 'entity_registry_updated' },
+    { name: 'labels', fetch: 'getConfigLabels', cache: 'label_registry_cache', key: 'label_id', event: 'label_registry_updated' }
+];
+// A reload can fire dozens of updates in a row
+var REGISTRY_REFRESH_DELAY_MS = 5000;
+
+function fetchRegistry(registry, done) {
+    appState.haws[registry.fetch](function(data) {
+        var map = {};
+        var items = (data && data.result) || [];
+        for (var i = 0; i < items.length; i++) {
+            map[items[i][registry.key]] = items[i];
+        }
+        appState[registry.cache] = map;
+        done(true);
+    }, function() { done(false); });
+}
+
+// Subscriptions end with the socket, so this runs once per connection
+function watchRegistries(haws) {
+    REGISTRIES.forEach(function(registry) {
+        var timer = null;
+        haws.subscribeEvents(registry.event, function() {
+            if (timer) { clearTimeout(timer); }
+            timer = setTimeout(function() {
+                timer = null;
+                if (appState.haws !== haws || !haws.isConnected()) { return; }
+                helpers.log_message('Refreshing ' + registry.name + ' registry');
+                fetchRegistry(registry, function(ok) {
+                    if (!ok) { return; }
+                    CacheManager.save();
+                    MainMenuPage.refreshIfVisible();
+                });
+            }, REGISTRY_REFRESH_DELAY_MS);
+        }, function(err) {
+            helpers.log_message('Could not watch the ' + registry.name + ' registry: ' + JSON.stringify(err));
+        });
+    });
+}
+
 // === Post-Authentication Handler ===
 function on_auth_ok(evt) {
     appState.ha_connected = true;
@@ -439,6 +488,7 @@ function start_data_fetch() {
             log("Data fetch complete in " + elapsed + "ms");
 
             CacheManager.save();
+            watchRegistries(haws);
 
             if (isFetchingInBackground && fetchFailed) {
                 log("Background fetch failed: " + fetchError);
@@ -468,65 +518,12 @@ function start_data_fetch() {
         checkAllLoaded();
     }, true);
 
-    appState.haws.getConfigAreas(function(data) {
-        appState.area_registry_cache = {};
-        if (data.result) {
-            for (var i = 0; i < data.result.length; i++) {
-                var area = data.result[i];
-                appState.area_registry_cache[area.area_id] = area;
-            }
-        }
-        loaded.areas = true;
-        checkAllLoaded();
-    }, function() { loaded.areas = true; checkAllLoaded(); });
-
-    appState.haws.getConfigFloors(function(data) {
-        appState.floor_registry_cache = {};
-        if (data.result) {
-            for (var i = 0; i < data.result.length; i++) {
-                var floor = data.result[i];
-                appState.floor_registry_cache[floor.floor_id] = floor;
-            }
-        }
-        loaded.floors = true;
-        checkAllLoaded();
-    }, function() { loaded.floors = true; checkAllLoaded(); });
-
-    appState.haws.getConfigDevices(function(data) {
-        appState.device_registry_cache = {};
-        if (data.result) {
-            for (var i = 0; i < data.result.length; i++) {
-                var device = data.result[i];
-                appState.device_registry_cache[device.id] = device;
-            }
-        }
-        loaded.devices = true;
-        checkAllLoaded();
-    }, function() { loaded.devices = true; checkAllLoaded(); });
-
-    appState.haws.getConfigEntities(function(data) {
-        appState.entity_registry_cache = {};
-        if (data.result) {
-            for (var i = 0; i < data.result.length; i++) {
-                var entity = data.result[i];
-                appState.entity_registry_cache[entity.entity_id] = entity;
-            }
-        }
-        loaded.entities = true;
-        checkAllLoaded();
-    }, function() { loaded.entities = true; checkAllLoaded(); });
-
-    appState.haws.getConfigLabels(function(data) {
-        appState.label_registry_cache = {};
-        if (data.result) {
-            for (var i = 0; i < data.result.length; i++) {
-                var label = data.result[i];
-                appState.label_registry_cache[label.label_id] = label;
-            }
-        }
-        loaded.labels = true;
-        checkAllLoaded();
-    }, function() { loaded.labels = true; checkAllLoaded(); });
+    REGISTRIES.forEach(function(registry) {
+        fetchRegistry(registry, function() {
+            loaded[registry.name] = true;
+            checkAllLoaded();
+        });
+    });
 
     AssistPage.loadAssistPipelines(function() {
         loaded.pipelines = true;
