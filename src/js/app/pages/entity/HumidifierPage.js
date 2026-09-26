@@ -86,7 +86,7 @@ function callHumidifierService(entity_id, service, data) {
  */
 function showHumidityPicker(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) return;
     var data = getHumidifierData(entity);
 
@@ -121,7 +121,7 @@ function showHumidityPicker(entity_id) {
 
 function showHumidifierEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -169,8 +169,9 @@ function showHumidifierEntity(entity_id) {
         });
 
         modeMenu.on('show', function() {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             buildModeItems(current ? getHumidifierData(current) : null);
+            if (mode_subscription_msg_id) { appState.haws.unsubscribe(mode_subscription_msg_id); }
             mode_subscription_msg_id = appState.haws.subscribeEntities([entity_id], function(eventData) {
                 let updated = EntityService.applyCompressedEvent(entity_id, eventData);
                 if (updated) {
@@ -184,6 +185,7 @@ function showHumidifierEntity(entity_id) {
         modeMenu.on('hide', function() {
             if (mode_subscription_msg_id) {
                 appState.haws.unsubscribe(mode_subscription_msg_id);
+                mode_subscription_msg_id = null;
             }
         });
 
@@ -273,13 +275,27 @@ function showHumidifierEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     humidifierMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateHumidifierMenuItems(entity);
 
         // Only the status row carries the relative time
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             if (current) {
                 humidifierMenu.item(0, 0, buildStatusItem(current));
             }
@@ -306,15 +322,7 @@ function showHumidifierEntity(entity_id) {
         }, 100);
     });
 
-    humidifierMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    humidifierMenu.on('hide', releaseUpdates);
 
     humidifierMenu.show();
 }

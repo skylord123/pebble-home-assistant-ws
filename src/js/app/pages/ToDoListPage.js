@@ -88,8 +88,19 @@ function showToDoLists() {
         }
     });
 
+    function releaseSubscriptions() {
+        for(let entity_id in subscriptionIds) {
+            if (subscriptionIds[entity_id]) {
+                appState.haws.unsubscribe(subscriptionIds[entity_id]);
+            }
+        }
+        subscriptionIds = {};
+    }
+
     // Subscribe to all todo lists when menu is shown
     toDoListsMenu.on('show', function() {
+        // A second 'show' can arrive without a 'hide' in between
+        releaseSubscriptions();
         let todoLists = getSortedTodoLists();
 
         todoLists.forEach(function(entity) {
@@ -115,14 +126,7 @@ function showToDoLists() {
     });
 
     // Unsubscribe when menu is hidden
-    toDoListsMenu.on('hide', function() {
-        for(let entity_id in subscriptionIds) {
-            if (subscriptionIds[entity_id]) {
-                appState.haws.unsubscribe(subscriptionIds[entity_id]);
-            }
-        }
-        subscriptionIds = {};
-    });
+    toDoListsMenu.on('hide', releaseSubscriptions);
 
     // Initial menu population
     updateMenuItems();
@@ -595,6 +599,10 @@ function showToDoList(entity_id) {
 
 
     todoListMenu.on('show', function() {
+        // A second 'show' can arrive without a 'hide' in between
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+        }
         subscription_msg_id = appState.haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
@@ -876,6 +884,10 @@ function showToDoItemMenu(entity_id, item) {
     // Subscribe when menu is shown
     itemMenu.on('show', function() {
         helpers.log_message(`Subscribing to todo items for ${entity_id}`);
+        // A second 'show' can arrive without a 'hide' in between
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+        }
         subscription_msg_id = appState.haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id

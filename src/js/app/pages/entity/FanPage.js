@@ -29,7 +29,7 @@ var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showFanEntity(entity_id) {
     var appState = AppState.getInstance();
-    let fan = appState.ha_state_dict[entity_id],
+    let fan = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!fan) {
@@ -340,24 +340,33 @@ function showFanEntity(entity_id) {
             sliderFg.size(new Vector(sliderWidth, 20));
         }
 
-        // Subscribe to entity updates
-        let speed_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan, isSnapshot) {
-            // The slider opened on this same state; only follow changes, so
-            // presses made before the snapshot lands are not undone
-            if (isSnapshot) { return; }
-            helpers.log_message(`Fan entity update for speed menu ${entity_id}`);
-            let updatedData = getFanData(updatedFan);
-            if (updatedData.is_on && updatedData.percentage !== null) {
-                current_percentage = updatedData.percentage;
-                updateSpeedUI();
+        let speed_subscription_msg_id = null;
+        function releaseSpeedUpdates() {
+            if (speed_subscription_msg_id) {
+                appState.haws.unsubscribe(speed_subscription_msg_id);
+                speed_subscription_msg_id = null;
             }
+        }
+
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        speedWindow.on('show', function() {
+            releaseSpeedUpdates();
+            speed_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan, isSnapshot) {
+                // The slider opened on this same state; only follow changes, so
+                // presses made before the snapshot lands are not undone
+                if (isSnapshot) { return; }
+                helpers.log_message(`Fan entity update for speed menu ${entity_id}`);
+                let updatedData = getFanData(updatedFan);
+                if (updatedData.is_on && updatedData.percentage !== null) {
+                    current_percentage = updatedData.percentage;
+                    updateSpeedUI();
+                }
+            });
         });
 
         speedWindow.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (speed_subscription_msg_id) {
-                appState.haws.unsubscribe(speed_subscription_msg_id);
-            }
+            releaseSpeedUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -422,18 +431,27 @@ function showFanEntity(entity_id) {
             }
         }
 
-        // Subscribe to entity updates
-        let preset_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan) {
-            helpers.log_message(`Fan entity update for preset menu ${entity_id}`);
-            // Update menu items directly
-            updatePresetMenuItems(updatedFan);
+        let preset_subscription_msg_id = null;
+        function releasePresetUpdates() {
+            if (preset_subscription_msg_id) {
+                appState.haws.unsubscribe(preset_subscription_msg_id);
+                preset_subscription_msg_id = null;
+            }
+        }
+
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        presetMenu.on('show', function() {
+            releasePresetUpdates();
+            preset_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan) {
+                helpers.log_message(`Fan entity update for preset menu ${entity_id}`);
+                // Update menu items directly
+                updatePresetMenuItems(updatedFan);
+            });
         });
 
         presetMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (preset_subscription_msg_id) {
-                appState.haws.unsubscribe(preset_subscription_msg_id);
-            }
+            releasePresetUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -457,13 +475,28 @@ function showFanEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as
+    // a second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     // Set up event handlers for the fan menu
     fanMenu.on('show', function() {
+        releaseUpdates();
+
         // Clear the menu
         fanMenu.items(0, []);
 
         // Get the latest fan data
-        fan = appState.ha_state_dict[entity_id];
+        fan = appState.getEntity(entity_id) || fan;
         fanData = getFanData(fan);
         features = supported_features(fan);
 
@@ -473,7 +506,7 @@ function showFanEntity(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current fan and update the menu
-            let currentFan = appState.ha_state_dict[entity_id];
+            let currentFan = appState.getEntity(entity_id);
             if (currentFan) {
                 updateFanMenuItems(currentFan);
             }
@@ -506,18 +539,7 @@ function showFanEntity(entity_id) {
         }, 100);
     });
 
-    fanMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    fanMenu.on('hide', releaseUpdates);
 
     // Show the menu
     fanMenu.show();

@@ -87,7 +87,7 @@ function formatDuration(seconds) {
 
 function showSirenEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -128,7 +128,7 @@ function showSirenEntity(entity_id) {
     // Only the options the siren actually supports are sent; Home Assistant
     // would drop the rest anyway, and an unsupported tone is an outright error
     function turnOn() {
-        let data = getSirenData(appState.ha_state_dict[entity_id] || entity);
+        let data = getSirenData(appState.getEntity(entity_id) || entity);
         let params = {};
         if (data.has_tones && pending.tone !== null) {
             params.tone = pending.tone;
@@ -143,7 +143,7 @@ function showSirenEntity(entity_id) {
     }
 
     function showToneMenu() {
-        let data = getSirenData(appState.ha_state_dict[entity_id] || entity);
+        let data = getSirenData(appState.getEntity(entity_id) || entity);
         let toneMenu = new UI.Menu({
             status: false,
             sections: [{
@@ -180,7 +180,7 @@ function showSirenEntity(entity_id) {
             }
         });
         toneMenu.on('hide', function() {
-            updateSirenMenuItems(appState.ha_state_dict[entity_id] || entity);
+            updateSirenMenuItems(appState.getEntity(entity_id) || entity);
         });
         toneMenu.show();
     }
@@ -196,7 +196,7 @@ function showSirenEntity(entity_id) {
                 // natural way to say "leave it to the siren"
                 pending.duration = seconds;
                 NumberField.hide();
-                updateSirenMenuItems(appState.ha_state_dict[entity_id] || entity);
+                updateSirenMenuItems(appState.getEntity(entity_id) || entity);
             }
         });
     }
@@ -214,7 +214,7 @@ function showSirenEntity(entity_id) {
             onSet: function(value) {
                 pending.volume = value;
                 NumberField.hide();
-                updateSirenMenuItems(appState.ha_state_dict[entity_id] || entity);
+                updateSirenMenuItems(appState.getEntity(entity_id) || entity);
             }
         });
     }
@@ -323,12 +323,26 @@ function showSirenEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     sirenMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateSirenMenuItems(entity);
 
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             if (current) {
                 sirenMenu.item(0, 0, buildStatusItem(current));
             }
@@ -355,15 +369,7 @@ function showSirenEntity(entity_id) {
         }, 100);
     });
 
-    sirenMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    sirenMenu.on('hide', releaseUpdates);
 
     sirenMenu.show();
 }

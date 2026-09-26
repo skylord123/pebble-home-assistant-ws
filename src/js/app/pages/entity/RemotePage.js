@@ -96,7 +96,7 @@ function callRemoteService(entity_id, service, data, onDone) {
 
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
         return;
@@ -133,7 +133,7 @@ function dictateCommand(onCommand) {
 
 function showRemoteEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -191,7 +191,8 @@ function showRemoteEntity(entity_id) {
         });
 
         activityMenu.on('show', function() {
-            buildItems(appState.ha_state_dict[entity_id]);
+            buildItems(appState.getEntity(entity_id));
+            if (activity_subscription_msg_id) { appState.haws.unsubscribe(activity_subscription_msg_id); }
             activity_subscription_msg_id = appState.haws.subscribeEntities([entity_id], function(eventData) {
                 let updated = EntityService.applyCompressedEvent(entity_id, eventData);
                 if (updated) { buildItems(updated); }
@@ -203,6 +204,7 @@ function showRemoteEntity(entity_id) {
         activityMenu.on('hide', function() {
             if (activity_subscription_msg_id) {
                 appState.haws.unsubscribe(activity_subscription_msg_id);
+                activity_subscription_msg_id = null;
             }
         });
 
@@ -211,7 +213,7 @@ function showRemoteEntity(entity_id) {
 
     // Harmony hands us the device names; everything else has to be spoken
     function showDeviceMenu() {
-        let data = getRemoteData(appState.ha_state_dict[entity_id] || entity);
+        let data = getRemoteData(appState.getEntity(entity_id) || entity);
         let deviceMenu = new UI.Menu({
             status: false,
             sections: [{
@@ -260,7 +262,7 @@ function showRemoteEntity(entity_id) {
             }
         });
         deviceMenu.on('hide', function() {
-            updateRemoteMenuItems(appState.ha_state_dict[entity_id] || entity);
+            updateRemoteMenuItems(appState.getEntity(entity_id) || entity);
         });
         deviceMenu.show();
     }
@@ -339,7 +341,7 @@ function showRemoteEntity(entity_id) {
                     on_click: function() {
                         pending.command_type = pending.command_type === 'rf' ? 'ir' : 'rf';
                         Vibe.vibrate('short');
-                        updateRemoteMenuItems(appState.ha_state_dict[entity_id] || entity);
+                        updateRemoteMenuItems(appState.getEntity(entity_id) || entity);
                     }
                 });
             }
@@ -384,12 +386,26 @@ function showRemoteEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     remoteMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateRemoteMenuItems(entity);
 
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             if (current) {
                 remoteMenu.item(0, 0, buildStatusItem(current));
             }
@@ -416,15 +432,7 @@ function showRemoteEntity(entity_id) {
         }, 100);
     });
 
-    remoteMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    remoteMenu.on('hide', releaseUpdates);
 
     remoteMenu.show();
 }

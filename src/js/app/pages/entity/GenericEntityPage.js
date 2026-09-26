@@ -25,7 +25,7 @@ function showEntityMenu(entity_id) {
     var appState = AppState.getInstance();
     var favoriteEntityStore = appState.favoriteEntityStore;
     var pinnedEntityStore = appState.pinnedEntityStore;
-    let entity = appState.ha_state_dict[entity_id];
+    let entity = appState.getEntity(entity_id);
     let relativeTimeUpdater = null;
     if(!entity){
         throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
@@ -742,7 +742,7 @@ function showEntityMenu(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current entity and update the state field
-            let currentEntity = appState.ha_state_dict[entity_id];
+            let currentEntity = appState.getEntity(entity_id);
             if (currentEntity) {
                 showEntityMenu.item(0, stateIndex, {
                     title: 'State',
@@ -785,7 +785,7 @@ function showEntityMenu(entity_id) {
 
 function showEntityAttributesMenu(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id];
+    let entity = appState.getEntity(entity_id);
     if(!entity){
         throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
     }
@@ -808,7 +808,18 @@ function showEntityAttributesMenu(entity_id) {
 
     let msg_id = null;
 
+    function releaseUpdates() {
+        if (msg_id) {
+            appState.haws.unsubscribe(msg_id);
+            msg_id = null;
+        }
+    }
+
     attributesMenu.on('show', function() {
+        // A second 'show' can arrive without a 'hide' in between
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
+
         var arr = Object.getOwnPropertyNames(entity.attributes);
         helpers.log_message(`Showing attributes for ${entity.entity_id}: ${arr.length} attributes`);
 
@@ -837,12 +848,7 @@ function showEntityAttributesMenu(entity_id) {
         });
     });
 
-    attributesMenu.on('hide', function() {
-        // Unsubscribe from entity updates when menu is closed
-        if (msg_id) {
-            appState.haws.unsubscribe(msg_id);
-        }
-    });
+    attributesMenu.on('hide', releaseUpdates);
 
     attributesMenu.show();
 }

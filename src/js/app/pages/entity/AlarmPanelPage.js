@@ -92,7 +92,7 @@ function errorMessage(error) {
  */
 function performAction(entity_id, service) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('performAction: entity ' + entity_id + ' not found in state dict');
         return;
@@ -175,7 +175,7 @@ function performAction(entity_id, service) {
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
         return;
@@ -204,7 +204,7 @@ function quickAction(entity_id) {
 
 function showAlarmEntity(entity_id) {
     var appState = AppState.getInstance();
-    let alarm = appState.ha_state_dict[entity_id],
+    let alarm = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!alarm) {
@@ -413,16 +413,30 @@ function showAlarmEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     alarmMenu.on('show', function() {
+        releaseUpdates();
         // Get the latest alarm data
-        alarm = appState.ha_state_dict[entity_id];
+        alarm = appState.getEntity(entity_id) || alarm;
         updateAlarmMenuItems(alarm);
 
         // Create RelativeTimeUpdater for live time updates. Only the
         // status row's time suffix changes on a tick, so update just that
         // item instead of re-sending the whole section every second
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let currentAlarm = appState.ha_state_dict[entity_id];
+            let currentAlarm = appState.getEntity(entity_id);
             if (currentAlarm) {
                 alarmMenu.item(0, 0, buildStatusItem(currentAlarm));
             }
@@ -462,16 +476,7 @@ function showAlarmEntity(entity_id) {
         }, 100);
     });
 
-    alarmMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    alarmMenu.on('hide', releaseUpdates);
 
     alarmMenu.show();
 }

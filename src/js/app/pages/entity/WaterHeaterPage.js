@@ -111,7 +111,7 @@ function callWaterHeaterService(entity_id, service, data) {
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
         return;
@@ -126,7 +126,7 @@ function quickAction(entity_id) {
 
 function showTemperaturePicker(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) return;
     var data = getWaterHeaterData(entity);
 
@@ -161,7 +161,7 @@ function showTemperaturePicker(entity_id) {
 
 function showWaterHeaterEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -209,7 +209,8 @@ function showWaterHeaterEntity(entity_id) {
         });
 
         opMenu.on('show', function() {
-            buildItems(appState.ha_state_dict[entity_id]);
+            buildItems(appState.getEntity(entity_id));
+            if (op_subscription_msg_id) { appState.haws.unsubscribe(op_subscription_msg_id); }
             op_subscription_msg_id = appState.haws.subscribeEntities([entity_id], function(eventData) {
                 let updated = EntityService.applyCompressedEvent(entity_id, eventData);
                 if (updated) { buildItems(updated); }
@@ -221,6 +222,7 @@ function showWaterHeaterEntity(entity_id) {
         opMenu.on('hide', function() {
             if (op_subscription_msg_id) {
                 appState.haws.unsubscribe(op_subscription_msg_id);
+                op_subscription_msg_id = null;
             }
         });
 
@@ -317,12 +319,26 @@ function showWaterHeaterEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     heaterMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateHeaterMenuItems(entity);
 
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             if (current) {
                 heaterMenu.item(0, 0, buildStatusItem(current));
             }
@@ -349,15 +365,7 @@ function showWaterHeaterEntity(entity_id) {
         }, 100);
     });
 
-    heaterMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    heaterMenu.on('hide', releaseUpdates);
 
     heaterMenu.show();
 }

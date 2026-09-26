@@ -29,7 +29,7 @@ var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showCoverEntity(entity_id) {
     var appState = AppState.getInstance();
-    let cover = appState.ha_state_dict[entity_id],
+    let cover = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!cover) {
@@ -409,24 +409,33 @@ function showCoverEntity(entity_id) {
             sliderFg.size(new Vector(sliderWidth, 20));
         }
 
-        // Subscribe to entity updates
-        let slider_subscription_msg_id = EntityService.subscribeEntity(opts.entity_id, function(updatedCover, isSnapshot) {
-            // The slider opened on this same state; only follow changes, so
-            // presses made before the snapshot lands are not undone
-            if (isSnapshot) { return; }
-            helpers.log_message(`Cover entity update for ${opts.title} slider ${opts.entity_id}`);
-            let value = opts.getCurrent(getCoverData(updatedCover));
-            if (value !== null) {
-                current_value = value;
-                updateSliderUI();
+        let slider_subscription_msg_id = null;
+        function releaseSliderUpdates() {
+            if (slider_subscription_msg_id) {
+                appState.haws.unsubscribe(slider_subscription_msg_id);
+                slider_subscription_msg_id = null;
             }
+        }
+
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        sliderWindow.on('show', function() {
+            releaseSliderUpdates();
+            slider_subscription_msg_id = EntityService.subscribeEntity(opts.entity_id, function(updatedCover, isSnapshot) {
+                // The slider opened on this same state; only follow changes, so
+                // presses made before the snapshot lands are not undone
+                if (isSnapshot) { return; }
+                helpers.log_message(`Cover entity update for ${opts.title} slider ${opts.entity_id}`);
+                let value = opts.getCurrent(getCoverData(updatedCover));
+                if (value !== null) {
+                    current_value = value;
+                    updateSliderUI();
+                }
+            });
         });
 
         sliderWindow.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (slider_subscription_msg_id) {
-                appState.haws.unsubscribe(slider_subscription_msg_id);
-            }
+            releaseSliderUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -450,10 +459,25 @@ function showCoverEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as
+    // a second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     // Set up event handlers for the cover menu
     coverMenu.on('show', function() {
+        releaseUpdates();
+
         // Get the latest cover data
-        cover = appState.ha_state_dict[entity_id];
+        cover = appState.getEntity(entity_id) || cover;
         coverData = getCoverData(cover);
         features = supported_features(cover);
 
@@ -463,7 +487,7 @@ function showCoverEntity(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current cover and update the menu
-            let currentCover = appState.ha_state_dict[entity_id];
+            let currentCover = appState.getEntity(entity_id);
             if (currentCover) {
                 updateCoverMenuItems(currentCover);
             }
@@ -496,18 +520,7 @@ function showCoverEntity(entity_id) {
         }, 100);
     });
 
-    coverMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    coverMenu.on('hide', releaseUpdates);
 
     // Show the menu
     coverMenu.show();
