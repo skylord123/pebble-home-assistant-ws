@@ -54,6 +54,18 @@ function loadAssistPipelines(callback) {
             });
             Settings.option('available_pipelines', pipelineOptions);
 
+            // A pipeline deleted or recreated in Home Assistant leaves behind
+            // an id that every turn would be refused with, so it gives way to
+            // the preferred one below
+            var selectedExists = pipelineOptions.some(function(p) {
+                return p.id === appState.selected_pipeline;
+            });
+            if (appState.selected_pipeline && !selectedExists) {
+                helpers.log_message("Selected pipeline " + appState.selected_pipeline +
+                    " no longer exists");
+                appState.selected_pipeline = null;
+            }
+
             // If we have a previous voice_agent setting, try to match it to a pipeline
             if (appState.voice_agent && !appState.selected_pipeline) {
                 var matchingPipeline = null;
