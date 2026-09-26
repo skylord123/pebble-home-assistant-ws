@@ -444,6 +444,7 @@ static void prv_request_menu_section(SimplyMenu *self, uint16_t section_index) {
   SimplyMenuSection *section = prv_get_menu_section(self, section_index);
   if (section) { return; }
   section = malloc(sizeof(*section));
+  if (!section) { return; }
   *section = (SimplyMenuSection) {
     .section = section_index,
   };
@@ -455,6 +456,7 @@ static void prv_request_menu_item(SimplyMenu *self, uint16_t section_index, uint
   SimplyMenuItem *item = prv_get_menu_item(self, section_index, item_index);
   if (item) { return; }
   item = malloc(sizeof(*item));
+  if (!item) { return; }
   *item = (SimplyMenuItem) {
     .section = section_index,
     .item = item_index,
@@ -1951,6 +1953,7 @@ static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
   prv_row_counts_record(simply->menu, packet->section, packet->num_items,
                         packet->title_length != 0);
   SimplyMenuSection *section = malloc(sizeof(*section));
+  if (!section) { return; }
   *section = (SimplyMenuSection) {
     .section = packet->section,
     .num_items = packet->num_items,
@@ -1964,6 +1967,7 @@ static void prv_handle_menu_section_packet(Simply *simply, Packet *data) {
 static void prv_handle_menu_item_packet(Simply *simply, Packet *data) {
   MenuItemPacket *packet = (MenuItemPacket *)data;
   SimplyMenuItem *item = malloc(sizeof(*item));
+  if (!item) { return; }
   *item = (SimplyMenuItem) {
     .section = packet->section,
     .item = packet->item,
