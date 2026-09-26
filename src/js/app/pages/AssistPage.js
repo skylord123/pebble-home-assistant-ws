@@ -197,6 +197,24 @@ function flushStream() {
     }
 }
 
+// Every turn gets a number, and its callbacks only act while it is still the
+// latest one. A run carries on at Home Assistant after the conversation it
+// belongs to has been closed, restarted or moved to another pipeline, and
+// without this its words, its conversation id and the clearing of its
+// keep-alive landed in whichever turn happened to be current.
+var runGeneration = 0;
+var activeRun = null;
+
+//! Forget the turn in flight, and tell Home Assistant to stop working on it
+function abandonRun() {
+    runGeneration++;
+    if (activeRun) {
+        activeRun.haws.unsubscribe(activeRun.id);
+        activeRun = null;
+    }
+    cancelStream();
+}
+
 /**
  * Run one turn of the conversation through Home Assistant
  */
@@ -220,12 +238,16 @@ function runPipeline(transcription) {
         timeout: 120
     };
 
-    cancelStream();
+    abandonRun();
+    var gen = runGeneration;
+    var haws = appState.haws;
+    var finished = false;
     Assist.beginReply();
 
     var streaming = appState.assist_stream_reply !== false &&
         supportsStreaming(appState.ha_version);
     var onProgress = streaming ? function(piece, opensMessage) {
+        if (gen !== runGeneration) { return; }
         // An agent that stops to call a tool writes twice in one turn: a line
         // about what it is going off to look up, then the answer once it has.
         // Home Assistant reports those as separate messages, so they are kept
@@ -237,15 +259,20 @@ function runPipeline(transcription) {
         }
         streamText += piece;
         if (!streamTimer) {
-            streamTimer = setTimeout(flushStream, STREAM_COALESCE_MS);
+            streamTimer = setTimeout(function() {
+                if (gen === runGeneration) { flushStream(); }
+            }, STREAM_COALESCE_MS);
         }
     } : null;
 
     helpers.log_message("Sending assist_pipeline/run request" +
         (streaming ? " (streaming)" : ""));
     startKeepAlive();
-    appState.haws.runPipeline(body,
+    var runId = haws.runPipeline(body,
         function(data) {
+            finished = true;
+            if (gen !== runGeneration) { return; }
+            activeRun = null;
             stopKeepAlive();
             if (streamTimer) {
                 clearTimeout(streamTimer);
@@ -296,6 +323,9 @@ function runPipeline(transcription) {
             }
         },
         function(error) {
+            finished = true;
+            if (gen !== runGeneration) { return; }
+            activeRun = null;
             stopKeepAlive();
             helpers.log_message("assist_pipeline/run error: " + JSON.stringify(error));
             cancelStream();
@@ -304,6 +334,10 @@ function runPipeline(transcription) {
         },
         onProgress
     );
+    // The error callback may already have run, if the request never left
+    if (runId && !finished && gen === runGeneration) {
+        activeRun = { haws: haws, id: runId };
+    }
 }
 
 /**
@@ -318,6 +352,7 @@ function openAssist(listen, reset) {
 
     // Wrap onClose to check for pending reconnect dialog when Assist closes
     var originalOnClose = function() {
+        abandonRun();
         ConnectionService.showPendingReconnectDialog();
     };
 
@@ -345,7 +380,7 @@ function openAssist(listen, reset) {
                 var switched = appState.selected_pipeline !== pipelineBefore;
                 if (switched) {
                     conversation_id = null;
-                    cancelStream();
+                    abandonRun();
                 }
                 openAssist(false, switched);
             });
@@ -378,7 +413,7 @@ function showAssistMenu() {
     // Each visit to the screen is a fresh conversation, the same as it has
     // always been; the watch throws its own transcript away at the same time
     conversation_id = null;
-    cancelStream();
+    abandonRun();
     openAssist(true);
 }
 
