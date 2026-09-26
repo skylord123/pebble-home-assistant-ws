@@ -100,7 +100,9 @@ var ConnectionService = {
         appState.label_registry_cache = null;
         appState.ha_pipelines = null;
         appState.preferred_pipeline = null;
-        appState.selected_pipeline = null;
+        // selected_pipeline is left alone: SettingsManager.load() has just
+        // read the choice the config page saved, and clearing it here let the
+        // preferred pipeline be saved over it
         appState.ha_connected = false;
 
         // Show loading card
