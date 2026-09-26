@@ -85,8 +85,12 @@ function showLightEntity(entity_id) {
             rgb_color: rgbColor,
             xy_color: light.attributes.xy_color,
             hs_color: light.attributes.hs_color,
-            effect: light.attributes.effect,
-            effect_list: light.attributes.effect_list || [],
+            // "off" is Home Assistant's no-effect value (EFFECT_OFF); the
+            // menu shows it as its own None row
+            effect: light.attributes.effect === 'off' ? null : light.attributes.effect,
+            effect_list: (light.attributes.effect_list || []).filter(function(effect) {
+                return effect !== 'off';
+            }),
             last_changed_time: timeStr
         };
     }
@@ -822,7 +826,7 @@ function showLightEntity(entity_id) {
                 appState.haws.callService(
                     "light",
                     "turn_on",
-                    { effect: "none" },
+                    { effect: "off" },
                     { entity_id: entity_id },
                     function(data) {
                         Vibe.vibrate('short');
