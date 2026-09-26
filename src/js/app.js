@@ -256,6 +256,43 @@ function start_data_fetch() {
     var cacheLoaded = haveLiveState ? true : CacheManager.load();
     var isFetchingInBackground = cacheLoaded;
 
+    // With a startup cache the UI goes up before get_states is even sent, and
+    // every entity page throws on a missing state. Launch targets that read
+    // states wait for the answer.
+    var statesSettled = false;
+    var afterStates = [];
+
+    // Runs inside websocket callbacks, where a throw would also abort the
+    // rest of this fetch
+    function runLaunch(fn) {
+        try {
+            fn();
+        } catch (e) {
+            log('Launch target failed: ' + ((e && e.message) || e));
+        }
+    }
+
+    function whenStatesLoaded(fn) {
+        if (statesSettled || appState.ha_state_dict) {
+            runLaunch(fn);
+        } else {
+            afterStates.push(fn);
+        }
+    }
+
+    function settleStates() {
+        var queued = afterStates;
+        afterStates = [];
+        // A dropped connection drops the launch with it; the reconnect
+        // resumes whatever is on screen instead
+        if (appState.haws !== haws || !haws.isConnected()) { return; }
+        statesSettled = true;
+        queued.forEach(runLaunch);
+    }
+
+    // Quick launch targets that open from entity states
+    var STATE_LAUNCHES = { favorite_entity: true, todo_lists: true, people: true };
+
     // Quick launch handler
     function handleQuickLaunch(retryCount) {
         retryCount = retryCount || 0;
@@ -273,51 +310,75 @@ function start_data_fetch() {
 
         if (!skipMainMenu) {
             MainMenuPage.showMainMenu();
+            loadingCard.hide();
+        } else if (STATE_LAUNCHES[appState.quick_launch_behavior] && !statesSettled && !appState.ha_state_dict) {
+            // Nothing else is on the stack, so taking the splash down now
+            // would leave the app with no window until the target opens
+            loadingCard.subtitle('Fetching data...');
+            whenStatesLoaded(function() { loadingCard.hide(); });
+        } else {
+            loadingCard.hide();
         }
-        loadingCard.hide();
 
         if (launchReason === 'quickLaunch') {
             log('Quick launch behavior: ' + appState.quick_launch_behavior);
-            switch (appState.quick_launch_behavior) {
-                case 'assistant':
-                    if (appState.voice_enabled) AssistPage.showAssistMenu();
-                    break;
-                case 'favorites':
-                    FavoritesPage.showFavorites();
-                    break;
-                case 'favorite_entity':
-                    if (appState.quick_launch_favorite_entity &&
-                        appState.favoriteEntityStore.has(appState.quick_launch_favorite_entity)) {
-                        EntityService.show(appState.quick_launch_favorite_entity);
-                    }
-                    break;
-                case 'areas':
-                    AreaMenuPage.showAreaMenu();
-                    break;
-                case 'labels':
-                    LabelMenuPage.showLabelMenu();
-                    break;
-                case 'todo_lists':
-                    ToDoListPage.showToDoLists();
-                    break;
-                case 'people':
-                    var personEntities = Object.keys(appState.ha_state_dict).filter(function(id) {
-                        return id.startsWith('person.');
-                    });
-                    EntityListPage.showEntityList("People", personEntities, true, true, true);
-                    break;
-            }
+            runLaunch(quickLaunch);
         }
 
         // Timeline pin launch: dispatch the pin's launch code to the handler
         // for its action type (main menu stays underneath so backing out of
-        // the launched page lands somewhere useful)
+        // the launched page lands somewhere useful). Calendar pins and Home
+        // Assistant pins both look their target up in the states.
         if (launchReason === 'timelineAction') {
             var launchCode = simply.impl.state.launchArgs;
             log('Timeline launch with code: ' + launchCode);
             if (launchCode) {
-                TimelineLaunch.handle(launchCode);
+                whenStatesLoaded(function() {
+                    TimelineLaunch.handle(launchCode);
+                });
             }
+        }
+    }
+
+    function quickLaunch() {
+        switch (appState.quick_launch_behavior) {
+            case 'assistant':
+                if (appState.voice_enabled) AssistPage.showAssistMenu();
+                break;
+            case 'favorites':
+                FavoritesPage.showFavorites();
+                break;
+            case 'favorite_entity':
+                var favorite = appState.quick_launch_favorite_entity;
+                if (favorite && appState.favoriteEntityStore.has(favorite)) {
+                    whenStatesLoaded(function() {
+                        if (appState.getEntity(favorite)) {
+                            EntityService.show(favorite);
+                        } else {
+                            log('Quick launch: ' + favorite + ' is not in Home Assistant');
+                        }
+                    });
+                }
+                break;
+            case 'areas':
+                AreaMenuPage.showAreaMenu();
+                break;
+            case 'labels':
+                LabelMenuPage.showLabelMenu();
+                break;
+            case 'todo_lists':
+                whenStatesLoaded(function() {
+                    ToDoListPage.showToDoLists();
+                });
+                break;
+            case 'people':
+                whenStatesLoaded(function() {
+                    var personEntities = Object.keys(appState.ha_state_dict || {}).filter(function(id) {
+                        return id.startsWith('person.');
+                    });
+                    EntityListPage.showEntityList("People", personEntities, true, true, true);
+                });
+                break;
         }
     }
 
@@ -388,11 +449,13 @@ function start_data_fetch() {
     // Fetch all data
     StateService.getStates(function() {
         loaded.states = true;
+        settleStates();
         checkAllLoaded();
     }, function(err) {
         fetchFailed = true;
         fetchError = err;
         loaded.states = true;
+        settleStates();
         checkAllLoaded();
     }, true);
 
