@@ -46,6 +46,8 @@
 // any future large-screen platform through the display height automatically.
 #if defined(PBL_PLATFORM_EMERY) || (defined(PBL_DISPLAY_HEIGHT) && PBL_DISPLAY_HEIGHT >= 200)
 #define MENU_CONTENT_SIZE_LARGE 1
+//! The firmware's row height at the Large content size
+#define MENU_LARGE_CELL_HEIGHT 61
 #endif
 
 // Menu row fonts, matching what menu_cell_basic_draw uses for the platform's
@@ -852,11 +854,13 @@ static int16_t prv_menu_get_header_height_callback(MenuLayer *menu_layer, uint16
   return prv_header_height(data, section_index);
 }
 
-ROUND_USAGE static int16_t prv_menu_get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
-                                                             void *context) {
+__attribute__((unused)) static int16_t prv_menu_get_cell_height_callback(
+    MenuLayer *menu_layer, MenuIndex *cell_index, void *context) {
 #if defined(PBL_ROUND)
   const bool is_selected = menu_layer_is_index_selected(menu_layer, cell_index);
   return is_selected ? MENU_ROUND_FOCUSED_HEIGHT : MENU_ROUND_UNFOCUSED_HEIGHT;
+#elif defined(MENU_CONTENT_SIZE_LARGE)
+  return MENU_LARGE_CELL_HEIGHT;
 #else
   return MENU_CELL_BASIC_CELL_HEIGHT;
 #endif
@@ -1548,15 +1552,15 @@ static void prv_menu_select_click_callback(MenuLayer *menu_layer, MenuIndex *cel
 
 // Cell metrics must mirror exactly what the MenuLayer uses: round platforms
 // get our get_cell_height callback (the focused row is taller), large content
-// size platforms (Pebble Time 2) get the firmware's 61px default, everything
-// else the classic 44px
+// size platforms (Pebble Time 2) get it too at a fixed 61px, everything else
+// the classic 44px
 static int16_t prv_touch_cell_height(SimplyMenu *self, MenuIndex index) {
 #if defined(PBL_ROUND)
   const bool is_selected =
       menu_layer_is_index_selected(self->menu_layer.menu_layer, &index);
   return is_selected ? MENU_ROUND_FOCUSED_HEIGHT : MENU_ROUND_UNFOCUSED_HEIGHT;
 #elif defined(MENU_CONTENT_SIZE_LARGE)
-  return 61;
+  return MENU_LARGE_CELL_HEIGHT;
 #else
   return MENU_CELL_BASIC_CELL_HEIGHT;
 #endif
@@ -1843,7 +1847,9 @@ static void prv_menu_window_load(Window *window) {
     .get_num_sections = prv_menu_get_num_sections_callback,
     .get_num_rows = prv_menu_get_num_rows_callback,
     .get_header_height = prv_menu_get_header_height_callback,
-#if defined(PBL_ROUND)
+#if defined(PBL_ROUND) || (defined(SIMPLY_HAS_TOUCH) && defined(MENU_CONTENT_SIZE_LARGE))
+    // Touch finds rows by these heights, so the layer must not be left to a
+    // default that follows the system text size
     .get_cell_height = prv_menu_get_cell_height_callback,
 #endif
     .draw_header = prv_menu_draw_header_callback,
