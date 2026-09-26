@@ -357,7 +357,11 @@ Assist.streamReply = function(accumulatedMarkdown) {
   // it was cut short
   var budget = replyLimit - utf8Length(append ? stream.sent : '') - 4;
   if (budget <= 0) {
+    // The last piece filled it exactly and went down still streaming, so the
+    // dots are running and nothing else is ever going to stop them
     stream.full = true;
+    simply.impl.assistMessage(RoleAssistant, '…', FlagAppend);
+    stream.sent += '…';
     return false;
   }
   if (utf8Length(addition) > budget) {

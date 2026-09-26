@@ -192,8 +192,11 @@ function cancelStream() {
 
 function flushStream() {
     streamTimer = null;
-    if (streamText) {
-        Assist.streamReply(streamText);
+    // An answer that has filled the watch is finished as far as the watch is
+    // concerned. A keep-alive after that would start its dots again under the
+    // finished answer, and end them with "No response" once they ran out.
+    if (streamText && !Assist.streamReply(streamText)) {
+        stopKeepAlive();
     }
 }
 
