@@ -247,6 +247,11 @@ function toWatchText(markdown, open) {
 // Must match AssistAction in simply_assist.c
 var ActionClosed = 0;
 var ActionSettings = 1;
+// The microphone opening and closing inside a conversation. Only the first
+// one is opened from here; every later turn starts on the watch, and so does
+// every way a dictation can end short of a transcript.
+var ActionDictationStarted = 2;
+var ActionDictationEnded = 3;
 
 // The answer being streamed in: what the agent has written so far, and how
 // much of the converted form the watch has already been told about.
@@ -488,7 +493,13 @@ Assist.isDictating = function() {
 };
 
 Assist.emitAction = function(action) {
+  if (action === ActionDictationStarted || action === ActionDictationEnded) {
+    state.isDictating = (action === ActionDictationStarted);
+    return;
+  }
   if (action === ActionSettings) {
+    // Only reachable from the conversation itself, so the microphone is shut
+    state.isDictating = false;
     if (state.onSettings) {
       state.onSettings();
     }
