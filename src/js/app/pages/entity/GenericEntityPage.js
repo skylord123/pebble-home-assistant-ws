@@ -262,45 +262,23 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "lock") {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Lock',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'lock',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Unlock',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'unlock',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
+        // LockPage.performAction prompts for a code when the lock has one
+        // (lazy require: LockPage imports this module at top level)
+        let LockPage = require('app/pages/entity/LockPage');
+        let lockServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    LockPage.performAction(entity.entity_id, service);
+                }
+            };
+        };
+        showEntityMenu.item(1, servicesCount++, lockServiceItem('Lock', 'lock'));
+        showEntityMenu.item(1, servicesCount++, lockServiceItem('Unlock', 'unlock'));
+        // LockEntityFeature.OPEN
+        if ((entity.attributes.supported_features || 0) & 1) {
+            showEntityMenu.item(1, servicesCount++, lockServiceItem('Open', 'open'));
+        }
     }
 
     if(domain === "alarm_control_panel") {

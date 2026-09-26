@@ -468,6 +468,9 @@ var EntityService = {
             case 'alarm_control_panel':
                 require('app/pages/entity/AlarmPanelPage').showAlarmEntity(entity_id);
                 break;
+            case 'lock':
+                require('app/pages/entity/LockPage').showLockEntity(entity_id);
+                break;
             case 'select':
             case 'input_select':
                 require('app/pages/entity/SelectPage').showSelectEntity(entity_id);
@@ -576,25 +579,8 @@ var EntityService = {
                 }
             );
         } else if (domain === "lock") {
-            var entity = appState.ha_state_dict[entity_id];
-            if (!entity) {
-                log('handleEntityLongPress: entity ' + entity_id + ' not found in state dict');
-                return;
-            }
-            appState.haws.callService(
-                domain,
-                entity.state === "locked" ? "unlock" : "lock",
-                {},
-                { entity_id: entity_id },
-                function(data) {
-                    Vibe.vibrate('short');
-                    log(JSON.stringify(data));
-                },
-                function(error) {
-                    Vibe.vibrate('double');
-                    log('no response');
-                }
-            );
+            // Locks at once, but asks before unlocking, and handles any code
+            require('app/pages/entity/LockPage').quickAction(entity_id);
         } else if (domain === "scene") {
             appState.haws.callService(
                 domain,
