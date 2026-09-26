@@ -155,6 +155,15 @@
 #define MENU_SUBTITLE_FONT_HEIGHT 18
 #endif
 
+//! The subtitle font a marquee row is measured with, which has to be the one
+//! it is drawn with: launcher-style round rows keep Gothic 18 even on a large
+//! display
+#if defined(MENU_ROUND_LAUNCHER_STYLE)
+#define MENU_MEASURE_SUBTITLE_FONT_KEY MENU_ROUND_SUBTITLE_FONT_KEY
+#else
+#define MENU_MEASURE_SUBTITLE_FONT_KEY MENU_SUBTITLE_FONT_KEY
+#endif
+
 typedef Packet MenuClearPacket;
 
 typedef struct MenuClearSectionPacket MenuClearSectionPacket;
@@ -1168,7 +1177,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     bool subtitle_needs_scroll = false;
     int16_t subtitle_width = 0;
     if (item->subtitle) {
-      const GFont subtitle_font = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
+      const GFont subtitle_font = fonts_get_system_font(MENU_MEASURE_SUBTITLE_FONT_KEY);
       GSize subtitle_size = graphics_text_layout_get_content_size(
           item->subtitle, subtitle_font,
           GRect(0, 0, 1000, 100),
@@ -1198,7 +1207,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     self->title_height = title_height_size.h;
 
     if (item->subtitle) {
-      const GFont subtitle_font_for_height = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
+      const GFont subtitle_font_for_height = fonts_get_system_font(MENU_MEASURE_SUBTITLE_FONT_KEY);
       GSize subtitle_height_size = graphics_text_layout_get_content_size(
           "A", subtitle_font_for_height, GRect(0, 0, 100, 100),
           GTextOverflowModeFill, GTextAlignmentLeft);
