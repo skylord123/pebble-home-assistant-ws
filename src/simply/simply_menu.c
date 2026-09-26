@@ -27,6 +27,9 @@
 
 #define SPINNER_MS 66
 
+//! Spinner frames before rows still waiting on the phone are asked for again
+#define REQUEST_RETRY_TICKS (3000 / SPINNER_MS)
+
 #define RELOAD_DEBOUNCE_MS 50  // Wait 50ms after last section before reloading
 
 #if !defined(PBL_PLATFORM_APLITE)
@@ -548,11 +551,33 @@ static bool prv_send_menu_selection(SimplyMenu *self) {
   return prv_send_menu_item(CommandMenuSelectionEvent, menu_index.section, menu_index.row);
 }
 
+static void prv_retry_requests(SimplyMenu *self) {
+  for (SimplyMenuCommon *node = (SimplyMenuCommon *)self->menu_layer.sections; node;
+       node = (SimplyMenuCommon *)node->node.next) {
+    if (!node->title) {
+      prv_send_menu_get_section(node->section);
+    }
+  }
+  for (SimplyMenuItem *item = (SimplyMenuItem *)self->menu_layer.items; item;
+       item = (SimplyMenuItem *)item->node.next) {
+    if (!item->title) {
+      prv_send_menu_get_item(item->section, item->item);
+    }
+  }
+}
+
 static void spinner_timer_callback(void *data) {
   SimplyMenu *self = data;
   self->spinner_timer = NULL;
+  // A request lost on the way to or from the phone is never answered, so
+  // ask again every so often while the spinner is showing
+  if (++self->spinner_ticks >= REQUEST_RETRY_TICKS) {
+    self->spinner_ticks = 0;
+    prv_retry_requests(self);
+  }
+  // Drawing the spinner row arms the next frame, so the timer stops by itself
+  // once no spinner is on screen
   prv_mark_dirty(self);
-  refresh_spinner_timer(self);
 }
 
 static SimplyMenuItem *get_first_request_item(SimplyMenu *self) {

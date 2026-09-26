@@ -50,6 +50,8 @@ struct SimplyMenu {
   SimplyWindow window;
   SimplyMenuLayer menu_layer;
   AppTimer *spinner_timer;
+  //! Spinner frames since placeholders were last requested from the phone
+  uint8_t spinner_ticks;
   AppTimer *reload_timer;  // Timer for debounced reloads
 #if !defined(PBL_PLATFORM_APLITE)
   AppTimer *scroll_timer;
