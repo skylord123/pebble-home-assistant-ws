@@ -78,6 +78,41 @@ function showClimateEntity(entity_id) {
         };
     }
 
+    // Which setpoint the entity takes right now, chosen like the frontend
+    // does: single when TARGET_TEMPERATURE is set and temperature is known,
+    // else a range when TARGET_TEMPERATURE_RANGE is set and both ends are
+    function setpointMode(data) {
+        let features = getSupportedFeatures(data.supported_features);
+        if (features.target_temperature && data.target_temp !== undefined && data.target_temp !== null) {
+            return 'single';
+        }
+        if (features.target_temperature_range &&
+            data.target_temp_low !== undefined && data.target_temp_low !== null &&
+            data.target_temp_high !== undefined && data.target_temp_high !== null) {
+            return 'range';
+        }
+        return null;
+    }
+
+    function hasTemperatureRow(data) {
+        let features = getSupportedFeatures(data.supported_features);
+        return features.target_temperature || features.target_temperature_range;
+    }
+
+    function temperatureSubtitle(data) {
+        let parts = [];
+        if (data.current_temp !== undefined && data.current_temp !== null) {
+            parts.push(`Cur: ${data.current_temp}\u00b0`);
+        }
+        let mode = setpointMode(data);
+        if (mode === 'range') {
+            parts.push(`Set: ${data.target_temp_low}\u00b0-${data.target_temp_high}\u00b0`);
+        } else if (mode === 'single') {
+            parts.push(`Set: ${data.target_temp}\u00b0`);
+        }
+        return parts.join(' - ');
+    }
+
     // Get initial climate data
     let climateData = getClimateData(climate);
     let supportedFeatures = getSupportedFeatures(climateData.supported_features);
@@ -115,114 +150,114 @@ function showClimateEntity(entity_id) {
         climateMenu.items(0, []);
         let menuIndex = 0;
 
-        // Add Temperature item
-        let tempSubtitle = '';
-        if (climateData.hvac_mode === 'heat_cool' && climateData.target_temp_low !== undefined && climateData.target_temp_high !== undefined) {
-            tempSubtitle = `Cur: ${climateData.current_temp}° - Set: ${climateData.target_temp_low}°-${climateData.target_temp_high}°`;
-        } else if (climateData.target_temp !== undefined) {
-            tempSubtitle = `Cur: ${climateData.current_temp}° - Set: ${climateData.target_temp}°`;
-        } else {
-            tempSubtitle = `Current: ${climateData.current_temp}°`;
-        }
+        // Add Temperature item, only for entities that take a setpoint
+        if (hasTemperatureRow(climateData)) {
+            climateMenu.item(0, menuIndex++, {
+                title: 'Temperature',
+                subtitle: temperatureSubtitle(climateData),
+                on_click: function() {
+                    // Always get the latest climate data when clicked
+                    let latestClimate = currentClimate();
+                    let latestData = getClimateData(latestClimate);
+                    let setpoint = setpointMode(latestData);
 
-        climateMenu.item(0, menuIndex++, {
-            title: 'Temperature',
-            subtitle: tempSubtitle,
-            on_click: function() {
-                // Always get the latest climate data when clicked
-                let latestClimate = currentClimate();
-                let latestData = getClimateData(latestClimate);
-
-                if (latestData.hvac_mode === 'heat_cool') {
-                    // Show menu to select high or low temp
-                    let tempRangeMenu = new UI.Menu({
-                        status: false,
-                        sections: [{
-                            title: 'Set Temperature Range'
-                        }]
-                    });
-
-                    // These rows stay on screen while the setpoint changes, so
-                    // the bound has to be read when the row is pressed. Closing
-                    // over latestData would open the selector on the value from
-                    // when the menu was built, and confirming it would quietly
-                    // put back the temperature the user just moved away from.
-                    function openRangeEnd(which) {
-                        let d = getClimateData(currentClimate());
-                        showTemperatureMenu(entity_id, which,
-                            which === 'low' ? d.target_temp_low : d.target_temp_high,
-                            d.min_temp, d.max_temp, d.temp_step);
+                    if (!setpoint) {
+                        // No setpoint in this mode (usually off)
+                        Vibe.vibrate('double');
+                        return;
                     }
 
-                    tempRangeMenu.item(0, 0, {
-                        title: 'Low Temperature',
-                        subtitle: `${latestData.target_temp_low}°`,
-                        on_click: function() { openRangeEnd('low'); }
-                    });
+                    if (setpoint === 'range') {
+                        // Show menu to select high or low temp
+                        let tempRangeMenu = new UI.Menu({
+                            status: false,
+                            sections: [{
+                                title: 'Set Temperature Range'
+                            }]
+                        });
 
-                    tempRangeMenu.item(0, 1, {
-                        title: 'High Temperature',
-                        subtitle: `${latestData.target_temp_high}°`,
-                        on_click: function() { openRangeEnd('high'); }
-                    });
+                        // These rows stay on screen while the setpoint changes, so
+                        // the bound has to be read when the row is pressed. Closing
+                        // over latestData would open the selector on the value from
+                        // when the menu was built, and confirming it would quietly
+                        // put back the temperature the user just moved away from.
+                        function openRangeEnd(which) {
+                            let d = getClimateData(currentClimate());
+                            showTemperatureMenu(entity_id, which,
+                                which === 'low' ? d.target_temp_low : d.target_temp_high,
+                                d.min_temp, d.max_temp, d.temp_step);
+                        }
 
-
-
-                    // Helper function to update temperature range menu items
-                    function updateTempRangeMenuItems(updatedClimate) {
-                        let updatedData = getClimateData(updatedClimate);
-
-                        // Update menu items to reflect current state
                         tempRangeMenu.item(0, 0, {
                             title: 'Low Temperature',
-                            subtitle: `${updatedData.target_temp_low}°`,
-                            on_click: tempRangeMenu.items(0)[0].on_click
+                            subtitle: `${latestData.target_temp_low}°`,
+                            on_click: function() { openRangeEnd('low'); }
                         });
 
                         tempRangeMenu.item(0, 1, {
                             title: 'High Temperature',
-                            subtitle: `${updatedData.target_temp_high}°`,
-                            on_click: tempRangeMenu.items(0)[1].on_click
+                            subtitle: `${latestData.target_temp_high}°`,
+                            on_click: function() { openRangeEnd('high'); }
                         });
-                    }
 
-                    let temp_range_subscription_msg_id = null;
-                    function releaseTempRangeUpdates() {
-                        if (temp_range_subscription_msg_id) {
-                            appState.haws.unsubscribe(temp_range_subscription_msg_id);
-                            temp_range_subscription_msg_id = null;
+
+
+                        // Helper function to update temperature range menu items
+                        function updateTempRangeMenuItems(updatedClimate) {
+                            let updatedData = getClimateData(updatedClimate);
+
+                            // Update menu items to reflect current state
+                            tempRangeMenu.item(0, 0, {
+                                title: 'Low Temperature',
+                                subtitle: `${updatedData.target_temp_low}°`,
+                                on_click: tempRangeMenu.items(0)[0].on_click
+                            });
+
+                            tempRangeMenu.item(0, 1, {
+                                title: 'High Temperature',
+                                subtitle: `${updatedData.target_temp_high}°`,
+                                on_click: tempRangeMenu.items(0)[1].on_click
+                            });
                         }
-                    }
 
-                    // Subscribe on every show, so coming back after a reconnect
-                    // follows the entity again
-                    tempRangeMenu.on('show', function() {
-                        releaseTempRangeUpdates();
-                        temp_range_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
-                            helpers.log_message(`Climate entity update for temperature range menu ${entity_id}`);
-                            // Update menu items directly
-                            updateTempRangeMenuItems(updatedClimate);
+                        let temp_range_subscription_msg_id = null;
+                        function releaseTempRangeUpdates() {
+                            if (temp_range_subscription_msg_id) {
+                                appState.haws.unsubscribe(temp_range_subscription_msg_id);
+                                temp_range_subscription_msg_id = null;
+                            }
+                        }
+
+                        // Subscribe on every show, so coming back after a reconnect
+                        // follows the entity again
+                        tempRangeMenu.on('show', function() {
+                            releaseTempRangeUpdates();
+                            temp_range_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
+                                helpers.log_message(`Climate entity update for temperature range menu ${entity_id}`);
+                                // Update menu items directly
+                                updateTempRangeMenuItems(updatedClimate);
+                            });
                         });
-                    });
 
-                    tempRangeMenu.on('select', function(e) {
-                        helpers.log_message(`Temperature range menu item ${e.item.title} was selected!`);
-                        if(typeof e.item.on_click === 'function') {
-                            e.item.on_click(e);
-                        }
-                    });
+                        tempRangeMenu.on('select', function(e) {
+                            helpers.log_message(`Temperature range menu item ${e.item.title} was selected!`);
+                            if(typeof e.item.on_click === 'function') {
+                                e.item.on_click(e);
+                            }
+                        });
 
-                    tempRangeMenu.on('hide', function() {
-                        releaseTempRangeUpdates();
-                    });
+                        tempRangeMenu.on('hide', function() {
+                            releaseTempRangeUpdates();
+                        });
 
-                    tempRangeMenu.show();
-                } else {
-                    // Show temperature selection menu directly
-                    showTemperatureMenu(entity_id, 'single', latestData.target_temp, latestData.min_temp, latestData.max_temp, latestData.temp_step);
+                        tempRangeMenu.show();
+                    } else {
+                        // Show temperature selection menu directly
+                        showTemperatureMenu(entity_id, 'single', latestData.target_temp, latestData.min_temp, latestData.max_temp, latestData.temp_step);
+                    }
                 }
-            }
-        });
+            });
+        }
 
         // Add HVAC Mode item
         climateMenu.item(0, menuIndex++, {
@@ -292,28 +327,20 @@ function showClimateEntity(entity_id) {
             let updatedData = getClimateData(updatedClimate);
             let menuIndex = 0;
 
-            // Update Temperature item
-            let tempSubtitle = '';
-            if (updatedData.hvac_mode === 'heat_cool' && updatedData.target_temp_low !== undefined && updatedData.target_temp_high !== undefined) {
-                tempSubtitle = `Cur: ${updatedData.current_temp}\u00b0 - Set: ${updatedData.target_temp_low}\u00b0-${updatedData.target_temp_high}\u00b0`;
-            } else if (updatedData.target_temp !== undefined) {
-                tempSubtitle = `Cur: ${updatedData.current_temp}\u00b0 - Set: ${updatedData.target_temp}\u00b0`;
-            } else {
-                tempSubtitle = `Current: ${updatedData.current_temp}\u00b0`;
-            }
-
             // Update the temperature menu item
-            climateMenu.item(0, menuIndex++, {
-                title: 'Temperature',
-                subtitle: tempSubtitle,
-                on_click: climateMenu.items(0)[0].on_click
-            });
+            if (hasTemperatureRow(updatedData)) {
+                climateMenu.item(0, menuIndex++, {
+                    title: 'Temperature',
+                    subtitle: temperatureSubtitle(updatedData),
+                    on_click: climateMenu.items(0)[menuIndex-1].on_click
+                });
+            }
 
             // Update HVAC Mode item
             climateMenu.item(0, menuIndex++, {
                 title: 'HVAC Mode',
                 subtitle: updatedData.hvac_mode ? helpers.ucwords(updatedData.hvac_mode.replace('_', ' ')) : 'Unknown',
-                on_click: climateMenu.items(0)[1].on_click
+                on_click: climateMenu.items(0)[menuIndex-1].on_click
             });
 
             // Update other items based on supported features
