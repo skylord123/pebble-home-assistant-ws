@@ -119,10 +119,12 @@ static void drop_receive_queue(SimplyMsg *self) {
 }
 
 static void add_receive_packet(SimplyMsg *self, SegmentPacket *packet) {
+  if (self->discarding) { return; }
   size_t size = packet->packet.length;
   Packet *copy = malloc(size);
   if (!copy) {
     drop_receive_queue(self);
+    self->discarding = true;
     return;
   }
   memcpy(copy, packet, size);
@@ -130,6 +132,7 @@ static void add_receive_packet(SimplyMsg *self, SegmentPacket *packet) {
   if (!node) {
     free(copy);
     drop_receive_queue(self);
+    self->discarding = true;
     return;
   }
   node->length = size;
@@ -138,6 +141,12 @@ static void add_receive_packet(SimplyMsg *self, SegmentPacket *packet) {
 }
 
 static void handle_receive_queue(SimplyMsg *self, SegmentPacket *packet) {
+  // The rest of a message whose start was dropped is not a message
+  if (self->discarding) {
+    self->discarding = false;
+    drop_receive_queue(self);
+    return;
+  }
   size_t total_length = packet->packet.length - sizeof(SegmentPacket);
   for (List1Node *walk = self->receive_queue; walk; walk = walk->next) {
     total_length += ((SimplyPacket*) walk)->length - sizeof(SegmentPacket);
@@ -169,7 +178,11 @@ static void handle_receive_queue(SimplyMsg *self, SegmentPacket *packet) {
     other = walk->buffer;
   }
 
-  handle_packet(self->simply, buffer);
+  const Packet *joined = buffer;
+  if (total_length >= sizeof(Packet) && joined->length >= sizeof(Packet) &&
+      joined->length <= total_length) {
+    handle_packet(self->simply, buffer);
+  }
 
   free(buffer);
 }
