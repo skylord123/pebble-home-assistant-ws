@@ -116,8 +116,15 @@ struct AssistMessage {
   //! here and lays out only the line that changed and whatever follows it.
   uint16_t wrap_offset;
   uint16_t wrap_height;
+  //! The same for the last line the draw pass saw go by above the view. The
+  //! firmware repaints the whole window for every frame of the thinking dots,
+  //! so without this a turn scrolled deep into is placed from its first word
+  //! about ten times a second.
+  uint16_t draw_offset;
+  uint16_t draw_height;
   uint8_t role;
   bool wrap_bold;
+  bool draw_bold;
 };
 
 //! Everything measured about a turn stops being true when it moves, because a
@@ -127,6 +134,9 @@ static void prv_forget_layout(AssistMessage *message) {
   message->wrap_offset = 0;
   message->wrap_height = 0;
   message->wrap_bold = false;
+  message->draw_offset = 0;
+  message->draw_height = 0;
+  message->draw_bold = false;
 }
 
 struct SimplyAssist {
@@ -135,7 +145,8 @@ struct SimplyAssist {
   ScrollLayer *scroll_layer;
   Layer *content_layer;
   //! The thinking dots, kept apart from the words so the animation never
-  //! costs a re-wrap of the conversation
+  //! costs a re-measure of the conversation. The firmware still repaints
+  //! the words with every frame; see AssistMessage.draw_offset.
   Layer *dots_layer;
 #if defined(PBL_ROUND)
   Layer *indicator_up_layer;
@@ -637,9 +648,13 @@ static void prv_flush_line(Wrapper *w) {
 //!
 //! `stop_y` ends the pass once the lines have gone past it. Drawing only needs
 //! what the screen can show, and a long answer is mostly not on it.
+//!
+//! `skip` is the turn being drawn, when only drawing: lines wholly above
+//! `view_top` are skipped using where it last saw one begin.
 static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
                              int32_t top, GRect frame,
-                             AssistMessage *resume, int32_t stop_y) {
+                             AssistMessage *resume, int32_t stop_y,
+                             AssistMessage *skip, int32_t view_top) {
   Wrapper w = {
     .ctx = ctx,
     .frame = frame,
@@ -670,6 +685,12 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
     line_offset = resume->wrap_offset;
     line_height = resume->wrap_height;
     line_bold = bold;
+  } else if (skip && skip->draw_height > 0 && skip->draw_offset <= skip->wrap_offset &&
+             top + skip->draw_height + w.line_height <= view_top) {
+    // Only lines before the one measuring resumes from are sure not to move
+    p = text + skip->draw_offset;
+    w.y = top + skip->draw_height;
+    bold = skip->draw_bold;
   }
 
   prv_begin_line(&w);
@@ -753,6 +774,11 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
       line_offset = (uint16_t)(word - text);
       line_height = w.y - top;
       line_bold = bold;
+      if (skip && w.y + w.line_height <= view_top) {
+        skip->draw_offset = line_offset;
+        skip->draw_height = line_height;
+        skip->draw_bold = bold;
+      }
       if (w.y > stop_y) {
         // Everything from here down is off the bottom of the screen
         return w.y - top;
@@ -873,10 +899,10 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
       // Its height is what everything below it stands on, so it has to be laid
       // out in full, picking up from its last line if only that has changed
       self->messages[i].height =
-          prv_wrap_body(self, ctx, text, y, frame, &self->messages[i], INT16_MAX);
+          prv_wrap_body(self, ctx, text, y, frame, &self->messages[i], INT16_MAX, NULL, 0);
     } else if (ctx && visible) {
       // Height already known: place only as far down as the screen reaches
-      prv_wrap_body(self, ctx, text, y, frame, NULL, view_bottom);
+      prv_wrap_body(self, ctx, text, y, frame, NULL, view_bottom, &self->messages[i], view_top);
     }
     y += self->messages[i].height;
     bottom = y;
@@ -885,8 +911,8 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
 
   if (self->thinking) {
     // The dots themselves live in their own layer, so that the animation can
-    // repaint ten times a second without putting the conversation's words
-    // through the wrapper again. All that happens here is reserving the room
+    // repaint ten times a second without measuring the conversation's words
+    // again. All that happens here is reserving the room
     // they need and remembering where it ended up.
     const int16_t dot_max = prv_dot_size(frame);
 
