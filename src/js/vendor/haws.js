@@ -24,7 +24,11 @@ class HAWS {
         this._featuresId = null;
         this._commands = new Map();
         this._subscriptions = [];
-        this.reconnectInterval = 2500;
+        // Retries back off from the first delay to the cap, and start over
+        // once a connection authenticates
+        this.reconnectInterval = 1000;
+        this.maxReconnectInterval = 15000;
+        this._reconnectAttempts = 0;
         this.debug = debug || false;
         this.coalesce_messages = coalesce_messages || false;
 
@@ -275,6 +279,7 @@ class HAWS {
                 // one
                 this._resetConnectionState();
                 this.authenticated = true;
+                this._reconnectAttempts = 0;
 
                 // Send supported_features if coalesce_messages is enabled
                 if(this.coalesce_messages) {
@@ -374,8 +379,12 @@ class HAWS {
             this.reconnectTimeout = null;
         }
 
+        let delay = Math.min(this.reconnectInterval * Math.pow(2, this._reconnectAttempts),
+            this.maxReconnectInterval);
+        this._reconnectAttempts++;
+
         if(this.debug) {
-            console.log(`[HAWS] Reconnection attempt in ${this.reconnectInterval/1000}s`);
+            console.log(`[HAWS] Reconnection attempt in ${delay/1000}s`);
         }
 
         this.reconnectTimeout = setTimeout(function(){
@@ -384,7 +393,7 @@ class HAWS {
                 console.log(`[HAWS] Attempting connection`);
             }
             that.connect();
-        }, this.reconnectInterval);
+        }, delay);
     }
 
     disconnect() {
