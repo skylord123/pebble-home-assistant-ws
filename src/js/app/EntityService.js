@@ -18,9 +18,21 @@ function wasPressed(entity) {
     return !isNaN(new Date(entity.state).getTime());
 }
 
-function pressedText(entity) {
-    if (entity.state === 'unavailable') return entity.state;
-    return wasPressed(entity) ? 'Pressed' : 'Never pressed';
+// Domains whose state is the timestamp of their last use, and what to call
+// that use; the relative time after it already says when
+var TIMESTAMP_STATE_TEXT = {
+    button: ['Pressed', 'Never pressed'],
+    input_button: ['Pressed', 'Never pressed'],
+    scene: ['Activated', 'Never activated']
+};
+
+// A timestamp sensor's value as a local date and time
+function timestampText(state) {
+    var date = new Date(state);
+    if (isNaN(date.getTime())) return state;
+    var time = helpers.formatTimeOfDay(date);
+    if (date.toDateString() === new Date().toDateString()) return time;
+    return (date.getMonth() + 1) + '/' + date.getDate() + ' ' + time;
 }
 
 // Compressed states send a context that is only an id as a bare string, and
@@ -95,11 +107,17 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
-        } else if (domain === 'button' || domain === 'input_button') {
-            // A button's state is when it was last pressed, not a condition,
-            // so the raw timestamp is noise. The relative time that follows
-            // is the same instant and keeps counting on its own.
-            text = pressedText(entity);
+        } else if (TIMESTAMP_STATE_TEXT[domain]) {
+            // A button's (or scene's) state is when it was last used, not a
+            // condition, so the raw timestamp is noise. The relative time
+            // that follows is the same instant and keeps counting on its own.
+            text = entity.state === 'unavailable' ? entity.state
+                : TIMESTAMP_STATE_TEXT[domain][wasPressed(entity) ? 0 : 1];
+        } else if (domain === 'event') {
+            // The state is when it last fired; which event it was matters more
+            text = wasPressed(entity) ? (attrs.event_type || 'Fired') : entity.state;
+        } else if (domain === 'sensor' && attrs.device_class === 'timestamp') {
+            text = timestampText(entity.state);
         } else if (domain === 'update') {
             // Which version is waiting, rather than a bare on or off
             text = require('app/pages/entity/UpdatePage').statusText(entity);
@@ -157,7 +175,7 @@ var EntityService = {
     hidesRelativeTime: function(entity) {
         if (!entity || !entity.entity_id) return false;
         var domain = entity.entity_id.split('.')[0];
-        if (domain !== 'button' && domain !== 'input_button') return false;
+        if (!TIMESTAMP_STATE_TEXT[domain]) return false;
         // Only the never pressed case: an unavailable button's last_changed
         // is the moment it went unavailable, which is worth showing
         return entity.state !== 'unavailable' && !wasPressed(entity);
