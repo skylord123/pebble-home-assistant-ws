@@ -80,7 +80,8 @@ static int64_t prv_now_ms(void) {
   return (int64_t)seconds * 1000 + ms;
 }
 
-static int32_t prv_clamp(int32_t value, int32_t min, int32_t max) {
+//! Wide enough to take a sum or difference of two values without overflowing
+static int32_t prv_clamp(int64_t value, int32_t min, int32_t max) {
   if (value < min) { return min; }
   if (value > max) { return max; }
   return value;
@@ -279,9 +280,10 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
     const GRect track = prv_track_rect(bounds);
     graphics_context_set_stroke_color(ctx, self->text_color);
     graphics_draw_rect(ctx, track);
-    const int32_t range = self->max - self->min;
+    const int64_t range = (int64_t)self->max - self->min;
     if (range > 0) {
-      const int16_t fill_w = (int16_t)((int64_t)(track.size.w - 4) * (self->value - self->min) / range);
+      const int16_t fill_w =
+          (int16_t)((int64_t)(track.size.w - 4) * ((int64_t)self->value - self->min) / range);
       if (fill_w > 0) {
         graphics_context_set_fill_color(ctx, self->text_color);
         graphics_fill_rect(ctx, GRect(track.origin.x + 2, track.origin.y + 2, fill_w, track.size.h - 4),
@@ -301,7 +303,8 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
 }
 
 static int32_t prv_accel_delta(SimplyNumber *self, uint8_t clicks) {
-  const int32_t total_steps = self->step > 0 ? (self->max - self->min) / self->step : 0;
+  const int64_t total_steps =
+      self->step > 0 ? ((int64_t)self->max - self->min) / self->step : 0;
   int32_t mult = 1;
   if (clicks > ACCEL_TIER1_CLICKS && total_steps > ACCEL_TIER1_MIN_STEPS) { mult = 10; }
   if (clicks > ACCEL_TIER2_CLICKS && total_steps > ACCEL_TIER2_MIN_STEPS) { mult = 100; }
@@ -340,7 +343,7 @@ static void prv_schedule_settle(SimplyNumber *self) {
 }
 
 static void prv_adjust(SimplyNumber *self, int32_t delta) {
-  const int32_t value = prv_clamp(self->value + delta, self->min, self->max);
+  const int32_t value = prv_clamp((int64_t)self->value + delta, self->min, self->max);
   self->last_input_ms = prv_now_ms();
   if (value != self->value) {
     self->value = value;
@@ -645,10 +648,10 @@ static void prv_set_from_x(SimplyNumber *self, GRect bounds, int16_t x) {
   if (pos < 0) { pos = 0; }
   if (pos > inner_w) { pos = inner_w; }
 
-  const int32_t range = self->max - self->min;
-  int32_t value = self->min + (int32_t)(((int64_t)range * pos + inner_w / 2) / inner_w);
+  const int64_t range = (int64_t)self->max - self->min;
+  int64_t value = self->min + (range * pos + inner_w / 2) / inner_w;
   if (self->step > 0) {
-    const int32_t steps = (value - self->min + self->step / 2) / self->step;
+    const int64_t steps = (value - self->min + self->step / 2) / self->step;
     value = self->min + steps * self->step;
   }
   value = prv_clamp(value, self->min, self->max);
