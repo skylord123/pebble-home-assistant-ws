@@ -283,6 +283,7 @@ Assist.show = function(opts) {
   state.onTranscript = opts.onTranscript;
   state.onSettings = opts.onSettings;
   state.onClose = opts.onClose;
+  state.onDictationEnd = opts.onDictationEnd;
   state.dark = !!opts.dark;
   // Track if dictation is actively in progress
   state.isDictating = opts.listen !== false;
@@ -520,6 +521,9 @@ Assist.isDictating = function() {
 Assist.emitAction = function(action) {
   if (action === ActionDictationStarted || action === ActionDictationEnded) {
     state.isDictating = (action === ActionDictationStarted);
+    if (action === ActionDictationEnded && state.onDictationEnd) {
+      state.onDictationEnd();
+    }
     return;
   }
   if (action === ActionSettings) {
@@ -539,6 +543,7 @@ Assist.emitAction = function(action) {
     state.onTranscript = null;
     state.onSettings = null;
     state.onClose = null;
+    state.onDictationEnd = null;
     if (onClose) {
       onClose();
     }

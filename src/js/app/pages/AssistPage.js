@@ -411,6 +411,11 @@ function openAssist(listen, reset) {
         listen: listen,
         reset: reset,
         onTranscript: runPipeline,
+        // A reconnect held back for the microphone is due now, whether or not
+        // anything was heard
+        onDictationEnd: function() {
+            ConnectionService.showPendingReconnectDialog();
+        },
         onSettings: function() {
             // Imported inline to avoid a circular dependency
             var SettingsMenuPage = require('app/pages/SettingsMenuPage');

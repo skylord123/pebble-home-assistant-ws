@@ -120,6 +120,11 @@ var SplashScreen = {
     isCovering: function() {
         return covering;
     },
+    // True only while the splash is actually on screen. It can be covering
+    // without being shown while a reconnect waits for dictation to finish.
+    isShown: function() {
+        return shown;
+    },
     title: function(text) {
         if (text === undefined) { return texts.title; }
         texts.title = text;
