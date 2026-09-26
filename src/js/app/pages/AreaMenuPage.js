@@ -13,6 +13,15 @@ var helpers = require('app/helpers');
 var areaMenu = null;
 var areaMenuUsingFloors = null;
 
+// Rows are written one at a time on every show, so when the registry now has
+// fewer entries than last time the leftover rows have to go
+function dropItemsFrom(menu, count) {
+    var items = menu.items(0);
+    if (items && items.length > count) {
+        menu.items(0, items.slice(0, count));
+    }
+}
+
 class AreaMenuPage extends BasePage {
     constructor() {
         super();
@@ -98,6 +107,7 @@ class AreaMenuPage extends BasePage {
                     }
                 });
             }
+            dropItemsFrom(menu, itemIndex);
         });
 
         menu.on('select', function(e) {
@@ -171,6 +181,7 @@ class AreaMenuPage extends BasePage {
                     });
                 })(areaEntries[i]);
             }
+            dropItemsFrom(menu, areaEntries.length);
         });
 
         menu.on('select', function(e) {
@@ -256,6 +267,7 @@ function showAreasForFloor(floor_id, floor_name) {
                 });
             })(areaEntries[i]);
         }
+        dropItemsFrom(floorAreasMenu, areaEntries.length);
     });
 
     floorAreasMenu.on('select', function(e) {
