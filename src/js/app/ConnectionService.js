@@ -30,6 +30,7 @@ var ConnectionService = {
     // Home Assistant refused the token. Nothing reconnects after that, and the
     // failure has to stay on screen rather than turn into "Reconnecting".
     authFailed: false,
+    restartTimer: null,
 
     /**
      * Initialize the connection service
@@ -108,9 +109,14 @@ var ConnectionService = {
         this.loadingCard.body('');
         this.loadingCard.subtitle('Restarting...');
 
-        // Reinitialize after a small delay
+        // Reinitialize after a small delay. Two saves in quick succession
+        // must still end up with one connection.
         log('Reinitializing app...');
-        setTimeout(function() {
+        if (this.restartTimer) {
+            clearTimeout(this.restartTimer);
+        }
+        this.restartTimer = setTimeout(function() {
+            self.restartTimer = null;
             self.connect();
         }, 500);
     },
@@ -149,27 +155,39 @@ var ConnectionService = {
         log('Coalesce messages: ' + (Constants.coalesce_messages_enabled ? 'ENABLED' : 'DISABLED'));
 
         // Create HAWS instance
-        appState.haws = new HAWS(
+        var haws = new HAWS(
             appState.ha_url,
             appState.ha_password,
             Constants.debugHAWS,
             Constants.coalesce_messages_enabled
         );
+        appState.haws = haws;
+
+        // A restart replaces the instance, and the old socket can still
+        // report its close long after the new one is up. Its events belong to
+        // a connection nobody is using any more.
+        function current() {
+            return appState.haws === haws;
+        }
 
         // Set up event handlers
-        appState.haws.on('open', function(evt) {
+        haws.on('open', function(evt) {
+            if (!current()) { return; }
             self.loadingCard.subtitle('Authenticating');
         });
 
-        appState.haws.on('close', function(evt) {
+        haws.on('close', function(evt) {
+            if (!current()) { return; }
             self.handleDisconnect();
         });
 
-        appState.haws.on('error', function(evt) {
+        haws.on('error', function(evt) {
+            if (!current()) { return; }
             self.loadingCard.subtitle('Error');
         });
 
-        appState.haws.on('auth_invalid', function(evt) {
+        haws.on('auth_invalid', function(evt) {
+            if (!current()) { return; }
             self.authFailed = true;
             self.loadingCard.title('Auth Failure');
             self.loadingCard.subtitle('Check your access token');
@@ -179,7 +197,8 @@ var ConnectionService = {
             self.loadingCard.error();
         });
 
-        appState.haws.on('auth_ok', function(evt) {
+        haws.on('auth_ok', function(evt) {
+            if (!current()) { return; }
             log("ws auth_ok: " + JSON.stringify(evt));
             appState.ha_version = (evt.detail && evt.detail.ha_version) || null;
 
@@ -200,7 +219,7 @@ var ConnectionService = {
             }
         });
 
-        appState.haws.connect();
+        haws.connect();
     },
 
     /**
