@@ -26,6 +26,7 @@
 #include <pebble.h>
 
 #define SEND_DELAY_MS 10
+#define SEND_DELAY_MAX_MS 1000
 
 static const size_t APP_MSG_SIZE_INBOUND = IF_APLITE_ELSE(1024, 2044);
 static const size_t APP_MSG_SIZE_OUTBOUND = 1024;
@@ -324,7 +325,7 @@ SimplyMsg *simply_msg_create(Simply *simply) {
   }
 
   SimplyMsg *self = malloc(sizeof(*self));
-  *self = (SimplyMsg) { .simply = simply };
+  *self = (SimplyMsg) { .simply = simply, .send_delay_ms = SEND_DELAY_MS };
   s_msg = self;
 
   simply->msg = self;
@@ -411,8 +412,13 @@ static void send_msg_retry(void *data) {
     free(self->send_buffer);
     self->send_buffer = NULL;
     self->send_delay_ms = SEND_DELAY_MS;
-  } else {
+  } else if (self->send_delay_ms < SEND_DELAY_MAX_MS) {
+    // Back off while the outbox is busy, but never so far that the next click
+    // waits seconds behind it
     self->send_delay_ms *= 2;
+    if (self->send_delay_ms > SEND_DELAY_MAX_MS) {
+      self->send_delay_ms = SEND_DELAY_MAX_MS;
+    }
   }
   self->send_timer = app_timer_register(self->send_delay_ms, send_msg_retry, self);
 }
