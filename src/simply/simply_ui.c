@@ -216,9 +216,10 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
   bool has_subtitle = is_string(subtitle->text);
   bool has_body = is_string(body->text);
 
-  GSize title_size, subtitle_size;
+  // An icon or image can be set without the text beside it
+  GSize title_size = GSizeZero, subtitle_size = GSizeZero;
   GPoint title_pos, subtitle_pos, image_pos = GPointZero;
-  GRect body_rect;
+  GRect body_rect = { .size = text_frame.size };
 
   SimplyImage *title_icon = simply_res_get_image(
       self->window.simply->res, self->ui_layer.imagefields[UiTitleIcon]);
@@ -335,7 +336,9 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
     GRect icon_frame = title_icon_bounds;
     icon_frame.origin.x =
         PBL_IF_ROUND_ELSE((frame.size.w - title_icon_bounds.size.w) / 2, margin_x);
-    PBL_IF_RECT_ELSE(icon_frame.size.h = title_size.h, NOOP);
+    if (has_title) {
+      PBL_IF_RECT_ELSE(icon_frame.size.h = title_size.h, NOOP);
+    }
     graphics_context_set_alpha_blended(ctx, true);
     graphics_draw_bitmap_centered(ctx, title_icon->bitmap, icon_frame);
   }
@@ -349,7 +352,9 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
     GRect subicon_frame = subtitle_icon_bounds;
     subicon_frame.origin.x =
         PBL_IF_ROUND_ELSE((frame.size.w - subtitle_icon_bounds.size.w) / 2, margin_x);
-    PBL_IF_RECT_ELSE(subicon_frame.size.h = subtitle_size.h, NOOP);
+    if (has_subtitle) {
+      PBL_IF_RECT_ELSE(subicon_frame.size.h = subtitle_size.h, NOOP);
+    }
     graphics_context_set_alpha_blended(ctx, true);
     graphics_draw_bitmap_centered(ctx, subtitle_icon->bitmap, subicon_frame);
   }
