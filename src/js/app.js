@@ -180,6 +180,7 @@ var coreGateGeneration = 0;
 function whenCoreRunning(proceed) {
     var log = helpers.log_message;
     var generation = ++coreGateGeneration;
+    var haws = appState.haws;
     var subscription = null;
     var ceiling = null;
     var settled = false;
@@ -196,6 +197,9 @@ function whenCoreRunning(proceed) {
             subscription = null;
         }
         if (reason) { log('Core state gate: ' + reason); }
+        // Pending commands fail when the socket drops, and the next auth_ok
+        // opens a gate of its own
+        if (appState.haws !== haws || !haws.isConnected()) { return; }
         proceed();
     }
 
@@ -237,6 +241,7 @@ function on_auth_ok(evt) {
 function start_data_fetch() {
     var log = helpers.log_message;
     var fetch_start_time = Date.now();
+    var haws = appState.haws;
     log("Starting data fetch...");
 
     // Try to load from cache first.
@@ -351,6 +356,14 @@ function start_data_fetch() {
     function checkAllLoaded() {
         if (loaded.states && loaded.areas && loaded.floors &&
             loaded.devices && loaded.entities && loaded.labels && loaded.pipelines) {
+
+            // Everything still pending fails when the connection drops. The
+            // fetch after the next auth_ok starts over, and this one must not
+            // put the UI up over the reconnect splash or cache what it missed.
+            if (appState.haws !== haws || !haws.isConnected()) {
+                log("Connection dropped during data fetch");
+                return;
+            }
 
             var elapsed = Date.now() - fetch_start_time;
             log("Data fetch complete in " + elapsed + "ms");

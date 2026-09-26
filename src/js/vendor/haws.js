@@ -144,11 +144,31 @@ class HAWS {
      * the old ids around meant a fresh command could be handed an id that was
      * still listed as a subscription, and _handleMessage would then swallow
      * its result instead of calling back.
+     *
+     * Commands still waiting on an answer are failed rather than forgotten,
+     * so their callers can stop waiting. Subscriptions are left alone: pages
+     * take new ones when the reconnect splash comes down.
      */
     _resetConnectionState() {
+        let pending = [];
+        this._commands.forEach((callback, id) => {
+            if (callback[2] || this._subscriptions.indexOf(id) === -1) {
+                pending.push([id, callback[1]]);
+            }
+        });
+
         this._commands = new Map();
         this._subscriptions = [];
         this._last_cmd_id = 0;
+
+        pending.forEach(function(entry) {
+            if (typeof entry[1] !== 'function') { return; }
+            try {
+                entry[1](HAWS._failure(entry[0], 'connection_lost', 'Lost the connection to Home Assistant'));
+            } catch (e) {
+                console.log(`[HAWS] error callback for ${entry[0]} threw: ${e}`);
+            }
+        });
     }
 
     connect() {
@@ -780,13 +800,22 @@ class HAWS {
         const subscriptionId = msg.id;
         this._subscriptions.push(subscriptionId);
 
+        // A run answers once, so losing the connection after the answer
+        // arrived must not report a failure as well
+        let settled = false;
+        const fail = (error) => {
+            if (settled) { return; }
+            settled = true;
+            if (errorCallback) {
+                errorCallback(error);
+            }
+        };
+
         // Create a handler for the subscription responses
         const handler = (response) => {
             if (response.type === 'result') {
                 if (!response.success) {
-                    if (errorCallback) {
-                        errorCallback(response.error || 'Failed to start pipeline');
-                    }
+                    fail(response.error || 'Failed to start pipeline');
                     this.unsubscribe(subscriptionId);
                     return;
                 }
@@ -805,14 +834,12 @@ class HAWS {
 
                 // Check for error event
                 if (event.type === 'error') {
-                    if (errorCallback) {
-                        const errorMessage = event.data && event.data.message ? event.data.message : 'Pipeline error';
-                        const errorCode = event.data && event.data.code ? event.data.code : 'unknown';
-                        errorCallback({
-                            error: errorMessage,
-                            code: errorCode
-                        });
-                    }
+                    const errorMessage = event.data && event.data.message ? event.data.message : 'Pipeline error';
+                    const errorCode = event.data && event.data.code ? event.data.code : 'unknown';
+                    fail({
+                        error: errorMessage,
+                        code: errorCode
+                    });
                     this.unsubscribe(subscriptionId);
                     return;
                 }
@@ -840,6 +867,7 @@ class HAWS {
 
                 // Check for intent-end event to get the response
                 if (event.type === 'intent-end' && event.data && event.data.intent_output) {
+                    settled = true;
                     if (successCallback) {
                         successCallback({
                             success: true,
@@ -851,8 +879,9 @@ class HAWS {
             }
         };
 
-        // Store the command and handler
-        this._commands.set(subscriptionId, [handler, errorCallback]);
+        // Store the command and handler. The third slot marks it to be failed
+        // if the connection drops, which subscriptions otherwise are not.
+        this._commands.set(subscriptionId, [handler, fail, true]);
 
         // Send the message
         this.ws.send(JSON.stringify(msg));
