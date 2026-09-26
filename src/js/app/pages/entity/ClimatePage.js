@@ -48,6 +48,7 @@ function showClimateEntity(entity_id) {
             target_temp_low: climate.attributes.target_temp_low,
             target_temp_high: climate.attributes.target_temp_high,
             hvac_mode: climate.state,
+            hvac_action: climate.attributes.hvac_action,
             hvac_modes: climate.attributes.hvac_modes || [],
             fan_mode: climate.attributes.fan_mode,
             fan_modes: climate.attributes.fan_modes || [],
@@ -97,6 +98,15 @@ function showClimateEntity(entity_id) {
     function hasTemperatureRow(data) {
         let features = getSupportedFeatures(data.supported_features);
         return features.target_temperature || features.target_temperature_range;
+    }
+
+    // The mode, plus what the unit is doing right now when it says
+    function hvacSubtitle(data) {
+        let text = data.hvac_mode ? helpers.ucwords(data.hvac_mode.replace('_', ' ')) : 'Unknown';
+        if (data.hvac_action && data.hvac_action !== data.hvac_mode) {
+            text += ' (' + data.hvac_action.replace('_', ' ') + ')';
+        }
+        return text;
     }
 
     function temperatureSubtitle(data) {
@@ -262,7 +272,7 @@ function showClimateEntity(entity_id) {
         // Add HVAC Mode item
         climateMenu.item(0, menuIndex++, {
             title: 'HVAC Mode',
-            subtitle: climateData.hvac_mode ? helpers.ucwords(climateData.hvac_mode.replace('_', ' ')) : 'Unknown',
+            subtitle: hvacSubtitle(climateData),
             on_click: function() {
                 // Always get the latest climate data when clicked
                 let latestClimate = currentClimate();
@@ -339,7 +349,7 @@ function showClimateEntity(entity_id) {
             // Update HVAC Mode item
             climateMenu.item(0, menuIndex++, {
                 title: 'HVAC Mode',
-                subtitle: updatedData.hvac_mode ? helpers.ucwords(updatedData.hvac_mode.replace('_', ' ')) : 'Unknown',
+                subtitle: hvacSubtitle(updatedData),
                 on_click: climateMenu.items(0)[menuIndex-1].on_click
             });
 
