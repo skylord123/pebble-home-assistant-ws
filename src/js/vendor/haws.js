@@ -419,6 +419,8 @@ class HAWS {
             console.log(`[HAWS] Disconnecting..`);
         }
         this.selfDisconnect = true;
+        // The close lands later; nothing sent meanwhile would be answered
+        this.authenticated = false;
         this.stopHeartbeat();
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
