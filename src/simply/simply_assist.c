@@ -271,6 +271,10 @@ typedef enum AssistAction {
   //! The wearer asked for the assist settings. The conversation stays in
   //! memory while they are away, so it is still here when they come back.
   AssistActionSettings = 1,
+  //! The microphone opened and closed within the conversation, however it
+  //! closed, so the phone knows when not to push a dialog over it
+  AssistActionDictationStarted = 2,
+  AssistActionDictationEnded = 3,
 } AssistAction;
 
 //! What the view should be looking at after the conversation changes
@@ -1193,12 +1197,16 @@ static void prv_send_action(uint8_t action) {
 
 static void prv_start_dictation(SimplyAssist *self) {
   if (self->thinking) { return; }
-  simply_voice_start(self->simply, self->dictation_confirm, true);
+  if (simply_voice_start(self->simply, self->dictation_confirm, true)) {
+    prv_send_action(AssistActionDictationStarted);
+  }
 }
 
 bool simply_assist_handle_dictation(Simply *simply, int status, const char *transcription) {
   SimplyAssist *self = simply->assist;
   if (!self || self->destroying) { return false; }
+
+  prv_send_action(AssistActionDictationEnded);
 
   if (status == DictationSessionStatusSuccess && transcription && transcription[0]) {
     self->ever_spoke = true;
