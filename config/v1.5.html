@@ -1060,7 +1060,7 @@
 								<label class="form-label" for="ha-order-dir">Order Direction</label>
 								<select class="form-select" aria-label="Entity Filter" id="ha-order-dir">
 									<option value="desc">Descending</option>
-									<option value="asc">Ascending</option>
+									<option value="asc" selected>Ascending</option>
 								</select>
 							</div>
 						</div>
@@ -1148,13 +1148,13 @@
 						<div class="form-check">
 							<input class="form-check-input" type="checkbox" id="domain-menu-min-entities-check" checked>
 							<label class="form-check-label" for="domain-menu-min-entities-check">
-								More than <input type="number" class="form-control form-control-sm" id="domain-menu-min-entities" value="10"> entities
+								At least <input type="number" class="form-control form-control-sm" id="domain-menu-min-entities" value="10"> entities
 							</label>
 						</div>
 						<div class="form-check">
 							<input class="form-check-input" type="checkbox" id="domain-menu-min-domains-check" checked>
 							<label class="form-check-label" for="domain-menu-min-domains-check">
-								More than <input type="number" class="form-control form-control-sm" id="domain-menu-min-domains" value="1"> domains
+								At least <input type="number" class="form-control form-control-sm" id="domain-menu-min-domains" value="2"> domains
 							</label>
 						</div>
 					</div>
@@ -1629,7 +1629,7 @@
 			}
 
 			voiceEnabled.attr('checked', typeof watch_config['voice_enabled'] !== 'undefined' ? watch_config['voice_enabled'] : true);
-			voiceConfirm.attr('checked', typeof watch_config['voice_confirm'] !== 'undefined' ? watch_config['voice_confirm'] : true);
+			voiceConfirm.attr('checked', watch_config['voice_confirm'] === true);
 			voiceBacklightTrigger.attr('checked', typeof watch_config['voice_backlight_trigger'] !== 'undefined' ? watch_config['voice_backlight_trigger'] : true);
 			voiceBacklightHold.attr('checked', watch_config['voice_backlight_hold'] === true);
 			assistStreamReply.attr('checked', typeof watch_config['assist_stream_reply'] !== 'undefined' ? watch_config['assist_stream_reply'] : true);
@@ -1781,7 +1781,7 @@
 			if (typeof watch_config['domain_menu_min_domains'] !== 'undefined') {
 				const minDomains = watch_config['domain_menu_min_domains'];
 				domainMenuMinDomainsCheck.prop('checked', minDomains > 0);
-				domainMenuMinDomains.val(minDomains > 0 ? minDomains : 1);
+				domainMenuMinDomains.val(minDomains > 0 ? minDomains : 2);
 			}
 
 			// Show/hide conditional settings based on if any dropdown is set to conditional

@@ -38,7 +38,7 @@ var SettingsManager = {
 
         // Voice settings
         appState.voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
-        appState.voice_confirm = Settings.option('voice_confirm');
+        appState.voice_confirm = Settings.option('voice_confirm') === true;
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
         appState.voice_backlight_hold = Settings.option('voice_backlight_hold') === true;
         appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
