@@ -110,11 +110,15 @@ function showToDoLists() {
                 "type": "todo/item/subscribe",
                 "entity_id": entity_id
             }, function(data) {
-                // When items change, update the count in appState.ha_state_dict
+                // When items change, update the count in appState.ha_state_dict.
+                // HA's todo state counts only the items still to do
                 if (data.event && data.event.items) {
-                    let itemCount = data.event.items.length;
-                    if (appState.ha_state_dict[entity_id]) {
-                        appState.ha_state_dict[entity_id].state = itemCount;
+                    let itemCount = data.event.items.filter(function(item) {
+                        return item.status === 'needs_action';
+                    }).length;
+                    let current = appState.getEntity(entity_id);
+                    if (current) {
+                        current.state = String(itemCount);
                     }
                     // Update the menu to reflect the new count
                     updateMenuItems();
