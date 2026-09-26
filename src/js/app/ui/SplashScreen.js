@@ -115,6 +115,11 @@ var SplashScreen = {
         simply.impl.splashHide();
         return this;
     },
+    // True while the splash stands in front of the JS windows. A 'hide' seen
+    // then comes from the cover, not from the wearer leaving the window.
+    isCovering: function() {
+        return covering;
+    },
     title: function(text) {
         if (text === undefined) { return texts.title; }
         texts.title = text;
