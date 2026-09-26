@@ -681,6 +681,13 @@ static void handle_element_remove_packet(Simply *simply, Packet *data) {
     return;
   }
   simply_stage_remove_element(simply->stage, element);
+  SimplyAnimation *animation;
+  while ((animation = (SimplyAnimation *)list1_find(simply->stage->stage_layer.animations,
+                                                    animation_element_filter, element))) {
+    destroy_animation(simply->stage, animation);
+  }
+  destroy_element(simply->stage, element);
+  simply_stage_update_ticker(simply->stage);
   simply_stage_update(simply->stage);
 }
 
