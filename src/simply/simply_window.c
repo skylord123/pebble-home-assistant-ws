@@ -7,6 +7,8 @@
 #include "simply_msg.h"
 #include "simply_res.h"
 #include "simply_menu.h"
+#include "simply_stage.h"
+#include "simply_ui.h"
 #include "simply_window_stack.h"
 #include "simply_voice.h"
 
@@ -273,14 +275,14 @@ void simply_window_set_action_bar(SimplyWindow *self, bool use_action_bar) {
   prv_update_layer_placement(self, NULL);
 }
 
-void simply_window_set_action_bar_icon(SimplyWindow *self, ButtonId button, uint32_t id) {
-  if (!self->action_bar_layer) { return; }
-
-  SimplyImage *icon = simply_res_auto_image(self->simply->res, id, true);
+static bool prv_apply_action_bar_icon(SimplyWindow *self, ButtonId button) {
+  self->action_bar_icons[button] = NULL;
+  SimplyImage *icon = simply_res_auto_image(self->simply->res, self->action_bar_icon_ids[button],
+                                            true);
 
   if (!icon) {
     action_bar_layer_clear_icon(self->action_bar_layer, button);
-    return;
+    return false;
   }
 
   if (icon->is_palette_black_and_white) {
@@ -288,7 +290,31 @@ void simply_window_set_action_bar_icon(SimplyWindow *self, ButtonId button, uint
   }
 
   action_bar_layer_set_icon(self->action_bar_layer, button, icon->bitmap);
-  simply_window_set_action_bar(self, true);
+  self->action_bar_icons[button] = icon->bitmap;
+  return true;
+}
+
+void simply_window_set_action_bar_icon(SimplyWindow *self, ButtonId button, uint32_t id) {
+  if (!self->action_bar_layer) { return; }
+
+  self->action_bar_icon_ids[button] = id;
+  if (prv_apply_action_bar_icon(self, button)) {
+    simply_window_set_action_bar(self, true);
+  }
+}
+
+void simply_window_forget_image(Simply *simply, GBitmap *bitmap) {
+  SimplyWindow * const windows[] = { &simply->stage->window, &simply->menu->window,
+                                     &simply->ui->window };
+  for (unsigned int i = 0; i < ARRAY_LENGTH(windows); ++i) {
+    SimplyWindow *self = windows[i];
+    for (ButtonId button = BUTTON_ID_UP; button <= BUTTON_ID_DOWN; ++button) {
+      if (self->action_bar_layer && self->action_bar_icons[button] == bitmap) {
+        action_bar_layer_clear_icon(self->action_bar_layer, button);
+        self->action_bar_icons[button] = NULL;
+      }
+    }
+  }
 }
 
 void simply_window_set_action_bar_background_color(SimplyWindow *self, GColor8 background_color) {
@@ -307,6 +333,8 @@ void simply_window_action_bar_clear(SimplyWindow *self) {
 
   for (ButtonId button = BUTTON_ID_UP; button <= BUTTON_ID_DOWN; ++button) {
     action_bar_layer_clear_icon(self->action_bar_layer, button);
+    self->action_bar_icon_ids[button] = 0;
+    self->action_bar_icons[button] = NULL;
   }
 }
 
@@ -398,6 +426,16 @@ void simply_window_load(SimplyWindow *self) {
 }
 
 bool simply_window_appear(SimplyWindow *self) {
+  // Covering this window cleared the image cache, which took the action bar
+  // icons with it, so load them again
+  if (self->action_bar_layer) {
+    for (ButtonId button = BUTTON_ID_UP; button <= BUTTON_ID_DOWN; ++button) {
+      if (self->action_bar_icon_ids[button] && !self->action_bar_icons[button]) {
+        prv_apply_action_bar_icon(self, button);
+      }
+    }
+    simply_window_update_scroll_arrows(self);
+  }
   if (!self->id) {
     return false;
   }
@@ -458,6 +496,8 @@ void simply_window_unload(SimplyWindow *self) {
 
   action_bar_layer_destroy(self->action_bar_layer);
   self->action_bar_layer = NULL;
+  memset(self->action_bar_icon_ids, 0, sizeof(self->action_bar_icon_ids));
+  memset(self->action_bar_icons, 0, sizeof(self->action_bar_icons));
 
   status_bar_layer_destroy(self->status_bar_layer);
   self->status_bar_layer = NULL;

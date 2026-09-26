@@ -26,6 +26,10 @@ struct SimplyWindow {
   bool is_scrollable:1;
   bool use_scroll_arrows:1;
   AppTimer *scroll_arrows_timer;
+  //! The action bar keeps only raw bitmap pointers, and those bitmaps belong
+  //! to the image cache, so remember which image each button shows
+  uint32_t action_bar_icon_ids[NUM_BUTTONS];
+  GBitmap *action_bar_icons[NUM_BUTTONS];
   bool is_paging:1;
   bool use_scroll_layer:1;
   bool use_status_bar:1;
@@ -67,5 +71,8 @@ void simply_window_schedule_scroll_arrows_update(SimplyWindow *self);
 void simply_window_set_action_bar_icon(SimplyWindow *self, ButtonId button, uint32_t id);
 void simply_window_set_action_bar_background_color(SimplyWindow *self, GColor8 background_color);
 void simply_window_action_bar_clear(SimplyWindow *self);
+//! Called by the image cache before it frees a bitmap, so no action bar is
+//! left drawing it
+void simply_window_forget_image(Simply *simply, GBitmap *bitmap);
 
 bool simply_window_handle_packet(Simply *simply, Packet *packet);

@@ -1,5 +1,7 @@
 #include "simply_res.h"
 
+#include "simply_window.h"
+
 #include "util/color.h"
 #include "util/graphics.h"
 #include "util/memory.h"
@@ -18,6 +20,9 @@ static void destroy_image(SimplyRes *self, SimplyImage *image) {
   }
 
   list1_remove(&self->images, &image->node);
+  if (self->simply) {
+    simply_window_forget_image(self->simply, image->bitmap);
+  }
   gbitmap_destroy(image->bitmap);
   free(image->palette);
   free(image);
@@ -281,9 +286,9 @@ void simply_res_clear(SimplyRes *self) {
   }
 }
 
-SimplyRes *simply_res_create() {
+SimplyRes *simply_res_create(Simply *simply) {
   SimplyRes *self = malloc(sizeof(*self));
-  *self = (SimplyRes) { .images = NULL };
+  *self = (SimplyRes) { .simply = simply };
 
   while (resource_get_handle(self->num_bundled_res + 1)) {
     ++self->num_bundled_res;
@@ -293,6 +298,8 @@ SimplyRes *simply_res_create() {
 }
 
 void simply_res_destroy(SimplyRes *self) {
+  // The windows are already gone at exit
+  self->simply = NULL;
   simply_res_clear(self);
   free(self);
 }
