@@ -1593,7 +1593,11 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   AssistMessagePacket *packet = (AssistMessagePacket *)data;
 
   if (packet->flags & MessageFlagKeepAlive) {
-    prv_keep_thinking(self);
+    // Only a wait still under way is kept going. One that already ended, by
+    // an answer or by giving up, must not come back hidden and block the mic.
+    if (self->thinking) {
+      prv_keep_thinking(self);
+    }
     return;
   }
 
