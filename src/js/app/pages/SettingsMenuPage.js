@@ -386,7 +386,8 @@ function showVoiceAssistantSettings(onClose) {
     });
 
     voiceSettingsMenu.on('hide', function() {
-        if (goingDeeper || !onClose) { return; }
+        // The reconnect splash covering this menu is not the wearer leaving it
+        if (goingDeeper || !onClose || require('app/ui/SplashScreen').isCovering()) { return; }
         onClose();
     });
     voiceSettingsMenu.on('select', function(e) {
