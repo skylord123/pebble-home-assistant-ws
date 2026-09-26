@@ -1656,8 +1656,8 @@ SimplyPebble.numberSelectorShow = function(opts) {
            (opts.live ? 8 : 0))
     .backgroundColor(opts.backgroundColor)
     .textColor(opts.textColor)
-    .titleLength(opts.title.length)
-    .unitLength(opts.unit.length)
+    .titleLength(opts.title)
+    .unitLength(opts.unit)
     .title(opts.title)
     .unit(opts.unit);
   SimplyPebble.sendPacket(NumberSelectorShowPacket);
