@@ -49,10 +49,27 @@ static bool send_voice_data(int status, char *transcription) {
   return simply_msg_send_packet(&packet->packet);
 }
 
+//! A transcript longer than the buffer is cut short, which can land part way
+//! through a character, and the phone cannot decode half of one
+static void prv_trim_partial_utf8(char *text) {
+  size_t length = strlen(text);
+  size_t start = length;
+  while (start > 0 && ((unsigned char)text[start - 1] & 0xC0) == 0x80) { start--; }
+  if (start == 0) { return; }
+  const unsigned char lead = (unsigned char)text[start - 1];
+  const size_t expected = lead >= 0xF0 ? 4 : lead >= 0xE0 ? 3 : lead >= 0xC0 ? 2 : 1;
+  if (length - (start - 1) < expected) {
+    text[start - 1] = '\0';
+  }
+}
+
 // Define a callback for the dictation session
 static void dictation_session_callback(DictationSession *session, DictationSessionStatus status,
                                        char *transcription, void *context) {
   s_voice->in_progress = false;
+  if (transcription) {
+    prv_trim_partial_utf8(transcription);
+  }
 
   // The assist screen draws its own result, so it never crosses the bridge as
   // a Voice.dictate() callback
