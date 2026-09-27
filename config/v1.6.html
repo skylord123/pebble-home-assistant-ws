@@ -163,10 +163,6 @@
 			display: block;
 		}
 
-		html.has-bridge .bridge-only.inline {
-			display: inline-flex;
-		}
-
 		/* Section (Card) Styles - Clay-like */
 		.section {
 			background: var(--color-section-bg);
@@ -888,7 +884,7 @@
 					<div class="form-group">
 						<label class="form-label" for="ha-token">Access Token</label>
 						<div class="input-group">
-							<input type="password" class="form-control" id="ha-token" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="">
+							<input type="password" class="form-control" id="ha-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="">
 							<button class="btn btn-outline-secondary" type="button" id="toggle-token-visibility" aria-label="Show or hide the token">
 								<svg class="icon" id="toggle-token-icon"><use href="#i-eye"/></svg>
 							</button>
@@ -898,7 +894,7 @@
 				</div>
 				<div class="component bridge-only">
 					<button type="button" class="btn btn-primary btn-block" id="connect-btn">Connect</button>
-					<div class="status-line" id="connect-status">
+					<div class="status-line" id="connect-status" aria-live="polite">
 						<span class="status-dot"></span>
 						<span class="status-text">Asking the watch how the connection is doing…</span>
 					</div>
@@ -917,7 +913,7 @@
 					<div class="form-group">
 						<label class="form-label" for="entity-search">Search</label>
 						<input type="search" class="form-control" id="entity-search" autocapitalize="off" autocorrect="off" placeholder="Name or entity id, e.g. kitchen light">
-						<div class="search-meta" id="entity-search-meta">Type to search the entities the watch has loaded.</div>
+						<div class="search-meta" id="entity-search-meta" aria-live="polite">Type to search the entities the watch has loaded.</div>
 					</div>
 					<ul id="entity-search-results" class="list-group mt-2"></ul>
 					<small class="form-text">Adds go into the lists below, and are kept when you press Save.</small>
@@ -1323,6 +1319,7 @@
 							<button type="button" class="btn btn-primary btn-block" id="add-domain-btn">Add</button>
 						</div>
 					</div>
+					<div id="domain-feedback" class="invalid-feedback hidden"></div>
 					<div class="mt-3">
 						<ul id="ignore-domains-list" class="list-group">
 						</ul>
@@ -1433,6 +1430,9 @@
 			if (reply.ok === undefined && reply.error !== undefined) {
 				return { ok: false, error: { code: 'host', message: String(reply.error) } };
 			}
+			if (!reply.ok && (!reply.error || typeof reply.error !== 'object')) {
+				return { ok: false, error: { code: 'bad_reply', message: 'The watch app sent an unexpected reply' } };
+			}
 			return reply;
 		}, function(err) {
 			return { ok: false, error: { code: 'send_failed', message: String((err && err.message) || err) } };
@@ -1535,7 +1535,7 @@
 		}
 		alertContainer.innerHTML =
 			'<div class="alert alert-' + esc(type) + '" role="alert">' +
-			'<svg class="bi" width="20" height="20" role="img"><use href="#' + ALERT_ICONS[type] + '"/></svg>' +
+			'<svg class="bi" width="20" height="20" aria-hidden="true"><use href="#' + ALERT_ICONS[type] + '"/></svg>' +
 			content +
 			'</div>';
 	}
@@ -1552,6 +1552,8 @@
 		list.dataset.sortable = 'true';
 
 		list.addEventListener('pointerdown', function(e) {
+			// Only the main button or first finger drags
+			if (e.button !== 0 || e.isPrimary === false) { return; }
 			var handle = e.target.closest ? e.target.closest('.drag-handle') : null;
 			if (!handle) { return; }
 			var item = handle.closest('li');
@@ -1561,6 +1563,8 @@
 			var pointerId = e.pointerId;
 			var before = listItems(list);
 			item.classList.add('dragging');
+			// Capture keeps the moves coming after the finger leaves the
+			// handle; the document listeners below cope without it too
 			try { handle.setPointerCapture(pointerId); } catch (err) { /* older webview */ }
 
 			function place(y) {
@@ -1597,9 +1601,9 @@
 
 			function onEnd(ev) {
 				if (ev.pointerId !== pointerId) { return; }
-				handle.removeEventListener('pointermove', onMove);
-				handle.removeEventListener('pointerup', onEnd);
-				handle.removeEventListener('pointercancel', onEnd);
+				document.removeEventListener('pointermove', onMove);
+				document.removeEventListener('pointerup', onEnd);
+				document.removeEventListener('pointercancel', onEnd);
 				item.classList.remove('dragging');
 
 				var after = listItems(list);
@@ -1607,9 +1611,9 @@
 				if (moved && onUpdate) { onUpdate(); }
 			}
 
-			handle.addEventListener('pointermove', onMove);
-			handle.addEventListener('pointerup', onEnd);
-			handle.addEventListener('pointercancel', onEnd);
+			document.addEventListener('pointermove', onMove);
+			document.addEventListener('pointerup', onEnd);
+			document.addEventListener('pointercancel', onEnd);
 		});
 	}
 
@@ -1626,26 +1630,43 @@
 
 	function slideHeight(el, from, to, done) {
 		if (SLIDE_MS === 0) { done(); return; }
+
+		// A slide interrupted by another must not finish later and undo it
+		if (el._slide) { el._slide.cancel(); }
+
 		var finished = false;
+		var timer = null;
+		function cleanup() {
+			finished = true;
+			clearTimeout(timer);
+			el.removeEventListener('transitionend', onTransitionEnd);
+			el._slide = null;
+		}
 		function end() {
 			if (finished) { return; }
-			finished = true;
+			cleanup();
 			el.style.transition = '';
 			el.style.overflow = '';
 			el.style.height = '';
 			done();
 		}
+		function onTransitionEnd(e) {
+			// Transitions on the controls inside bubble up here too
+			if (e.target === el && e.propertyName === 'height') { end(); }
+		}
+		el._slide = { cancel: cleanup };
+
 		el.style.overflow = 'hidden';
 		el.style.height = from + 'px';
 		el.style.transition = 'height ' + SLIDE_MS + 'ms ease';
 		// The start height has to land before the end height is asked for
 		requestAnimationFrame(function() {
 			requestAnimationFrame(function() {
-				el.style.height = to + 'px';
+				if (!finished) { el.style.height = to + 'px'; }
 			});
 		});
-		el.addEventListener('transitionend', end, { once: true });
-		setTimeout(end, SLIDE_MS + 80);
+		el.addEventListener('transitionend', onTransitionEnd);
+		timer = setTimeout(end, SLIDE_MS + 80);
 	}
 
 	function setSectionOpen(section, shouldOpen) {
@@ -1654,11 +1675,14 @@
 			if (section.classList.contains('open')) { return; }
 			section.open = true;
 			section.classList.add('open');
-			slideHeight(body, 0, body.scrollHeight, function() {});
+			// Opening again mid-close starts from wherever the slide got to
+			var startHeight = body.style.height ? parseFloat(body.style.height) : 0;
+			slideHeight(body, startHeight, body.scrollHeight, function() {});
 		} else {
 			if (!section.classList.contains('open')) { return; }
 			section.classList.remove('open');
-			slideHeight(body, body.scrollHeight, 0, function() {
+			var currentHeight = body.style.height ? parseFloat(body.style.height) : body.scrollHeight;
+			slideHeight(body, currentHeight, 0, function() {
 				section.open = false;
 			});
 		}
@@ -1707,6 +1731,20 @@
 		return listItems(list).some(function(li) { return li.dataset.entityId === entityId; });
 	}
 
+	function removeQuickLaunchOption(entityId) {
+		Array.prototype.slice.call(quickLaunchFavoriteEntity.options).forEach(function(option) {
+			if (option.value === entityId) { option.remove(); }
+		});
+	}
+
+	// Nothing is lost until Save, and on the bundled page an entity is one
+	// search away from coming back. The hosted page has no search, so a
+	// removal there is asked about; a bundled WebView may also have no
+	// dialogs to ask with.
+	function confirmRemoval(text) {
+		return bridge ? true : confirm(text);
+	}
+
 	function normalizeEntry(entry) {
 		if (typeof entry === 'string') {
 			return { entity_id: entry, name: null };
@@ -1724,10 +1762,9 @@
 		li.innerHTML = entityRowHtml(entityId, friendlyName, removeButtonHtml('Remove from favorites'));
 		li.querySelector('.remove-item').addEventListener('click', function() {
 			var displayName = friendlyName || entityId;
-			if (!confirm('Are you sure you want to remove "' + displayName + '" from your favorites?')) { return; }
+			if (!confirmRemoval('Are you sure you want to remove "' + displayName + '" from your favorites?')) { return; }
 			li.remove();
-			var option = quickLaunchFavoriteEntity.querySelector('option[value="' + entityId.replace(/"/g, '\\"') + '"]');
-			if (option) { option.remove(); }
+			removeQuickLaunchOption(entityId);
 			show(favoritesContainer, listItems(favoritesSortable).length > 0);
 			refreshSearchButtons();
 		});
@@ -1761,7 +1798,7 @@
 		li.innerHTML = entityRowHtml(entityId, friendlyName, removeButtonHtml('Unpin from the main menu'));
 		li.querySelector('.remove-item').addEventListener('click', function() {
 			var displayName = friendlyName || entityId;
-			if (!confirm('Are you sure you want to unpin "' + displayName + '" from the Main Menu?')) { return; }
+			if (!confirmRemoval('Are you sure you want to unpin "' + displayName + '" from the Main Menu?')) { return; }
 			li.remove();
 			// Also remove from main menu order list
 			listItems(mainMenuSortable).forEach(function(row) {
@@ -1790,7 +1827,9 @@
 		var li = document.createElement('li');
 		li.className = 'list-group-item';
 		li.dataset.itemId = item.id;
-		li.innerHTML = entityRowHtml(item.isPinned ? item.entityId : item.name, item.isPinned ? item.name : null);
+		// A pin without a name would otherwise show its id on both lines
+		var pinnedName = item.isPinned && item.name !== item.entityId ? item.name : null;
+		li.innerHTML = entityRowHtml(item.isPinned ? item.entityId : item.name, pinnedName);
 		return li;
 	}
 
@@ -1955,7 +1994,7 @@
 		li.innerHTML = '<div class="entity-info"><div class="entity-name">' + esc(domain) + '</div></div>' +
 			removeButtonHtml('Remove from the ignore list');
 		li.querySelector('.remove-item').addEventListener('click', function() {
-			if (confirm('Are you sure you want to remove ' + domain + ' from your ignore list?')) {
+			if (confirmRemoval('Are you sure you want to remove ' + domain + ' from your ignore list?')) {
 				li.remove();
 			}
 		});
@@ -1975,13 +2014,19 @@
 
 		var exists = listItems(ignoreDomainsList).some(function(li) { return li.dataset.domain === domain; });
 		if (exists) {
-			alert('Domain "' + domain + '" is already in the ignore list.');
+			$('domain-feedback').textContent = '"' + domain + '" is already in the ignore list.';
+			show($('domain-feedback'), true);
 			return;
 		}
 
+		show($('domain-feedback'), false);
 		addDomainRow(domain);
 		domainInput.value = '';
 		domainInput.focus();
+	});
+
+	domainInput.addEventListener('input', function() {
+		show($('domain-feedback'), false);
 	});
 
 	domainInput.addEventListener('keydown', function(e) {
@@ -1993,11 +2038,23 @@
 
 	// --- Pipelines ---
 
+	// The pipeline picked on this page. The dropdown itself is emptied while
+	// Home Assistant is away, so the choice is kept apart from it.
+	var chosenPipeline = null;
+
+	pipelineSelect.addEventListener('change', function() {
+		chosenPipeline = pipelineSelect.value;
+	});
+
+	function currentPipeline() {
+		if (chosenPipeline !== null) { return chosenPipeline; }
+		return watch_config['selected_pipeline'] || '';
+	}
+
 	function renderPipelines() {
 		var haConnected = watch_config['ha_connected'] || false;
 		var availablePipelines = watch_config['available_pipelines'] || [];
-		// A choice made on this page outranks the one the watch last saved
-		var selectedPipeline = pipelineSelect.value || watch_config['selected_pipeline'] || '';
+		var selectedPipeline = currentPipeline();
 
 		pipelineSelect.innerHTML = '';
 		if (haConnected && availablePipelines.length > 0) {
@@ -2008,9 +2065,12 @@
 				option.textContent = pipeline.name + (pipeline.preferred ? ' (Preferred)' : '');
 				pipelineSelect.appendChild(option);
 			});
+			// No saved choice shows the first pipeline, as a select does by
+			// default. A saved pipeline that no longer exists leaves nothing
+			// selected, and the watch then falls back to the preferred one.
 			if (selectedPipeline) {
 				pipelineSelect.value = selectedPipeline;
-				if (pipelineSelect.value !== selectedPipeline) { pipelineSelect.selectedIndex = 0; }
+				if (pipelineSelect.value !== selectedPipeline) { pipelineSelect.selectedIndex = -1; }
 			}
 			show(pipelineWarning, false);
 		} else {
@@ -2039,7 +2099,9 @@
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
 			'assist_continue_conversation': assistContinueConversation.checked,
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
-			'selected_pipeline': pipelineSelect.value,
+			// While the dropdown is empty (not connected) the saved choice
+			// stands, rather than being wiped by a dropout
+			'selected_pipeline': pipelineSelect.disabled ? currentPipeline() : (pipelineSelect.value || null),
 			'quick_launch_behavior': quickLaunchBehavior.value,
 			'quick_launch_favorite_entity': quickLaunchFavoriteEntity.value || null,
 			'quick_launch_exit_on_back': quickLaunchExitOnBack.checked,
@@ -2123,7 +2185,7 @@
 		assistContinueConversation.checked = defaulted(watch_config['assist_continue_conversation'], true);
 		voiceFontSize.value = watch_config['voice_font_size'] ? String(watch_config['voice_font_size']) : '18';
 
-		pipelineSelect.value = '';
+		chosenPipeline = null;
 		renderPipelines();
 
 		quickLaunchBehavior.value = watch_config['quick_launch_behavior'] || 'main_menu';
@@ -2321,6 +2383,9 @@
 					(status.states_loaded ? ' · ' + status.entity_count + ' entities' : ' · loading entities…') };
 			case 'connecting':
 			default:
+				if (status.error && status.error.message) {
+					return { cls: 'error', text: status.error.message + '…' };
+				}
 				return { cls: 'connecting', text: 'Connecting to ' + (status.ha_url || 'Home Assistant') + '…' };
 		}
 	}
@@ -2400,7 +2465,6 @@
 	function updateSearchAvailability() {
 		if (!bridge) { return; }
 		if (statesReady()) {
-			entitySearch.disabled = false;
 			if (pendingQuery !== null) {
 				var query = pendingQuery;
 				pendingQuery = null;
@@ -2408,13 +2472,10 @@
 			} else if (!entitySearch.value.trim()) {
 				entitySearchMeta.textContent = 'Type to search ' + lastStatus.entity_count + ' entities.';
 			}
-		} else {
-			entitySearch.disabled = false;
-			if (!entitySearch.value.trim()) {
-				entitySearchMeta.textContent = lastStatus && lastStatus.phase === 'unconfigured'
-					? 'Connect to Home Assistant above to search its entities.'
-					: 'Waiting for the watch to load entities from Home Assistant…';
-			}
+		} else if (!entitySearch.value.trim()) {
+			entitySearchMeta.textContent = lastStatus && lastStatus.phase === 'unconfigured'
+				? 'Connect to Home Assistant above to search its entities.'
+				: 'Waiting for the watch to load entities from Home Assistant…';
 		}
 	}
 
@@ -2431,8 +2492,8 @@
 				(stateText ? '<div class="entity-state">' + esc(stateText) + '</div>' : '') +
 			'</div>' +
 			'<div class="entity-actions">' +
-				'<button type="button" class="btn search-favorite" title="Favorite">' + icon('i-star') + '</button>' +
-				'<button type="button" class="btn search-pin" title="Pin to the main menu">' + icon('i-pin') + '</button>' +
+				'<button type="button" class="btn search-favorite" aria-pressed="false" aria-label="Add to favorites">' + icon('i-star') + '</button>' +
+				'<button type="button" class="btn search-pin" aria-pressed="false" aria-label="Pin to the main menu">' + icon('i-pin') + '</button>' +
 			'</div>';
 
 		li.querySelector('.search-favorite').addEventListener('click', function() {
@@ -2441,8 +2502,7 @@
 			var existing = listItems(favoritesSortable).filter(function(row) { return row.dataset.entityId === entityId; })[0];
 			if (existing) {
 				existing.remove();
-				var option = quickLaunchFavoriteEntity.querySelector('option[value="' + entityId.replace(/"/g, '\\"') + '"]');
-				if (option) { option.remove(); }
+				removeQuickLaunchOption(entityId);
 				show(favoritesContainer, listItems(favoritesSortable).length > 0);
 			} else {
 				addFavoriteRow(entityId, name);
@@ -2483,15 +2543,20 @@
 			var isFavorite = listHas(favoritesSortable, entityId);
 			var isPinned = listHas(pinnedSortable, entityId);
 			favorite.classList.toggle('active', isFavorite);
-			favorite.title = isFavorite ? 'Remove from favorites' : 'Add to favorites';
+			favorite.setAttribute('aria-pressed', String(isFavorite));
+			favorite.setAttribute('aria-label', isFavorite ? 'Remove from favorites' : 'Add to favorites');
+			favorite.title = favorite.getAttribute('aria-label');
 			pin.classList.toggle('active', isPinned);
-			pin.title = isPinned ? 'Unpin from the main menu' : 'Pin to the main menu';
+			pin.setAttribute('aria-pressed', String(isPinned));
+			pin.setAttribute('aria-label', isPinned ? 'Unpin from the main menu' : 'Pin to the main menu');
+			pin.title = pin.getAttribute('aria-label');
 		});
 	}
 
 	function runSearch(query) {
 		var seq = ++searchSeq;
 		if (!query) {
+			pendingQuery = null;
 			entitySearchResults.innerHTML = '';
 			updateSearchAvailability();
 			return;
@@ -2560,21 +2625,29 @@
 
 	// The watch app registers its handler as it starts, and the phone opens
 	// this page as soon as the app is running, so the first ask can land before
-	// the handler is there. The phone answers for it then; ask again.
-	var LOAD_ATTEMPTS = 15;
+	// the handler is there. The phone answers for it then; ask again, for a
+	// while. An app that is there but never answers is not worth waiting on.
+	var LOAD_RETRY_WINDOW_MS = 15000;
 	var LOAD_RETRY_MS = 700;
 
-	function loadFromWatch(attempt) {
-		attempt = attempt || 1;
+	function loadFromWatch(startedAt) {
+		startedAt = startedAt || Date.now();
+		display_alert('info', 'Loading your settings from the watch…');
 		request({ type: 'get_settings' }).then(function(reply) {
 			if (!reply.ok) {
-				var retryable = reply.error.code === 'host' || reply.error.code === 'send_failed';
-				if (retryable && attempt < LOAD_ATTEMPTS) {
-					setTimeout(function() { loadFromWatch(attempt + 1); }, LOAD_RETRY_MS);
+				var retryable = (reply.error.code === 'host' || reply.error.code === 'send_failed') &&
+					reply.error.message.indexOf('did not answer') === -1;
+				if (retryable && Date.now() - startedAt < LOAD_RETRY_WINDOW_MS) {
+					setTimeout(function() { loadFromWatch(startedAt); }, LOAD_RETRY_MS);
 					return;
 				}
 				display_alert('danger', '<strong>Could not reach the watch app.</strong> ' +
-					esc(reply.error.message) + '. Make sure the app is open on the watch, then open this page again.');
+					esc(reply.error.message) + '. Make sure the app is open on the watch. ' +
+					'<a href="#" id="retry-load">Try again</a>');
+				$('retry-load').addEventListener('click', function(e) {
+					e.preventDefault();
+					loadFromWatch();
+				});
 				return;
 			}
 			display_alert();
@@ -2591,7 +2664,7 @@
 		document.documentElement.classList.add('has-bridge');
 		saveBtn.disabled = true;
 		connectBtn.disabled = true;
-		display_alert('info', 'Loading your settings from the watch…');
+		display_alert('info', 'Waiting for the watch app…');
 
 		bridge.addEventListener('message', function(e) {
 			var data = e && e.data;
