@@ -17,12 +17,15 @@ static int32_t prv_clip(int32_t value, int32_t low, int32_t high) {
 #if defined(PBL_ROUND)
 
 //! An arc band with round ends. graphics_fill_radial cuts its ends flat, so a
-//! dot the width of the band finishes each one. On a square of side 2r + 1 the
-//! SDK's radial fill lands on exactly the centre and radius asked for.
+//! dot the width of the band finishes each one. The SDK's radial fill takes a
+//! rect, works out a centre half a pixel inside its middle and a radius half
+//! a pixel short of its half side, then moves both back out by that half: on
+//! a square of side 2r it lands on exactly the centre and radius the firmware
+//! hands its own internal fill, so the two rasterise the same pixels.
 static void prv_fill_capped_arc(GContext *ctx, GPoint center, int16_t radius_outer,
                                 int16_t thickness, int32_t angle_start, int32_t angle_end) {
   const GRect circle = GRect(center.x - radius_outer, center.y - radius_outer,
-                             2 * radius_outer + 1, 2 * radius_outer + 1);
+                             2 * radius_outer, 2 * radius_outer);
   graphics_fill_radial(ctx, circle, GOvalScaleModeFitCircle, thickness, angle_start, angle_end);
   const int32_t radius_mid = radius_outer - thickness / 2;
   const int32_t angles[2] = { angle_start, angle_end };

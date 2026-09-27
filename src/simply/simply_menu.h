@@ -70,6 +70,9 @@ struct SimplyMenu {
   //! after the finger has gone keeps it up
   int16_t scrollbar_offset_y;
   bool scrollbar_visible;
+  //! A release threw the list and it is still travelling; only then does the
+  //! list moving on its own keep the cue up
+  bool scrollbar_coasting;
 #endif
   int16_t scroll_offset;
   int16_t max_scroll_offset;
@@ -164,8 +167,9 @@ void simply_menu_marquee_at(SimplyMenu *self, int scroll_offset_y);
 
 //! A finger has moved the list: show the scroll position for a moment, the
 //! way the firmware's own menus do. Buttons step the selection and never
-//! call this.
-void simply_menu_touch_scrolled(SimplyMenu *self);
+//! call this. `coasting` says the finger has gone but threw the list, so the
+//! cue stays up until the list comes to rest.
+void simply_menu_touch_scrolled(SimplyMenu *self, bool coasting);
 
 #endif
 

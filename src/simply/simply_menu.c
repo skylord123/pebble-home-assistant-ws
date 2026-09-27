@@ -1746,17 +1746,21 @@ static void prv_scrollbar_hide_timer_callback(void *data) {
   SimplyMenu *self = data;
   self->scrollbar_timer = NULL;
   self->scrollbar_visible = false;
+  self->scrollbar_coasting = false;
   if (self->scrollbar_layer) {
     layer_mark_dirty(self->scrollbar_layer);
   }
 }
 
+//! A fresh timer each time rather than rescheduling: a timer that has just
+//! expired cannot be rescheduled, and its callback would still arrive and
+//! take the cue down the moment it went up. Cancelling drops that callback.
 static void prv_scrollbar_arm_hide(SimplyMenu *self) {
-  if (!self->scrollbar_timer ||
-      !app_timer_reschedule(self->scrollbar_timer, SCROLLBAR_HIDE_MS)) {
-    self->scrollbar_timer = app_timer_register(SCROLLBAR_HIDE_MS,
-                                               prv_scrollbar_hide_timer_callback, self);
+  if (self->scrollbar_timer) {
+    app_timer_cancel(self->scrollbar_timer);
   }
+  self->scrollbar_timer = app_timer_register(SCROLLBAR_HIDE_MS,
+                                             prv_scrollbar_hide_timer_callback, self);
 }
 
 static void prv_scrollbar_cancel_hide(SimplyMenu *self) {
@@ -1765,6 +1769,7 @@ static void prv_scrollbar_cancel_hide(SimplyMenu *self) {
     self->scrollbar_timer = NULL;
   }
   self->scrollbar_visible = false;
+  self->scrollbar_coasting = false;
 }
 
 static void prv_scrollbar_update_proc(Layer *layer, GContext *ctx) {
@@ -1775,11 +1780,14 @@ static void prv_scrollbar_update_proc(Layer *layer, GContext *ctx) {
   ScrollLayer *scroll_layer = menu_layer_get_scroll_layer(menu_layer);
   // The list is still moving under a fling. Nothing reports that, but every
   // frame of it is drawn through here, so the hide waits for the movement to
-  // stop just as it does for a finger.
+  // stop just as it does for a finger. A button moving the list does not
+  // count, the same as in the firmware.
   const int16_t offset_y = scroll_layer_get_content_offset(scroll_layer).y;
   if (offset_y != self->scrollbar_offset_y) {
     self->scrollbar_offset_y = offset_y;
-    prv_scrollbar_arm_hide(self);
+    if (self->scrollbar_coasting) {
+      prv_scrollbar_arm_hide(self);
+    }
   }
 
   // The colours the rows are drawn in, or the MenuLayer's own defaults until
@@ -1791,7 +1799,7 @@ static void prv_scrollbar_update_proc(Layer *layer, GContext *ctx) {
                         bg.a ? gcolor8_get_or(bg, GColorWhite) : GColorWhite);
 }
 
-void simply_menu_touch_scrolled(SimplyMenu *self) {
+void simply_menu_touch_scrolled(SimplyMenu *self, bool coasting) {
   MenuLayer *menu_layer = self ? self->menu_layer.menu_layer : NULL;
   if (!menu_layer || !self->scrollbar_layer) { return; }
 
@@ -1800,6 +1808,7 @@ void simply_menu_touch_scrolled(SimplyMenu *self) {
   const GRect frame = layer_get_frame(scroll_layer_get_layer(scroll_layer));
   if (scroll_layer_get_content_size(scroll_layer).h <= frame.size.h) { return; }
 
+  self->scrollbar_coasting = coasting;
   self->scrollbar_offset_y = scroll_layer_get_content_offset(scroll_layer).y;
   if (!self->scrollbar_visible) {
     self->scrollbar_visible = true;
