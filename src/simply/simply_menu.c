@@ -1,5 +1,6 @@
 #include "simply_menu.h"
 
+#include "simply_scrollbar.h"
 #include "simply_touch.h"
 
 #include "simply_res.h"
@@ -1730,6 +1731,83 @@ void simply_menu_touch_note_input(SimplyMenu *self) {
 #endif
 }
 
+// ---- Touch scrollbar ---------------------------------------------------------
+//
+// The firmware's MenuLayer shows a scrollbar while a finger scrolls it, but
+// only for touches it handles itself. This app moves the list from its own
+// touch handler, so the same cue is drawn here on a layer over the menu:
+// shown by a drag, kept up while a fling is still moving the list, and gone a
+// second after the last movement.
+
+//! How long the scrollbar stays after the list last moved
+#define SCROLLBAR_HIDE_MS 1000
+
+static void prv_scrollbar_hide_timer_callback(void *data) {
+  SimplyMenu *self = data;
+  self->scrollbar_timer = NULL;
+  self->scrollbar_visible = false;
+  if (self->scrollbar_layer) {
+    layer_mark_dirty(self->scrollbar_layer);
+  }
+}
+
+static void prv_scrollbar_arm_hide(SimplyMenu *self) {
+  if (!self->scrollbar_timer ||
+      !app_timer_reschedule(self->scrollbar_timer, SCROLLBAR_HIDE_MS)) {
+    self->scrollbar_timer = app_timer_register(SCROLLBAR_HIDE_MS,
+                                               prv_scrollbar_hide_timer_callback, self);
+  }
+}
+
+static void prv_scrollbar_cancel_hide(SimplyMenu *self) {
+  if (self->scrollbar_timer) {
+    app_timer_cancel(self->scrollbar_timer);
+    self->scrollbar_timer = NULL;
+  }
+  self->scrollbar_visible = false;
+}
+
+static void prv_scrollbar_update_proc(Layer *layer, GContext *ctx) {
+  SimplyMenu *self = window_get_user_data(layer_get_window(layer));
+  MenuLayer *menu_layer = self ? self->menu_layer.menu_layer : NULL;
+  if (!menu_layer || !self->scrollbar_visible) { return; }
+
+  ScrollLayer *scroll_layer = menu_layer_get_scroll_layer(menu_layer);
+  // The list is still moving under a fling. Nothing reports that, but every
+  // frame of it is drawn through here, so the hide waits for the movement to
+  // stop just as it does for a finger.
+  const int16_t offset_y = scroll_layer_get_content_offset(scroll_layer).y;
+  if (offset_y != self->scrollbar_offset_y) {
+    self->scrollbar_offset_y = offset_y;
+    prv_scrollbar_arm_hide(self);
+  }
+
+  // The colours the rows are drawn in, or the MenuLayer's own defaults until
+  // the phone has said otherwise
+  const GColor8 fg = self->menu_layer.normal_foreground;
+  const GColor8 bg = self->menu_layer.normal_background;
+  simply_scrollbar_draw(ctx, layer, scroll_layer,
+                        fg.a ? gcolor8_get_or(fg, GColorBlack) : GColorBlack,
+                        bg.a ? gcolor8_get_or(bg, GColorWhite) : GColorWhite);
+}
+
+void simply_menu_touch_scrolled(SimplyMenu *self) {
+  MenuLayer *menu_layer = self ? self->menu_layer.menu_layer : NULL;
+  if (!menu_layer || !self->scrollbar_layer) { return; }
+
+  // A list that fits its frame has no position to show
+  ScrollLayer *scroll_layer = menu_layer_get_scroll_layer(menu_layer);
+  const GRect frame = layer_get_frame(scroll_layer_get_layer(scroll_layer));
+  if (scroll_layer_get_content_size(scroll_layer).h <= frame.size.h) { return; }
+
+  self->scrollbar_offset_y = scroll_layer_get_content_offset(scroll_layer).y;
+  if (!self->scrollbar_visible) {
+    self->scrollbar_visible = true;
+    layer_mark_dirty(self->scrollbar_layer);
+  }
+  prv_scrollbar_arm_hide(self);
+}
+
 #endif  // SIMPLY_HAS_TOUCH
 
 static void prv_menu_select_long_click_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
@@ -1862,6 +1940,14 @@ static void prv_menu_window_load(Window *window) {
   });
 
   menu_layer_set_click_config_provider_onto_window(menu_layer, prv_click_config_provider, window);
+
+#ifdef SIMPLY_HAS_TOUCH
+  // Over the whole window rather than the menu, so it needs no re-placing
+  // when the status bar comes and goes; it draws within the menu's frame
+  self->scrollbar_layer = layer_create(layer_get_bounds(window_layer));
+  layer_set_update_proc(self->scrollbar_layer, prv_scrollbar_update_proc);
+  layer_add_child(window_layer, self->scrollbar_layer);
+#endif
 }
 
 #if !defined(PBL_PLATFORM_APLITE)
@@ -1899,6 +1985,10 @@ static void prv_menu_window_disappear(Window *window) {
   // Stop scrolling when window disappears
   stop_scroll_timer(self);
 #endif
+#ifdef SIMPLY_HAS_TOUCH
+  // Whatever was mid-fade goes with the screen; the next drag starts afresh
+  prv_scrollbar_cancel_hide(self);
+#endif
 
   // Cancel any pending reload timer
   if (self->reload_timer) {
@@ -1925,6 +2015,12 @@ static void prv_menu_window_unload(Window *window) {
     app_timer_cancel(self->reload_timer);
     self->reload_timer = NULL;
   }
+
+#ifdef SIMPLY_HAS_TOUCH
+  prv_scrollbar_cancel_hide(self);
+  layer_destroy(self->scrollbar_layer);
+  self->scrollbar_layer = NULL;
+#endif
 
   menu_layer_destroy(self->menu_layer.menu_layer);
   self->menu_layer.menu_layer = NULL;

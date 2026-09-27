@@ -3,6 +3,7 @@
 #include "simply.h"
 
 #include "simply_msg.h"
+#include "simply_scrollbar.h"
 #include "simply_voice.h"
 
 #include "util/graphics_text.h"
@@ -72,6 +73,9 @@
 #define CONTENT_MARGIN_BOTTOM 10
 //! Only rectangular displays need one: round insets each line to the glass
 #define CONTENT_MARGIN_SIDE 4
+//! Rectangular keeps a scrollbar up the right edge, and the words stop short
+//! of it by the same margin they keep from the left
+#define CONTENT_MARGIN_RIGHT (CONTENT_MARGIN_SIDE + SIMPLY_SCROLLBAR_INSET)
 
 // How fast holding up or down keeps scrolling. Rectangular slides smoothly and
 // can afford to repeat quickly; round moves a whole screen at a time, and
@@ -151,6 +155,11 @@ struct SimplyAssist {
 #if defined(PBL_ROUND)
   Layer *indicator_up_layer;
   Layer *indicator_down_layer;
+#else
+  //! Where the view is in the conversation, always on show: it says how much
+  //! of an answer there is whichever way the wearer scrolls it. Round has its
+  //! page arrows for that.
+  Layer *scrollbar_layer;
 #endif
   AppTimer *think_timer;
   AppTimer *timeout_timer;
@@ -605,7 +614,7 @@ static void prv_line_span(Wrapper *w) {
   w->span = 2 * half;
 #else
   w->x0 = CONTENT_MARGIN_SIDE;
-  w->span = w->frame.size.w - 2 * CONTENT_MARGIN_SIDE;
+  w->span = w->frame.size.w - CONTENT_MARGIN_SIDE - CONTENT_MARGIN_RIGHT;
 #endif
 }
 
@@ -842,7 +851,7 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   }
 
   const int16_t margin = PBL_IF_ROUND_ELSE(0, CONTENT_MARGIN_SIDE);
-  const int16_t width = frame.size.w - 2 * margin;
+  const int16_t width = frame.size.w - margin - PBL_IF_ROUND_ELSE(0, CONTENT_MARGIN_RIGHT);
   const GTextAlignment align = PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft);
   const GFont label_font = prv_label_font(self);
   const int16_t label_h = prv_label_height(self);
@@ -984,6 +993,17 @@ static void prv_content_update(Layer *layer, GContext *ctx) {
   prv_layout(self, ctx);
 }
 
+#if !defined(PBL_ROUND)
+//! The scrollbar, on its own layer over the conversation. It is redrawn with
+//! every frame the scroll layer moves, so it needs no telling.
+static void prv_scrollbar_update(Layer *layer, GContext *ctx) {
+  SimplyAssist *self = window_get_user_data(layer_get_window(layer));
+  if (!self || !self->scroll_layer) { return; }
+  simply_scrollbar_draw(ctx, layer, self->scroll_layer, prv_foreground(self),
+                        self->dark ? GColorBlack : GColorWhite);
+}
+#endif
+
 //! Re-measure the conversation, resize the scrollable content to match, and
 //! move the view to whatever the wearer is waiting on: the dots while the
 //! phone is working, and the first line of the answer once it lands. Round
@@ -1008,8 +1028,16 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
   const int16_t content_h =
       PBL_IF_ROUND_ELSE(((drawn_h + page - 1) / page) * page, drawn_h);
 
+  const int16_t previous_h = scroll_layer_get_content_size(self->scroll_layer).h;
   layer_set_frame(self->content_layer, GRect(0, 0, frame.size.w, content_h));
   scroll_layer_set_content_size(self->scroll_layer, GSize(frame.size.w, content_h));
+#if !defined(PBL_ROUND)
+  // More conversation below the fold shortens the thumb, and that is worth
+  // seeing even when none of the new words are
+  if (content_h != previous_h) {
+    layer_mark_dirty(self->scrollbar_layer);
+  }
+#endif
 
   const int16_t dot_max = prv_dot_size(frame);
   layer_set_frame(self->dots_layer,
@@ -1397,6 +1425,12 @@ static void prv_window_load(Window *window) {
       GRect(0, bounds.size.h - INDICATOR_HEIGHT, bounds.size.w, INDICATOR_HEIGHT));
   layer_add_child(root_layer, self->indicator_up_layer);
   layer_add_child(root_layer, self->indicator_down_layer);
+#else
+  // Added after the scroll layer so it paints over the words, which stop
+  // short of it (CONTENT_MARGIN_RIGHT)
+  self->scrollbar_layer = layer_create(bounds);
+  layer_set_update_proc(self->scrollbar_layer, prv_scrollbar_update);
+  layer_add_child(root_layer, self->scrollbar_layer);
 #endif
 
   prv_apply_theme(self);
@@ -1414,6 +1448,9 @@ static void prv_window_unload(Window *window) {
   self->indicator_up_layer = NULL;
   layer_destroy(self->indicator_down_layer);
   self->indicator_down_layer = NULL;
+#else
+  layer_destroy(self->scrollbar_layer);
+  self->scrollbar_layer = NULL;
 #endif
   layer_destroy(self->dots_layer);
   self->dots_layer = NULL;

@@ -184,6 +184,7 @@ static void prv_drag_move(int16_t y) {
   scroll_layer_set_content_offset(scroll_layer, offset, false);
   if (is_menu) {
     simply_menu_touch_note_input(s_touch->simply->menu);
+    simply_menu_touch_scrolled(s_touch->simply->menu);
   }
 }
 
@@ -216,6 +217,8 @@ static void prv_drag_release(void) {
   // title too long to fit can still be read without choosing the row first
   if (is_menu && s_touch->simply->menu) {
     simply_menu_marquee_at(s_touch->simply->menu, target.y);
+    // The scrollbar stays up through the fling the release may have started
+    simply_menu_touch_scrolled(s_touch->simply->menu);
   }
 }
 

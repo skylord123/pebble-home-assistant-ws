@@ -62,6 +62,14 @@ struct SimplyMenu {
   //! without selecting it, and that row is the one worth marqueeing, so it
   //! holds the marquee until the selection moves again.
   bool scroll_index_pinned;
+  //! The scroll position cue drawn over the list while a finger moves it, on
+  //! its own layer above the menu. See simply_menu_touch_scrolled.
+  Layer *scrollbar_layer;
+  AppTimer *scrollbar_timer;
+  //! The offset the cue was last drawn at, so a fling still moving the list
+  //! after the finger has gone keeps it up
+  int16_t scrollbar_offset_y;
+  bool scrollbar_visible;
 #endif
   int16_t scroll_offset;
   int16_t max_scroll_offset;
@@ -153,6 +161,11 @@ bool simply_menu_scroll_limits(SimplyMenu *self, int *min_y, int *max_y);
 //! the row having to be selected first. On the watches with no digitizer the
 //! marquee simply follows the selection, since nothing else can move the list.
 void simply_menu_marquee_at(SimplyMenu *self, int scroll_offset_y);
+
+//! A finger has moved the list: show the scroll position for a moment, the
+//! way the firmware's own menus do. Buttons step the selection and never
+//! call this.
+void simply_menu_touch_scrolled(SimplyMenu *self);
 
 #endif
 
