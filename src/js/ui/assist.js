@@ -317,18 +317,6 @@ function sendShow(listen, reset) {
   });
 }
 
-/**
- * Open the microphone again without leaving the conversation, for an agent
- * that has asked something back. The watch will not open it over its
- * thinking dots, so this has to come after the answer has ended.
- */
-Assist.listen = function() {
-  if (!state.active || !state.showOpts) { return; }
-  state.isDictating = true;
-  resetStream();
-  sendShow(true, false);
-};
-
 Assist.hide = function() {
   if (!state.active) { return; }
   simply.impl.assistHide();

@@ -351,15 +351,12 @@ function runPipeline(transcription) {
                 ConnectionService.showPendingReconnectDialog();
 
                 // An agent that has asked something back, such as "which
-                // room?", is waiting on an answer, and Home Assistant's own
-                // voice screen opens the microphone for it straight away.
-                // Only on the socket the answer came in on: had it dropped,
-                // the reconnect screen is going up over the conversation.
-                if (data.continue_conversation &&
-                    appState.assist_continue_conversation !== false &&
-                    !inSettings && haws === appState.haws && haws.connected) {
-                    Assist.listen();
-                }
+                // room?", is answered by pressing select once the question
+                // has been read. Home Assistant's own voice screen opens the
+                // microphone straight away, but it has spoken the question
+                // aloud; here it is text on a small screen, and the wearer
+                // needs the time to read it. The conversation id carries the
+                // thread across turns either way.
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
                 cancelStream();

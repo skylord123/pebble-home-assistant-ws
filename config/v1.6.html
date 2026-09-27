@@ -1062,13 +1062,6 @@
 					</div>
 					<small class="form-text">Vibrate while the assistant reply is being written, matching ChatGPT's tactile feedback</small>
 				</div>
-				<div class="component">
-					<div class="form-switch">
-						<label class="form-check-label" for="ha-assist-continue-conversation">Listen for a reply</label>
-						<input class="form-check-input" type="checkbox" id="ha-assist-continue-conversation" checked>
-					</div>
-					<small class="form-text">Open the microphone again when the assistant asks a question back, the same as Home Assistant's own voice screen</small>
-				</div>
 				<div class="component" id="pipeline-container">
 					<div class="form-group">
 						<label class="form-label" for="ha-pipeline-select">Assist Pipeline</label>
@@ -1564,7 +1557,6 @@
 		voiceBacklightHold = $('ha-voice-backlight-hold'),
 		assistStreamReply = $('ha-assist-stream-reply'),
 		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
-		assistContinueConversation = $('ha-assist-continue-conversation'),
 		voiceFontSize = $('ha-voice-font-size'),
 		pipelineSelect = $('ha-pipeline-select'),
 		pipelineWarning = $('pipeline-warning'),
@@ -2210,7 +2202,6 @@
 			'voice_backlight_hold': voiceBacklightHold.checked,
 			'assist_stream_reply': assistStreamReply.checked,
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
-			'assist_continue_conversation': assistContinueConversation.checked,
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
 			// While the dropdown is empty (not connected) the saved choice
 			// stands, rather than being wiped by a dropout
@@ -2295,7 +2286,6 @@
 		voiceBacklightHold.checked = watch_config['voice_backlight_hold'] === true;
 		assistStreamReply.checked = defaulted(watch_config['assist_stream_reply'], true);
 		assistVibrationFeedback.checked = defaulted(watch_config['assist_vibration_feedback'], true);
-		assistContinueConversation.checked = defaulted(watch_config['assist_continue_conversation'], true);
 		voiceFontSize.value = watch_config['voice_font_size'] ? String(watch_config['voice_font_size']) : '18';
 
 		chosenPipeline = null;
