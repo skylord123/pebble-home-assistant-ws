@@ -823,6 +823,88 @@ var EntityService = {
     },
 
     /**
+     * Find entities by name or id for the settings page. Every word of the
+     * query has to appear somewhere in the friendly name or the entity_id.
+     * Names that start with the whole query come first, then names that
+     * contain it, then names matching its first word, then ids.
+     *
+     * @param {string} query - What was typed
+     * @param {number} limit - Most results to return
+     * @returns {{results: Array<{entity_id, name, state, domain}>, total: number}}
+     */
+    search: function(query, limit) {
+        var appState = AppState.getInstance();
+        var dict = appState.ha_state_dict || {};
+        var terms = String(query || '').toLowerCase().split(/\s+/).filter(function(t) {
+            return t.length > 0;
+        });
+        var matches = [];
+
+        if (terms.length === 0) {
+            return { results: [], total: 0 };
+        }
+        var phrase = terms.join(' ');
+
+        var ids = Object.keys(dict);
+        for (var i = 0; i < ids.length; i++) {
+            var entity = dict[ids[i]];
+            if (!entity || !entity.entity_id) { continue; }
+            var name = this.getTitle(entity);
+            var lowerName = name.toLowerCase();
+            var lowerId = entity.entity_id.toLowerCase();
+            var haystack = lowerName + ' ' + lowerId;
+            var everyTerm = true;
+            for (var t = 0; t < terms.length; t++) {
+                if (haystack.indexOf(terms[t]) === -1) {
+                    everyTerm = false;
+                    break;
+                }
+            }
+            if (!everyTerm) { continue; }
+
+            var rank;
+            if (lowerName.indexOf(phrase) === 0) {
+                rank = 0;
+            } else if (lowerName.indexOf(phrase) !== -1) {
+                rank = 1;
+            } else if (lowerName.indexOf(terms[0]) === 0) {
+                rank = 2;
+            } else if (lowerName.indexOf(terms[0]) !== -1) {
+                rank = 3;
+            } else {
+                rank = 4;
+            }
+            matches.push({ entity: entity, name: name, rank: rank });
+        }
+
+        matches.sort(function(a, b) {
+            if (a.rank !== b.rank) { return a.rank - b.rank; }
+            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+        });
+
+        var results = [];
+        for (var m = 0; m < matches.length && m < limit; m++) {
+            var e = matches[m].entity;
+            var stateText;
+            try {
+                stateText = this.getStateText(e);
+            } catch (err) {
+                // The page-specific formatters assume attributes a stray
+                // entity may not have; the raw state is still worth showing
+                stateText = e.state;
+            }
+            results.push({
+                entity_id: e.entity_id,
+                name: matches[m].name,
+                state: stateText,
+                domain: e.entity_id.split('.')[0]
+            });
+        }
+
+        return { results: results, total: matches.length };
+    },
+
+    /**
      * Toggle pinned status for an entity
      * @param {Object} entity - The entity object
      * @returns {boolean} true if pinned, false if unpinned

@@ -9,6 +9,7 @@ var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
 var Assist = require('ui/assist');
+var ConfigBridge = require('app/ConfigBridge');
 
 var ConnectionService = {
     // Reference to loading card (set by app.js)
@@ -30,7 +31,13 @@ var ConnectionService = {
     // Home Assistant refused the token. Nothing reconnects after that, and the
     // failure has to stay on screen rather than turn into "Reconnecting".
     authFailed: false,
+    // The last thing that went wrong, for a config page asking how the
+    // connection is doing. Cleared when a connection authenticates.
+    lastError: null,
     restartTimer: null,
+
+    // How long a connection test waits for Home Assistant before giving up
+    TEST_TIMEOUT_MS: 15000,
 
     /**
      * Initialize the connection service
@@ -133,6 +140,7 @@ var ConnectionService = {
 
         // An earlier auth failure or setup prompt must not linger into this attempt
         this.authFailed = false;
+        this.lastError = null;
         this.loadingCard.title('Home Assistant');
         this.loadingCard.body('');
 
@@ -141,6 +149,7 @@ var ConnectionService = {
             this.loadingCard.subtitle('Setup required');
             this.loadingCard.body("Configure from the Pebble app");
             this.loadingCard.setup();
+            ConfigBridge.notifyStatus();
             return;
         }
 
@@ -191,18 +200,25 @@ var ConnectionService = {
         haws.on('auth_invalid', function(evt) {
             if (!current()) { return; }
             self.authFailed = true;
+            self.lastError = {
+                code: 'auth_invalid',
+                message: (evt.detail && evt.detail.message) || 'Home Assistant refused the access token'
+            };
             self.loadingCard.title('Auth Failure');
             self.loadingCard.subtitle('Check your access token');
             // The full message from Home Assistant can be long; the detail
             // line wraps while the status line would cut it off
             self.loadingCard.body(evt.detail.message || 'Unknown error');
             self.loadingCard.error();
+            ConfigBridge.notifyStatus();
         });
 
         haws.on('auth_ok', function(evt) {
             if (!current()) { return; }
             log("ws auth_ok: " + JSON.stringify(evt));
             appState.ha_version = (evt.detail && evt.detail.ha_version) || null;
+            self.lastError = null;
+            ConfigBridge.notifyStatus();
 
             // Clear pending reconnect dialog if connection recovered before dictation completed.
             // This prevents showing the reconnecting dialog when the connection is already active.
@@ -225,11 +241,89 @@ var ConnectionService = {
     },
 
     /**
+     * Try a URL and token on a connection of their own, without touching the
+     * app's. The answer says whether Home Assistant accepted them, and if not,
+     * why, in words a settings page can show.
+     *
+     * The connection is torn down whatever happens. A refused token would
+     * otherwise be retried, and a dead address retried forever.
+     *
+     * @param {string} url - Home Assistant base URL, scheme included
+     * @param {string} token - Long-lived access token
+     * @param {Function} done - Called once with { ok: true, ha_version } or
+     *     { ok: false, error: { code, message } }
+     */
+    test: function(url, token, done) {
+        var log = helpers.log_message;
+        var haws = new HAWS(url, token, false, false);
+        var settled = false;
+        var sawError = false;
+
+        var timer = setTimeout(function() {
+            finish({ ok: false, error: {
+                code: 'timeout',
+                message: 'Home Assistant did not answer within ' +
+                    Math.round(ConnectionService.TEST_TIMEOUT_MS / 1000) + ' seconds'
+            } });
+        }, this.TEST_TIMEOUT_MS);
+
+        function finish(result) {
+            if (settled) { return; }
+            settled = true;
+            clearTimeout(timer);
+            // disconnect() closes the socket, and that close lands back here
+            // as a 'close' event, which the settled flag now swallows
+            try { haws.disconnect(); } catch (e) { /* nothing left to close */ }
+            log('Connection test ' + (result.ok ? 'succeeded' : 'failed: ' + result.error.message));
+            done(result);
+        }
+
+        haws.on('auth_ok', function(evt) {
+            finish({ ok: true, ha_version: (evt.detail && evt.detail.ha_version) || null });
+        });
+
+        haws.on('auth_invalid', function(evt) {
+            finish({ ok: false, error: {
+                code: 'auth_invalid',
+                message: (evt.detail && evt.detail.message) || 'Home Assistant refused the access token'
+            } });
+        });
+
+        haws.on('error', function() {
+            // The close that follows carries the outcome; this only says the
+            // socket itself failed rather than Home Assistant hanging up
+            sawError = true;
+        });
+
+        haws.on('close', function() {
+            finish({ ok: false, error: {
+                code: 'unreachable',
+                message: sawError
+                    ? 'Could not reach ' + url + '. Check the address, and that this phone can reach Home Assistant from where it is.'
+                    : 'Home Assistant closed the connection before authenticating'
+            } });
+        });
+
+        log('Testing connection to ' + url);
+        try {
+            haws.connect();
+        } catch (err) {
+            // new WebSocket() throws on an address it cannot make sense of
+            finish({ ok: false, error: {
+                code: 'bad_url',
+                message: 'That does not look like a usable URL: ' + ((err && err.message) || err)
+            } });
+        }
+    },
+
+    /**
      * Handle disconnection
      */
     handleDisconnect: function() {
         var self = this;
         var log = helpers.log_message;
+
+        ConfigBridge.notifyStatus();
 
         // If we're restarting, don't try to save/restore windows
         if (this.isRestarting) {

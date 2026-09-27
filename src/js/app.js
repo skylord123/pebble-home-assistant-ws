@@ -23,6 +23,7 @@ var SettingsManager = require('app/SettingsManager');
 var CacheManager = require('app/CacheManager');
 var StateService = require('app/StateService');
 var ConnectionService = require('app/ConnectionService');
+var ConfigBridge = require('app/ConfigBridge');
 var EntityService = require('app/EntityService');
 
 // === Page Imports ===
@@ -159,11 +160,21 @@ var accountToken = (Pebble.getAccountToken && typeof Pebble.getAccountToken === 
 helpers.log_message('AccountToken: ' + accountToken);
 
 // === Settings Config Handler ===
+function onSettingsChanged() {
+    ConnectionService.restart();
+}
+
+// The hosted page, opened by every phone app that does not know about pages
+// bundled in the pbw
 SettingsManager.initConfigHandler({
     configPageUrl: Constants.configPageUrl,
-    onSettingsChanged: function() {
-        ConnectionService.restart();
-    }
+    onSettingsChanged: onSettingsChanged
+});
+
+// The bundled page, which talks to this JS while it is open. Registers
+// nothing on a phone app that cannot open one.
+ConfigBridge.init({
+    onSettingsChanged: onSettingsChanged
 });
 
 // === Home Assistant core state gate ===
@@ -492,6 +503,9 @@ function start_data_fetch() {
 
             CacheManager.save();
             watchRegistries(haws);
+            // Pipelines and calendars are published now; an open config page
+            // can fill its lists
+            ConfigBridge.notifyStatus();
 
             if (isFetchingInBackground && fetchFailed) {
                 log("Background fetch failed: " + fetchError);
@@ -512,6 +526,8 @@ function start_data_fetch() {
     StateService.getStates(function() {
         loaded.states = true;
         settleStates();
+        // Entity search on the config page can start
+        ConfigBridge.notifyStatus();
         checkAllLoaded();
     }, function(err) {
         fetchFailed = true;
