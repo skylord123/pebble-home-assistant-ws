@@ -87,7 +87,10 @@ var ConfigBridge = {
             respond({ ok: false, error: { code: code, message: text } });
         }
 
-        var handler = ConfigBridge.handlers[message.type];
+        // Own keys only: a type like "constructor" must not find Object's
+        var handler = Object.prototype.hasOwnProperty.call(ConfigBridge.handlers, message.type)
+            ? ConfigBridge.handlers[message.type]
+            : null;
         if (!handler) {
             fail('unknown_type', 'Unknown request type: ' + message.type);
             return;
@@ -167,7 +170,17 @@ var ConfigBridge = {
                     return;
                 }
 
-                ConfigBridge.applySettings({ ha_url: url, token: token });
+                // This runs from the test connection's events, outside the
+                // try/catch around the handler, so it needs its own
+                try {
+                    ConfigBridge.applySettings({ ha_url: url, token: token });
+                } catch (err) {
+                    helpers.log_message('Config bridge: applying the connection failed: ' +
+                        ((err && err.stack) || err));
+                    fail('internal', 'Connected, but the watch app failed to apply the settings: ' +
+                        ((err && err.message) || err));
+                    return;
+                }
                 respond({ ok: true, ha_version: result.ha_version || null });
             });
         },

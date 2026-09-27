@@ -45,7 +45,10 @@ the same way.
 | `{ type: 'get_status' }` | `{ ok, status }` |
 | `{ type: 'save_settings', settings }` | `{ ok }`. Merges `settings` into the stored options and applies them, exactly as closing the hosted page does. Needs `ha_url` and `token`. |
 | `{ type: 'connect', ha_url, token }` | `{ ok, ha_version }` or an error. Tries the pair on a throwaway connection and only saves them, and reconnects the app, once Home Assistant has accepted them. Error codes: `bad_url`, `missing_token`, `auth_invalid`, `unreachable`, `timeout`. |
-| `{ type: 'search_entities', query, limit }` | `{ ok, results: [{ entity_id, name, state, domain }], total }`. Every word of `query` must appear in the name or id. `not_loaded` until the states have arrived from Home Assistant. |
+| `{ type: 'search_entities', query, limit }` | `{ ok, results: [{ entity_id, name, state, domain }], total }`. Every word of `query` must appear in the name or id. `limit` defaults to 30 and is capped at 100. `not_loaded` until the states have arrived from Home Assistant. |
+
+Any request can also fail with `unknown_type`, `bad_request` or `internal` (the
+handler threw; the message says what).
 
 The watch app also pushes at the page, without being asked, with
 `Pebble.sendConfigMessage(…)`; the page receives it as a `message` event:
@@ -56,7 +59,9 @@ The watch app also pushes at the page, without being asked, with
 
 `status` is `{ phase, connected, ha_url, ha_version, states_loaded,
 entity_count, error }`, where `phase` is one of `unconfigured`, `connecting`,
-`connected` or `auth_failed`. `settings` carries only the values the watch app
+`connected` or `auth_failed`, and `error` is `null` or `{ code, message }` for
+the last thing that went wrong (`auth_invalid`, `unreachable`, `disconnected`),
+cleared when a connection authenticates. `settings` carries only the values the watch app
 fills in itself and the page needs while open: `ha_connected`,
 `available_pipelines`, `available_calendars` and `selected_pipeline`. A push
 goes out whenever the connection changes state and when the states, pipelines

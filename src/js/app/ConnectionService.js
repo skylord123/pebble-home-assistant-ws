@@ -180,6 +180,9 @@ var ConnectionService = {
         function current() {
             return appState.haws === haws;
         }
+        // Whether this instance ever got past authentication, which tells a
+        // dropped connection apart from one that never came up
+        var everAuthenticated = false;
 
         // Set up event handlers
         haws.on('open', function(evt) {
@@ -189,6 +192,14 @@ var ConnectionService = {
 
         haws.on('close', function(evt) {
             if (!current()) { return; }
+            // A refused token has its own message, and a restart is not an
+            // error. Anything else is worth telling a config page about,
+            // since the splash is the only other place it shows.
+            if (!self.authFailed && !self.isRestarting) {
+                self.lastError = everAuthenticated
+                    ? { code: 'disconnected', message: 'Lost the connection to Home Assistant, reconnecting' }
+                    : { code: 'unreachable', message: 'Could not reach ' + appState.ha_url + ', retrying' };
+            }
             self.handleDisconnect();
         });
 
@@ -217,6 +228,7 @@ var ConnectionService = {
             if (!current()) { return; }
             log("ws auth_ok: " + JSON.stringify(evt));
             appState.ha_version = (evt.detail && evt.detail.ha_version) || null;
+            everAuthenticated = true;
             self.lastError = null;
             ConfigBridge.notifyStatus();
 

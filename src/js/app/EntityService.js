@@ -849,7 +849,8 @@ var EntityService = {
         for (var i = 0; i < ids.length; i++) {
             var entity = dict[ids[i]];
             if (!entity || !entity.entity_id) { continue; }
-            var name = this.getTitle(entity);
+            // A friendly_name is not always a string
+            var name = String(this.getTitle(entity));
             var lowerName = name.toLowerCase();
             var lowerId = entity.entity_id.toLowerCase();
             var haystack = lowerName + ' ' + lowerId;
@@ -874,12 +875,12 @@ var EntityService = {
             } else {
                 rank = 4;
             }
-            matches.push({ entity: entity, name: name, rank: rank });
+            matches.push({ entity: entity, name: name, lowerName: lowerName, rank: rank });
         }
 
         matches.sort(function(a, b) {
             if (a.rank !== b.rank) { return a.rank - b.rank; }
-            return a.name < b.name ? -1 : (a.name > b.name ? 1 : 0);
+            return a.lowerName < b.lowerName ? -1 : (a.lowerName > b.lowerName ? 1 : 0);
         });
 
         var results = [];

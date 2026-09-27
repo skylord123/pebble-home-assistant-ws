@@ -25,7 +25,7 @@ PBW_ENTRY = 'config.html'
 
 def config_page_source(root):
     with io.open(os.path.join(root, CONSTANTS_PATH), encoding='utf-8') as constants:
-        match = re.search(r"confVersion:\s*'([^']+)'", constants.read())
+        match = re.search(r"confVersion:\s*['\"]([^'\"]+)['\"]", constants.read())
     if not match:
         raise ValueError('confVersion not found in ' + CONSTANTS_PATH)
     return os.path.join(root, 'config', 'v%s.html' % match.group(1))
@@ -61,7 +61,10 @@ def add_config_page(pbw_path, page_path, entry_name=PBW_ENTRY):
 @conf
 def bundle_config_page(ctx):
     root = ctx.path.abspath()
-    page_path = config_page_source(root)
+    try:
+        page_path = config_page_source(root)
+    except (IOError, OSError, ValueError) as err:
+        ctx.fatal('Cannot work out which config page to bundle: %s' % err)
     if not os.path.exists(page_path):
         ctx.fatal('Config page %s does not exist' % os.path.relpath(page_path, root))
 
