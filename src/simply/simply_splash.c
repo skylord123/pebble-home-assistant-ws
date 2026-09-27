@@ -392,9 +392,13 @@ void simply_splash_destroy(SimplySplash *self) {
   free(self);
 }
 
-static void prv_copy_string(char *out, size_t out_size, const char *in) {
-  strncpy(out, in, out_size - 1);
-  out[out_size - 1] = '\0';
+//! Copy a string out of a packet, reading no further than the packet's end
+static void prv_copy_string(char *out, size_t out_size, const char *in, const Packet *packet) {
+  const char *end = (const char *)packet + packet->length;
+  size_t n = (in < end) ? (size_t)(end - in) : 0;
+  if (n > out_size - 1) { n = out_size - 1; }
+  strncpy(out, in, n);
+  out[n] = '\0';
 }
 
 static void prv_handle_status_packet(Simply *simply, Packet *data) {
@@ -404,9 +408,9 @@ static void prv_handle_status_packet(Simply *simply, Packet *data) {
   const char *title = packet->buffer;
   const char *status = title + packet->title_length + 1;
   const char *body = status + packet->status_length + 1;
-  prv_copy_string(self->title, sizeof(self->title), title);
-  prv_copy_string(self->status, sizeof(self->status), status);
-  prv_copy_string(self->body, sizeof(self->body), body);
+  prv_copy_string(self->title, sizeof(self->title), title, data);
+  prv_copy_string(self->status, sizeof(self->status), status, data);
+  prv_copy_string(self->body, sizeof(self->body), body, data);
   layer_mark_dirty(window_get_root_layer(self->window));
 }
 

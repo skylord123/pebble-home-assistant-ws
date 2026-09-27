@@ -8,16 +8,15 @@
 
 #include <pebble.h>
 
-// Message keys for AppMessage
-#define MESSAGE_KEY_SCROLL_Y 1000
-#define MESSAGE_KEY_ANIMATED 1001
-
 typedef struct SimplyMsg SimplyMsg;
 
 struct SimplyMsg {
   Simply *simply;
   List1Node *send_queue;
   List1Node *receive_queue;
+  //! Segments were lost from the message being received, so the rest of it
+  //! is thrown away as it arrives
+  bool discarding;
   uint32_t send_delay_ms;
   AppTimer *send_timer;
   uint8_t *send_buffer;

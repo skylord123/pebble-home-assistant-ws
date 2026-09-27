@@ -123,7 +123,7 @@ function callTimerService(entity_id, service, data) {
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
         return;
@@ -143,7 +143,7 @@ function quickAction(entity_id) {
  */
 function showDurationPicker(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) return;
 
     var configured = parseDuration(entity.attributes.duration) || 300;
@@ -176,7 +176,7 @@ function showDurationPicker(entity_id) {
 
 function showTimerEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         tickTimer = null;
     if (!entity) {
@@ -187,10 +187,6 @@ function showTimerEntity(entity_id) {
 
     let timerMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -210,7 +206,7 @@ function showTimerEntity(entity_id) {
     }
 
     function updateStatusRow() {
-        let current = appState.ha_state_dict[entity_id];
+        let current = appState.getEntity(entity_id);
         if (current) {
             timerMenu.item(0, 0, buildStatusItem(current));
         }
@@ -225,9 +221,12 @@ function showTimerEntity(entity_id) {
 
     // Only a running timer needs a local tick; paused and idle values are
     // static until the next state change
+    // Only ticks while the menu is on screen, so a late update cannot start
+    // it again after 'hide' has stopped it
+    let visible = false;
     function syncTick(updatedEntity) {
         stopTick();
-        if (updatedEntity.state === 'active') {
+        if (visible && updatedEntity.state === 'active') {
             tickTimer = setInterval(updateStatusRow, 1000);
         }
     }
@@ -329,8 +328,19 @@ function showTimerEntity(entity_id) {
         }
     });
 
+    // Releases the subscription; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    }
+
     timerMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        visible = true;
+        entity = appState.getEntity(entity_id) || entity;
         updateTimerMenuItems(entity);
 
         subscription_msg_id = appState.haws.subscribeEntities([entity_id], function(data) {
@@ -351,10 +361,9 @@ function showTimerEntity(entity_id) {
     });
 
     timerMenu.on('hide', function() {
+        visible = false;
         stopTick();
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
+        releaseUpdates();
     });
 
     timerMenu.show();

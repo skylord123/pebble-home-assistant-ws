@@ -13,6 +13,15 @@ var helpers = require('app/helpers');
 var areaMenu = null;
 var areaMenuUsingFloors = null;
 
+// Rows are written one at a time on every show, so when the registry now has
+// fewer entries than last time the leftover rows have to go
+function dropItemsFrom(menu, count) {
+    var items = menu.items(0);
+    if (items && items.length > count) {
+        menu.items(0, items.slice(0, count));
+    }
+}
+
 class AreaMenuPage extends BasePage {
     constructor() {
         super();
@@ -47,10 +56,6 @@ class AreaMenuPage extends BasePage {
 
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Floors'
             }]
@@ -102,6 +107,7 @@ class AreaMenuPage extends BasePage {
                     }
                 });
             }
+            dropItemsFrom(menu, itemIndex);
         });
 
         menu.on('select', function(e) {
@@ -121,10 +127,6 @@ class AreaMenuPage extends BasePage {
 
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Areas'
             }]
@@ -141,7 +143,7 @@ class AreaMenuPage extends BasePage {
                 if (!area_name) continue;
 
                 var areaObjects = RegistryService.getEntitiesForArea(area_id);
-                var areaObjectCount = Object.keys(areaObjects).length;
+                var areaObjectCount = helpers.shownRegistryEntityIds(areaObjects).length;
 
                 areaEntries.push({
                     area_id: area_id,
@@ -159,7 +161,7 @@ class AreaMenuPage extends BasePage {
                             ((entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'),
                         on_click: function(e) {
                             var areaObjects = RegistryService.getEntitiesForArea(entry.area_id);
-                            var entityKeys = Object.keys(areaObjects);
+                            var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
 
                             var shouldShowDomains = helpers.shouldShowDomainMenu(
                                 entityKeys,
@@ -179,6 +181,7 @@ class AreaMenuPage extends BasePage {
                     });
                 })(areaEntries[i]);
             }
+            dropItemsFrom(menu, areaEntries.length);
         });
 
         menu.on('select', function(e) {
@@ -208,10 +211,6 @@ function showAreasForFloor(floor_id, floor_name) {
 
     var floorAreasMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: floor_name
         }]
@@ -230,7 +229,7 @@ function showAreasForFloor(floor_id, floor_name) {
             if (!area_name) continue;
 
             var areaObjects = RegistryService.getEntitiesForArea(area_id);
-            var areaObjectCount = Object.keys(areaObjects).length;
+            var areaObjectCount = helpers.shownRegistryEntityIds(areaObjects).length;
 
             areaEntries.push({
                 area_id: area_id,
@@ -248,7 +247,7 @@ function showAreasForFloor(floor_id, floor_name) {
                         ((entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'),
                     on_click: function(e) {
                         var areaObjects = RegistryService.getEntitiesForArea(entry.area_id);
-                        var entityKeys = Object.keys(areaObjects);
+                        var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
 
                         var shouldShowDomains = helpers.shouldShowDomainMenu(
                             entityKeys,
@@ -268,6 +267,7 @@ function showAreasForFloor(floor_id, floor_name) {
                 });
             })(areaEntries[i]);
         }
+        dropItemsFrom(floorAreasMenu, areaEntries.length);
     });
 
     floorAreasMenu.on('select', function(e) {

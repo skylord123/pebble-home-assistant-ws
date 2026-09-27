@@ -19,10 +19,6 @@ class LabelMenuPage extends BasePage {
 
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Labels'
             }]
@@ -56,7 +52,7 @@ class LabelMenuPage extends BasePage {
             for (var i = 0; i < sortedLabels.length; i++) {
                 (function(label) {
                     var entities = RegistryService.getEntitiesForLabel(label.label_id);
-                    var entityCount = Object.keys(entities).length;
+                    var entityCount = helpers.shownRegistryEntityIds(entities).length;
 
                     self.menu.item(0, i, {
                         title: label.name,
@@ -87,13 +83,15 @@ class LabelMenuPage extends BasePage {
 function showEntitiesForLabel(label_id) {
     var appState = AppState.getInstance();
     var entities = RegistryService.getEntitiesForLabel(label_id);
-    var label = appState.label_registry_cache[label_id];
+    // A registry refresh or a restart can remove the label (or the whole
+    // cache) while the list that led here is still on screen
+    var label = (appState.label_registry_cache || {})[label_id];
 
-    if (!entities) {
+    if (!entities || !label) {
         return;
     }
 
-    var entityKeys = Object.keys(entities);
+    var entityKeys = helpers.shownRegistryEntityIds(entities);
 
     // Use the specific setting for Labels
     var shouldShowDomains = helpers.shouldShowDomainMenu(

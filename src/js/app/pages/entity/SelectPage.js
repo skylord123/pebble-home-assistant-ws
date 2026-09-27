@@ -18,7 +18,7 @@ var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showSelectEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         domain = entity_id.split('.')[0];
     if (!entity) {
@@ -29,10 +29,6 @@ function showSelectEntity(entity_id) {
 
     let selectMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -97,8 +93,18 @@ function showSelectEntity(entity_id) {
         }
     });
 
+    // Releases the subscription; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    }
+
     selectMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateSelectMenuItems(entity);
 
         // Subscribe to entity updates; the initial snapshot refreshes any
@@ -114,11 +120,7 @@ function showSelectEntity(entity_id) {
         });
     });
 
-    selectMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-    });
+    selectMenu.on('hide', releaseUpdates);
 
     selectMenu.show();
 }

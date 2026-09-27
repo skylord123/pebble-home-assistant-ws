@@ -4,6 +4,8 @@
 #include "simply_res.h"
 #include "simply_msg.h"
 #include "simply_window_stack.h"
+#include "simply_number.h"
+#include "simply_assist.h"
 
 #include "simply.h"
 
@@ -200,9 +202,11 @@ static void destroy_element(SimplyStage *self, SimplyElementCommon *element) {
     case SimplyElementTypePolyline:
       free(((SimplyElementPolyline*) element)->points);
       break;
+#if !defined(PBL_PLATFORM_APLITE)
     case SimplyElementTypeInverter:
       inverter_layer_destroy(((SimplyElementInverter*) element)->inverter_layer);
       break;
+#endif
   }
   free(element);
 }
@@ -284,6 +288,9 @@ static void polyline_element_draw(GContext *ctx, SimplyStage *self,
 }
 #endif
 
+// The app draws none of circles, radials, inverters or live time text, and
+// aplite has too little heap to carry the code for them
+#if !defined(PBL_PLATFORM_APLITE)
 static void circle_element_draw(GContext *ctx, SimplyStage *self, SimplyElementCircle *element) {
   if (element->common.background_color.a) {
     graphics_fill_circle(ctx, element->common.frame.origin, element->radius);
@@ -328,14 +335,17 @@ static char *format_time(char *format) {
   strftime(time_text, sizeof(time_text), format, tm);
   return time_text;
 }
+#endif
 
 static void text_element_draw(GContext *ctx, SimplyStage *self, SimplyElementText *element) {
   rect_element_draw(ctx, self, &element->rect);
   char *text = element->text;
   if (element->text_color.a && is_string(text)) {
+#if !defined(PBL_PLATFORM_APLITE)
     if (element->time_units) {
       text = format_time(text);
     }
+#endif
     GFont font = element->font ? element->font : fonts_get_system_font(FONT_KEY_GOTHIC_14);
     graphics_context_set_text_color(ctx, gcolor8_get(element->text_color));
     graphics_draw_text(ctx, text, font, element->rect.common.frame, element->overflow_mode,
@@ -393,10 +403,14 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
 #endif
         break;
       case SimplyElementTypeCircle:
+#if !defined(PBL_PLATFORM_APLITE)
         circle_element_draw(ctx, self, (SimplyElementCircle *)element);
+#endif
         break;
       case SimplyElementTypeRadial:
+#if !defined(PBL_PLATFORM_APLITE)
         radial_element_draw(ctx, self, (SimplyElementRadial *)element);
+#endif
         break;
       case SimplyElementTypeText:
         text_element_draw(ctx, self, (SimplyElementText *)element);
@@ -429,11 +443,17 @@ static size_t prv_get_element_size(SimplyElementType type) {
     case SimplyElementTypeLine: return sizeof(SimplyElementLine);
     case SimplyElementTypePolyline: return sizeof(SimplyElementPolyline);
     case SimplyElementTypeRect: return sizeof(SimplyElementRect);
+#if !defined(PBL_PLATFORM_APLITE)
     case SimplyElementTypeCircle: return sizeof(SimplyElementCircle);
     case SimplyElementTypeRadial: return sizeof(SimplyElementRadial);
+    case SimplyElementTypeInverter: return sizeof(SimplyElementInverter);
+#else
+    case SimplyElementTypeCircle:
+    case SimplyElementTypeRadial:
+    case SimplyElementTypeInverter: return 0;
+#endif
     case SimplyElementTypeText: return sizeof(SimplyElementText);
     case SimplyElementTypeImage: return sizeof(SimplyElementImage);
-    case SimplyElementTypeInverter: return sizeof(SimplyElementInverter);
   }
   return 0;
 }
@@ -445,11 +465,17 @@ static SimplyElementCommon *prv_create_element(SimplyElementType type) {
   }
   switch (type) {
     default: return common;
+#if !defined(PBL_PLATFORM_APLITE)
     case SimplyElementTypeInverter: {
       SimplyElementInverter *element = (SimplyElementInverter *)common;
       element->inverter_layer = inverter_layer_create(GRect(0, 0, 0, 0));
+      if (!element->inverter_layer) {
+        free(common);
+        return NULL;
+      }
       return common;
     }
+#endif
   }
   return common;
 }
@@ -462,6 +488,11 @@ SimplyElementCommon *simply_stage_auto_element(SimplyStage *self, uint32_t id, S
       self->stage_layer.elements, id_filter, (void*)(uintptr_t) id);
   if (element) {
     return element;
+  }
+  // A plain lookup (type None) or an unknown type has nothing to create, and
+  // a zero-size element would be written past its end
+  if (!prv_get_element_size(type)) {
+    return NULL;
   }
   while (!(element = prv_create_element(type))) {
     if (!simply_res_evict_image(self->window.simply->res)) {
@@ -477,10 +508,15 @@ SimplyElementCommon *simply_stage_insert_element(SimplyStage *self, int index, S
   simply_stage_remove_element(self, element);
   switch (element->type) {
     default: break;
+#if !defined(PBL_PLATFORM_APLITE)
     case SimplyElementTypeInverter:
-      layer_add_child(self->stage_layer.layer,
-          inverter_layer_get_layer(((SimplyElementInverter*) element)->inverter_layer));
+      // The stage layer only exists while the window is loaded
+      if (self->stage_layer.layer) {
+        layer_add_child(self->stage_layer.layer,
+            inverter_layer_get_layer(((SimplyElementInverter*) element)->inverter_layer));
+      }
       break;
+#endif
   }
   return (SimplyElementCommon*) list1_insert(&self->stage_layer.elements, index, &element->node);
 }
@@ -488,9 +524,11 @@ SimplyElementCommon *simply_stage_insert_element(SimplyStage *self, int index, S
 SimplyElementCommon *simply_stage_remove_element(SimplyStage *self, SimplyElementCommon *element) {
   switch (element->type) {
     default: break;
+#if !defined(PBL_PLATFORM_APLITE)
     case SimplyElementTypeInverter:
       layer_remove_from_parent(inverter_layer_get_layer(((SimplyElementInverter*) element)->inverter_layer));
       break;
+#endif
   }
   return (SimplyElementCommon*) list1_remove(&self->stage_layer.elements, &element->node);
 }
@@ -502,11 +540,13 @@ void simply_stage_set_element_frame(SimplyStage *self, SimplyElementCommon *elem
   element->frame = frame;
   switch (element->type) {
     default: break;
+#if !defined(PBL_PLATFORM_APLITE)
     case SimplyElementTypeInverter: {
       Layer *layer = inverter_layer_get_layer(((SimplyElementInverter*) element)->inverter_layer);
       layer_set_frame(layer, element->frame);
       break;
     }
+#endif
   }
 }
 
@@ -579,7 +619,15 @@ SimplyAnimation *simply_stage_animate_element(SimplyStage *self,
     .stopped = animation_stopped,
   }, self);
 
-  animation_schedule(base_animation);
+  if (!animation_schedule(base_animation)) {
+    // Never started, so it would never stop and clean up after itself. Land
+    // on the end frame and report it done, as a finished one would.
+    destroy_animation(self, animation);
+    simply_stage_set_element_frame(self, element, to_frame);
+    simply_stage_update(self);
+    send_animate_element_done(self->window.simply->msg, element->id);
+    return NULL;
+  }
 
   return animation;
 }
@@ -613,8 +661,13 @@ static void window_appear(Window *window) {
 static void window_disappear(Window *window) {
   SimplyStage *self = window_get_user_data(window);
   if (simply_window_disappear(&self->window)) {
-    simply_res_clear(self->window.simply->res);
-    simply_stage_clear(self);
+    Simply *simply = self->window.simply;
+    simply_res_clear(simply->res);
+    // Under the native number selector or assist, JS is never told this window
+    // went away, so it will not redraw it on the way back
+    if (!simply_number_is_covering(simply) && !simply_assist_is_covering(simply)) {
+      simply_stage_clear(self);
+    }
   }
 }
 
@@ -633,11 +686,14 @@ void simply_stage_update(SimplyStage *self) {
   }
 }
 
+#if !defined(PBL_PLATFORM_APLITE)
 static void handle_tick(struct tm *tick_time, TimeUnits units_changed) {
   window_stack_schedule_top_window_render();
 }
+#endif
 
 void simply_stage_update_ticker(SimplyStage *self) {
+#if !defined(PBL_PLATFORM_APLITE)
   TimeUnits units = 0;
 
   SimplyElementCommon *element = (SimplyElementCommon*) self->stage_layer.elements;
@@ -653,6 +709,7 @@ void simply_stage_update_ticker(SimplyStage *self) {
   } else {
     tick_timer_service_unsubscribe();
   }
+#endif
 }
 
 static void handle_stage_clear_packet(Simply *simply, Packet *data) {
@@ -676,6 +733,13 @@ static void handle_element_remove_packet(Simply *simply, Packet *data) {
     return;
   }
   simply_stage_remove_element(simply->stage, element);
+  SimplyAnimation *animation;
+  while ((animation = (SimplyAnimation *)list1_find(simply->stage->stage_layer.animations,
+                                                    animation_element_filter, element))) {
+    destroy_animation(simply->stage, animation);
+  }
+  destroy_element(simply->stage, element);
+  simply_stage_update_ticker(simply->stage);
   simply_stage_update(simply->stage);
 }
 
@@ -692,10 +756,26 @@ static void handle_element_common_packet(Simply *simply, Packet *data) {
   simply_stage_update(simply->stage);
 }
 
+//! Whether an element starts with SimplyElementRect, and so has a radius
+static bool prv_has_radius(SimplyElementCommon *element) {
+  switch (element->type) {
+    case SimplyElementTypeRect:
+    case SimplyElementTypeCircle:
+    case SimplyElementTypeRadial:
+    case SimplyElementTypeText:
+    case SimplyElementTypeImage:
+      return true;
+    default:
+      return false;
+  }
+}
+
+// Each property below only exists on some element types, and writing it into
+// any other would land past the end of that element
 static void handle_element_radius_packet(Simply *simply, Packet *data) {
   ElementRadiusPacket *packet = (ElementRadiusPacket*) data;
   SimplyElementRect *element = (SimplyElementRect*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || !prv_has_radius(&element->common)) {
     return;
   }
   element->radius = packet->radius;
@@ -713,22 +793,30 @@ static void handle_element_polyline_packet(Simply *simply, Packet *data) {
   free(element->points);
   element->points = NULL;
   element->num_points = 0;
-  if (packet->num_points) {
-    element->points = malloc(packet->num_points);
+  // Never copy more points than the packet actually carries
+  uint16_t num_points = packet->num_points;
+  const uint16_t carried = (packet->packet.length > sizeof(*packet)) ?
+      (uint16_t)(packet->packet.length - sizeof(*packet)) : 0;
+  if (num_points > carried) {
+    num_points = carried;
+  }
+  if (num_points) {
+    element->points = malloc(num_points);
     if (element->points) {
-      memcpy(element->points, packet->points, packet->num_points);
-      element->num_points = packet->num_points;
+      memcpy(element->points, packet->points, num_points);
+      element->num_points = num_points;
     }
   }
   simply_stage_update(simply->stage);
 #endif
 };
 
+#if !defined(PBL_PLATFORM_APLITE)
 static void handle_element_angle_packet(Simply *simply, Packet *data) {
   ElementAnglePacket *packet = (ElementAnglePacket *)data;
   SimplyElementRadial *element =
       (SimplyElementRadial *)simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeRadial) {
     return;
   }
   element->angle = packet->angle;
@@ -739,23 +827,26 @@ static void handle_element_angle2_packet(Simply *simply, Packet *data) {
   ElementAngle2Packet *packet = (ElementAngle2Packet *)data;
   SimplyElementRadial *element =
       (SimplyElementRadial *)simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeRadial) {
     return;
   }
   element->angle2 = packet->angle;
   simply_stage_update(simply->stage);
 };
+#endif
 
 static void handle_element_text_packet(Simply *simply, Packet *data) {
   ElementTextPacket *packet = (ElementTextPacket*) data;
   SimplyElementText *element = (SimplyElementText*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeText) {
     return;
   }
+#if !defined(PBL_PLATFORM_APLITE)
   if (element->time_units != packet->time_units) {
     element->time_units = packet->time_units;
     simply_stage_update_ticker(simply->stage);
   }
+#endif
   strset(&element->text, packet->text);
   simply_stage_update(simply->stage);
 }
@@ -763,7 +854,7 @@ static void handle_element_text_packet(Simply *simply, Packet *data) {
 static void handle_element_text_style_packet(Simply *simply, Packet *data) {
   ElementTextStylePacket *packet = (ElementTextStylePacket*) data;
   SimplyElementText *element = (SimplyElementText*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeText) {
     return;
   }
   element->text_color = packet->color;
@@ -780,7 +871,7 @@ static void handle_element_text_style_packet(Simply *simply, Packet *data) {
 static void handle_element_image_packet(Simply *simply, Packet *data) {
   ElementImagePacket *packet = (ElementImagePacket*) data;
   SimplyElementImage *element = (SimplyElementImage*) simply_stage_get_element(simply->stage, packet->id);
-  if (!element) {
+  if (!element || element->rect.common.type != SimplyElementTypeImage) {
     return;
   }
   element->image = packet->image;
@@ -885,12 +976,14 @@ bool simply_stage_handle_packet(Simply *simply, Packet *packet) {
     case CommandElementRadius:
       handle_element_radius_packet(simply, packet);
       return true;
+#if !defined(PBL_PLATFORM_APLITE)
     case CommandElementAngle:
       handle_element_angle_packet(simply, packet);
       return true;
     case CommandElementAngle2:
       handle_element_angle2_packet(simply, packet);
       return true;
+#endif
     case CommandElementText:
       handle_element_text_packet(simply, packet);
       return true;

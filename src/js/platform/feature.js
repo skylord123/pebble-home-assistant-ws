@@ -79,6 +79,21 @@ Feature.microphone = Feature.makePlatformTest({
   unknown: true,  // Assume microphone support for unknown platforms
 });
 
+//! The number selector runs natively on the watch (simply_number.c). Aplite
+//! loads an app's code into the same 24KB as its heap, and that file costs
+//! about 4KB of it, which is the difference between the app running and not,
+//! so aplite is served by the JS fallback in ui/numberfield instead.
+Feature.nativeNumberSelector = Feature.makePlatformTest({
+  aplite: false,
+  basalt: true,
+  chalk: true,
+  diorite: true,
+  emery: true,
+  flint: true,  // Core 2 Duo (Pebble 2 Duo)
+  gabbro: true,  // Core Time Round
+  unknown: true,  // Assume the native selector is there by default
+});
+
 Feature.resolution = Feature.makePlatformTest({
   aplite: new Vector2(144, 168),
   basalt: new Vector2(144, 168),

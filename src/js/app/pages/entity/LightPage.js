@@ -16,19 +16,19 @@ var NumberField = require('ui/numberfield');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
-// Menu selection tracking
-var menuSelections = {
-    lightMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showLightEntity(entity_id) {
     var appState = AppState.getInstance();
-    let light = appState.ha_state_dict[entity_id],
+    let light = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!light) {
@@ -36,6 +36,11 @@ function showLightEntity(entity_id) {
     }
 
     helpers.log_message(`Showing light entity ${entity_id}`, JSON.stringify(light, null, 4));
+
+    // The latest state, or the last one seen if it has left the state dict
+    function currentLight() {
+        return appState.getEntity(entity_id) || light;
+    }
 
     // Helper function to get light data
     function getLightData(light) {
@@ -80,8 +85,12 @@ function showLightEntity(entity_id) {
             rgb_color: rgbColor,
             xy_color: light.attributes.xy_color,
             hs_color: light.attributes.hs_color,
-            effect: light.attributes.effect,
-            effect_list: light.attributes.effect_list || [],
+            // "off" is Home Assistant's no-effect value (EFFECT_OFF); the
+            // menu shows it as its own None row
+            effect: light.attributes.effect === 'off' ? null : light.attributes.effect,
+            effect_list: (light.attributes.effect_list || []).filter(function(effect) {
+                return effect !== 'off';
+            }),
             last_changed_time: timeStr
         };
     }
@@ -145,6 +154,9 @@ function showLightEntity(entity_id) {
             result.color = supported_color_modes.some(mode =>
                 ["hs", "xy", "rgb", "rgbw", "rgbww"].includes(mode)
             );
+
+            // ColorMode.WHITE: a white channel reached with the white parameter
+            result.white = supported_color_modes.includes("white");
         } else {
             // Fallback for older Home Assistant versions that don't use color modes
             // These use the deprecated SUPPORT_* constants
@@ -172,10 +184,6 @@ function showLightEntity(entity_id) {
     // Create the light menu
     let lightMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: lightData.friendly_name
         }]
@@ -254,6 +262,31 @@ function showLightEntity(entity_id) {
             });
         }
 
+        // Switch back to the white channel
+        if (features.white) {
+            lightMenu.item(0, menuIndex++, {
+                title: 'White',
+                subtitle: updatedData.is_on && updatedLight.attributes.color_mode === 'white' ? 'Current' : '',
+                on_click: function() {
+                    // white takes the brightness to use; keep the current one
+                    let brightness = currentLight().attributes.brightness;
+                    appState.haws.callService(
+                        "light",
+                        "turn_on",
+                        { white: brightness ? brightness : 255 },
+                        { entity_id: updatedData.entity_id },
+                        function(data) {
+                            Vibe.vibrate('short');
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message(`Error setting white: ${JSON.stringify(error)}`);
+                        }
+                    );
+                }
+            });
+        }
+
         // Update effect item if supported
         if (features.effect && updatedData.effect_list && updatedData.effect_list.length > 0) {
             lightMenu.item(0, menuIndex++, {
@@ -283,6 +316,13 @@ function showLightEntity(entity_id) {
                 GenericEntityPage.showEntityMenu(updatedData.entity_id);
             }
         });
+
+        // Rows are written one at a time, so when one drops out (the effect
+        // list goes away while unavailable, say) the old last row is left over
+        let rows = lightMenu.items(0);
+        if (rows && rows.length > menuIndex) {
+            lightMenu.items(0, rows.slice(0, menuIndex));
+        }
     }
 
     /**
@@ -291,24 +331,13 @@ function showLightEntity(entity_id) {
      * a button is actually adjusting, so it cannot fight the user.
      */
     function followLight(entity_id, pick) {
-        let msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger &&
-                data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
-                let value = pick(getLightData(updatedLight));
-                if (value !== null && value !== undefined) {
-                    NumberField.value(value);
-                }
+        let msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight, isSnapshot) {
+            // The selector opened on this same state; only follow changes
+            if (isSnapshot) { return; }
+            let value = pick(getLightData(updatedLight));
+            if (value !== null && value !== undefined) {
+                NumberField.value(value);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         return function cleanup() {
@@ -330,7 +359,7 @@ function showLightEntity(entity_id) {
     function showBrightnessMenu(entity_id) {
         // Read now rather than trusting what the menu row was built with,
         // which can be a state or two behind by the time it is pressed
-        let lightData = getLightData(appState.ha_state_dict[entity_id]);
+        let lightData = getLightData(currentLight());
         let cleanup = followLight(entity_id, function(data) {
             return data.is_on ? data.brightnessPerc : null;
         });
@@ -392,7 +421,7 @@ function showLightEntity(entity_id) {
      * gave nine usable positions across the entire range.
      */
     function showColorTempMenu(entity_id) {
-        let lightData = getLightData(appState.ha_state_dict[entity_id]);
+        let lightData = getLightData(currentLight());
         let min_temp = lightData.min_color_temp_kelvin || 2000;
         let max_temp = lightData.max_color_temp_kelvin || 6500;
         let current = lightData.color_temp_kelvin;
@@ -453,7 +482,7 @@ function showLightEntity(entity_id) {
     // Helper function to show color selection menu with a colorful slider
     function showColorMenu(entity_id, current_color) {
         // Get the latest light data
-        let light = appState.ha_state_dict[entity_id];
+        let light = currentLight();
         let lightData = getLightData(light);
 
         // Remember which menu item we came from
@@ -491,10 +520,6 @@ function showLightEntity(entity_id) {
         // Create a menu for color selection
         let colorMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Color'
             }]
@@ -754,42 +779,37 @@ function showLightEntity(entity_id) {
             }
         }
 
-        // Subscribe to entity updates
-        let color_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        // Subscribe to entity updates while either colour screen is up, and
+        // again each time it comes back (a reconnect hides and re-shows it)
+        let color_subscription_msg_id = null;
+        function followColor() {
+            releaseColorUpdates();
+            color_subscription_msg_id = EntityService.subscribeEntity(entity_id, onColorUpdate);
+        }
+        colorWindow.on('show', followColor);
+        colorMenu.on('show', followColor);
+
+        function onColorUpdate(updatedLight) {
             helpers.log_message(`Light entity update for color menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
+            // Update menu items directly
+            updateColorMenuItems(updatedLight);
 
-                // Update menu items directly
-                updateColorMenuItems(updatedLight);
-
-                // The menu above is only on screen on watches without colour;
-                // elsewhere the slider window is what the user is looking at,
-                // and it used to sit frozen while the light changed under it
-                let newColor = getLightData(updatedLight).rgb_color;
-                if (!userMovedSlider && newColor) {
-                    let nearest = 0, nearestDistance = 999999;
-                    for (let i = 0; i < colors.length; i++) {
-                        let d = colorDistance(colors[i].rgb, newColor);
-                        if (d < nearestDistance) { nearestDistance = d; nearest = i; }
-                    }
-                    if (nearest !== colorIndex) {
-                        colorIndex = nearest;
-                        updateColorUI();
-                    }
+            // The menu above is only on screen on watches without colour;
+            // elsewhere the slider window is what the user is looking at,
+            // and it used to sit frozen while the light changed under it
+            let newColor = getLightData(updatedLight).rgb_color;
+            if (!userMovedSlider && newColor) {
+                let nearest = 0, nearestDistance = 999999;
+                for (let i = 0; i < colors.length; i++) {
+                    let d = colorDistance(colors[i].rgb, newColor);
+                    if (d < nearestDistance) { nearestDistance = d; nearest = i; }
+                }
+                if (nearest !== colorIndex) {
+                    colorIndex = nearest;
+                    updateColorUI();
                 }
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
-        });
+        }
 
         colorMenu.on('hide', function() {
             releaseColorUpdates();
@@ -811,7 +831,7 @@ function showLightEntity(entity_id) {
     // Helper function to show effect selection menu
     function showEffectMenu(entity_id, current_effect, effect_list) {
         // Get the latest light data
-        let light = appState.ha_state_dict[entity_id];
+        let light = currentLight();
         let lightData = getLightData(light);
 
         // Remember which menu item we came from
@@ -820,10 +840,6 @@ function showLightEntity(entity_id) {
         // Create effect selection menu
         let effectMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Effect'
             }]
@@ -838,7 +854,7 @@ function showLightEntity(entity_id) {
                 appState.haws.callService(
                     "light",
                     "turn_on",
-                    { effect: "none" },
+                    { effect: "off" },
                     { entity_id: entity_id },
                     function(data) {
                         Vibe.vibrate('short');
@@ -905,32 +921,26 @@ function showLightEntity(entity_id) {
             }
         }
 
-        // Subscribe to entity updates
-        let effect_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Light entity update for effect menu ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
-
-                // Update menu items directly
-                updateEffectMenuItems(updatedLight);
+        let effect_subscription_msg_id = null;
+        function releaseEffectUpdates() {
+            if (effect_subscription_msg_id) {
+                appState.haws.unsubscribe(effect_subscription_msg_id);
+                effect_subscription_msg_id = null;
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+        }
+
+        // Subscribe on every show, so coming back after a reconnect follows
+        // the light again
+        effectMenu.on('show', function() {
+            releaseEffectUpdates();
+            effect_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight) {
+                helpers.log_message(`Light entity update for effect menu ${entity_id}`);
+                updateEffectMenuItems(updatedLight);
+            });
         });
 
         effectMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (effect_subscription_msg_id) {
-                appState.haws.unsubscribe(effect_subscription_msg_id);
-            }
+            releaseEffectUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -946,7 +956,7 @@ function showLightEntity(entity_id) {
     lightMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.lightMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Light menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {
@@ -954,13 +964,29 @@ function showLightEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as
+    // a second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     // Set up event handlers for the light menu
     lightMenu.on('show', function() {
+        releaseUpdates();
+
         // Clear the menu
         lightMenu.items(0, []);
 
-        // Get the latest light data
-        light = appState.ha_state_dict[entity_id];
+        // Get the latest light data, keeping the last copy if it has gone
+        // from the state dict
+        light = appState.getEntity(entity_id) || light;
         lightData = getLightData(light);
         features = supported_features(light);
 
@@ -970,45 +996,32 @@ function showLightEntity(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current light and update the menu
-            let currentLight = appState.ha_state_dict[entity_id];
-            if (currentLight) {
-                updateLightMenuItems(currentLight);
+            let latest = appState.getEntity(entity_id);
+            if (latest) {
+                updateLightMenuItems(latest);
             }
         });
         relativeTimeUpdater.register(entity_id, light.last_changed);
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedLight) {
             helpers.log_message(`Light entity update for ${entity_id}`);
-            // Update the light entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedLight = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedLight;
 
-                // Update the menu items directly without redrawing the entire menu
-                updateLightMenuItems(updatedLight);
+            // Update the menu items directly without redrawing the entire menu
+            updateLightMenuItems(updatedLight);
 
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedLight.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedLight.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         // Restore the previously selected index
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.lightMenu > 0 && menuSelections.lightMenu < lightMenu.items(0).length) {
-                lightMenu.selection(0, menuSelections.lightMenu);
-                selectedIndex = menuSelections.lightMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < lightMenu.items(0).length) {
+                lightMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < lightMenu.items(0).length) {
@@ -1017,18 +1030,7 @@ function showLightEntity(entity_id) {
         }, 100);
     });
 
-    lightMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    lightMenu.on('hide', releaseUpdates);
 
     // Show the menu
     lightMenu.show();

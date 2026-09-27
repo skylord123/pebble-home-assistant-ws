@@ -120,7 +120,7 @@ function flattenMarkdown(text) {
 
 function showUpdateEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -131,10 +131,6 @@ function showUpdateEntity(entity_id) {
 
     let updateMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -143,7 +139,7 @@ function showUpdateEntity(entity_id) {
     // Installing can restart whatever is being updated, so the version is
     // named and confirmed rather than fired from a single press
     function confirmInstall(withBackup) {
-        let data = getUpdateData(appState.ha_state_dict[entity_id] || entity);
+        let data = getUpdateData(appState.getEntity(entity_id) || entity);
         let target = data.latest_version ? 'version ' + data.latest_version : 'the latest version';
         let body = 'Install ' + target + ' of ' + data.friendly_name + '?';
         if (withBackup) {
@@ -167,7 +163,7 @@ function showUpdateEntity(entity_id) {
     }
 
     function showReleaseNotes() {
-        let data = getUpdateData(appState.ha_state_dict[entity_id] || entity);
+        let data = getUpdateData(appState.getEntity(entity_id) || entity);
         let loading = new UI.Card({
             title: 'Release Notes',
             body: 'Loading...',
@@ -223,14 +219,18 @@ function showUpdateEntity(entity_id) {
                             on_click: function() { confirmInstall(true); }
                         });
                     }
-                    menuItems.push({
-                        title: 'Skip',
-                        subtitle: 'Stop asking for this version',
-                        on_click: function() { callUpdateService(entity_id, 'skip'); }
-                    });
+                    // Home Assistant refuses skip and clear_skipped while
+                    // the entity updates itself
+                    if (!data.auto_update) {
+                        menuItems.push({
+                            title: 'Skip',
+                            subtitle: 'Stop asking for this version',
+                            on_click: function() { callUpdateService(entity_id, 'skip'); }
+                        });
+                    }
                 }
                 // Only reachable while skipped, which reads as off
-                if (data.skipped_version) {
+                if (data.skipped_version && !data.auto_update) {
                     menuItems.push({
                         title: 'Clear Skipped',
                         subtitle: data.skipped_version,
@@ -293,12 +293,26 @@ function showUpdateEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     updateMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateMenuItems(entity);
 
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             if (current) {
                 updateMenu.item(0, 0, buildStatusItem(current));
             }
@@ -327,15 +341,7 @@ function showUpdateEntity(entity_id) {
         }, 100);
     });
 
-    updateMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    updateMenu.on('hide', releaseUpdates);
 
     updateMenu.show();
 }

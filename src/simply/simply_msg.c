@@ -2,6 +2,7 @@
 
 #include "simply_splash.h"
 #include "simply_number.h"
+#include "simply_assist.h"
 
 #include "simply_accel.h"
 #include "simply_touch.h"
@@ -25,9 +26,10 @@
 #include <pebble.h>
 
 #define SEND_DELAY_MS 10
+#define SEND_DELAY_MAX_MS 1000
 
 static const size_t APP_MSG_SIZE_INBOUND = IF_APLITE_ELSE(1024, 2044);
-static const size_t APP_MSG_SIZE_OUTBOUND = 1024;
+static const size_t APP_MSG_SIZE_OUTBOUND = IF_APLITE_ELSE(512, 1024);
 
 typedef enum VibeType VibeType;
 
@@ -82,22 +84,6 @@ static SimplyMsg *s_msg = NULL;
 
 static bool s_has_communicated = false;
 
-// Pending scroll state for retry when system dialogs are on top
-typedef struct PendingScroll PendingScroll;
-
-struct PendingScroll {
-  Simply *simply;
-  int scroll_y;
-  bool animated;
-  AppTimer *timer;
-  int retry_count;
-};
-
-static PendingScroll s_pending_scroll = { NULL, 0, false, NULL, 0 };
-
-#define SCROLL_RETRY_DELAY_MS 100
-#define SCROLL_MAX_RETRIES 50  // 5 seconds max wait
-
 typedef struct CommandHandlerEntry CommandHandlerEntry;
 
 struct CommandHandlerEntry {
@@ -121,23 +107,57 @@ static void destroy_packet(SimplyMsg *self, SimplyPacket *packet) {
   free(packet);
 }
 
+// A message split across segments is held whole in memory before it can be
+// read, so a big enough one cannot be received at all. Losing it is the only
+// option left, but losing it has to be survivable: the queue is dropped so no
+// half a message is ever handed on as if it were complete.
+static void drop_receive_queue(SimplyMsg *self) {
+  while (self->receive_queue) {
+    SimplyPacket *node = (SimplyPacket*) self->receive_queue;
+    list1_remove(&self->receive_queue, &node->node);
+    destroy_packet(self, node);
+  }
+}
+
 static void add_receive_packet(SimplyMsg *self, SegmentPacket *packet) {
+  if (self->discarding) { return; }
   size_t size = packet->packet.length;
   Packet *copy = malloc(size);
+  if (!copy) {
+    drop_receive_queue(self);
+    self->discarding = true;
+    return;
+  }
   memcpy(copy, packet, size);
   SimplyPacket *node = malloc0(sizeof(*node));
+  if (!node) {
+    free(copy);
+    drop_receive_queue(self);
+    self->discarding = true;
+    return;
+  }
   node->length = size;
   node->buffer = copy;
   list1_prepend(&self->receive_queue, &node->node);
 }
 
 static void handle_receive_queue(SimplyMsg *self, SegmentPacket *packet) {
+  // The rest of a message whose start was dropped is not a message
+  if (self->discarding) {
+    self->discarding = false;
+    drop_receive_queue(self);
+    return;
+  }
   size_t total_length = packet->packet.length - sizeof(SegmentPacket);
   for (List1Node *walk = self->receive_queue; walk; walk = walk->next) {
     total_length += ((SimplyPacket*) walk)->length - sizeof(SegmentPacket);
   }
 
   void *buffer = malloc(total_length);
+  if (!buffer) {
+    drop_receive_queue(self);
+    return;
+  }
   void *cursor = buffer + total_length;
   SegmentPacket *other = packet;
   SimplyPacket *walk = NULL;
@@ -159,7 +179,11 @@ static void handle_receive_queue(SimplyMsg *self, SegmentPacket *packet) {
     other = walk->buffer;
   }
 
-  handle_packet(self->simply, buffer);
+  const Packet *joined = buffer;
+  if (total_length >= sizeof(Packet) && joined->length >= sizeof(Packet) &&
+      joined->length <= total_length) {
+    handle_packet(self->simply, buffer);
+  }
 
   free(buffer);
 }
@@ -215,101 +239,6 @@ static bool simply_base_handle_packet(Simply *simply, Packet *packet) {
   return false;
 }
 
-// Forward declaration for retry timer callback
-static void scroll_retry_timer_callback(void *data);
-
-// Helper function to execute the scroll if possible
-static bool try_execute_scroll(Simply *simply, int scroll_y, bool animated) {
-  // Get the top window using the helper function
-  SimplyWindow *simply_window = simply_window_stack_get_top_window(simply);
-  if (!simply_window) {
-    // Window not available (system dialog on top)
-    return false;
-  }
-
-  // Check if the window has a scroll layer
-  if (!simply_window->scroll_layer) {
-    return true;  // No scroll layer, nothing to do, don't retry
-  }
-
-  // Check if the window is still valid
-  if (!simply_window->window) {
-    return true;  // Window invalid, don't retry
-  }
-
-  // Get the scroll layer from the SimplyWindow
-  ScrollLayer *scroll_layer = simply_window->scroll_layer;
-
-  // Extra safety check
-  if (!scroll_layer) {
-    return true;  // No scroll layer, don't retry
-  }
-
-  // Set the content offset
-  if (scroll_layer && simply_window->is_scrollable) {
-    scroll_layer_set_content_offset(scroll_layer, GPoint(0, scroll_y), animated);
-  }
-
-  return true;  // Success
-}
-
-// Timer callback to retry scroll when system dialog closes
-static void scroll_retry_timer_callback(void *data) {
-  s_pending_scroll.timer = NULL;
-
-  if (!s_pending_scroll.simply) {
-    return;
-  }
-
-  if (try_execute_scroll(s_pending_scroll.simply, s_pending_scroll.scroll_y, s_pending_scroll.animated)) {
-    // Success - clear pending scroll
-    s_pending_scroll.simply = NULL;
-    s_pending_scroll.retry_count = 0;
-  } else {
-    // Still blocked, retry if we haven't exceeded max retries
-    s_pending_scroll.retry_count++;
-    if (s_pending_scroll.retry_count < SCROLL_MAX_RETRIES) {
-      s_pending_scroll.timer = app_timer_register(SCROLL_RETRY_DELAY_MS, scroll_retry_timer_callback, NULL);
-    } else {
-      // Give up after max retries
-      s_pending_scroll.simply = NULL;
-      s_pending_scroll.retry_count = 0;
-    }
-  }
-}
-
-static void handle_scroll_message(Simply *simply, DictionaryIterator *iter) {
-  Tuple *scroll_y_tuple = dict_find(iter, MESSAGE_KEY_SCROLL_Y);
-  Tuple *animated_tuple = dict_find(iter, MESSAGE_KEY_ANIMATED);
-
-  if (!scroll_y_tuple) {
-    return;
-  }
-
-  int scroll_y = scroll_y_tuple->value->int32;
-  bool animated = animated_tuple && animated_tuple->value->int32;
-
-  // Cancel any pending scroll timer
-  if (s_pending_scroll.timer) {
-    app_timer_cancel(s_pending_scroll.timer);
-    s_pending_scroll.timer = NULL;
-  }
-
-  // Try to execute the scroll immediately
-  if (try_execute_scroll(simply, scroll_y, animated)) {
-    // Success - clear any pending state
-    s_pending_scroll.simply = NULL;
-    s_pending_scroll.retry_count = 0;
-  } else {
-    // Window not available (system dialog on top), schedule retry
-    s_pending_scroll.simply = simply;
-    s_pending_scroll.scroll_y = scroll_y;
-    s_pending_scroll.animated = animated;
-    s_pending_scroll.retry_count = 0;
-    s_pending_scroll.timer = app_timer_register(SCROLL_RETRY_DELAY_MS, scroll_retry_timer_callback, NULL);
-  }
-}
-
 static void handle_packet(Simply *simply, Packet *packet) {
   if (simply_base_handle_packet(simply, packet)) { return; }
   if (simply_wakeup_handle_packet(simply, packet)) { return; }
@@ -317,6 +246,7 @@ static void handle_packet(Simply *simply, Packet *packet) {
   if (simply_window_handle_packet(simply, packet)) { return; }
   if (simply_splash_handle_packet(simply, packet)) { return; }
   if (simply_number_handle_packet(simply, packet)) { return; }
+  if (simply_assist_handle_packet(simply, packet)) { return; }
   if (simply_ui_handle_packet(simply, packet)) { return; }
   if (simply_accel_handle_packet(simply, packet)) { return; }
   if (simply_touch_handle_packet(simply, packet)) { return; }
@@ -326,14 +256,6 @@ static void handle_packet(Simply *simply, Packet *packet) {
 }
 
 static void received_callback(DictionaryIterator *iter, void *context) {
-  // Check if this is a scroll message
-  Tuple *scroll_y_tuple = dict_find(iter, MESSAGE_KEY_SCROLL_Y);
-  if (scroll_y_tuple) {
-    Simply *simply = context;
-    handle_scroll_message(simply, iter);
-    return;
-  }
-
   Tuple *tuple = dict_find(iter, 0);
   if (!tuple) {
     return;
@@ -349,11 +271,13 @@ static void received_callback(DictionaryIterator *iter, void *context) {
   uint8_t *buffer = tuple->value->data;
   while (true) {
     Packet *packet = (Packet*) buffer;
-    handle_packet(context, packet);
-
-    if (packet->length == 0) {
+    // A packet that claims more than is left, or less than its own header,
+    // would send the walk off the end of the message
+    if (length < sizeof(Packet) || packet->length < sizeof(Packet) ||
+        packet->length > length) {
       break;
     }
+    handle_packet(context, packet);
 
     length -= packet->length;
     if (length == 0) {
@@ -401,7 +325,7 @@ SimplyMsg *simply_msg_create(Simply *simply) {
   }
 
   SimplyMsg *self = malloc(sizeof(*self));
-  *self = (SimplyMsg) { .simply = simply };
+  *self = (SimplyMsg) { .simply = simply, .send_delay_ms = SEND_DELAY_MS };
   s_msg = self;
 
   simply->msg = self;
@@ -488,8 +412,13 @@ static void send_msg_retry(void *data) {
     free(self->send_buffer);
     self->send_buffer = NULL;
     self->send_delay_ms = SEND_DELAY_MS;
-  } else {
+  } else if (self->send_delay_ms < SEND_DELAY_MAX_MS) {
+    // Back off while the outbox is busy, but never so far that the next click
+    // waits seconds behind it
     self->send_delay_ms *= 2;
+    if (self->send_delay_ms > SEND_DELAY_MAX_MS) {
+      self->send_delay_ms = SEND_DELAY_MAX_MS;
+    }
   }
   self->send_timer = app_timer_register(self->send_delay_ms, send_msg_retry, self);
 }

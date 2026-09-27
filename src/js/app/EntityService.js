@@ -18,9 +18,39 @@ function wasPressed(entity) {
     return !isNaN(new Date(entity.state).getTime());
 }
 
-function pressedText(entity) {
-    if (entity.state === 'unavailable') return entity.state;
-    return wasPressed(entity) ? 'Pressed' : 'Never pressed';
+// Domains whose state is the timestamp of their last use, and what to call
+// that use; the relative time after it already says when
+var TIMESTAMP_STATE_TEXT = {
+    button: ['Pressed', 'Never pressed'],
+    input_button: ['Pressed', 'Never pressed'],
+    scene: ['Activated', 'Never activated']
+};
+
+// A timestamp sensor's value as a local date and time
+function timestampText(state) {
+    var date = new Date(state);
+    if (isNaN(date.getTime())) return state;
+    var time = helpers.formatTimeOfDay(date);
+    if (date.toDateString() === new Date().toDateString()) return time;
+    return (date.getMonth() + 1) + '/' + date.getDate() + ' ' + time;
+}
+
+// Compressed states send a context that is only an id as a bare string, and
+// a diff sends only the context fields that changed
+function mergeContext(cur, c) {
+    var merged = {};
+    if (typeof cur === 'string') {
+        merged = { id: cur, parent_id: null, user_id: null };
+    } else if (cur) {
+        for (var k in cur) { merged[k] = cur[k]; }
+    }
+    if (typeof c === 'string') {
+        merged.id = c;
+        if (!cur) { merged.parent_id = null; merged.user_id = null; }
+    } else if (c) {
+        for (var k2 in c) { merged[k2] = c[k2]; }
+    }
+    return merged;
 }
 
 var EntityService = {
@@ -77,11 +107,17 @@ var EntityService = {
         } else if (domain === 'text' || domain === 'input_text') {
             // Password entities must not spell out their value in a list
             text = require('app/pages/entity/TextPage').displayValue(entity);
-        } else if (domain === 'button' || domain === 'input_button') {
-            // A button's state is when it was last pressed, not a condition,
-            // so the raw timestamp is noise. The relative time that follows
-            // is the same instant and keeps counting on its own.
-            text = pressedText(entity);
+        } else if (TIMESTAMP_STATE_TEXT[domain]) {
+            // A button's (or scene's) state is when it was last used, not a
+            // condition, so the raw timestamp is noise. The relative time
+            // that follows is the same instant and keeps counting on its own.
+            text = entity.state === 'unavailable' ? entity.state
+                : TIMESTAMP_STATE_TEXT[domain][wasPressed(entity) ? 0 : 1];
+        } else if (domain === 'event') {
+            // The state is when it last fired; which event it was matters more
+            text = wasPressed(entity) ? (attrs.event_type || 'Fired') : entity.state;
+        } else if (domain === 'sensor' && attrs.device_class === 'timestamp') {
+            text = timestampText(entity.state);
         } else if (domain === 'update') {
             // Which version is waiting, rather than a bare on or off
             text = require('app/pages/entity/UpdatePage').statusText(entity);
@@ -139,7 +175,7 @@ var EntityService = {
     hidesRelativeTime: function(entity) {
         if (!entity || !entity.entity_id) return false;
         var domain = entity.entity_id.split('.')[0];
-        if (domain !== 'button' && domain !== 'input_button') return false;
+        if (!TIMESTAMP_STATE_TEXT[domain]) return false;
         // Only the never pressed case: an unavailable button's last_changed
         // is the moment it went unavailable, which is worth showing
         return entity.state !== 'unavailable' && !wasPressed(entity);
@@ -275,10 +311,12 @@ var EntityService = {
      * replace would drop everything that didn't change).
      * @param {string} entity_id - The entity the subscription is for
      * @param {Object} data - The raw subscription callback payload
+     * @param {Object} [base] - The caller's last known copy of the entity,
+     *                          used when the state dict doesn't have it
      * @returns {Object|null} The updated entity, or null if the event
      *                        didn't concern this entity
      */
-    applyCompressedEvent: function(entity_id, data) {
+    applyCompressedEvent: function(entity_id, data, base) {
         var appState = AppState.getInstance();
         var ev = data.event || {};
         var updated = null;
@@ -289,35 +327,65 @@ var EntityService = {
                 entity_id: entity_id,
                 state: d.s,
                 attributes: d.a || {},
-                context: d.c,
+                context: mergeContext(null, d.c),
                 last_changed: d.lc ? new Date(d.lc * 1000).toISOString() : new Date().toISOString()
             };
+            // lu is only sent when it differs from lc
+            updated.last_updated = d.lu ? new Date(d.lu * 1000).toISOString() : updated.last_changed;
         } else if (ev.c && ev.c[entity_id]) {
             var plus = ev.c[entity_id]['+'] || {};
-            var cur = appState.ha_state_dict[entity_id] || { entity_id: entity_id, state: '', attributes: {} };
-            var attributes = cur.attributes;
-            if (plus.a !== undefined) {
+            var cur = appState.getEntity(entity_id) || base || { entity_id: entity_id, state: '', attributes: {} };
+            var attributes = cur.attributes || {};
+            var minus = ev.c[entity_id]['-'];
+            var removesAttrs = minus && Array.isArray(minus.a);
+            // Copy before touching so the previous object (which other
+            // holders may share) is left as it was
+            if (plus.a !== undefined || removesAttrs) {
                 attributes = {};
                 for (var k in cur.attributes) { attributes[k] = cur.attributes[k]; }
                 for (var k2 in plus.a) { attributes[k2] = plus.a[k2]; }
             }
-            var minus = ev.c[entity_id]['-'];
-            if (minus && Array.isArray(minus.a)) {
+            if (removesAttrs) {
                 minus.a.forEach(function(removedKey) { delete attributes[removedKey]; });
             }
             updated = {
                 entity_id: entity_id,
                 state: plus.s !== undefined ? plus.s : cur.state,
                 attributes: attributes,
-                context: plus.c !== undefined ? plus.c : cur.context,
+                context: plus.c !== undefined ? mergeContext(cur.context, plus.c) : cur.context,
                 last_changed: plus.lc !== undefined ? new Date(plus.lc * 1000).toISOString() : cur.last_changed
             };
+            // A diff carries lc when it changed (lu then equals it), else lu
+            updated.last_updated = plus.lc !== undefined ? updated.last_changed
+                : plus.lu !== undefined ? new Date(plus.lu * 1000).toISOString()
+                : cur.last_updated;
         }
 
         if (updated) {
             appState.setEntity(entity_id, updated);
         }
         return updated;
+    },
+
+    /**
+     * Follow one entity with subscribe_entities (subscribe_trigger needs an
+     * admin token). The first event is a snapshot of the current state, so
+     * onUpdate runs once straight away and then on every change.
+     * @param {string} entity_id
+     * @param {Function} onUpdate - Called with the merged entity, and true
+     *                              when it is the initial snapshot
+     * @returns {number|false} The subscription id, for haws.unsubscribe
+     */
+    subscribeEntity: function(entity_id, onUpdate) {
+        var self = this;
+        return AppState.getInstance().haws.subscribeEntities([entity_id], function(data) {
+            var updated = self.applyCompressedEvent(entity_id, data);
+            if (updated) {
+                onUpdate(updated, !!(data.event && data.event.a));
+            }
+        }, function(error) {
+            helpers.log_message('ENTITY UPDATE ERROR [' + entity_id + ']: ' + JSON.stringify(error));
+        });
     },
 
     /**
@@ -387,6 +455,14 @@ var EntityService = {
             return;
         }
 
+        // Every page reads the entity on open, and throws without it: before
+        // get_states lands, or once the entity is gone from HA
+        if (!AppState.getInstance().getEntity(entity_id)) {
+            helpers.log_message('showEntity: ' + entity_id + ' is not in the state dict');
+            Vibe.vibrate('double');
+            return;
+        }
+
         var domain = entity_id.split('.')[0];
 
         // Lazy-load page modules to avoid circular dependency
@@ -409,6 +485,9 @@ var EntityService = {
                 break;
             case 'alarm_control_panel':
                 require('app/pages/entity/AlarmPanelPage').showAlarmEntity(entity_id);
+                break;
+            case 'lock':
+                require('app/pages/entity/LockPage').showLockEntity(entity_id);
                 break;
             case 'select':
             case 'input_select':
@@ -503,9 +582,31 @@ var EntityService = {
             domain === "cover" ||
             domain === "humidifier"
         ) {
+            var toggleService = 'toggle';
+            var toggled = appState.ha_state_dict ? appState.ha_state_dict[entity_id] : null;
+            var toggleFeatures = toggled ? toggled.attributes.supported_features || 0 : 0;
+            if (toggled && domain === "cover") {
+                // cover.toggle needs OPEN and CLOSE; a cover that only
+                // does one (a gate opener) gets that one
+                if ((toggleFeatures & 3) === 1) {
+                    toggleService = 'open_cover';
+                } else if ((toggleFeatures & 3) === 2) {
+                    toggleService = 'close_cover';
+                } else if ((toggleFeatures & 3) === 0) {
+                    toggleService = null;
+                }
+            } else if (toggled && domain === "fan" && !(toggleFeatures & (16 | 32))) {
+                // fan.toggle needs TURN_OFF or TURN_ON
+                toggleService = null;
+            }
+            if (!toggleService) {
+                log('handleEntityLongPress: ' + entity_id + ' supports no toggle - no action taken');
+                Vibe.vibrate('double');
+                return;
+            }
             appState.haws.callService(
                 domain,
-                'toggle',
+                toggleService,
                 {},
                 { entity_id: entity_id },
                 function(data) {
@@ -518,25 +619,8 @@ var EntityService = {
                 }
             );
         } else if (domain === "lock") {
-            var entity = appState.ha_state_dict[entity_id];
-            if (!entity) {
-                log('handleEntityLongPress: entity ' + entity_id + ' not found in state dict');
-                return;
-            }
-            appState.haws.callService(
-                domain,
-                entity.state === "locked" ? "unlock" : "lock",
-                {},
-                { entity_id: entity_id },
-                function(data) {
-                    Vibe.vibrate('short');
-                    log(JSON.stringify(data));
-                },
-                function(error) {
-                    Vibe.vibrate('double');
-                    log('no response');
-                }
-            );
+            // Locks at once, but asks before unlocking, and handles any code
+            require('app/pages/entity/LockPage').quickAction(entity_id);
         } else if (domain === "scene") {
             appState.haws.callService(
                 domain,
@@ -559,13 +643,24 @@ var EntityService = {
                 return;
             }
             var state = entity.state;
+            var vacuumFeatures = entity.attributes.supported_features || 0;
             var service = null;
 
-            // Determine which service to call based on state
+            // Determine which service to call based on state, using only
+            // the services this vacuum supports (PAUSE 4, STOP 8,
+            // RETURN_HOME 16, START 8192)
             if (state === "cleaning" || state === "returning") {
-                service = "pause";
+                if (vacuumFeatures & 4) {
+                    service = "pause";
+                } else if (vacuumFeatures & 8) {
+                    service = "stop";
+                } else if (state === "cleaning" && (vacuumFeatures & 16)) {
+                    service = "return_to_base";
+                }
             } else if (state === "docked" || state === "idle" || state === "paused" || state === "error") {
-                service = "start";
+                if (vacuumFeatures & 8192) {
+                    service = "start";
+                }
             }
 
             if (service) {
@@ -725,6 +820,89 @@ var EntityService = {
         }
 
         return wasAdded;
+    },
+
+    /**
+     * Find entities by name or id for the settings page. Every word of the
+     * query has to appear somewhere in the friendly name or the entity_id.
+     * Names that start with the whole query come first, then names that
+     * contain it, then names matching its first word, then ids.
+     *
+     * @param {string} query - What was typed
+     * @param {number} limit - Most results to return
+     * @returns {{results: Array<{entity_id, name, state, domain}>, total: number}}
+     */
+    search: function(query, limit) {
+        var appState = AppState.getInstance();
+        var dict = appState.ha_state_dict || {};
+        var terms = String(query || '').toLowerCase().split(/\s+/).filter(function(t) {
+            return t.length > 0;
+        });
+        var matches = [];
+
+        if (terms.length === 0) {
+            return { results: [], total: 0 };
+        }
+        var phrase = terms.join(' ');
+
+        var ids = Object.keys(dict);
+        for (var i = 0; i < ids.length; i++) {
+            var entity = dict[ids[i]];
+            if (!entity || !entity.entity_id) { continue; }
+            // A friendly_name is not always a string
+            var name = String(this.getTitle(entity));
+            var lowerName = name.toLowerCase();
+            var lowerId = entity.entity_id.toLowerCase();
+            var haystack = lowerName + ' ' + lowerId;
+            var everyTerm = true;
+            for (var t = 0; t < terms.length; t++) {
+                if (haystack.indexOf(terms[t]) === -1) {
+                    everyTerm = false;
+                    break;
+                }
+            }
+            if (!everyTerm) { continue; }
+
+            var rank;
+            if (lowerName.indexOf(phrase) === 0) {
+                rank = 0;
+            } else if (lowerName.indexOf(phrase) !== -1) {
+                rank = 1;
+            } else if (lowerName.indexOf(terms[0]) === 0) {
+                rank = 2;
+            } else if (lowerName.indexOf(terms[0]) !== -1) {
+                rank = 3;
+            } else {
+                rank = 4;
+            }
+            matches.push({ entity: entity, name: name, lowerName: lowerName, rank: rank });
+        }
+
+        matches.sort(function(a, b) {
+            if (a.rank !== b.rank) { return a.rank - b.rank; }
+            return a.lowerName < b.lowerName ? -1 : (a.lowerName > b.lowerName ? 1 : 0);
+        });
+
+        var results = [];
+        for (var m = 0; m < matches.length && m < limit; m++) {
+            var e = matches[m].entity;
+            var stateText;
+            try {
+                stateText = this.getStateText(e);
+            } catch (err) {
+                // The page-specific formatters assume attributes a stray
+                // entity may not have; the raw state is still worth showing
+                stateText = e.state;
+            }
+            results.push({
+                entity_id: e.entity_id,
+                name: matches[m].name,
+                state: stateText,
+                domain: e.entity_id.split('.')[0]
+            });
+        }
+
+        return { results: results, total: matches.length };
     },
 
     /**

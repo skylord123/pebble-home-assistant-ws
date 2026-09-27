@@ -43,10 +43,6 @@ class MainMenuPage extends BasePage {
     createMenu() {
         return new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Home Assistant',
                 backgroundColor: Constants.colour.highlight,
@@ -336,7 +332,7 @@ class MainMenuPage extends BasePage {
                     id: 'people',
                     title: "People",
                     on_click: function(e) {
-                        var personEntities = Object.keys(self.appState.ha_state_dict).filter(function(entity_id) {
+                        var personEntities = Object.keys(self.appState.ha_state_dict || {}).filter(function(entity_id) {
                             return entity_id.indexOf('person.') === 0;
                         });
                         EntityListPage.showEntityList("People", personEntities, true, true, true);
@@ -347,7 +343,7 @@ class MainMenuPage extends BasePage {
                     id: 'all_entities',
                     title: "All Entities",
                     on_click: function(e) {
-                        var entityKeys = Object.keys(self.appState.ha_state_dict);
+                        var entityKeys = Object.keys(self.appState.ha_state_dict || {});
                         var shouldShowDomains = helpers.shouldShowDomainMenu(
                             entityKeys,
                             self.appState.domain_menu_all_entities,
@@ -359,7 +355,7 @@ class MainMenuPage extends BasePage {
                         if (shouldShowDomains) {
                             EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
                         } else {
-                            EntityListPage.showEntityList("All Entities", false, true, true, true);
+                            EntityListPage.showEntityList("All Entities", entityKeys, true, true, true);
                         }
                     }
                 };
@@ -394,10 +390,14 @@ class MainMenuPage extends BasePage {
                             entity_id: entity_id,
                             state: ev.a[entity_id].s,
                             attributes: ev.a[entity_id].a || {},
+                            context: ev.a[entity_id].c,
                             last_changed: ev.a[entity_id].lc
                                 ? new Date(ev.a[entity_id].lc * 1000).toISOString()
                                 : new Date().toISOString()
                         };
+                        entityData.last_updated = ev.a[entity_id].lu
+                            ? new Date(ev.a[entity_id].lu * 1000).toISOString()
+                            : entityData.last_changed;
                         self.appState.setEntity(entity_id, entityData);
                         self.entityStates[entity_id] = entityData;
                         EntityService.updateMenuItem(
@@ -417,21 +417,8 @@ class MainMenuPage extends BasePage {
             if (ev.c) {
                 for (var entity_id in ev.c) {
                     if (self.pinnedEntityIndexes[entity_id] !== undefined) {
-                        var patch = ev.c[entity_id];
-                        var plus = patch["+"] || {};
-                        var cur = self.entityStates[entity_id] ||
-                                  self.appState.getEntity(entity_id) ||
-                                  { entity_id: entity_id, state: '', attributes: {} };
-
-                        var entityData = {
-                            entity_id: entity_id,
-                            state: plus.s !== undefined ? plus.s : cur.state,
-                            attributes: plus.a !== undefined ? plus.a : cur.attributes,
-                            last_changed: plus.lc !== undefined
-                                ? new Date(plus.lc * 1000).toISOString()
-                                : cur.last_changed
-                        };
-                        self.appState.setEntity(entity_id, entityData);
+                        var entityData = EntityService.applyCompressedEvent(entity_id, data, self.entityStates[entity_id]);
+                        if (!entityData) { continue; }
                         self.entityStates[entity_id] = entityData;
 
                         helpers.log_message('Main menu: entity update for ' + entity_id + ': ' + entityData.state);

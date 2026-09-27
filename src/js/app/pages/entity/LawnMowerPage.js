@@ -2,9 +2,9 @@
  * LawnMowerPage - lawn_mower entity control page
  *
  * Close to the vacuum handling but not the same domain: a mower has only
- * three services, each gated on its own feature bit, and no toggle. Its
+ * four services, each gated on its own feature bit, and no toggle. Its
  * state is the activity it is performing, one of mowing, paused, docked,
- * returning or error.
+ * returning, idle or error.
  */
 var UI = require('ui');
 var Vibe = require('ui/vibe');
@@ -20,7 +20,8 @@ var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 var LawnMowerEntityFeature = {
     START_MOWING: 1,
     PAUSE: 2,
-    DOCK: 4
+    DOCK: 4,
+    STOP: 8
 };
 
 // LawnMowerActivity values
@@ -29,6 +30,7 @@ var ACTIVITY = {
     PAUSED: 'paused',
     DOCKED: 'docked',
     RETURNING: 'returning',
+    IDLE: 'idle',
     ERROR: 'error'
 };
 
@@ -50,7 +52,8 @@ function getMowerData(entity) {
         battery: battery,
         can_start: !!(features & LawnMowerEntityFeature.START_MOWING),
         can_pause: !!(features & LawnMowerEntityFeature.PAUSE),
-        can_dock: !!(features & LawnMowerEntityFeature.DOCK)
+        can_dock: !!(features & LawnMowerEntityFeature.DOCK),
+        can_stop: !!(features & LawnMowerEntityFeature.STOP)
     };
 }
 
@@ -97,12 +100,13 @@ function quickActionService(data) {
     if (!data.unknown &&
         (data.activity === ACTIVITY.MOWING || data.activity === ACTIVITY.RETURNING)) {
         if (data.can_pause) return 'pause';
+        if (data.can_stop) return 'stop';
         if (data.can_dock && data.activity !== ACTIVITY.RETURNING) return 'dock';
         // Nothing here can stop it, so fall through rather than doing
         // nothing while the menu below plainly offers an action
     }
 
-    // Docked, paused, in error, or a state we do not recognise: get it
+    // Docked, paused, idle, in error, or a state we do not recognise: get it
     // going again, or failing that send it home
     if (data.can_start && data.activity !== ACTIVITY.MOWING) return 'start_mowing';
     if (data.can_dock &&
@@ -112,7 +116,7 @@ function quickActionService(data) {
 
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
         return;
@@ -127,7 +131,7 @@ function quickAction(entity_id) {
 
 function showLawnMowerEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -138,10 +142,6 @@ function showLawnMowerEntity(entity_id) {
 
     let mowerMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -182,6 +182,13 @@ function showLawnMowerEntity(entity_id) {
                 menuItems.push({
                     title: 'Pause',
                     on_click: function() { callMowerService(entity_id, 'pause'); }
+                });
+            }
+            if (data.can_stop && (data.unknown ||
+                data.activity === ACTIVITY.MOWING || data.activity === ACTIVITY.RETURNING)) {
+                menuItems.push({
+                    title: 'Stop',
+                    on_click: function() { callMowerService(entity_id, 'stop'); }
                 });
             }
             // Returning is docking already under way, so it counts as
@@ -233,12 +240,26 @@ function showLawnMowerEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     mowerMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateMowerMenuItems(entity);
 
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let current = appState.ha_state_dict[entity_id];
+            let current = appState.getEntity(entity_id);
             if (current) {
                 mowerMenu.item(0, 0, buildStatusItem(current));
             }
@@ -265,15 +286,7 @@ function showLawnMowerEntity(entity_id) {
         }, 100);
     });
 
-    mowerMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    mowerMenu.on('hide', releaseUpdates);
 
     mowerMenu.show();
 }

@@ -63,3 +63,12 @@ static inline GColor gcolor8_get_or(GColor8 color, GColor8 fallback) {
 static inline bool gcolor8_equal(GColor8 color, GColor8 other) {
   return (color.argb == other.argb);
 }
+
+//! Whether black shows up on this color better than white does. Each channel
+//! runs 0-3, so this is the lighter half of the sixty-four colors: white, the
+//! greys above mid, and anything with a couple of channels near full. On the
+//! black and white displays it is simply white against black. A transparent
+//! color counts as dark, which is what an unset background leaves showing.
+static inline bool gcolor8_is_light(GColor8 color) {
+  return (color.a != 0) && (color.r + color.g + color.b >= 5);
+}

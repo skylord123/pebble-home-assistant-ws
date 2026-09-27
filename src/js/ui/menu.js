@@ -31,9 +31,48 @@ Menu.setScrollWrapDefault = function(enabled) {
   defaults.scrollWrap = (enabled !== false);
 };
 
+var colorProps = [
+  'backgroundColor',
+  'textColor',
+  'highlightBackgroundColor',
+  'highlightTextColor',
+];
+
+// Sets the colors menus are built with from here on, so an app can theme every
+// menu it opens from one place instead of repeating the same four properties
+// at each call site. Menus that pass a color of their own keep it.
+Menu.setColorDefaults = function(colors) {
+  if (!colors) { return; }
+  for (var i = 0, ii = colorProps.length; i < ii; ++i) {
+    var prop = colorProps[i];
+    if (colors[prop]) {
+      defaults[prop] = colors[prop];
+    }
+  }
+};
+
 util2.inherit(Menu, Window);
 
 util2.copy(Emitter.prototype, Menu.prototype);
+
+// Repaints a menu that was built under the previous defaults. Only the top of
+// the stack is on screen and worth sending; the ones underneath are re-sent in
+// full when they come back to it.
+Menu.prototype.setColors = function(colors) {
+  if (!colors) { return this; }
+  var changed = false;
+  for (var i = 0, ii = colorProps.length; i < ii; ++i) {
+    var prop = colorProps[i];
+    if (colors[prop] && this.state[prop] !== colors[prop]) {
+      this.state[prop] = colors[prop];
+      changed = true;
+    }
+  }
+  if (changed && this === WindowStack.top()) {
+    this._prop(this.state);
+  }
+  return this;
+};
 
 Menu.prototype._show = function() {
   Window.prototype._show.apply(this, arguments);

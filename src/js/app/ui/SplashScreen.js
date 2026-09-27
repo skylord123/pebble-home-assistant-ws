@@ -12,11 +12,25 @@
  */
 
 var simply = require('ui/simply');
+var Light = require('ui/light');
 var WindowStack = require('ui/windowstack');
 
 // Whether the splash is currently covering a JS window. The native splash
 // never joins the JS window stack, so this side has to remember.
 var covering = false;
+
+// Whether the native splash has been asked onto the screen. It can be covering
+// without being shown, when a disconnect during dictation defers it.
+var shown = false;
+
+function cover() {
+    if (covering) { return; }
+    covering = true;
+    var top = WindowStack.top();
+    if (top) {
+        WindowStack._emitHide(top);
+    }
+}
 
 var texts = {
     title: 'Home Assistant',
@@ -52,13 +66,8 @@ var SplashScreen = {
         // longer existed, so their states froze until the user navigated away
         // and back. Emitting only the event, never WindowStack._hide, keeps
         // the window in place on the watch underneath the splash.
-        if (!covering) {
-            covering = true;
-            var top = WindowStack.top();
-            if (top) {
-                WindowStack._emitHide(top);
-            }
-        }
+        cover();
+        shown = true;
 
         // A fresh show is a fresh attempt, so always reset to the pulsing
         // connecting state
@@ -68,12 +77,53 @@ var SplashScreen = {
         sendStatus();
         return this;
     },
+    /**
+     * Release the page underneath as show() would, without putting the
+     * splash up. For a disconnect while the wearer is dictating: the page
+     * must still drop subscriptions that died with the socket.
+     */
+    cover: function() {
+        cover();
+        return this;
+    },
     hide: function() {
+        var wasCovering = covering;
         covering = false;
+        if (!shown) {
+            // Never came up, so the watch has nothing to take down and will
+            // send no reveal. The page gets its 'show' from here instead.
+            var top = wasCovering && WindowStack.top();
+            if (top) {
+                WindowStack._emitShow(top);
+            }
+            return this;
+        }
+        shown = false;
+        // Whatever this screen was waiting on can take a while - a slow
+        // connection, a Home Assistant still starting up - and the wearer
+        // opened the app expecting to read something at the end of it. The
+        // backlight they lit by pressing to launch has usually timed out by
+        // then, so the app arrives on a dark screen and has to be woken by
+        // hand. Count coming out of the splash as an interaction of its own:
+        // the system starts its own timer from here, the same as it does for
+        // a button press, and turns the light off in its own time. Nothing is
+        // held, and a wearer who has turned the backlight off entirely, or is
+        // out in daylight, still gets no light: the watch decides.
+        Light.trigger();
         // The matching 'show' is emitted when the watch reports the splash has
         // actually come down, in the SplashRevealPacket handler
         simply.impl.splashHide();
         return this;
+    },
+    // True while the splash stands in front of the JS windows. A 'hide' seen
+    // then comes from the cover, not from the wearer leaving the window.
+    isCovering: function() {
+        return covering;
+    },
+    // True only while the splash is actually on screen. It can be covering
+    // without being shown while a reconnect waits for dictation to finish.
+    isShown: function() {
+        return shown;
     },
     title: function(text) {
         if (text === undefined) { return texts.title; }

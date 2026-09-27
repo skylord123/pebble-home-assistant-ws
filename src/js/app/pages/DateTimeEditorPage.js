@@ -17,6 +17,7 @@ var Vector = require('vector2');
 var Feature = require('platform/feature');
 var Vibe = require('ui/vibe');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
 
 var MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
@@ -117,8 +118,12 @@ function show(opts) {
 
     var selectedField = 0;
 
+    // Reached from a menu, so it wears the menu's colours rather than a fixed
+    // scheme that inverts against half of them
+    var colors = Theme.menuColors();
+
     var editorWindow = new UI.Window({
-        backgroundColor: 'black',
+        backgroundColor: colors.backgroundColor,
         status: false,
         scrollable: false
     });
@@ -126,7 +131,7 @@ function show(opts) {
     // Title at the top
     editorWindow.add(new UI.Text({
         text: opts.title || 'Set Date',
-        color: 'white',
+        color: colors.textColor,
         font: 'gothic_14_bold',
         position: new Vector(0, 4),
         size: new Vector(res.x, 18),
@@ -168,7 +173,7 @@ function show(opts) {
     var highlight = new UI.Rect({
         position: new Vector(0, 0),
         size: new Vector(10, 10),
-        backgroundColor: 'white'
+        backgroundColor: colors.textColor
     });
     editorWindow.add(highlight);
 
@@ -178,7 +183,7 @@ function show(opts) {
         var box = boxes[field.key];
         var text = new UI.Text({
             text: field.format(),
-            color: 'white',
+            color: colors.textColor,
             font: 'gothic_24_bold',
             position: new Vector(box.x, box.y - 6),
             size: new Vector(box.w, box.h),
@@ -191,7 +196,7 @@ function show(opts) {
     // Hint at the bottom
     editorWindow.add(new UI.Text({
         text: 'UP/DOWN adjust\nSELECT next',
-        color: 'white',
+        color: colors.textColor,
         font: 'gothic_14',
         position: new Vector(0, res.y - 44),
         size: new Vector(res.x, 40),
@@ -201,7 +206,8 @@ function show(opts) {
     function updateFields() {
         fields.forEach(function(field) {
             fieldTexts[field.key].text(field.format());
-            fieldTexts[field.key].color(field === fields[selectedField] ? 'black' : 'white');
+            fieldTexts[field.key].color(
+                field === fields[selectedField] ? colors.backgroundColor : colors.textColor);
         });
         var box = boxes[fields[selectedField].key];
         highlight.position(new Vector(box.x, box.y - 2));
