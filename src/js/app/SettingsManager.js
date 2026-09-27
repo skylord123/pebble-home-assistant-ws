@@ -10,6 +10,7 @@ var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
+var LogBuffer = require('app/LogBuffer');
 
 /**
  * Read one of the background settings, falling back to black for anything
@@ -32,6 +33,8 @@ var SettingsManager = {
         // Core settings
         appState.ha_url = Settings.option('ha_url');
         appState.ha_password = Settings.option('token');
+        // Neither may ever show up in the log
+        LogBuffer.setSecrets([appState.ha_url, appState.ha_password]);
         appState.ha_refresh_interval = Settings.option('refreshTime') ? Settings.option('refreshTime') : 15;
         appState.ha_order_by = Settings.option('order_by') || 'attributes.friendly_name';
         appState.ha_order_dir = Settings.option('order_dir') || 'asc';
@@ -244,7 +247,7 @@ var SettingsManager = {
                 return;
             }
 
-            log('returned_settings: ' + JSON.stringify(e.options));
+            log('returned_settings: ' + Object.keys(e.options || {}).length + ' keys');
             // Settings.onCloseConfig has already merged and persisted the new
             // options via autoSave, so no second Settings.option() call here.
 

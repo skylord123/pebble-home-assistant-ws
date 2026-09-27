@@ -221,20 +221,36 @@ function shouldShowDomainMenu(entities, menuSetting, options) {
 }
 
 /**
- * Log a message if debug mode is enabled
+ * Log a message. It is always kept in the log the settings page can fetch;
+ * debug mode only decides whether it also goes to the console.
  * @param {string} msg - Message to log
  * @param {*} extra - Optional extra data to log
  */
 function log_message(msg, extra) {
     var Constants = require('app/Constants');
-    if (!Constants.debugMode) return;
+    var LogBuffer = require('app/LogBuffer');
+    var line = '[App] ' + msg;
 
     if (extra) {
-        console.log('[App] ' + msg, extra);
-        return;
+        var extraText;
+        try {
+            extraText = typeof extra === 'string' ? extra : JSON.stringify(extra);
+        } catch (e) {
+            extraText = String(extra);
+        }
+        LogBuffer.record(line + ' ' + extraText);
+    } else {
+        LogBuffer.record(line);
     }
 
-    console.log('[App] ' + msg);
+    if (!Constants.debugMode) return;
+
+    // Straight to the console: the line above has already been recorded
+    if (extra) {
+        LogBuffer.console(line, extra);
+        return;
+    }
+    LogBuffer.console(line);
 }
 
 function pad2(n) {

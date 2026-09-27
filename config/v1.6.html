@@ -829,6 +829,93 @@
 			margin-top: 0.4rem;
 		}
 
+		/* Log dialog: fills the screen on a phone, sits centred on anything wider */
+		.dialog {
+			position: fixed;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			left: 0;
+			z-index: 50;
+			display: flex;
+			padding: 0.75rem;
+			background: rgba(0, 0, 0, 0.55);
+		}
+
+		.dialog-panel {
+			display: flex;
+			flex-direction: column;
+			width: 100%;
+			max-width: 600px;
+			max-height: 100%;
+			margin: auto;
+			background: var(--color-section-bg);
+			border-radius: 0.25rem;
+			box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+			overflow: hidden;
+		}
+
+		.dialog-header {
+			display: flex;
+			align-items: center;
+			gap: 0.75rem;
+			padding: 0.6rem 0.75rem;
+			background: var(--color-section-header);
+		}
+
+		.dialog-header h2 {
+			flex: 1;
+			margin: 0;
+			font-size: 0.85rem;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.02em;
+		}
+
+		.dialog-meta {
+			font-size: 0.78rem;
+			color: var(--color-text-muted);
+			white-space: nowrap;
+		}
+
+		.log-text {
+			flex: 1;
+			min-height: 8rem;
+			margin: 0;
+			padding: 0.6rem 0.75rem;
+			overflow: auto;
+			font-family: Menlo, Consolas, monospace;
+			font-size: 0.72rem;
+			line-height: 1.45;
+			white-space: pre-wrap;
+			word-break: break-word;
+			color: var(--color-text);
+			background: var(--color-input-bg);
+			user-select: text;
+			-webkit-user-select: text;
+			-webkit-overflow-scrolling: touch;
+		}
+
+		.dialog-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.5rem;
+			padding: 0.6rem 0.75rem 0.3rem;
+		}
+
+		.dialog-actions .btn {
+			flex: 1;
+			padding: 0.5rem 0.6rem;
+			font-size: 0.9rem;
+		}
+
+		.dialog-hint {
+			padding: 0 0.75rem 0.6rem;
+			font-size: 0.78rem;
+			color: var(--color-text-muted);
+			min-height: 1.5rem;
+		}
+
 		/* Links */
 		a {
 			color: var(--color-accent);
@@ -899,6 +986,15 @@
 						<span class="status-text">Asking the watch how the connection is doing…</span>
 					</div>
 					<small class="form-text">Tries the URL and token, and only keeps them once Home Assistant has accepted them. Everything else on this page still needs Save.</small>
+				</div>
+				<div class="component bridge-only">
+					<div class="form-group">
+						<label class="form-label" for="view-log-btn">App Log</label>
+						<button type="button" class="btn btn-secondary btn-block" id="view-log-btn">
+							<svg class="icon"><use href="#i-clipboard"/></svg> View Log
+						</button>
+						<small class="form-text">What the watch app has been doing, for a bug report. Your Home Assistant address and token are left out of it.</small>
+					</div>
 				</div>
 			</div>
 		</details>
@@ -1350,6 +1446,24 @@
 			<small class="form-text bridge-only">Saves to the watch and stays on this page</small>
 		</div>
 	</form>
+</div>
+
+<div id="log-dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-labelledby="log-dialog-title">
+	<div class="dialog-panel">
+		<div class="dialog-header">
+			<h2 id="log-dialog-title">App Log</h2>
+			<span class="dialog-meta" id="log-dialog-meta"></span>
+			<button type="button" class="btn btn-sm btn-outline-secondary" id="log-close">Close</button>
+		</div>
+		<pre id="log-text" class="log-text" tabindex="0" aria-live="polite">Loading…</pre>
+		<div class="dialog-actions">
+			<button type="button" class="btn btn-primary" id="log-download">Download</button>
+			<button type="button" class="btn btn-secondary" id="log-copy">Copy</button>
+			<button type="button" class="btn btn-secondary" id="log-refresh">Refresh</button>
+			<button type="button" class="btn btn-outline-secondary" id="log-clear">Clear</button>
+		</div>
+		<div class="dialog-hint" id="log-hint"></div>
+	</div>
 </div>
 
 <script>
@@ -2598,6 +2712,152 @@
 		if (searchTimer) { clearTimeout(searchTimer); }
 		var query = entitySearch.value.trim();
 		searchTimer = setTimeout(function() { runSearch(query); }, 250);
+	});
+
+	// ===== Bridge: app log ==================================================
+	//
+	// The watch app keeps its recent log lines; the dialog shows them and lets
+	// them be taken away for a bug report. Saving a file out of a WebView is
+	// not a given, so the share sheet is tried first where there is one, then
+	// a download link, and Copy is always there.
+
+	var logDialog = $('log-dialog'),
+		logText = $('log-text'),
+		logMeta = $('log-dialog-meta'),
+		logHint = $('log-hint');
+	var logFilename = 'home-assistant-ws-log.txt';
+	var logLoaded = false;
+
+	function setLogHint(text) {
+		logHint.textContent = text || '';
+	}
+
+	function loadLog() {
+		setLogHint('');
+		logMeta.textContent = 'Loading…';
+		return request({ type: 'get_logs' }).then(function(reply) {
+			if (!reply.ok) {
+				logText.textContent = 'Could not fetch the log: ' + reply.error.message;
+				logMeta.textContent = '';
+				logLoaded = false;
+				return;
+			}
+			logText.textContent = reply.text || '';
+			logFilename = reply.filename || logFilename;
+			logMeta.textContent = reply.lines + (reply.lines === 1 ? ' line' : ' lines') +
+				(reply.previous_lines ? ' + ' + reply.previous_lines + ' from last run' : '');
+			logLoaded = true;
+			// The newest lines are what a problem is usually about
+			logText.scrollTop = logText.scrollHeight;
+		});
+	}
+
+	function openLogDialog() {
+		show(logDialog, true);
+		document.body.style.overflow = 'hidden';
+		loadLog().then(function() { logText.focus(); });
+	}
+
+	function closeLogDialog() {
+		show(logDialog, false);
+		document.body.style.overflow = '';
+	}
+
+	function currentLogText() {
+		return logLoaded ? logText.textContent : '';
+	}
+
+	// Copies through a hidden textarea, since the clipboard API needs a
+	// secure context and the bundled page does not have one
+	function copyText(text) {
+		var area = document.createElement('textarea');
+		area.value = text;
+		area.setAttribute('readonly', '');
+		area.style.position = 'fixed';
+		area.style.top = '0';
+		area.style.left = '0';
+		area.style.opacity = '0';
+		document.body.appendChild(area);
+		area.focus();
+		area.select();
+		area.setSelectionRange(0, text.length);
+		var copied = false;
+		try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+		document.body.removeChild(area);
+		return copied;
+	}
+
+	function shareOrDownload(text, filename) {
+		var blob;
+		try {
+			blob = new Blob([text], { type: 'text/plain' });
+		} catch (e) {
+			return 'unsupported';
+		}
+
+		// A share sheet lets the file go to Files, mail or a chat directly
+		if (navigator.share && navigator.canShare && typeof File === 'function') {
+			try {
+				var file = new File([blob], filename, { type: 'text/plain' });
+				if (navigator.canShare({ files: [file] })) {
+					navigator.share({ files: [file], title: filename }).catch(function() { /* dismissed */ });
+					return 'shared';
+				}
+			} catch (e) { /* fall through to a download */ }
+		}
+
+		if (typeof URL === 'undefined' || !URL.createObjectURL) { return 'unsupported'; }
+		var link = document.createElement('a');
+		var href = URL.createObjectURL(blob);
+		link.href = href;
+		link.download = filename;
+		link.style.display = 'none';
+		document.body.appendChild(link);
+		link.click();
+		setTimeout(function() {
+			URL.revokeObjectURL(href);
+			document.body.removeChild(link);
+		}, 2000);
+		return 'downloaded';
+	}
+
+	$('view-log-btn').addEventListener('click', openLogDialog);
+	$('log-close').addEventListener('click', closeLogDialog);
+	logDialog.addEventListener('click', function(e) {
+		if (e.target === logDialog) { closeLogDialog(); }
+	});
+	document.addEventListener('keydown', function(e) {
+		if (e.key === 'Escape' && isShown(logDialog)) { closeLogDialog(); }
+	});
+
+	$('log-refresh').addEventListener('click', function() { loadLog(); });
+
+	$('log-copy').addEventListener('click', function() {
+		var text = currentLogText();
+		if (!text) { setLogHint('Nothing to copy yet.'); return; }
+		setLogHint(copyText(text)
+			? 'Copied to the clipboard.'
+			: 'Could not copy automatically. Select the text above and copy it by hand.');
+	});
+
+	$('log-download').addEventListener('click', function() {
+		var text = currentLogText();
+		if (!text) { setLogHint('Nothing to download yet.'); return; }
+		var how = shareOrDownload(text, logFilename);
+		if (how === 'shared') {
+			setLogHint('Choose where to send ' + logFilename + '. If nothing appeared, use Copy instead.');
+		} else if (how === 'downloaded') {
+			setLogHint('Saving ' + logFilename + '. If nothing appeared, use Copy instead.');
+		} else {
+			setLogHint('This browser cannot save files from here. Use Copy instead.');
+		}
+	});
+
+	$('log-clear').addEventListener('click', function() {
+		request({ type: 'clear_logs' }).then(function(reply) {
+			if (!reply.ok) { setLogHint('Could not clear the log: ' + reply.error.message); return; }
+			loadLog().then(function() { setLogHint('Log cleared.'); });
+		});
 	});
 
 	// ===== Loading ==========================================================

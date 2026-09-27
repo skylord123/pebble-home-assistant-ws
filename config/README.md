@@ -45,6 +45,8 @@ the same way.
 | `{ type: 'get_status' }` | `{ ok, status }` |
 | `{ type: 'save_settings', settings }` | `{ ok }`. Merges `settings` into the stored options and applies them, exactly as closing the hosted page does. Needs `ha_url` and `token`. |
 | `{ type: 'connect', ha_url, token }` | `{ ok, ha_version }` or an error. Tries the pair on a throwaway connection and only saves them, and reconnects the app, once Home Assistant has accepted them. Error codes: `bad_url`, `missing_token`, `auth_invalid`, `unreachable`, `timeout`. |
+| `{ type: 'get_logs' }` | `{ ok, text, lines, previous_lines, filename }`. The app's recent log as one text: a header with versions and platforms, the tail of the previous run, then this run. The instance URL and token are already replaced with `<redacted>`. `filename` is `home-assistant-ws-<date>_<time>-log.txt`. |
+| `{ type: 'clear_logs' }` | `{ ok }` |
 | `{ type: 'search_entities', query, limit }` | `{ ok, results: [{ entity_id, name, state, domain }], total }`. Every word of `query` must appear in the name or id. `limit` defaults to 30 and is capped at 100. `not_loaded` until the states have arrived from Home Assistant. |
 
 Any request can also fail with `unknown_type`, `bad_request` or `internal` (the

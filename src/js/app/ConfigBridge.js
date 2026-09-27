@@ -21,6 +21,7 @@ var Settings = require('settings');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
+var LogBuffer = require('app/LogBuffer');
 
 // Settings the page cannot edit, only read, that change while it is open. A
 // status push carries them so the page can fill its pipeline dropdown and
@@ -153,6 +154,9 @@ var ConfigBridge = {
         connect: function(message, respond, fail) {
             var url = ConfigBridge.normalizeUrl(message.ha_url);
             var token = typeof message.token === 'string' ? message.token.trim() : '';
+            // Kept out of the log from here on, whether or not they work
+            LogBuffer.addSecret(url);
+            LogBuffer.addSecret(token);
 
             if (!url) {
                 fail('bad_url', 'The URL must begin with http:// or https://');
@@ -205,7 +209,62 @@ var ConfigBridge = {
             var EntityService = require('app/EntityService');
             var found = EntityService.search(query, limit);
             respond({ ok: true, results: found.results, total: found.total });
+        },
+
+        /**
+         * The app's log, for reading on the page or attaching to a bug
+         * report. Already redacted line by line; the header is too.
+         */
+        get_logs: function(message, respond) {
+            var text = LogBuffer.text(ConfigBridge.logHeader());
+            respond({
+                ok: true,
+                text: text,
+                lines: LogBuffer.lines().length,
+                previous_lines: LogBuffer.previousLines().length,
+                filename: ConfigBridge.logFilename()
+            });
+        },
+
+        clear_logs: function(message, respond) {
+            LogBuffer.clear();
+            respond({ ok: true });
         }
+    },
+
+    /**
+     * What a bug report needs alongside the lines: versions and platforms
+     */
+    logHeader: function() {
+        var appState = AppState.getInstance();
+        var watch = null;
+        try {
+            watch = Pebble.getActiveWatchInfo ? Pebble.getActiveWatchInfo() : null;
+        } catch (e) { /* not every runtime answers */ }
+        var firmware = watch && watch.firmware
+            ? [watch.firmware.major, watch.firmware.minor, watch.firmware.patch].join('.') +
+                (watch.firmware.suffix ? '-' + watch.firmware.suffix : '')
+            : 'unknown';
+        var status = this.status();
+        return [
+            'Home Assistant WS log',
+            'Generated: ' + new Date().toString(),
+            'App version: ' + Constants.appVersion + ' (config page ' + Constants.confVersion + ')',
+            'Debug mode: ' + (Constants.debugMode ? 'on' : 'off'),
+            'Watch: ' + (watch ? (watch.platform || '?') + ' / ' + (watch.model || '?') : 'unknown') +
+                ', firmware ' + firmware,
+            'Phone: ' + (typeof navigator !== 'undefined' && navigator.userAgent ? navigator.userAgent : 'unknown'),
+            'Home Assistant: ' + (appState.ha_version || 'unknown') + ', connection ' + status.phase +
+                (status.error ? ' (' + status.error.message + ')' : ''),
+            'Entities loaded: ' + status.entity_count
+        ];
+    },
+
+    logFilename: function() {
+        var d = new Date();
+        function two(n) { return (n < 10 ? '0' : '') + n; }
+        return 'home-assistant-ws-' + d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) +
+            '_' + two(d.getHours()) + '-' + two(d.getMinutes()) + '-' + two(d.getSeconds()) + '-log.txt';
     },
 
     /**

@@ -316,7 +316,7 @@ var ConnectionService = {
             } });
         });
 
-        log('Testing connection to ' + url);
+        log('Testing a connection');
         try {
             haws.connect();
         } catch (err) {
