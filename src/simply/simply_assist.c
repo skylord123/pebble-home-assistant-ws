@@ -1028,16 +1028,15 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
   const int16_t content_h =
       PBL_IF_ROUND_ELSE(((drawn_h + page - 1) / page) * page, drawn_h);
 
-  const int16_t previous_h = scroll_layer_get_content_size(self->scroll_layer).h;
-  layer_set_frame(self->content_layer, GRect(0, 0, frame.size.w, content_h));
-  scroll_layer_set_content_size(self->scroll_layer, GSize(frame.size.w, content_h));
 #if !defined(PBL_ROUND)
   // More conversation below the fold shortens the thumb, and that is worth
   // seeing even when none of the new words are
-  if (content_h != previous_h) {
+  if (content_h != scroll_layer_get_content_size(self->scroll_layer).h) {
     layer_mark_dirty(self->scrollbar_layer);
   }
 #endif
+  layer_set_frame(self->content_layer, GRect(0, 0, frame.size.w, content_h));
+  scroll_layer_set_content_size(self->scroll_layer, GSize(frame.size.w, content_h));
 
   const int16_t dot_max = prv_dot_size(frame);
   layer_set_frame(self->dots_layer,

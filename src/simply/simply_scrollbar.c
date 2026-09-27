@@ -95,9 +95,9 @@ void simply_scrollbar_draw(GContext *ctx, const Layer *overlay, ScrollLayer *scr
   // the highlighted row as well as the plain ones
   const GRect halo = grect_inset(thumb, GEdgeInsets(-1));
   graphics_context_set_fill_color(ctx, background);
-  graphics_fill_round_rect(ctx, halo, 2, GCornersAll);
+  graphics_fill_rect(ctx, halo, 2, GCornersAll);
   graphics_context_set_fill_color(ctx, foreground);
-  graphics_fill_round_rect(ctx, thumb, 1, GCornersAll);
+  graphics_fill_rect(ctx, thumb, 1, GCornersAll);
 }
 
 #endif  // PBL_ROUND
