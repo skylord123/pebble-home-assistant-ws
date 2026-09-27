@@ -6,8 +6,8 @@ const Feature = require('platform/feature');
 const Constants = {
     // App versioning
     appVersion: '4.0',
-    confVersion: '1.5',
-    configPageUrl: 'https://skylord123.github.io/pebble-home-assistant-ws/config/v1.5.html',
+    confVersion: '1.6',
+    configPageUrl: 'https://skylord123.github.io/pebble-home-assistant-ws/config/v1.6.html',
 
     // Debug settings
     debugMode: true,
