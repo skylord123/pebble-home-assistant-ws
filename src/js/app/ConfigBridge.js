@@ -221,8 +221,7 @@ var ConfigBridge = {
                 ok: true,
                 text: text,
                 lines: LogBuffer.lines().length,
-                previous_lines: LogBuffer.previousLines().length,
-                filename: ConfigBridge.logFilename()
+                previous_lines: LogBuffer.previousLines().length
             });
         },
 
@@ -258,13 +257,6 @@ var ConfigBridge = {
                 (status.error ? ' (' + status.error.message + ')' : ''),
             'Entities loaded: ' + status.entity_count
         ];
-    },
-
-    logFilename: function() {
-        var d = new Date();
-        function two(n) { return (n < 10 ? '0' : '') + n; }
-        return 'home-assistant-ws-' + d.getFullYear() + '-' + two(d.getMonth() + 1) + '-' + two(d.getDate()) +
-            '_' + two(d.getHours()) + '-' + two(d.getMinutes()) + '-' + two(d.getSeconds()) + '-log.txt';
     },
 
     /**

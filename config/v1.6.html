@@ -1457,8 +1457,7 @@
 		</div>
 		<pre id="log-text" class="log-text" tabindex="0">Loading…</pre>
 		<div class="dialog-actions">
-			<button type="button" class="btn btn-primary" id="log-download">Download</button>
-			<button type="button" class="btn btn-secondary" id="log-copy">Copy</button>
+			<button type="button" class="btn btn-primary" id="log-copy">Copy</button>
 			<button type="button" class="btn btn-secondary" id="log-refresh">Refresh</button>
 			<button type="button" class="btn btn-outline-secondary" id="log-clear">Clear</button>
 		</div>
@@ -2717,15 +2716,13 @@
 	// ===== Bridge: app log ==================================================
 	//
 	// The watch app keeps its recent log lines; the dialog shows them and lets
-	// them be taken away for a bug report. Saving a file out of a WebView is
-	// not a given, so the share sheet is tried first where there is one, then
-	// a download link, and Copy is always there.
+	// them be copied out for a bug report. The phone's WebView has no way to
+	// save a file, so the clipboard is the way out.
 
 	var logDialog = $('log-dialog'),
 		logText = $('log-text'),
 		logMeta = $('log-dialog-meta'),
 		logHint = $('log-hint');
-	var logFilename = 'home-assistant-ws-log.txt';
 	var logLoaded = false;
 
 	function setLogHint(text) {
@@ -2743,7 +2740,6 @@
 				return;
 			}
 			logText.textContent = reply.text || '';
-			logFilename = reply.filename || logFilename;
 			logMeta.textContent = reply.lines + (reply.lines === 1 ? ' line' : ' lines') +
 				(reply.previous_lines ? ' + ' + reply.previous_lines + ' from last run' : '');
 			logLoaded = true;
@@ -2790,40 +2786,6 @@
 		return copied;
 	}
 
-	function shareOrDownload(text, filename) {
-		var blob;
-		try {
-			blob = new Blob([text], { type: 'text/plain' });
-		} catch (e) {
-			return 'unsupported';
-		}
-
-		// A share sheet lets the file go to Files, mail or a chat directly
-		if (navigator.share && navigator.canShare && typeof File === 'function') {
-			try {
-				var file = new File([blob], filename, { type: 'text/plain' });
-				if (navigator.canShare({ files: [file] })) {
-					navigator.share({ files: [file], title: filename }).catch(function() { /* dismissed */ });
-					return 'shared';
-				}
-			} catch (e) { /* fall through to a download */ }
-		}
-
-		if (typeof URL === 'undefined' || !URL.createObjectURL) { return 'unsupported'; }
-		var link = document.createElement('a');
-		var href = URL.createObjectURL(blob);
-		link.href = href;
-		link.download = filename;
-		link.style.display = 'none';
-		document.body.appendChild(link);
-		link.click();
-		setTimeout(function() {
-			URL.revokeObjectURL(href);
-			document.body.removeChild(link);
-		}, 2000);
-		return 'downloaded';
-	}
-
 	$('view-log-btn').addEventListener('click', openLogDialog);
 	$('log-close').addEventListener('click', closeLogDialog);
 	logDialog.addEventListener('click', function(e) {
@@ -2841,19 +2803,6 @@
 		setLogHint(copyText(text)
 			? 'Copied to the clipboard.'
 			: 'Could not copy automatically. Select the text above and copy it by hand.');
-	});
-
-	$('log-download').addEventListener('click', function() {
-		var text = currentLogText();
-		if (!text) { setLogHint('Nothing to download yet.'); return; }
-		var how = shareOrDownload(text, logFilename);
-		if (how === 'shared') {
-			setLogHint('Choose where to send ' + logFilename + '. If nothing appeared, use Copy instead.');
-		} else if (how === 'downloaded') {
-			setLogHint('Saving ' + logFilename + '. If nothing appeared, use Copy instead.');
-		} else {
-			setLogHint('This browser cannot save files from here. Use Copy instead.');
-		}
 	});
 
 	$('log-clear').addEventListener('click', function() {
