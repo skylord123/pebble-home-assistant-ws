@@ -594,7 +594,15 @@ class HAWS {
         }
 
         if(this.debug) {
-            console.log(`[HAWS] call_service: ${JSON.stringify(data, null, 4)}`);
+            // An alarm panel's code travels in service_data and must not be
+            // written anywhere
+            let shown = data;
+            if (data.service_data && data.service_data.code !== undefined) {
+                shown = Object.assign({}, data, {
+                    service_data: Object.assign({}, data.service_data, { code: '<redacted>' })
+                });
+            }
+            console.log(`[HAWS] call_service: ${JSON.stringify(shown, null, 4)}`);
         }
 
         return this.send(data, successCallback, errorCallback);

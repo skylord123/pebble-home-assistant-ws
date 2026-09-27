@@ -159,7 +159,7 @@ function show(opts) {
     function submit(code) {
         busy = true;
         statusText.text('Sending...');
-        helpers.log_message('PinEntryPage: submitting ' + code.length + '-digit code');
+        helpers.log_message('PinEntryPage: submitting code');
         opts.onSubmit(code, function(errorText) {
             if (closed) return;
             if (!errorText) {

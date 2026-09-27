@@ -993,7 +993,7 @@
 						<button type="button" class="btn btn-secondary btn-block" id="view-log-btn">
 							<svg class="icon"><use href="#i-clipboard"/></svg> View Log
 						</button>
-						<small class="form-text">What the watch app has been doing, for a bug report. Your Home Assistant address and token are left out of it.</small>
+						<small class="form-text">What the watch app has been doing, for a bug report. Your Home Assistant address and token are left out; entity names and states are in it, so look it over before sharing.</small>
 					</div>
 				</div>
 			</div>
@@ -1452,10 +1452,10 @@
 	<div class="dialog-panel">
 		<div class="dialog-header">
 			<h2 id="log-dialog-title">App Log</h2>
-			<span class="dialog-meta" id="log-dialog-meta"></span>
+			<span class="dialog-meta" id="log-dialog-meta" aria-live="polite"></span>
 			<button type="button" class="btn btn-sm btn-outline-secondary" id="log-close">Close</button>
 		</div>
-		<pre id="log-text" class="log-text" tabindex="0" aria-live="polite">Loading…</pre>
+		<pre id="log-text" class="log-text" tabindex="0">Loading…</pre>
 		<div class="dialog-actions">
 			<button type="button" class="btn btn-primary" id="log-download">Download</button>
 			<button type="button" class="btn btn-secondary" id="log-copy">Copy</button>
@@ -2759,8 +2759,10 @@
 	}
 
 	function closeLogDialog() {
+		if (!isShown(logDialog)) { return; }
 		show(logDialog, false);
 		document.body.style.overflow = '';
+		$('view-log-btn').focus();
 	}
 
 	function currentLogText() {
@@ -2784,6 +2786,7 @@
 		var copied = false;
 		try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
 		document.body.removeChild(area);
+		$('log-copy').focus();
 		return copied;
 	}
 
@@ -2827,7 +2830,7 @@
 		if (e.target === logDialog) { closeLogDialog(); }
 	});
 	document.addEventListener('keydown', function(e) {
-		if (e.key === 'Escape' && isShown(logDialog)) { closeLogDialog(); }
+		if ((e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) && isShown(logDialog)) { closeLogDialog(); }
 	});
 
 	$('log-refresh').addEventListener('click', function() { loadLog(); });

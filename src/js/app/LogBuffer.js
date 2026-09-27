@@ -18,7 +18,7 @@
 var MAX_LINES = 1000;
 var MAX_CHARS = 120000;
 var PERSIST_LINES = 300;
-var PERSIST_DELAY_MS = 3000;
+var PERSIST_DELAY_MS = 5000;
 var STORAGE_KEY = 'app_log_tail';
 var REDACTED = '<redacted>';
 
@@ -32,7 +32,10 @@ var PATTERNS = [
     [/\beyJ[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}\.[A-Za-z0-9_\-]{8,}/g, REDACTED],
     // Any URL that is not this project's own. Punctuation that ends the
     // sentence it sits in stays outside it.
-    [/\b(?:https?|wss?):\/\/(?!skylord123\.github\.io)[^\s"'<>]*[^\s"'<>,.;:)\]]/gi, REDACTED]
+    [/\b(?:https?|wss?):\/\/(?!skylord123\.github\.io)[^\s"'<>]*[^\s"'<>,.;:)\]]/gi, REDACTED],
+    // Where a person or device is, in the entity dumps the pages log
+    [/("(?:latitude|longitude|gps_accuracy)"\s*:\s*)-?[\d.]+/g, '$1' + REDACTED],
+    [/("gps"\s*:\s*)\[[^\]]*\]/g, '$1' + REDACTED]
 ];
 
 var lines = [];
@@ -162,10 +165,11 @@ var LogBuffer = {
     },
 
     /**
-     * Values that must never appear in a log line
+     * Values that must never appear in a log line. Additive: a URL or token
+     * that has been replaced can still turn up in a late event from the
+     * connection that used it.
      */
     setSecrets: function(values) {
-        secrets = [];
         var self = this;
         (values || []).forEach(function(value) { self.addSecret(value); });
     },
@@ -174,13 +178,16 @@ var LogBuffer = {
         if (typeof value !== 'string') { return; }
         var trimmed = value.trim();
         if (trimmed.length < 4) { return; }
-        var variants = [trimmed, trimmed.replace(/\/+$/, '')];
-        // The URL is also used as a websocket address, and its host alone
-        // still says where the instance is
+        var bare = trimmed.replace(/\/+$/, '');
+        var variants = [trimmed, bare];
+        // The URL is also used as a websocket address, and its host alone,
+        // with or without the port, still says where the instance is
         var url = trimmed.match(/^(https?):\/\/([^\/\s]+)/i);
         if (url) {
             variants.push(trimmed.replace(/^http/i, 'ws'));
+            variants.push(bare.replace(/^http/i, 'ws'));
             variants.push(url[2]);
+            variants.push(url[2].replace(/:\d+$/, ''));
         }
         variants.forEach(function(variant) {
             if (variant.length >= 4 && secrets.indexOf(variant) === -1) { secrets.push(variant); }
@@ -236,21 +243,23 @@ var LogBuffer = {
 
     /**
      * The whole log as one text: a header, what the previous session left
-     * behind, then this session
+     * behind, then this session. Every line goes through redaction again on
+     * the way out, since lines written before the settings were read, and
+     * the previous session's, only had the patterns to protect them.
      */
     text: function(headerLines) {
         var out = [];
         if (headerLines && headerLines.length) {
-            out = out.concat(headerLines.map(function(l) { return LogBuffer.redact(l); }));
+            out = out.concat(headerLines.map(this.redact));
             out.push('');
         }
         if (previous.length) {
             out.push('==== Previous session (last ' + previous.length + ' lines) ====');
-            out = out.concat(previous);
+            out = out.concat(previous.map(this.redact));
             out.push('');
         }
         out.push('==== This session (' + lines.length + ' lines) ====');
-        out = out.concat(lines);
+        out = out.concat(lines.map(this.redact));
         return out.join('\n');
     },
 

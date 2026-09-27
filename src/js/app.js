@@ -157,6 +157,8 @@ helpers.log_message('Started! v' + Constants.appVersion);
 var accountToken = (Pebble.getAccountToken && typeof Pebble.getAccountToken === 'function')
     ? Pebble.getAccountToken()
     : 'unavailable';
+// Identifies the user's account, so it stays out of the shareable log
+require('app/LogBuffer').addSecret(accountToken);
 helpers.log_message('AccountToken: ' + accountToken);
 
 // === Settings Config Handler ===
