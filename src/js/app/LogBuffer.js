@@ -68,6 +68,18 @@ function replaceAll(text, needle, replacement) {
     return text.split(needle).join(replacement);
 }
 
+// One line for an uncaught error: the stack when there is one, otherwise
+// whatever the runtime handed over about where it happened
+function describeError(message, source, lineno, colno, error) {
+    if (error && (error.stack || error.message)) {
+        var text = error.stack || (error.name + ': ' + error.message);
+        if (text.indexOf(String(message)) === -1) { text = message + '\n' + text; }
+        return text;
+    }
+    var where = source ? ' (' + source + (lineno ? ':' + lineno + (colno ? ':' + colno : '') : '') + ')' : '';
+    return stringify(message) + where;
+}
+
 var LogBuffer = {
     /**
      * Take over console.log/warn/error so everything written there is kept.
@@ -97,7 +109,41 @@ var LogBuffer = {
             };
         });
 
+        this.installErrorHooks();
         this.record('---- app started ----');
+    },
+
+    /**
+     * Uncaught exceptions and unhandled promise rejections. Exceptions inside
+     * event handlers and timers are already caught and dumped to the console
+     * by lib/safe, which the capture above keeps; these are the ones that get
+     * past it. The runtime prints them itself, so they are only kept here,
+     * not written to the console a second time.
+     */
+    installErrorHooks: function() {
+        if (typeof window === 'undefined') { return; }
+
+        try {
+            var previousOnError = window.onerror;
+            window.onerror = function(message, source, lineno, colno, error) {
+                LogBuffer.record('UNCAUGHT ' + describeError(message, source, lineno, colno, error));
+                if (typeof previousOnError === 'function') {
+                    return previousOnError.apply(this, arguments);
+                }
+                return false;
+            };
+        } catch (e) { /* onerror is not assignable here */ }
+
+        if (typeof window.addEventListener === 'function') {
+            try {
+                window.addEventListener('unhandledrejection', function(event) {
+                    var reason = event && event.reason;
+                    LogBuffer.record('UNHANDLED REJECTION ' + (reason instanceof Error
+                        ? (reason.stack || reason.message)
+                        : stringify(reason)));
+                });
+            } catch (e) { /* not every runtime has the event */ }
+        }
     },
 
     /**
