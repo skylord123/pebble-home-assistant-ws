@@ -3,8 +3,12 @@
  *
  * Every entity action names its entity by `instanceId` (the entity_id), and
  * is refused unless that entity is shared. Nothing here reaches beyond the
- * one entity named: `call_service` only calls services of the entity's own
- * domain, on that entity.
+ * one entity named: `call_service` only calls the services listed below for
+ * the entity's own domain, on that entity.
+ *
+ * Unlocking, disarming and opening a garage door, gate or door ask the
+ * wearer first (the manifest marks those actions), and no other action does
+ * the same thing without asking.
  *
  * Codes for locks and alarm panels come from the caller when needed. The
  * codes the watch app remembers are never used here, or any installed app
@@ -32,6 +36,68 @@ var CONFIRMED_SERVICES = {
     'lock.open': 'open',
     'alarm_control_panel.alarm_disarm': 'alarm_disarm'
 };
+
+var ON_OFF = ['turn_on', 'turn_off', 'toggle'];
+var SELECT = ['select_option', 'select_next', 'select_previous', 'select_first', 'select_last'];
+
+/**
+ * What call_service may call, by domain. Only services that act on the
+ * entity they are given: a script, for one, is also a service of its own
+ * (script.<name>), so an open list would run any script in the house.
+ */
+var CALLABLE = {
+    light: ON_OFF,
+    switch: ON_OFF,
+    input_boolean: ON_OFF,
+    siren: ON_OFF,
+    remote: ON_OFF,
+    script: ON_OFF,
+    fan: ON_OFF.concat(['set_percentage', 'increase_speed', 'decrease_speed', 'set_preset_mode',
+        'oscillate', 'set_direction']),
+    automation: ON_OFF.concat(['trigger']),
+    humidifier: ON_OFF.concat(['set_humidity', 'set_mode']),
+    scene: ['turn_on'],
+    button: ['press'],
+    input_button: ['press'],
+    number: ['set_value'],
+    input_number: ['set_value', 'increment', 'decrement'],
+    counter: ['increment', 'decrement', 'reset', 'set_value'],
+    select: SELECT,
+    input_select: SELECT,
+    text: ['set_value'],
+    input_text: ['set_value'],
+    input_datetime: ['set_datetime'],
+    climate: ON_OFF.concat(['set_temperature', 'set_hvac_mode', 'set_preset_mode', 'set_fan_mode',
+        'set_humidity', 'set_swing_mode']),
+    water_heater: ['turn_on', 'turn_off', 'set_temperature', 'set_operation_mode', 'set_away_mode'],
+    cover: ['open_cover', 'close_cover', 'stop_cover', 'toggle', 'set_cover_position', 'open_cover_tilt',
+        'close_cover_tilt', 'stop_cover_tilt', 'set_cover_tilt_position', 'toggle_cover_tilt'],
+    valve: ['open_valve', 'close_valve', 'stop_valve', 'toggle', 'set_valve_position'],
+    lock: ['lock'],
+    alarm_control_panel: ['alarm_arm_home', 'alarm_arm_away', 'alarm_arm_night', 'alarm_arm_vacation',
+        'alarm_arm_custom_bypass'],
+    media_player: ON_OFF.concat(['media_play', 'media_pause', 'media_play_pause', 'media_stop',
+        'media_next_track', 'media_previous_track', 'media_seek', 'volume_set', 'volume_up',
+        'volume_down', 'volume_mute', 'select_source', 'select_sound_mode', 'shuffle_set', 'repeat_set']),
+    vacuum: ['start', 'pause', 'stop', 'return_to_base', 'locate', 'clean_spot', 'set_fan_speed'],
+    lawn_mower: ['start_mowing', 'pause', 'dock']
+};
+
+//! Cover services that can open one
+var COVER_OPENING = ['open_cover', 'toggle', 'set_cover_position'];
+
+//! Covers that let people in. Opening one goes through `open`, which asks.
+var GUARDED_COVERS = { garage: true, gate: true, door: true };
+
+function isGuarded(entity) {
+    return entities.domainOf(entity.entity_id) === 'cover' &&
+        GUARDED_COVERS[(entity.attributes || {}).device_class] === true;
+}
+
+function mustAsk(entity) {
+    return new PluginError('PERMISSION_DENIED',
+        entities.nameOf(entity) + ' only opens with the open action, which asks first');
+}
 
 function invalid(message) {
     return new PluginError('INVALID_ARGS', message);
@@ -75,11 +141,16 @@ var ENTITY_ACTIONS = {
                 text: (args.on ? 'Turned on ' : 'Turned off ') + name + '.' };
         }
         if (domain === 'cover' || domain === 'valve') {
+            if (args.on && isGuarded(entity)) { throw mustAsk(entity); }
             return { domain: domain, service: (args.on ? 'open_' : 'close_') + domain,
                 text: (args.on ? 'Opening ' : 'Closing ') + name + '.' };
         }
         if (domain === 'scene' || domain === 'script') {
-            if (!args.on) { return { domain: domain, service: 'turn_off', text: 'Stopped ' + name + '.' }; }
+            if (!args.on) {
+                // A scene has nothing to stop
+                if (domain === 'scene') { throw invalid(name + ' cannot be turned off'); }
+                return { domain: domain, service: 'turn_off', text: 'Stopped ' + name + '.' };
+            }
             return { domain: domain, service: 'turn_on', text: 'Ran ' + name + '.' };
         }
         throw invalid(entity.entity_id + ' has no on or off');
@@ -94,6 +165,10 @@ var ENTITY_ACTIONS = {
         switch (domain) {
             case 'cover':
             case 'valve':
+                if (isGuarded(entity)) {
+                    if (entity.state !== 'open' && entity.state !== 'opening') { throw mustAsk(entity); }
+                    return { domain: domain, service: 'close_cover', text: 'Closing ' + name + '.' };
+                }
                 return { domain: domain, service: 'toggle', text: 'Toggled ' + name + '.' };
             case 'lock':
                 // Unlocking asks the wearer first, which a toggle would skip
@@ -162,14 +237,16 @@ var ENTITY_ACTIONS = {
     set_position: function(entity, args) {
         var domain = requireDomain(entity, ['cover', 'valve'], 'set a position');
         var position = percentArg(args, 'position');
+        if (position > 0 && isGuarded(entity)) { throw mustAsk(entity); }
         return { domain: domain, service: domain === 'cover' ? 'set_cover_position' : 'set_valve_position',
             data: { position: position }, text: 'Moving ' + entities.nameOf(entity) + ' to ' + position + '%.' };
     },
 
     open: function(entity, args) {
         var domain = requireDomain(entity, ['cover', 'valve', 'lock'], 'open');
+        // Only locks take a code; covers and valves refuse one
         var service = domain === 'lock' ? 'open' : 'open_' + domain;
-        return { domain: domain, service: service, data: withCode({}, args),
+        return { domain: domain, service: service, data: domain === 'lock' ? withCode({}, args) : {},
             text: 'Opening ' + entities.nameOf(entity) + '.' };
     },
 
@@ -237,9 +314,9 @@ var ENTITY_ACTIONS = {
     },
 
     /**
-     * Anything else the entity's own domain offers: numbers, selects,
-     * vacuums, and whatever has no action of its own here. Always on the
-     * named entity, never another.
+     * The rest of what the entity's own domain offers: numbers, selects,
+     * vacuums, and whatever has no action of its own here (see CALLABLE).
+     * Always on the named entity, never another.
      */
     call_service: function(entity, args) {
         var domain = entities.domainOf(entity.entity_id);
@@ -249,6 +326,12 @@ var ENTITY_ACTIONS = {
         var confirmed = CONFIRMED_SERVICES[domain + '.' + args.service];
         if (confirmed) {
             throw new PluginError('PERMISSION_DENIED', 'Use the ' + confirmed + ' action for that');
+        }
+        if ((CALLABLE[domain] || []).indexOf(args.service) === -1) {
+            throw new PluginError('PERMISSION_DENIED', domain + '.' + args.service + ' cannot be called by other apps');
+        }
+        if (COVER_OPENING.indexOf(args.service) !== -1 && isGuarded(entity)) {
+            throw mustAsk(entity);
         }
         var data = {};
         if (args.data && typeof args.data === 'object' && !Array.isArray(args.data)) {
@@ -280,7 +363,8 @@ function sharedIds(opts) {
 
 function runEntityAction(conn, opts, name, args) {
     var id = args.instanceId;
-    if (typeof id !== 'string' || id.indexOf('.') === -1) {
+    // Home Assistant reads "a.b,c.d" as two entities, so only one well-formed id gets through
+    if (typeof id !== 'string' || !/^[a-z0-9_]+\.[a-z0-9_]+$/.test(id)) {
         return Promise.reject(invalid('instanceId must be an entity_id'));
     }
     var shared = sharedIds(opts);
@@ -295,7 +379,7 @@ function runEntityAction(conn, opts, name, args) {
         }
         var call = ENTITY_ACTIONS[name](entity, args);
         var data = call.data || {};
-        data.entity_id = id;
+        data.entity_id = entity.entity_id;
         return ha.callService(conn, call.domain, call.service, data).then(function() {
             return { text: call.text, refreshed: refreshKeys(id) };
         });
