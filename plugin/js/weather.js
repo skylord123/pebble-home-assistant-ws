@@ -76,31 +76,73 @@ function temperatureShapes(value, unit) {
     };
 }
 
+//! weather's supported_features bits for each forecast type
+var FORECAST_FEATURE = { daily: 1, hourly: 2, twice_daily: 4 };
+
 /**
- * Forecasts of one type ('daily' or 'hourly') for these entities, from
- * weather.get_forecasts. An older Home Assistant, or a weather integration
- * without that forecast type, just leaves them out.
+ * The forecast type to ask an entity for: `wanted` if it has it, twice-daily
+ * in place of daily (the US National Weather Service has no daily one), or
+ * null. An entity that does not say what it has is asked for `wanted`.
  */
-function forecasts(conn, ids, type) {
-    var key = 'forecast_' + type;
-    var cached = store.fresh(key, FORECAST_TTL_MS) || {};
-    var missing = ids.filter(function(id) { return !cached[id]; });
+function forecastTypeFor(entity, wanted) {
+    var features = (entity.attributes || {}).supported_features;
+    if (typeof features !== 'number') { return wanted; }
+    if (features & FORECAST_FEATURE[wanted]) { return wanted; }
+    if (wanted === 'daily' && (features & FORECAST_FEATURE.twice_daily)) { return 'twice_daily'; }
+    return null;
+}
+
+/**
+ * Forecasts of one kind ('daily' or 'hourly') for these entities, from
+ * weather.get_forecasts, asked one entity at a time: Home Assistant fails the
+ * whole call if any one entity lacks the type. An entity without it, or an
+ * older Home Assistant, gets an empty list, which is kept like any other
+ * answer so it is not asked again every time.
+ * @returns {Promise<Object>} entity_id -> forecast list
+ */
+function forecasts(conn, states, ids, kind) {
+    var key = 'forecast_' + kind;
+    var entries = store.get(key) || {};
+    var now = Date.now();
+    var out = {};
+    var missing = [];
+    ids.forEach(function(id) {
+        var entry = entries[id];
+        if (entry && typeof entry.at === 'number' && Array.isArray(entry.list) &&
+            now - entry.at < FORECAST_TTL_MS) {
+            out[id] = entry.list;
+        } else {
+            missing.push(id);
+        }
+    });
     if (missing.length === 0) {
-        return Promise.resolve(cached);
+        return Promise.resolve(out);
     }
-    return ha.callServiceForResponse(conn, 'weather', 'get_forecasts',
-        { entity_id: missing, type: type })
-        .then(function(response) {
-            missing.forEach(function(id) {
+
+    return Promise.all(missing.map(function(id) {
+        var type = forecastTypeFor(states[id], kind);
+        if (!type) { return Promise.resolve([]); }
+        return ha.callServiceForResponse(conn, 'weather', 'get_forecasts', { entity_id: id, type: type })
+            .then(function(response) {
                 var entry = response[id];
-                cached[id] = (entry && Array.isArray(entry.forecast)) ? entry.forecast : [];
+                var list = (entry && Array.isArray(entry.forecast)) ? entry.forecast : [];
+                // Twice-daily alternates day and night; the day halves stand in for days
+                return type === 'twice_daily'
+                    ? list.filter(function(part) { return part.is_daytime !== false; })
+                    : list;
+            }, function(err) {
+                if (err && err.code === 'AUTH_REQUIRED') { throw err; }
+                return [];
             });
-            store.remember(key, cached);
-            return cached;
-        }, function(err) {
-            if (err && err.code === 'AUTH_REQUIRED') { throw err; }
-            return cached;
+    })).then(function(lists) {
+        var stamp = Date.now();
+        missing.forEach(function(id, index) {
+            out[id] = lists[index];
+            entries[id] = { at: stamp, list: lists[index] };
         });
+        store.set(key, entries);
+        return out;
+    });
 }
 
 function unitOf(entity) {
@@ -159,7 +201,7 @@ function locationInstance(entity, today) {
 function location(conn, ids) {
     return ha.getStates(conn, ids).then(function(states) {
         var present = ids.filter(function(id) { return states[id]; });
-        return forecasts(conn, present, 'daily').then(function(daily) {
+        return forecasts(conn, states, present, 'daily').then(function(daily) {
             return present.map(function(id) {
                 var list = daily[id] || [];
                 return locationInstance(states[id], list[0] || null);
@@ -180,7 +222,7 @@ function hours(conn, ids) {
         var entity = states[id];
         if (!entity) { return []; }
         var unit = unitOf(entity);
-        return forecasts(conn, [id], 'hourly').then(function(hourly) {
+        return forecasts(conn, states, [id], 'hourly').then(function(hourly) {
             var now = Date.now();
             var ahead = (hourly[id] || []).filter(function(hour) {
                 return Date.parse(hour.datetime) > now;
