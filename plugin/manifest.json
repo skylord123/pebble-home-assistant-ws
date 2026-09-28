@@ -209,10 +209,10 @@
   "actions": [
     {
       "name": "set_on",
-      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans, media players and climate turn on and off; covers and valves open and close; scenes and scripts run.",
+      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans, media players and climate turn on and off; covers and valves open and close (a garage door, gate or door only opens with the open action); scenes and scripts run.",
       "parameters": {
         "type": "object",
-        "required": ["item", "instanceId", "on"],
+        "required": ["instanceId", "on"],
         "properties": {
           "item": { "type": "string", "enum": ["entity", "light", "switch", "cover", "media_player", "climate", "scene"] },
           "instanceId": { "type": "string", "description": "The entity_id, from any home/* source" },
@@ -223,7 +223,7 @@
     },
     {
       "name": "toggle",
-      "description": "Toggle a Home Assistant entity: on and off, open and closed, locked and unlocked, play and pause, or run a scene, script or button.",
+      "description": "Toggle a Home Assistant entity: on and off, open and closed, play and pause, or run a scene, script or button. A lock only locks (unlock it with unlock), and a garage door, gate or door only closes (open it with open).",
       "parameters": {
         "type": "object",
         "required": ["instanceId"],
@@ -287,7 +287,7 @@
     },
     {
       "name": "set_position",
-      "description": "Move a Home Assistant cover or valve to a position, 0 closed to 100 open.",
+      "description": "Move a Home Assistant cover or valve to a position, 0 closed to 100 open. A garage door, gate or door can only be closed this way (open it with open).",
       "parameters": {
         "type": "object",
         "required": ["instanceId", "position"],
@@ -300,7 +300,7 @@
     },
     {
       "name": "open",
-      "description": "Open a Home Assistant cover or valve, or open (unlatch) a lock. Locks that need a code take it in code.",
+      "description": "Open a Home Assistant cover or valve, or open (unlatch) a lock. Asks the wearer first. Locks that need a code take it in code.",
       "parameters": {
         "type": "object",
         "required": ["instanceId"],
@@ -438,7 +438,7 @@
     },
     {
       "name": "call_service",
-      "description": "Call any service of a shared entity's own domain on that entity, with optional service data, for what the other actions do not cover (numbers, selects, vacuums, ...). The target is always the named entity.",
+      "description": "Call a service of a shared entity's own domain on that entity, with optional service data, for what the other actions do not cover (numbers, selects, vacuums, fan speeds, ...). Only services that act on the named entity are allowed, and never unlock, open a lock, disarm, or open a garage door, gate or door; those have actions of their own that ask first.",
       "parameters": {
         "type": "object",
         "required": ["instanceId", "service"],

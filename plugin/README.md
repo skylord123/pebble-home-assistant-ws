@@ -40,11 +40,16 @@ weather entities itself and caches them for an hour.
 
 Everything the plugin caches is stored under a `plugin:` prefix:
 
-- entity states, for 10 s;
-- forecasts, for 15 min;
-- a marker for a token Home Assistant refused. While a token is marked, the
-  plugin returns `AUTH_REQUIRED` straight away instead of asking again with a
-  token it knows is bad.
+- entity states, for 10 s each;
+- forecasts, for 15 min, per weather entity;
+- a marker for a token Home Assistant refused, so a bad token is not retried
+  on every poll. Every refused attempt counts towards Home Assistant's IP ban.
+  - While the marker is set, the plugin answers `AUTH_REQUIRED` without asking
+    Home Assistant.
+  - The token is tried again after 30 minutes, when it changes, or when the
+    settings page checks the plugin.
+  - Only a 401 from `/api/` sets the marker. A 401 on a service call (an
+    admin-only service, for example) comes back as `PERMISSION_DENIED`.
 
 The plugin never logs the URL or the token. It never uses the lock and alarm
 codes the watch app remembers; a code has to come from the caller.
@@ -79,6 +84,9 @@ Notes on the weather sources:
 - `weather/location` has one instance per weather entity.
 - `weather/hour` has the next six hours of `weather.home`, or of the first
   weather entity if there is no `weather.home`.
+- Forecasts are asked for one entity at a time, and only for the types the
+  entity says it has. An entity with only twice-daily forecasts (the US
+  National Weather Service) gets its high from the daytime half.
 - `condition_code` uses the same words as the phone's own weather: `sun`,
   `partly_cloudy`, `light_rain` and so on.
 
@@ -97,32 +105,52 @@ happened, and asks the sources that show that entity to refresh.
 
 | Action | Does |
 | --- | --- |
-| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them. Takes the same arguments as the Hue plugin's action. |
-| `toggle` | Toggles. A locked lock is refused: use `unlock`. |
+| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them. Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
+| `toggle` | Toggles. A locked lock is refused (use `unlock`), and a closed garage door, gate or door is refused (use `open`). |
 | `activate` | Runs a scene or script, presses a button, or triggers an automation. |
 | `set_brightness` `{ percent }` | Sets a light's brightness. |
 | `set_temperature` `{ temperature }` | Sets the target temperature. |
 | `set_hvac_mode` `{ hvac_mode }` | Sets the heating or cooling mode. |
-| `set_position` `{ position }` | Sets a cover's position. |
+| `set_position` `{ position }` | Sets a cover's position. A garage door, gate or door can only be closed (position 0). |
 | `open` `{ code? }`, `close`, `stop` | Covers and valves. `open` also unlatches a lock. |
 | `lock` `{ code? }`, `unlock` `{ code? }` | Locks and unlocks. |
 | `alarm_arm` `{ mode?, code? }`, `alarm_disarm` `{ code? }` | Alarm panels. `mode` is `home`, `away` (the default), `night`, `vacation` or `custom_bypass`. |
 | `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
-| `call_service` `{ service, data? }` | Any other service of the entity's own domain, called on that entity only. See below. |
+| `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
 | `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
 
 Three actions ask the wearer before running: `unlock`, `alarm_disarm` and
 `open`. That confirmation cannot be skipped another way:
 
 - `toggle` never unlocks a lock.
+- A garage door, gate or door (a cover with that device class) never opens
+  through `set_on`, `toggle`, `set_position` or `call_service`.
 - `call_service` refuses `lock.unlock`, `lock.open` and
   `alarm_control_panel.alarm_disarm`.
-- `call_service` drops any target (`entity_id`, `device_id`, `area_id`,
-  `floor_id`, `label_id`) from `data`.
+
+`call_service` only calls services from a list per domain (`CALLABLE` in
+`js/actions.js`): services that act on the entity they are given, such as
+`fan.set_percentage`, `input_select.select_option` and `vacuum.return_to_base`.
+It is a list and not "anything in the domain" for these reasons:
+
+- Every script is also a service of its own (`script.<name>`). Sharing one
+  script would otherwise run any of them.
+- Some services name other entities in their data, such as
+  `media_player.join`.
+
+`call_service` also drops any target (`entity_id`, `device_id`, `area_id`,
+`floor_id`, `label_id`) from `data`.
 
 `ask_assistant` is off until the wearer turns on **Share with Apps** under
 Voice. It uses the pipeline chosen in the app, and it continues the same
-conversation if asked again within five minutes.
+conversation if asked again within five minutes. Keep these in mind before
+turning it on:
+
+- It can do whatever Home Assistant exposes to Assist (Settings → Voice
+  assistants → Expose), not only what is shared here.
+- It does not ask on the watch first.
+- Every app that asks shares the one conversation, since the plugin cannot
+  tell callers apart.
 
 ## Trying it
 
