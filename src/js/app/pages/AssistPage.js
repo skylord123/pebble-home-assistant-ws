@@ -61,7 +61,10 @@ function loadAssistPipelines(callback) {
                     preferred: p.id === appState.preferred_pipeline,
                     // Only a pipeline with a speech-to-text engine can be
                     // sent audio
-                    stt: !!p.stt_engine
+                    stt: !!p.stt_engine,
+                    // For the plugin, which can only reach the agent itself
+                    conversation_engine: p.conversation_engine || null,
+                    conversation_language: p.conversation_language || null
                 };
             });
             Settings.option('available_pipelines', pipelineOptions);
