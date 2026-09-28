@@ -1,0 +1,3054 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<title>Home Assistant WS Config</title>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+	<meta name="color-scheme" content="light dark">
+	<!--
+		This page is served two ways from the one file:
+
+		- Hosted on GitHub Pages and opened by every Pebble phone app that only
+		  knows the classic flow. The settings arrive in the URL hash and go
+		  back through pebblejs://close# when Save is pressed, which shuts the
+		  page.
+		- Bundled in the pbw (appinfo.json configPage) for phone apps that can
+		  open it from there. Those inject a `Pebble` object with
+		  sendMessage/addEventListener, and the page uses it to load and save
+		  settings, test a connection and search entities while staying open.
+		  It runs from a data: URL there, so nothing can be loaded from a
+		  relative path and localStorage is not available.
+
+		Whether the bridge is there decides which; nothing else differs.
+	-->
+	<svg xmlns="http://www.w3.org/2000/svg" style="display: none;">
+		<symbol id="check-circle-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M16 8A8 8 0 1 1 0 8a8 8 0 0 1 16 0zm-3.97-3.03a.75.75 0 0 0-1.08.022L7.477 9.417 5.384 7.323a.75.75 0 0 0-1.06 1.06L6.97 11.03a.75.75 0 0 0 1.079-.02l3.992-4.99a.75.75 0 0 0-.01-1.05z"/>
+		</symbol>
+		<symbol id="info-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M8 16A8 8 0 1 0 8 0a8 8 0 0 0 0 16zm.93-9.412-1 4.705c-.07.34.029.533.304.533.194 0 .487-.07.686-.246l-.088.416c-.287.346-.92.598-1.465.598-.703 0-1.002-.422-.808-1.319l.738-3.468c.064-.293.006-.399-.287-.47l-.451-.081.082-.381 2.29-.287zM8 5.5a1 1 0 1 1 0-2 1 1 0 0 1 0 2z"/>
+		</symbol>
+		<symbol id="exclamation-triangle-fill" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M8.982 1.566a1.13 1.13 0 0 0-1.96 0L.165 13.233c-.457.778.091 1.767.98 1.767h13.713c.889 0 1.438-.99.98-1.767L8.982 1.566zM8 5c.535 0 .954.462.9.995l-.35 3.507a.552.552 0 0 1-1.1 0L7.1 5.995A.905.905 0 0 1 8 5zm.002 6a1 1 0 1 1 0 2 1 1 0 0 1 0-2z"/>
+		</symbol>
+		<symbol id="i-bars" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" viewBox="0 0 16 16">
+			<path d="M2.5 4h11M2.5 8h11M2.5 12h11"/>
+		</symbol>
+		<symbol id="i-trash" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M5.5 5.5A.5.5 0 0 1 6 6v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm2.5 0a.5.5 0 0 1 .5.5v6a.5.5 0 0 1-1 0V6a.5.5 0 0 1 .5-.5zm3 .5a.5.5 0 0 0-1 0v6a.5.5 0 0 0 1 0V6z"/>
+			<path d="M14.5 3a1 1 0 0 1-1 1H13v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V4h-.5a1 1 0 0 1-1-1V2a1 1 0 0 1 1-1H6a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1h3.5a1 1 0 0 1 1 1v1zM4.118 4 4 4.059V13a1 1 0 0 0 1 1h6a1 1 0 0 0 1-1V4.059L11.882 4H4.118zM2.5 3h11V2h-11v1z"/>
+		</symbol>
+		<symbol id="i-eye" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5c2.12 0 3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8c-.058.087-.122.183-.195.288-.335.48-.83 1.12-1.465 1.755C11.879 11.332 10.119 12.5 8 12.5c-2.12 0-3.879-1.168-5.168-2.457A13.134 13.134 0 0 1 1.172 8z"/>
+			<path d="M8 5.5a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5zM4.5 8a3.5 3.5 0 1 1 7 0 3.5 3.5 0 0 1-7 0z"/>
+		</symbol>
+		<symbol id="i-eye-slash" fill="currentColor" viewBox="0 0 16 16">
+			<use href="#i-eye"/>
+			<path d="M2 1.5l12.5 13" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>
+		</symbol>
+		<symbol id="i-clipboard" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M4 1.5H3a2 2 0 0 0-2 2V14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V3.5a2 2 0 0 0-2-2h-1v1h1a1 1 0 0 1 1 1V14a1 1 0 0 1-1 1H3a1 1 0 0 1-1-1V3.5a1 1 0 0 1 1-1h1v-1z"/>
+			<path d="M9.5 1a.5.5 0 0 1 .5.5v1a.5.5 0 0 1-.5.5h-3a.5.5 0 0 1-.5-.5v-1a.5.5 0 0 1 .5-.5h3zm-3-1A1.5 1.5 0 0 0 5 1.5v1A1.5 1.5 0 0 0 6.5 4h3A1.5 1.5 0 0 0 11 2.5v-1A1.5 1.5 0 0 0 9.5 0h-3z"/>
+		</symbol>
+		<symbol id="i-check" fill="currentColor" viewBox="0 0 16 16">
+			<path d="M13.485 1.431a1.473 1.473 0 0 1 2.104 2.062l-7.84 9.801a1.473 1.473 0 0 1-2.12.04L.431 8.138a1.473 1.473 0 0 1 2.084-2.083l4.111 4.112 6.82-8.69a.486.486 0 0 1 .04-.045z"/>
+		</symbol>
+		<symbol id="i-star" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" viewBox="0 0 16 16">
+			<path d="M8 1.6l2.02 4.1 4.53.66-3.28 3.2.77 4.51L8 11.94l-4.04 2.13.77-4.51-3.28-3.2 4.53-.66L8 1.6z"/>
+		</symbol>
+		<symbol id="i-share" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" viewBox="0 0 16 16">
+			<circle cx="12" cy="3.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><circle cx="4" cy="8" r="1.8"/>
+			<path d="M5.6 7.1l4.8-2.7M5.6 8.9l4.8 2.7"/>
+		</symbol>
+		<symbol id="i-pin" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" viewBox="0 0 16 16">
+			<path d="M4.5 1h7c0 1-.6 1.6-1 1.9v4.3c1 .5 2 1.4 2 2.8h-4v4.6L8 15.5l-.5-.9V10h-4c0-1.4 1-2.3 2-2.8V2.9C5.1 2.6 4.5 2 4.5 1z"/>
+		</symbol>
+	</svg>
+	<style>
+		/* Clay-inspired CSS Variables */
+		:root {
+			/* Light mode (default) */
+			--color-accent: #ff4700;
+			--color-accent-dark: #cc3900;
+			--color-background: #f2f2f2;
+			--color-section-bg: #ffffff;
+			--color-section-header: #e8e8e8;
+			--color-text: #333333;
+			--color-text-muted: #666666;
+			--color-text-secondary: #858585;
+			--color-divider: #e0e0e0;
+			--color-input-bg: #ffffff;
+			--color-input-border: #cccccc;
+			--color-input-focus: #ff4700;
+			--color-success: #28a745;
+			--color-warning: #ffc107;
+			--color-danger: #dc3545;
+			--color-info: #17a2b8;
+			--shadow-section: 0 0.15rem 0.25rem rgba(0,0,0,0.1);
+			--shadow-button: 0 0.1rem 0.1rem rgba(0,0,0,0.1);
+		}
+
+		@media (prefers-color-scheme: dark) {
+			:root {
+				--color-accent: #ff4700;
+				--color-accent-dark: #993d19;
+				--color-background: #333333;
+				--color-section-bg: #484848;
+				--color-section-header: #414141;
+				--color-text: #ffffff;
+				--color-text-muted: #a4a4a4;
+				--color-text-secondary: #858585;
+				--color-divider: #666666;
+				--color-input-bg: #5b5b5b;
+				--color-input-border: #666666;
+				--color-input-focus: #ff4700;
+				--color-success: #28a745;
+				--color-warning: #ffc107;
+				--color-danger: #ff6b6b;
+				--color-info: #5bc0de;
+				--shadow-section: 0 0.15rem 0.25rem rgba(0,0,0,0.3);
+				--shadow-button: 0 0.1rem 0.1rem rgba(0,0,0,0.2);
+			}
+		}
+
+		/* Reset and Base Styles */
+		*, *:before, *:after {
+			box-sizing: border-box;
+		}
+
+		html, body {
+			margin: 0;
+			padding: 0;
+			font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+			font-size: 17px;
+			line-height: 1.4;
+			-webkit-font-smoothing: antialiased;
+			background-color: var(--color-background);
+			color: var(--color-text);
+		}
+
+		/* Container */
+		.container {
+			max-width: 600px;
+			margin: 0 auto;
+			padding: 0 0.75rem 1.5rem;
+		}
+
+		/* Header */
+		.page-header {
+			text-align: center;
+			padding: 0;
+		}
+
+		.page-header .author-link {
+			font-size: 0.85rem;
+			color: var(--color-text-muted);
+		}
+
+		.page-header .author-link a {
+			color: var(--color-accent);
+			text-decoration: none;
+		}
+
+		/* Icons */
+		.icon {
+			width: 1em;
+			height: 1em;
+			vertical-align: -0.125em;
+			flex-shrink: 0;
+		}
+
+		/* Anything that only makes sense with the watch app on the line */
+		.bridge-only {
+			display: none;
+		}
+
+		html.has-bridge .bridge-only {
+			display: block;
+		}
+
+		/* Section (Card) Styles - Clay-like */
+		.section {
+			background: var(--color-section-bg);
+			border-radius: 0.25rem;
+			box-shadow: var(--shadow-section);
+			margin-top: 1rem;
+			overflow: hidden;
+		}
+
+		/* Every section shuts, so the page reads as a list of what is in it
+		   rather than as a scroll you have to work your way down. The header is
+		   the summary of a details element, which does the opening and closing
+		   on its own. */
+		.section-header {
+			display: block;
+			position: relative;
+			background: var(--color-section-header);
+			padding: 0.6rem 2rem 0.6rem 0.75rem;
+			color: var(--color-text);
+			cursor: pointer;
+			list-style: none;
+			user-select: none;
+			-webkit-user-select: none;
+			-webkit-tap-highlight-color: transparent;
+		}
+
+		.section-header::-webkit-details-marker {
+			display: none;
+		}
+
+		.section-title {
+			display: block;
+			font-size: 0.85rem;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.02em;
+		}
+
+		/* A line of what is inside, so a shut section still says what it is
+		   for. Once it is open its contents say it better than the line does,
+		   so it folds away with the same movement the section opens with. The
+		   open class is set the moment the wearer asks for it, while the open
+		   attribute has to wait for the slide to finish. */
+		.section-hint {
+			display: block;
+			overflow: hidden;
+			max-height: 4em;
+			margin-top: 0.15rem;
+			font-size: 0.78rem;
+			color: var(--color-text-muted);
+			transition: max-height 0.22s ease, margin-top 0.22s ease, opacity 0.22s ease;
+		}
+
+		.section.open > .section-header .section-hint {
+			max-height: 0;
+			margin-top: 0;
+			opacity: 0;
+		}
+
+		.section-header::after {
+			content: "";
+			position: absolute;
+			right: 0.9rem;
+			top: 50%;
+			width: 0.45rem;
+			height: 0.45rem;
+			margin-top: -0.34rem;
+			border-right: 2px solid var(--color-text-muted);
+			border-bottom: 2px solid var(--color-text-muted);
+			transform: rotate(45deg);
+			transition: transform 0.22s ease, margin-top 0.22s ease;
+		}
+
+		.section.open > .section-header::after {
+			margin-top: -0.1rem;
+			transform: rotate(-135deg);
+		}
+
+		/* Anyone who has asked for less movement gets the sections snapping
+		   open the way they did before */
+		@media (prefers-reduced-motion: reduce) {
+			.section-hint,
+			.section-header::after {
+				transition: none;
+			}
+		}
+
+		.section-body {
+			padding: 0;
+		}
+
+		/* Component (Item) Styles */
+		.component {
+			padding: 0.6rem 0.75rem;
+			position: relative;
+		}
+
+		.component + .component::before {
+			content: "";
+			display: block;
+			position: absolute;
+			top: 0;
+			left: 0.375rem;
+			right: 0.375rem;
+			height: 1px;
+			background: var(--color-divider);
+		}
+
+		/* Form Elements */
+		.form-group {
+			margin-bottom: 0;
+		}
+
+		.form-label {
+			display: block;
+			font-size: 0.95rem;
+			font-weight: 500;
+			margin-bottom: 0.4rem;
+			color: var(--color-text);
+		}
+
+		.form-text {
+			display: block;
+			font-size: 0.8rem;
+			color: var(--color-text-muted);
+			margin-top: 0.3rem;
+		}
+
+		.form-control {
+			display: block;
+			width: 100%;
+			padding: 0.5rem 0.75rem;
+			font-size: 1rem;
+			font-family: inherit;
+			line-height: 1.4;
+			color: var(--color-text);
+			background-color: var(--color-input-bg);
+			border: 1px solid var(--color-input-border);
+			border-radius: 0.25rem;
+			transition: border-color 0.15s ease-in-out;
+		}
+
+		.form-control:focus {
+			outline: none;
+			border-color: var(--color-input-focus);
+		}
+
+		.form-control.is-invalid {
+			border-color: var(--color-danger);
+		}
+
+		.form-select {
+			display: block;
+			width: 100%;
+			padding: 0.5rem 2rem 0.5rem 0.75rem;
+			font-size: 1rem;
+			font-family: inherit;
+			line-height: 1.4;
+			color: var(--color-text);
+			background-color: var(--color-input-bg);
+			background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23666666' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+			background-repeat: no-repeat;
+			background-position: right 0.75rem center;
+			background-size: 16px 12px;
+			border: 1px solid var(--color-input-border);
+			border-radius: 0.25rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.form-select {
+				background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3e%3cpath fill='none' stroke='%23ffffff' stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M2 5l6 6 6-6'/%3e%3c/svg%3e");
+			}
+		}
+
+		.form-select:focus {
+			outline: none;
+			border-color: var(--color-input-focus);
+		}
+
+		.form-select:disabled {
+			opacity: 0.6;
+			cursor: not-allowed;
+		}
+
+		/* Toggle Switch - Clay-like */
+		.form-switch {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 0.4rem 0;
+		}
+
+		.form-switch .form-check-label {
+			font-size: 0.95rem;
+			color: var(--color-text);
+			flex: 1;
+		}
+
+		.form-switch .form-check-input {
+			width: 3rem;
+			height: 1.75rem;
+			margin: 0;
+			background-color: var(--color-input-border);
+			border: none;
+			border-radius: 1rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+			cursor: pointer;
+			position: relative;
+			transition: background-color 0.2s ease;
+			flex-shrink: 0;
+		}
+
+		.form-switch .form-check-input::before {
+			content: "";
+			position: absolute;
+			top: 0.125rem;
+			left: 0.125rem;
+			width: 1.5rem;
+			height: 1.5rem;
+			background-color: #ffffff;
+			border-radius: 50%;
+			box-shadow: var(--shadow-button);
+			transition: transform 0.2s ease;
+		}
+
+		.form-switch .form-check-input:checked {
+			background-color: var(--color-accent);
+		}
+
+		.form-switch .form-check-input:checked::before {
+			transform: translateX(1.25rem);
+		}
+
+		/* Checkbox */
+		.form-check {
+			display: flex;
+			align-items: flex-start;
+			padding: 0.4rem 0;
+		}
+
+		.form-check .form-check-input {
+			width: 1.25rem;
+			height: 1.25rem;
+			margin: 0.1rem 0.5rem 0 0;
+			background-color: var(--color-input-bg);
+			border: 2px solid var(--color-input-border);
+			border-radius: 0.25rem;
+			-webkit-appearance: none;
+			-moz-appearance: none;
+			appearance: none;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		.form-check .form-check-input:checked {
+			background-color: var(--color-accent);
+			border-color: var(--color-accent);
+			background-image: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 20'%3e%3cpath fill='none' stroke='%23fff' stroke-linecap='round' stroke-linejoin='round' stroke-width='3' d='M6 10l3 3l6-6'/%3e%3c/svg%3e");
+			background-size: 100%;
+			background-position: center;
+			background-repeat: no-repeat;
+		}
+
+		.form-check .form-check-label {
+			font-size: 0.95rem;
+			color: var(--color-text);
+		}
+
+		/* Input Group */
+		.input-group {
+			display: flex;
+		}
+
+		.input-group .form-control {
+			flex: 1;
+			min-width: 0;
+			border-top-right-radius: 0;
+			border-bottom-right-radius: 0;
+		}
+
+		.input-group .btn {
+			border-top-left-radius: 0;
+			border-bottom-left-radius: 0;
+		}
+
+		/* Buttons */
+		.btn {
+			display: inline-flex;
+			align-items: center;
+			justify-content: center;
+			gap: 0.4rem;
+			padding: 0.6rem 1.2rem;
+			font-size: 1rem;
+			font-family: inherit;
+			font-weight: 500;
+			line-height: 1.4;
+			text-align: center;
+			text-decoration: none;
+			border: none;
+			border-radius: 0.25rem;
+			cursor: pointer;
+			transition: background-color 0.15s ease, opacity 0.15s ease;
+		}
+
+		.btn-primary {
+			background-color: var(--color-accent);
+			color: #ffffff;
+		}
+
+		.btn-primary:hover {
+			background-color: var(--color-accent-dark);
+		}
+
+		.btn-secondary {
+			background-color: var(--color-section-header);
+			color: var(--color-text);
+		}
+
+		.btn-secondary:hover {
+			opacity: 0.8;
+		}
+
+		.btn-outline-secondary {
+			background-color: transparent;
+			color: var(--color-text-muted);
+			border: 1px solid var(--color-input-border);
+		}
+
+		.btn-outline-secondary:hover {
+			background-color: var(--color-section-header);
+		}
+
+		.btn-sm {
+			padding: 0.4rem 0.8rem;
+			font-size: 0.85rem;
+		}
+
+		.btn:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+
+		.btn-block {
+			width: 100%;
+		}
+
+		/* Alerts */
+		.alert {
+			padding: 0.75rem 1rem;
+			border-radius: 0.25rem;
+			font-size: 0.9rem;
+			margin-bottom: 0.75rem;
+		}
+
+		.alert-danger {
+			background-color: rgba(220, 53, 69, 0.15);
+			color: var(--color-danger);
+			border: 1px solid var(--color-danger);
+		}
+
+		.alert-warning {
+			background-color: rgba(255, 193, 7, 0.15);
+			color: #856404;
+			border: 1px solid var(--color-warning);
+		}
+
+		@media (prefers-color-scheme: dark) {
+			.alert-warning {
+				color: var(--color-warning);
+			}
+		}
+
+		.alert-info {
+			background-color: rgba(23, 162, 184, 0.15);
+			color: var(--color-info);
+			border: 1px solid var(--color-info);
+		}
+
+		.alert-success {
+			background-color: rgba(40, 167, 69, 0.15);
+			color: var(--color-success);
+			border: 1px solid var(--color-success);
+		}
+
+		.alert svg {
+			vertical-align: -0.125em;
+			margin-right: 0.5rem;
+		}
+
+		#alert-container {
+			margin-top: 1rem;
+		}
+
+		#alert-container:empty {
+			display: none;
+		}
+
+		/* List Group (for favorites/domains) */
+		.list-group {
+			list-style: none;
+			padding: 0;
+			margin: 0;
+		}
+
+		.list-group-item {
+			display: flex;
+			align-items: center;
+			padding: 0.6rem 0.75rem;
+			background: var(--color-input-bg);
+			border: 1px solid var(--color-divider);
+			margin-top: -1px;
+			font-size: 0.95rem;
+		}
+
+		.list-group-item:first-child {
+			border-top-left-radius: 0.25rem;
+			border-top-right-radius: 0.25rem;
+			margin-top: 0;
+		}
+
+		.list-group-item:last-child {
+			border-bottom-left-radius: 0.25rem;
+			border-bottom-right-radius: 0.25rem;
+		}
+
+		.list-group-item .drag-handle {
+			cursor: grab;
+			color: var(--color-text-muted);
+			margin-right: 0.75rem;
+			padding: 0.25rem 0;
+			flex-shrink: 0;
+			/* The handle drags the row, so the page must not scroll from it */
+			touch-action: none;
+			font-size: 1.1rem;
+		}
+
+		.list-group-item.dragging {
+			position: relative;
+			z-index: 2;
+			background: var(--color-section-bg);
+			box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+			opacity: 0.95;
+		}
+
+		.list-group-item .entity-info {
+			flex: 1;
+			min-width: 0;
+			overflow: hidden;
+		}
+
+		.list-group-item .entity-name {
+			font-size: 0.95rem;
+			font-weight: 500;
+			color: var(--color-text);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list-group-item .entity-id {
+			font-size: 0.8rem;
+			color: var(--color-text-muted);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list-group-item .entity-state {
+			font-size: 0.8rem;
+			color: var(--color-text-secondary);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.list-group-item .calendar-visible {
+			margin-left: 0.75rem;
+			flex-shrink: 0;
+		}
+
+		.list-group-item .remove-item {
+			margin-left: 0.75rem;
+			padding: 0.25rem;
+			color: var(--color-danger);
+			background: none;
+			border: none;
+			font-size: 1rem;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		/* Search results carry their own buttons: favourite and pin */
+		.entity-actions {
+			display: flex;
+			gap: 0.35rem;
+			margin-left: 0.5rem;
+			flex-shrink: 0;
+		}
+
+		.entity-actions .btn {
+			padding: 0.35rem 0.5rem;
+			font-size: 0.8rem;
+			border: 1px solid var(--color-input-border);
+			background: transparent;
+			color: var(--color-text-muted);
+		}
+
+		.entity-actions .btn .icon {
+			fill: none;
+		}
+
+		.entity-actions .btn.active {
+			color: var(--color-accent);
+			border-color: var(--color-accent);
+		}
+
+		.entity-actions .btn.active .icon {
+			fill: currentColor;
+		}
+
+		.search-meta {
+			font-size: 0.8rem;
+			color: var(--color-text-muted);
+			margin-top: 0.4rem;
+		}
+
+		/* Connection status line under the connect button */
+		.status-line {
+			display: flex;
+			align-items: center;
+			gap: 0.5rem;
+			margin-top: 0.5rem;
+			font-size: 0.85rem;
+			color: var(--color-text-muted);
+		}
+
+		.status-dot {
+			width: 0.6rem;
+			height: 0.6rem;
+			border-radius: 50%;
+			background: var(--color-text-secondary);
+			flex-shrink: 0;
+		}
+
+		.status-line.connected .status-dot { background: var(--color-success); }
+		.status-line.connecting .status-dot { background: var(--color-warning); }
+		.status-line.auth_failed .status-dot,
+		.status-line.error .status-dot { background: var(--color-danger); }
+
+		/* Timeline Token */
+		.timeline-token {
+			word-break: break-all;
+			background-color: var(--color-input-bg);
+			padding: 0.75rem;
+			border-radius: 0.25rem;
+			border: 1px solid var(--color-divider);
+			margin-bottom: 0.75rem;
+			cursor: text;
+			font-family: monospace;
+			font-size: 0.85rem;
+		}
+
+		/* Invalid Feedback */
+		.invalid-feedback {
+			color: var(--color-danger);
+			font-size: 0.8rem;
+			margin-top: 0.25rem;
+		}
+
+		/* Conditional Settings Box */
+		.conditional-box {
+			background: var(--color-section-header);
+			border-radius: 0.25rem;
+			padding: 0.75rem;
+			margin-top: 0.75rem;
+		}
+
+		.conditional-box p {
+			margin: 0 0 0.5rem;
+			font-size: 0.9rem;
+			color: var(--color-text-muted);
+		}
+
+		.conditional-box .form-check {
+			margin-bottom: 0.5rem;
+		}
+
+		.conditional-box .form-check:last-child {
+			margin-bottom: 0;
+		}
+
+		.conditional-box .form-control-sm {
+			display: inline-block;
+			width: 60px;
+			padding: 0.25rem 0.5rem;
+			font-size: 0.85rem;
+		}
+
+		/* Row/Column Grid */
+		.row {
+			display: flex;
+			flex-wrap: wrap;
+			margin: 0 -0.375rem;
+		}
+
+		.col-6 {
+			flex: 0 0 50%;
+			max-width: 50%;
+			padding: 0 0.375rem;
+		}
+
+		.col-8 {
+			flex: 0 0 66.666%;
+			max-width: 66.666%;
+			padding: 0 0.375rem;
+		}
+
+		.col-4 {
+			flex: 0 0 33.333%;
+			max-width: 33.333%;
+			padding: 0 0.375rem;
+		}
+
+		/* Utility Classes */
+		.mt-2 { margin-top: 0.5rem; }
+		.mt-3 { margin-top: 0.75rem; }
+		.mb-2 { margin-bottom: 0.5rem; }
+		.mb-3 { margin-bottom: 0.75rem; }
+		.hidden { display: none !important; }
+
+		/* Save Button Container */
+		/* Save follows you down the page, so a long section never means
+		   scrolling back to the bottom to keep what you changed */
+		.save-container {
+			position: sticky;
+			bottom: 0;
+			z-index: 5;
+			padding: 0.75rem 0;
+			background: var(--color-background);
+		}
+
+		.save-container::before {
+			content: "";
+			position: absolute;
+			left: 0;
+			right: 0;
+			bottom: 100%;
+			height: 1rem;
+			background: linear-gradient(to top, var(--color-background), rgba(127, 127, 127, 0));
+			pointer-events: none;
+		}
+
+		.save-container .btn {
+			width: 100%;
+		}
+
+		.save-container .form-text {
+			text-align: center;
+			margin-top: 0.4rem;
+		}
+
+		/* Log dialog: fills the screen on a phone, sits centred on anything wider */
+		.dialog {
+			position: fixed;
+			top: 0;
+			right: 0;
+			bottom: 0;
+			left: 0;
+			z-index: 50;
+			display: flex;
+			padding: 0.75rem;
+			background: rgba(0, 0, 0, 0.55);
+		}
+
+		.dialog-panel {
+			display: flex;
+			flex-direction: column;
+			width: 100%;
+			max-width: 600px;
+			max-height: 100%;
+			margin: auto;
+			background: var(--color-section-bg);
+			border-radius: 0.25rem;
+			box-shadow: 0 6px 24px rgba(0,0,0,0.4);
+			overflow: hidden;
+		}
+
+		.dialog-header {
+			display: flex;
+			align-items: center;
+			gap: 0.75rem;
+			padding: 0.6rem 0.75rem;
+			background: var(--color-section-header);
+		}
+
+		.dialog-header h2 {
+			flex: 1;
+			margin: 0;
+			font-size: 0.85rem;
+			font-weight: 600;
+			text-transform: uppercase;
+			letter-spacing: 0.02em;
+		}
+
+		.dialog-meta {
+			font-size: 0.78rem;
+			color: var(--color-text-muted);
+			white-space: nowrap;
+		}
+
+		.log-text {
+			flex: 1;
+			min-height: 8rem;
+			margin: 0;
+			padding: 0.6rem 0.75rem;
+			overflow: auto;
+			font-family: Menlo, Consolas, monospace;
+			font-size: 0.72rem;
+			line-height: 1.45;
+			white-space: pre-wrap;
+			word-break: break-word;
+			color: var(--color-text);
+			background: var(--color-input-bg);
+			user-select: text;
+			-webkit-user-select: text;
+			-webkit-overflow-scrolling: touch;
+		}
+
+		.dialog-actions {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 0.5rem;
+			padding: 0.6rem 0.75rem 0.3rem;
+		}
+
+		.dialog-actions .btn {
+			flex: 1;
+			padding: 0.5rem 0.6rem;
+			font-size: 0.9rem;
+		}
+
+		.dialog-hint {
+			padding: 0 0.75rem 0.6rem;
+			font-size: 0.78rem;
+			color: var(--color-text-muted);
+			min-height: 1.5rem;
+		}
+
+		/* Links */
+		a {
+			color: var(--color-accent);
+			text-decoration: none;
+		}
+
+		a:hover {
+			text-decoration: underline;
+		}
+
+		/* Scrollbar styling for dark mode */
+		@media (prefers-color-scheme: dark) {
+			::-webkit-scrollbar {
+				width: 8px;
+			}
+			::-webkit-scrollbar-track {
+				background: var(--color-background);
+			}
+			::-webkit-scrollbar-thumb {
+				background: var(--color-divider);
+				border-radius: 4px;
+			}
+		}
+	</style>
+</head>
+<body>
+<div class="container">
+	<form id="watch-config-form" onsubmit="return false;">
+		<!-- Header -->
+		<div class="page-header">
+			<p class="author-link">Created by <a href="https://skylar.tech" target="_blank">Skylar Sadlier</a></p>
+		</div>
+
+		<div id="alert-container"></div>
+
+		<details class="section open" id="connection-section" open>
+			<summary class="section-header">
+				<span class="section-title">Connection Settings</span>
+				<span class="section-hint">Where to find Home Assistant, and the token to reach it with</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-url">Home Assistant URL</label>
+						<input type="url" class="form-control" id="ha-url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="https://ha.example.com">
+						<div id="ha-url-invalid" class="invalid-feedback hidden">
+							URL must begin with either http:// or https://
+						</div>
+						<small class="form-text">Example: https://ha.example.com</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-token">Access Token</label>
+						<div class="input-group">
+							<input type="password" class="form-control" id="ha-token" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="">
+							<button class="btn btn-outline-secondary" type="button" id="toggle-token-visibility" aria-label="Show or hide the token">
+								<svg class="icon" id="toggle-token-icon"><use href="#i-eye"/></svg>
+							</button>
+						</div>
+						<small class="form-text">You can obtain a token ("Long-Lived Access Token") by logging into the frontend using a web browser, and going to your profile.</small>
+					</div>
+				</div>
+				<div class="component bridge-only">
+					<button type="button" class="btn btn-primary btn-block" id="connect-btn">Connect</button>
+					<div class="status-line" id="connect-status" aria-live="polite">
+						<span class="status-dot"></span>
+						<span class="status-text">Asking the watch how the connection is doing…</span>
+					</div>
+					<small class="form-text">Tries the URL and token, and only keeps them once Home Assistant has accepted them. Everything else on this page still needs Save.</small>
+				</div>
+				<div class="component bridge-only">
+					<div class="form-group">
+						<label class="form-label" for="view-log-btn">App Log</label>
+						<button type="button" class="btn btn-secondary btn-block" id="view-log-btn">
+							<svg class="icon"><use href="#i-clipboard"/></svg> View Log
+						</button>
+						<small class="form-text">What the watch app has been doing, for a bug report. Your Home Assistant address and token are left out; entity names and states are in it, so look it over before sharing.</small>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section bridge-only" id="entity-search-section">
+			<summary class="section-header">
+				<span class="section-title">Find Entities</span>
+				<span class="section-hint">Search everything in Home Assistant to favourite it or pin it to the main menu</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="entity-search">Search</label>
+						<input type="search" class="form-control" id="entity-search" autocapitalize="off" autocorrect="off" placeholder="Name or entity id, e.g. kitchen light">
+						<div class="search-meta" id="entity-search-meta" aria-live="polite">Type to search the entities the watch has loaded.</div>
+					</div>
+					<ul id="entity-search-results" class="list-group mt-2"></ul>
+					<small class="form-text">Adds go into the lists below, and are kept when you press Save.</small>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Voice Assistant Settings</span>
+				<span class="section-hint">The pipeline, the font size, and how the conversation is drawn</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-enabled">Enabled</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-enabled">
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-confirm">Confirm assist before sending</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-confirm">
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-backlight-trigger">Trigger backlight on response</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-backlight-trigger" checked>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-voice-backlight-hold">Auto backlight while replying</label>
+						<input class="form-check-input" type="checkbox" id="ha-voice-backlight-hold">
+					</div>
+					<small class="form-text">Keep the screen lit while the assistant reply is being written</small>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-assist-stream-reply">Stream reply as it is written</label>
+						<input class="form-check-input" type="checkbox" id="ha-assist-stream-reply" checked>
+					</div>
+					<small class="form-text">Show the assistant's reply building up as it is written, rather than waiting for the whole of it. Needs Home Assistant 2025.3 or newer; older versions always wait.</small>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-assist-vibration-feedback">Vibration feedback</label>
+						<input class="form-check-input" type="checkbox" id="ha-assist-vibration-feedback" checked>
+					</div>
+					<small class="form-text">Vibrate while the assistant reply is being written, matching ChatGPT's tactile feedback</small>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="plugin-share-assistant">Share with other apps</label>
+						<input class="form-check-input" type="checkbox" id="plugin-share-assistant">
+					</div>
+					<small class="form-text">Lets other watch apps send the assistant text and read its reply, through the plugin. It can do whatever Home Assistant exposes to Assist, not only the entities shared below.</small>
+				</div>
+				<div class="component" id="pipeline-container">
+					<div class="form-group">
+						<label class="form-label" for="ha-pipeline-select">Assist Pipeline</label>
+						<select class="form-select" id="ha-pipeline-select" disabled>
+							<option value="">Loading pipelines...</option>
+						</select>
+						<div id="pipeline-warning" class="alert alert-warning mt-2 hidden" role="alert">
+							<svg class="bi" width="20" height="20" role="img" aria-label="Warning:"><use href="#exclamation-triangle-fill"/></svg>
+							You need to connect successfully to your Home Assistant instance to load available pipelines.
+						</div>
+						<small class="form-text">Select which Home Assistant Assist pipeline to use</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-voice-font-size">Font Size</label>
+						<select class="form-select" id="ha-voice-font-size">
+							<option value="14">14px</option>
+							<option value="18">18px</option>
+							<option value="24">24px</option>
+							<option value="28">28px</option>
+						</select>
+						<small class="form-text">Select the font size for the assistant conversation</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-background">Background</label>
+						<select class="form-select" id="ha-assist-background">
+							<option value="black">Black</option>
+							<option value="white">White</option>
+							<option value="sun">Follow the sun</option>
+						</select>
+						<small class="form-text">The conversation is set apart from the menus, so a white app can still have a dark screen to read a long answer on. Following the sun means white while the sun is up and black once it has set.</small>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Display Settings</span>
+				<span class="section-hint">Menu background, scrolling, touch, and the inactivity timeout</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-menu-background">Menu Background</label>
+						<select class="form-select" id="ha-menu-background">
+							<option value="black">Black</option>
+							<option value="white">White</option>
+							<option value="sun">Follow the sun</option>
+						</select>
+						<small class="form-text">Menus are white on black by default. White inverts them to black text on white, and following the sun uses white while the sun is up where you are and black once it has set. The sun is worked out on your phone from its location.</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-menu-scroll-wrap">Menu Scrolling - Wrap Around</label>
+						<input class="form-check-input" type="checkbox" id="ha-menu-scroll-wrap" checked>
+					</div>
+					<small class="form-text">When enabled, scrolling past the top or bottom of a menu jumps to the other end</small>
+				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-touch-enabled">Touch Input</label>
+						<input class="form-check-input" type="checkbox" id="ha-touch-enabled" checked>
+					</div>
+					<small class="form-text">Tap to select, slide to scroll, hold for a long press, and swipe right to go back on watches with a touchscreen</small>
+					<div id="ha-touch-long-press-wrap" style="margin-top: 12px;">
+						<div class="form-switch">
+							<label class="form-check-label" for="ha-touch-long-press">Touch Long Press Actions</label>
+							<input class="form-check-input" type="checkbox" id="ha-touch-long-press" checked>
+						</div>
+						<small class="form-text">Holding a finger on an item acts like holding the select button, which can trigger entity actions. Disable to use touch for navigation only.</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-inactivity-timeout">Inactivity Timeout (seconds)</label>
+						<input type="number" class="form-control" id="ha-inactivity-timeout" min="0" step="1" value="0">
+						<small class="form-text">Exit the app after this many seconds without any button presses or navigation on the watch. Set to 0 to disable. Also configurable on the watch under Settings.</small>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Quick Launch Settings</span>
+				<span class="section-hint">What opens when the app is launched from a button</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-quick-launch-behavior">Quick Launch Behavior</label>
+						<select class="form-select" id="ha-quick-launch-behavior">
+							<option value="main_menu">Main Menu</option>
+							<option value="assistant">Assistant</option>
+							<option value="favorites">Favorites</option>
+							<option value="favorite_entity">Favorite Entity</option>
+							<option value="areas">Areas</option>
+							<option value="labels">Labels</option>
+							<option value="todo_lists">To-Do Lists</option>
+							<option value="people">People</option>
+						</select>
+						<small class="form-text">Select what screen to show when app is launched via Quick Launch</small>
+					</div>
+				</div>
+				<div class="component hidden" id="quick-launch-favorite-entity-container">
+					<div class="form-group">
+						<label class="form-label" for="ha-quick-launch-favorite-entity">Select Favorite Entity</label>
+						<select class="form-select" id="ha-quick-launch-favorite-entity">
+							<option value="">-- Select a favorite entity --</option>
+						</select>
+						<small class="form-text">Choose which favorite entity to open on Quick Launch</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-check">
+						<input class="form-check-input" type="checkbox" id="ha-quick-launch-exit-on-back">
+						<label class="form-check-label" for="ha-quick-launch-exit-on-back">Exit on Back</label>
+					</div>
+					<small class="form-text">When enabled, pressing back on a quick launched screen will exit the app instead of going to the main menu</small>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Main Menu Order</span>
+				<span class="section-hint">Which rows the main menu shows, and the order they come in</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="main-menu-custom-order-enabled">Enable custom menu order</label>
+						<input class="form-check-input" type="checkbox" id="main-menu-custom-order-enabled">
+					</div>
+					<small class="form-text">When enabled, use the custom order below. When disabled, use the default order.</small>
+				</div>
+				<div class="component hidden" id="main-menu-order-container">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
+						Drag and drop items to reorder them
+					</div>
+					<ul id="main-menu-sortable" class="list-group">
+					</ul>
+				</div>
+			</div>
+		</details>
+
+		<details class="section hidden" id="favorites-container">
+			<summary class="section-header">
+				<span class="section-title">Favorite Entities</span>
+				<span class="section-hint">The order your favourites are listed in</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
+						Drag and drop items to reorder them
+					</div>
+					<ul id="favorites-sortable" class="list-group">
+					</ul>
+				</div>
+			</div>
+		</details>
+
+		<details class="section hidden" id="pinned-container">
+			<summary class="section-header">
+				<span class="section-title">Pinned Entities</span>
+				<span class="section-hint">The entities pinned to the top of the main menu</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
+						Entities pinned to the Main Menu. Drag to reorder, or remove them here.
+					</div>
+					<ul id="pinned-sortable" class="list-group">
+					</ul>
+				</div>
+			</div>
+		</details>
+
+		<details class="section" id="plugin-section">
+			<summary class="section-header">
+				<span class="section-title">Shared with Other Apps</span>
+				<span class="section-hint">Entities other watchfaces and apps can read and control through the plugin</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
+						Other watchfaces and apps can show these entities and control them. Weather entities are always shared. This needs the Core Devices Pebble app with experimental plugins turned on.
+					</div>
+					<ul id="plugin-sortable" class="list-group">
+					</ul>
+					<p class="form-text" id="plugin-empty">Nothing is shared yet. Find an entity above and tap its share button, or choose Expose to Plugins on the watch.</p>
+					<div class="status-line bridge-only" id="plugin-status" aria-live="polite">
+						<span class="status-dot"></span>
+						<span class="status-text">Checking the plugin…</span>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section hidden" id="calendars-section">
+			<summary class="section-header">
+				<span class="section-title">Calendars</span>
+				<span class="section-hint">Which calendars appear, and the order they come in</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="alert alert-info" role="alert">
+						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
+						Toggle which calendars show on the watch and drag to reorder them
+					</div>
+					<ul id="calendars-sortable" class="list-group">
+					</ul>
+					<button type="button" class="btn btn-primary btn-block" id="calendar-order-reset" style="margin-top:10px;">Reset to default order</button>
+					<small class="form-text">The default order matches Home Assistant</small>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Entity Settings</span>
+				<span class="section-hint">How entities are sorted, and what happens to unavailable ones</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<div class="row">
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-order-by">Order By</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-order-by">
+									<option value="attributes.friendly_name">Name</option>
+									<option value="entity_id">Entity ID</option>
+									<option value="attributes.last_updated">Last Updated</option>
+								</select>
+							</div>
+						</div>
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-order-dir">Order Direction</label>
+								<select class="form-select" aria-label="Entity Filter" id="ha-order-dir">
+									<option value="desc">Descending</option>
+									<option value="asc" selected>Ascending</option>
+								</select>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="component">
+					<div class="row">
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-unavailable-handling">Unavailable Entities</label>
+								<select class="form-select" id="ha-unavailable-handling">
+									<option value="sort_to_end">Sort to end</option>
+									<option value="sort_normally">Sort normally</option>
+									<option value="hide">Hide</option>
+								</select>
+							</div>
+						</div>
+						<div class="col-6">
+							<div class="form-group">
+								<label class="form-label" for="ha-unknown-handling">Unknown Entities</label>
+								<select class="form-select" id="ha-unknown-handling">
+									<option value="sort_to_end">Sort to end</option>
+									<option value="sort_normally">Sort normally</option>
+									<option value="hide">Hide</option>
+								</select>
+							</div>
+						</div>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-automation-longpress">Automation Long-Press</label>
+						<select class="form-select" id="ha-automation-longpress">
+							<option value="toggle">Toggle</option>
+							<option value="trigger">Trigger</option>
+						</select>
+						<small class="form-text">Action when long-pressing an automation</small>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Entity Domain Grouping</span>
+				<span class="section-hint">When a list is broken up by domain instead of shown flat</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<p class="form-text mb-2" style="margin-top:0;">Group entities by domain when viewing:</p>
+					<div class="form-group mb-3">
+						<label class="form-label" for="domain-menu-all">All Entities</label>
+						<select class="form-select domain-menu-select" id="domain-menu-all">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div class="form-group mb-3">
+						<label class="form-label" for="domain-menu-areas">Areas</label>
+						<select class="form-select domain-menu-select" id="domain-menu-areas">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div class="form-group mb-3">
+						<label class="form-label" for="domain-menu-labels">Labels</label>
+						<select class="form-select domain-menu-select" id="domain-menu-labels">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div class="form-group">
+						<label class="form-label" for="domain-menu-favorites">Favorites</label>
+						<select class="form-select domain-menu-select" id="domain-menu-favorites">
+							<option value="yes">Always</option>
+							<option value="no">Never</option>
+							<option value="conditional">Conditional</option>
+						</select>
+					</div>
+					<div id="conditional-settings" class="conditional-box hidden">
+						<p>Conditionally show domain menu when:</p>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="domain-menu-min-entities-check" checked>
+							<label class="form-check-label" for="domain-menu-min-entities-check">
+								At least <input type="number" class="form-control form-control-sm" id="domain-menu-min-entities" value="10"> entities
+							</label>
+						</div>
+						<div class="form-check">
+							<input class="form-check-input" type="checkbox" id="domain-menu-min-domains-check" checked>
+							<label class="form-check-label" for="domain-menu-min-domains-check">
+								At least <input type="number" class="form-control form-control-sm" id="domain-menu-min-domains" value="2"> domains
+							</label>
+						</div>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section">
+			<summary class="section-header">
+				<span class="section-title">Domain Filters</span>
+				<span class="section-hint">Domains to leave out of every list</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<p class="form-text" style="margin-top:0;">Domains listed here will be hidden from the interface</p>
+					<div class="row mt-2">
+						<div class="col-8">
+							<input type="text" class="form-control" id="domain-input" autocapitalize="off" autocorrect="off" placeholder="Enter domain to ignore">
+						</div>
+						<div class="col-4">
+							<button type="button" class="btn btn-primary btn-block" id="add-domain-btn">Add</button>
+						</div>
+					</div>
+					<div id="domain-feedback" class="invalid-feedback hidden"></div>
+					<div class="mt-3">
+						<ul id="ignore-domains-list" class="list-group">
+						</ul>
+					</div>
+				</div>
+			</div>
+		</details>
+
+		<details class="section hidden" id="timeline-section">
+			<summary class="section-header">
+				<span class="section-title">Timeline</span>
+				<span class="section-hint">The token that lets Home Assistant push pins to your timeline</span>
+			</summary>
+			<div class="section-body">
+				<div class="component">
+					<label class="form-label" for="timeline-token-display">Timeline Token</label>
+					<div class="timeline-token" id="timeline-token-display"></div>
+					<button type="button" class="btn btn-sm btn-outline-secondary" id="copy-timeline-token">
+						<svg class="icon"><use href="#i-clipboard"/></svg> Copy to Clipboard
+					</button>
+				</div>
+			</div>
+		</details>
+
+		<!-- Save Button -->
+		<div class="save-container">
+			<button type="button" class="btn btn-primary" id="save-btn">Save</button>
+			<small class="form-text bridge-only">Saves to the watch and stays on this page</small>
+		</div>
+	</form>
+</div>
+
+<div id="log-dialog" class="dialog hidden" role="dialog" aria-modal="true" aria-labelledby="log-dialog-title">
+	<div class="dialog-panel">
+		<div class="dialog-header">
+			<h2 id="log-dialog-title">App Log</h2>
+			<span class="dialog-meta" id="log-dialog-meta" aria-live="polite"></span>
+			<button type="button" class="btn btn-sm btn-outline-secondary" id="log-close">Close</button>
+		</div>
+		<pre id="log-text" class="log-text" tabindex="0">Loading…</pre>
+		<div class="dialog-actions">
+			<button type="button" class="btn btn-primary" id="log-copy">Copy</button>
+			<button type="button" class="btn btn-secondary" id="log-refresh">Refresh</button>
+			<button type="button" class="btn btn-outline-secondary" id="log-clear">Clear</button>
+		</div>
+		<div class="dialog-hint" id="log-hint"></div>
+	</div>
+</div>
+
+<script>
+(function() {
+	'use strict';
+
+	// ===== Helpers ==========================================================
+
+	function $(id) {
+		return document.getElementById(id);
+	}
+
+	function esc(value) {
+		return String(value === null || value === undefined ? '' : value)
+			.replace(/&/g, '&amp;')
+			.replace(/</g, '&lt;')
+			.replace(/>/g, '&gt;')
+			.replace(/"/g, '&quot;')
+			.replace(/'/g, '&#39;');
+	}
+
+	function show(el, visible) {
+		el.classList.toggle('hidden', !visible);
+	}
+
+	function isShown(el) {
+		return !el.classList.contains('hidden');
+	}
+
+	function listItems(list) {
+		return Array.prototype.slice.call(list.querySelectorAll(':scope > li'));
+	}
+
+	function icon(name, extraClass) {
+		return '<svg class="icon' + (extraClass ? ' ' + extraClass : '') + '"><use href="#' + name + '"/></svg>';
+	}
+
+	// localStorage is off inside the bundled page (it runs from a data: URL),
+	// and can be off in a private browser too, so every use is a try
+	var storage = {
+		get: function(key) {
+			try { return window.localStorage.getItem(key); } catch (e) { return null; }
+		},
+		set: function(key, value) {
+			try { window.localStorage.setItem(key, value); } catch (e) { /* not available */ }
+		}
+	};
+
+	// A watch with no timeline sync behind it, which is every emulator and any
+	// phone without a Rebble subscription, still answers getTimelineToken. It
+	// hands back this placeholder rather than failing, and a token that reaches
+	// nothing is worse than no section at all: it invites you to paste it into
+	// Home Assistant and wait for pins that can never arrive.
+	var DUMMY_TIMELINE_TOKEN = 'emulated-dummy-token';
+
+	function hasTimelineToken(token) {
+		return typeof token === 'string' &&
+			token.trim() !== '' &&
+			token.trim() !== DUMMY_TIMELINE_TOKEN;
+	}
+
+	// ===== Transport ========================================================
+	//
+	// With the watch app on the line, requests are `{ type, ... }` objects and
+	// replies `{ ok: true, ... }` or `{ ok: false, error: { code, message } }`.
+	// The phone answers for the watch app when it cannot be reached, with a
+	// bare `{ error: "..." }`, which is folded into the same shape here.
+
+	var bridge = (typeof Pebble !== 'undefined' && Pebble &&
+		typeof Pebble.sendMessage === 'function' &&
+		typeof Pebble.addEventListener === 'function') ? Pebble : null;
+
+	function request(message) {
+		return bridge.sendMessage('pkjs', message).then(function(reply) {
+			if (!reply || typeof reply !== 'object') {
+				return { ok: false, error: { code: 'bad_reply', message: 'No reply from the watch app' } };
+			}
+			if (reply.ok === undefined && reply.error !== undefined) {
+				return { ok: false, error: { code: 'host', message: String(reply.error) } };
+			}
+			if (!reply.ok && (!reply.error || typeof reply.error !== 'object')) {
+				return { ok: false, error: { code: 'bad_reply', message: 'The watch app sent an unexpected reply' } };
+			}
+			return reply;
+		}, function(err) {
+			return { ok: false, error: { code: 'send_failed', message: String((err && err.message) || err) } };
+		});
+	}
+
+	// ===== Elements =========================================================
+
+	var urlInput = $('ha-url'),
+		tokenInput = $('ha-token'),
+		orderByInput = $('ha-order-by'),
+		orderDirInput = $('ha-order-dir'),
+		voiceEnabled = $('ha-voice-enabled'),
+		voiceConfirm = $('ha-voice-confirm'),
+		voiceBacklightTrigger = $('ha-voice-backlight-trigger'),
+		voiceBacklightHold = $('ha-voice-backlight-hold'),
+		assistStreamReply = $('ha-assist-stream-reply'),
+		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
+		voiceFontSize = $('ha-voice-font-size'),
+		pipelineSelect = $('ha-pipeline-select'),
+		pipelineWarning = $('pipeline-warning'),
+		timelineSection = $('timeline-section'),
+		timelineTokenDisplay = $('timeline-token-display'),
+		domainInput = $('domain-input'),
+		addDomainBtn = $('add-domain-btn'),
+		ignoreDomainsList = $('ignore-domains-list'),
+		domainMenuAll = $('domain-menu-all'),
+		domainMenuAreas = $('domain-menu-areas'),
+		domainMenuLabels = $('domain-menu-labels'),
+		domainMenuFavorites = $('domain-menu-favorites'),
+		domainMenuMinEntities = $('domain-menu-min-entities'),
+		domainMenuMinDomainsCheck = $('domain-menu-min-domains-check'),
+		domainMenuMinEntitiesCheck = $('domain-menu-min-entities-check'),
+		domainMenuMinDomains = $('domain-menu-min-domains'),
+		conditionalSettings = $('conditional-settings'),
+		quickLaunchBehavior = $('ha-quick-launch-behavior'),
+		quickLaunchFavoriteEntity = $('ha-quick-launch-favorite-entity'),
+		quickLaunchFavoriteEntityContainer = $('quick-launch-favorite-entity-container'),
+		quickLaunchExitOnBack = $('ha-quick-launch-exit-on-back'),
+		menuBackground = $('ha-menu-background'),
+		assistBackground = $('ha-assist-background'),
+		menuScrollWrap = $('ha-menu-scroll-wrap'),
+		touchEnabled = $('ha-touch-enabled'),
+		touchLongPress = $('ha-touch-long-press'),
+		touchLongPressWrap = $('ha-touch-long-press-wrap'),
+		inactivityTimeout = $('ha-inactivity-timeout'),
+		unavailableHandling = $('ha-unavailable-handling'),
+		unknownHandling = $('ha-unknown-handling'),
+		automationLongpress = $('ha-automation-longpress'),
+		mainMenuCustomOrderEnabled = $('main-menu-custom-order-enabled'),
+		mainMenuOrderContainer = $('main-menu-order-container'),
+		mainMenuSortable = $('main-menu-sortable'),
+		favoritesContainer = $('favorites-container'),
+		favoritesSortable = $('favorites-sortable'),
+		pinnedContainer = $('pinned-container'),
+		pinnedSortable = $('pinned-sortable'),
+		pluginSortable = $('plugin-sortable'),
+		pluginEmpty = $('plugin-empty'),
+		pluginStatus = $('plugin-status'),
+		pluginShareAssistant = $('plugin-share-assistant'),
+		calendarsSection = $('calendars-section'),
+		calendarsSortable = $('calendars-sortable'),
+		calendarOrderReset = $('calendar-order-reset'),
+		alertContainer = $('alert-container'),
+		saveBtn = $('save-btn'),
+		connectBtn = $('connect-btn'),
+		connectStatus = $('connect-status'),
+		entitySearch = $('entity-search'),
+		entitySearchMeta = $('entity-search-meta'),
+		entitySearchResults = $('entity-search-results');
+
+	// What the watch last told us, and what the form started from. Saving
+	// replaces it.
+	var watch_config = {};
+	// Whether the calendar order has been dragged away from Home Assistant's
+	var calendarsCustomized = false;
+
+	var defaultMenuItems = [
+		{ id: 'assistant', name: 'Assistant' },
+		{ id: 'favorites', name: 'Favorites' },
+		{ id: 'areas', name: 'Areas' },
+		{ id: 'labels', name: 'Labels' },
+		{ id: 'calendars', name: 'Calendars' },
+		{ id: 'todo_lists', name: 'To-Do Lists' },
+		{ id: 'people', name: 'People' },
+		{ id: 'all_entities', name: 'All Entities' },
+		{ id: 'settings', name: 'Settings' }
+	];
+
+	// ===== Alerts ===========================================================
+
+	var ALERT_ICONS = {
+		danger: 'exclamation-triangle-fill',
+		warning: 'exclamation-triangle-fill',
+		info: 'info-fill',
+		success: 'check-circle-fill'
+	};
+
+	function display_alert(type, content) {
+		if (!type && !content) {
+			alertContainer.innerHTML = '';
+			return;
+		}
+		alertContainer.innerHTML =
+			'<div class="alert alert-' + esc(type) + '" role="alert">' +
+			'<svg class="bi" width="20" height="20" aria-hidden="true"><use href="#' + ALERT_ICONS[type] + '"/></svg>' +
+			content +
+			'</div>';
+	}
+
+	// ===== Sortable lists ===================================================
+	//
+	// Rows are dragged by their handle. Pointer events give one path for mouse
+	// and touch, and capturing the pointer on the handle keeps the moves coming
+	// after the finger has left it. The row follows the pointer by being moved
+	// in the list itself, so there is nothing to clean up at the end.
+
+	function makeSortable(list, onUpdate) {
+		if (list.dataset.sortable) { return; }
+		list.dataset.sortable = 'true';
+
+		list.addEventListener('pointerdown', function(e) {
+			// Only the main button or first finger drags
+			if (e.button !== 0 || e.isPrimary === false) { return; }
+			var handle = e.target.closest ? e.target.closest('.drag-handle') : null;
+			if (!handle) { return; }
+			var item = handle.closest('li');
+			if (!item || item.parentNode !== list) { return; }
+			e.preventDefault();
+
+			var pointerId = e.pointerId;
+			var before = listItems(list);
+			item.classList.add('dragging');
+			// Capture keeps the moves coming after the finger leaves the
+			// handle; the document listeners below cope without it too
+			try { handle.setPointerCapture(pointerId); } catch (err) { /* older webview */ }
+
+			function place(y) {
+				var siblings = listItems(list);
+				var next = null;
+				for (var i = 0; i < siblings.length; i++) {
+					if (siblings[i] === item) { continue; }
+					var rect = siblings[i].getBoundingClientRect();
+					if (y < rect.top + rect.height / 2) {
+						next = siblings[i];
+						break;
+					}
+				}
+				if (next) {
+					if (item.nextElementSibling !== next) { list.insertBefore(item, next); }
+				} else if (list.lastElementChild !== item) {
+					list.appendChild(item);
+				}
+
+				// Keep the page moving when the row is dragged to its edge
+				var margin = 48;
+				if (y < margin) {
+					window.scrollBy(0, -12);
+				} else if (y > window.innerHeight - margin) {
+					window.scrollBy(0, 12);
+				}
+			}
+
+			function onMove(ev) {
+				if (ev.pointerId !== pointerId) { return; }
+				ev.preventDefault();
+				place(ev.clientY);
+			}
+
+			function onEnd(ev) {
+				if (ev.pointerId !== pointerId) { return; }
+				document.removeEventListener('pointermove', onMove);
+				document.removeEventListener('pointerup', onEnd);
+				document.removeEventListener('pointercancel', onEnd);
+				item.classList.remove('dragging');
+
+				var after = listItems(list);
+				var moved = after.some(function(li, index) { return li !== before[index]; });
+				if (moved && onUpdate) { onUpdate(); }
+			}
+
+			document.addEventListener('pointermove', onMove);
+			document.addEventListener('pointerup', onEnd);
+			document.addEventListener('pointercancel', onEnd);
+		});
+	}
+
+	// ===== Sections =========================================================
+	//
+	// A details element shows and hides its contents outright, so the slide is
+	// driven from here: the open attribute goes on before the contents slide
+	// down, and comes off only once they have slid back up. The open class
+	// follows the wearer's press rather than the attribute, so the chevron and
+	// the hint move with the section rather than after it.
+
+	var SLIDE_MS = (window.matchMedia &&
+		window.matchMedia('(prefers-reduced-motion: reduce)').matches) ? 0 : 220;
+
+	function slideHeight(el, from, to, done) {
+		if (SLIDE_MS === 0) { done(); return; }
+
+		// A slide interrupted by another must not finish later and undo it
+		if (el._slide) { el._slide.cancel(); }
+
+		var finished = false;
+		var timer = null;
+		function cleanup() {
+			finished = true;
+			clearTimeout(timer);
+			el.removeEventListener('transitionend', onTransitionEnd);
+			el._slide = null;
+		}
+		function end() {
+			if (finished) { return; }
+			cleanup();
+			el.style.transition = '';
+			el.style.overflow = '';
+			el.style.height = '';
+			done();
+		}
+		function onTransitionEnd(e) {
+			// Transitions on the controls inside bubble up here too
+			if (e.target === el && e.propertyName === 'height') { end(); }
+		}
+		el._slide = { cancel: cleanup };
+
+		el.style.overflow = 'hidden';
+		el.style.height = from + 'px';
+		el.style.transition = 'height ' + SLIDE_MS + 'ms ease';
+		// The start height has to land before the end height is asked for
+		requestAnimationFrame(function() {
+			requestAnimationFrame(function() {
+				if (!finished) { el.style.height = to + 'px'; }
+			});
+		});
+		el.addEventListener('transitionend', onTransitionEnd);
+		timer = setTimeout(end, SLIDE_MS + 80);
+	}
+
+	function setSectionOpen(section, shouldOpen) {
+		var body = section.querySelector(':scope > .section-body');
+		if (shouldOpen) {
+			if (section.classList.contains('open')) { return; }
+			section.open = true;
+			section.classList.add('open');
+			// Opening again mid-close starts from wherever the slide got to
+			var startHeight = body.style.height ? parseFloat(body.style.height) : 0;
+			slideHeight(body, startHeight, body.scrollHeight, function() {});
+		} else {
+			if (!section.classList.contains('open')) { return; }
+			section.classList.remove('open');
+			var currentHeight = body.style.height ? parseFloat(body.style.height) : body.scrollHeight;
+			slideHeight(body, currentHeight, 0, function() {
+				section.open = false;
+			});
+		}
+	}
+
+	Array.prototype.forEach.call(document.querySelectorAll('.section-header'), function(header) {
+		header.addEventListener('click', function(e) {
+			// The element would otherwise snap open by itself, with nothing to
+			// animate by the time we heard about it
+			e.preventDefault();
+			var section = header.closest('details.section');
+			setSectionOpen(section, !section.classList.contains('open'));
+		});
+	});
+
+	// A field that has been missed can be inside a shut section, and the alert
+	// saying so is at the top of a page that has been scrolled away from, so
+	// say it where it can actually be seen and acted on
+	function revealConnectionSettings() {
+		setSectionOpen($('connection-section'), true);
+		alertContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+	}
+
+	// ===== Rows =============================================================
+
+	function entityRowHtml(entityId, friendlyName, extra) {
+		var info = friendlyName
+			? '<div class="entity-name">' + esc(friendlyName) + '</div><div class="entity-id">' + esc(entityId) + '</div>'
+			: '<div class="entity-name">' + esc(entityId) + '</div>';
+		return '<span class="drag-handle" aria-label="Drag to reorder">' + icon('i-bars') + '</span>' +
+			'<div class="entity-info">' + info + '</div>' +
+			(extra || '');
+	}
+
+	function removeButtonHtml(label) {
+		return '<button type="button" class="remove-item" aria-label="' + esc(label) + '">' + icon('i-trash') + '</button>';
+	}
+
+	function entityFromRow(li) {
+		var entry = { entity_id: li.dataset.entityId };
+		if (li.dataset.friendlyName) { entry.name = li.dataset.friendlyName; }
+		return entry;
+	}
+
+	function listHas(list, entityId) {
+		return listItems(list).some(function(li) { return li.dataset.entityId === entityId; });
+	}
+
+	function removeQuickLaunchOption(entityId) {
+		Array.prototype.slice.call(quickLaunchFavoriteEntity.options).forEach(function(option) {
+			if (option.value === entityId) { option.remove(); }
+		});
+	}
+
+	// Nothing is lost until Save, and on the bundled page an entity is one
+	// search away from coming back. The hosted page has no search, so a
+	// removal there is asked about; a bundled WebView may also have no
+	// dialogs to ask with.
+	function confirmRemoval(text) {
+		return bridge ? true : confirm(text);
+	}
+
+	function normalizeEntry(entry) {
+		if (typeof entry === 'string') {
+			return { entity_id: entry, name: null };
+		}
+		return { entity_id: entry.entity_id, name: entry.name || null };
+	}
+
+	// --- Favorites ---
+
+	function addFavoriteRow(entityId, friendlyName) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		li.dataset.entityId = entityId;
+		li.dataset.friendlyName = friendlyName || '';
+		li.innerHTML = entityRowHtml(entityId, friendlyName, removeButtonHtml('Remove from favorites'));
+		li.querySelector('.remove-item').addEventListener('click', function() {
+			var displayName = friendlyName || entityId;
+			if (!confirmRemoval('Are you sure you want to remove "' + displayName + '" from your favorites?')) { return; }
+			li.remove();
+			removeQuickLaunchOption(entityId);
+			show(favoritesContainer, listItems(favoritesSortable).length > 0);
+			refreshSearchButtons();
+		});
+		favoritesSortable.appendChild(li);
+		show(favoritesContainer, true);
+
+		var option = document.createElement('option');
+		option.value = entityId;
+		option.textContent = friendlyName || entityId;
+		quickLaunchFavoriteEntity.appendChild(option);
+	}
+
+	function renderFavorites(favorites) {
+		favoritesSortable.innerHTML = '';
+		quickLaunchFavoriteEntity.innerHTML = '<option value="">-- Select a favorite entity --</option>';
+		(favorites || []).forEach(function(entry) {
+			var fav = normalizeEntry(entry);
+			addFavoriteRow(fav.entity_id, fav.name);
+		});
+		show(favoritesContainer, (favorites || []).length > 0);
+		makeSortable(favoritesSortable);
+	}
+
+	// --- Pinned ---
+
+	function addPinnedRow(entityId, friendlyName) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		li.dataset.entityId = entityId;
+		li.dataset.friendlyName = friendlyName || '';
+		li.innerHTML = entityRowHtml(entityId, friendlyName, removeButtonHtml('Unpin from the main menu'));
+		li.querySelector('.remove-item').addEventListener('click', function() {
+			var displayName = friendlyName || entityId;
+			if (!confirmRemoval('Are you sure you want to unpin "' + displayName + '" from the Main Menu?')) { return; }
+			li.remove();
+			// Also remove from main menu order list
+			listItems(mainMenuSortable).forEach(function(row) {
+				if (row.dataset.itemId === 'pinned:' + entityId) { row.remove(); }
+			});
+			show(pinnedContainer, listItems(pinnedSortable).length > 0);
+			refreshSearchButtons();
+		});
+		pinnedSortable.appendChild(li);
+		show(pinnedContainer, true);
+	}
+
+	function renderPinned(pinned) {
+		pinnedSortable.innerHTML = '';
+		(pinned || []).forEach(function(entry) {
+			var pin = normalizeEntry(entry);
+			addPinnedRow(pin.entity_id, pin.name);
+		});
+		show(pinnedContainer, (pinned || []).length > 0);
+		makeSortable(pinnedSortable);
+	}
+
+	// --- Shared with other apps (the plugin) ---
+
+	function isAlwaysShared(entityId) {
+		return entityId.indexOf('weather.') === 0;
+	}
+
+	function updatePluginEmpty() {
+		show(pluginEmpty, listItems(pluginSortable).length === 0);
+	}
+
+	function addPluginRow(entityId, friendlyName) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		li.dataset.entityId = entityId;
+		li.dataset.friendlyName = friendlyName || '';
+		li.innerHTML = entityRowHtml(entityId, friendlyName, removeButtonHtml('Stop sharing with other apps'));
+		li.querySelector('.remove-item').addEventListener('click', function() {
+			var displayName = friendlyName || entityId;
+			if (!confirmRemoval('Stop sharing "' + displayName + '" with other apps?')) { return; }
+			li.remove();
+			updatePluginEmpty();
+			refreshSearchButtons();
+		});
+		pluginSortable.appendChild(li);
+		updatePluginEmpty();
+	}
+
+	function renderPluginExposed(entries) {
+		pluginSortable.innerHTML = '';
+		(entries || []).forEach(function(entry) {
+			var item = normalizeEntry(entry);
+			if (item.entity_id && !isAlwaysShared(item.entity_id)) {
+				addPluginRow(item.entity_id, item.name);
+			}
+		});
+		updatePluginEmpty();
+		makeSortable(pluginSortable);
+	}
+
+	// --- Main menu order ---
+
+	function mainMenuRow(item) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		li.dataset.itemId = item.id;
+		// A pin without a name would otherwise show its id on both lines
+		var pinnedName = item.isPinned && item.name !== item.entityId ? item.name : null;
+		li.innerHTML = entityRowHtml(item.isPinned ? item.entityId : item.name, pinnedName);
+		return li;
+	}
+
+	// New rows go in ahead of Settings, which stays last
+	function insertBeforeSettings(list, li) {
+		var settingsRow = listItems(list).filter(function(row) { return row.dataset.itemId === 'settings'; })[0];
+		if (settingsRow) {
+			list.insertBefore(li, settingsRow);
+		} else {
+			list.appendChild(li);
+		}
+	}
+
+	function buildMainMenuOrderList() {
+		var order = watch_config['main_menu_order'];
+		var pinnedEntities = (watch_config['pinned_entities'] || []).map(normalizeEntry);
+		var items = [];
+
+		function has(id) {
+			return items.some(function(i) { return i.id === id; });
+		}
+
+		function insert(item) {
+			var settingsIndex = -1;
+			for (var i = 0; i < items.length; i++) {
+				if (items[i].id === 'settings') { settingsIndex = i; break; }
+			}
+			if (settingsIndex > -1) {
+				items.splice(settingsIndex, 0, item);
+			} else {
+				items.push(item);
+			}
+		}
+
+		if (order && Array.isArray(order)) {
+			// Use saved order
+			order.forEach(function(itemId) {
+				if (typeof itemId !== 'string') { return; }
+				if (itemId.indexOf('pinned:') === 0) {
+					var entityId = itemId.substring(7);
+					var pinned = pinnedEntities.filter(function(p) { return p.entity_id === entityId; })[0];
+					if (pinned) {
+						items.push({ id: itemId, name: pinned.name || pinned.entity_id, isPinned: true, entityId: entityId });
+					}
+				} else {
+					var menuItem = defaultMenuItems.filter(function(m) { return m.id === itemId; })[0];
+					if (menuItem) {
+						items.push({ id: itemId, name: menuItem.name, isPinned: false });
+					}
+				}
+			});
+
+			// Add any new default items not in the saved order (before settings)
+			defaultMenuItems.forEach(function(menuItem) {
+				if (!has(menuItem.id)) {
+					insert({ id: menuItem.id, name: menuItem.name, isPinned: false });
+				}
+			});
+
+			// Add any new pinned entities not in the saved order (before settings)
+			pinnedEntities.forEach(function(pinned) {
+				var pinnedId = 'pinned:' + pinned.entity_id;
+				if (!has(pinnedId)) {
+					insert({ id: pinnedId, name: pinned.name || pinned.entity_id, isPinned: true, entityId: pinned.entity_id });
+				}
+			});
+		} else {
+			// Use default order, with pinned entities before settings
+			defaultMenuItems.forEach(function(menuItem) {
+				items.push({ id: menuItem.id, name: menuItem.name, isPinned: false });
+			});
+			pinnedEntities.forEach(function(pinned) {
+				insert({ id: 'pinned:' + pinned.entity_id, name: pinned.name || pinned.entity_id, isPinned: true, entityId: pinned.entity_id });
+			});
+		}
+
+		return items;
+	}
+
+	function renderMainMenuOrder() {
+		mainMenuSortable.innerHTML = '';
+		buildMainMenuOrderList().forEach(function(item) {
+			mainMenuSortable.appendChild(mainMenuRow(item));
+		});
+		makeSortable(mainMenuSortable);
+	}
+
+	// --- Calendars ---
+	//
+	// The default order matches Home Assistant; dragging switches to a custom
+	// order which is saved as calendar_order. Reset restores the Home Assistant
+	// order (calendar_order saves as null).
+
+	function renderCalendarList(orderedCalendars, hiddenIds) {
+		calendarsSortable.innerHTML = '';
+		orderedCalendars.forEach(function(calendar) {
+			var li = document.createElement('li');
+			li.className = 'list-group-item';
+			li.dataset.entityId = calendar.entity_id;
+			li.innerHTML = entityRowHtml(calendar.entity_id, calendar.name,
+				'<input class="form-check-input calendar-visible" type="checkbox" aria-label="Show this calendar"' +
+				(hiddenIds.indexOf(calendar.entity_id) === -1 ? ' checked' : '') + '>');
+			calendarsSortable.appendChild(li);
+		});
+		makeSortable(calendarsSortable, function() {
+			calendarsCustomized = true;
+		});
+	}
+
+	function getHiddenCalendarIds() {
+		return listItems(calendarsSortable).filter(function(li) {
+			return !li.querySelector('.calendar-visible').checked;
+		}).map(function(li) {
+			return li.dataset.entityId;
+		});
+	}
+
+	function buildCalendarList() {
+		var available = watch_config['available_calendars'] || [];
+		if (!available.length) {
+			show(calendarsSection, false);
+			return;
+		}
+		show(calendarsSection, true);
+
+		var hidden = watch_config['hidden_calendars'] || [];
+		var savedOrder = watch_config['calendar_order'];
+		var ordered = available.slice();
+
+		if (savedOrder && Array.isArray(savedOrder) && savedOrder.length) {
+			calendarsCustomized = true;
+			// Sort by the saved order; calendars added since the order was
+			// saved keep their Home Assistant position at the end
+			var position = {};
+			ordered.forEach(function(calendar, index) {
+				var savedIndex = savedOrder.indexOf(calendar.entity_id);
+				position[calendar.entity_id] = savedIndex === -1 ? savedOrder.length + index : savedIndex;
+			});
+			ordered.sort(function(a, b) {
+				return position[a.entity_id] - position[b.entity_id];
+			});
+		} else {
+			calendarsCustomized = false;
+		}
+
+		renderCalendarList(ordered, hidden);
+	}
+
+	calendarOrderReset.addEventListener('click', function() {
+		// Restore Home Assistant's order but keep visibility choices
+		var hidden = getHiddenCalendarIds();
+		calendarsCustomized = false;
+		renderCalendarList(watch_config['available_calendars'] || [], hidden);
+	});
+
+	// --- Ignore domains ---
+
+	function addDomainRow(domain) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		li.dataset.domain = domain;
+		li.innerHTML = '<div class="entity-info"><div class="entity-name">' + esc(domain) + '</div></div>' +
+			removeButtonHtml('Remove from the ignore list');
+		li.querySelector('.remove-item').addEventListener('click', function() {
+			if (confirmRemoval('Are you sure you want to remove ' + domain + ' from your ignore list?')) {
+				li.remove();
+			}
+		});
+		ignoreDomainsList.appendChild(li);
+	}
+
+	function renderIgnoreDomains(domains) {
+		ignoreDomainsList.innerHTML = '';
+		// Display default domains if no custom ones are set
+		var list = Array.isArray(domains) ? domains : ['assist_satellite', 'tts'];
+		list.forEach(addDomainRow);
+	}
+
+	addDomainBtn.addEventListener('click', function() {
+		var domain = domainInput.value.trim().toLowerCase();
+		if (!domain) { return; }
+
+		var exists = listItems(ignoreDomainsList).some(function(li) { return li.dataset.domain === domain; });
+		if (exists) {
+			$('domain-feedback').textContent = '"' + domain + '" is already in the ignore list.';
+			show($('domain-feedback'), true);
+			return;
+		}
+
+		show($('domain-feedback'), false);
+		addDomainRow(domain);
+		domainInput.value = '';
+		domainInput.focus();
+	});
+
+	domainInput.addEventListener('input', function() {
+		show($('domain-feedback'), false);
+	});
+
+	domainInput.addEventListener('keydown', function(e) {
+		if (e.key === 'Enter') {
+			e.preventDefault();
+			addDomainBtn.click();
+		}
+	});
+
+	// --- Pipelines ---
+
+	// The pipeline picked on this page. The dropdown itself is emptied while
+	// Home Assistant is away, so the choice is kept apart from it.
+	var chosenPipeline = null;
+
+	pipelineSelect.addEventListener('change', function() {
+		chosenPipeline = pipelineSelect.value;
+	});
+
+	function currentPipeline() {
+		if (chosenPipeline !== null) { return chosenPipeline; }
+		return watch_config['selected_pipeline'] || '';
+	}
+
+	function renderPipelines() {
+		var haConnected = watch_config['ha_connected'] || false;
+		var availablePipelines = watch_config['available_pipelines'] || [];
+		var selectedPipeline = currentPipeline();
+
+		pipelineSelect.innerHTML = '';
+		if (haConnected && availablePipelines.length > 0) {
+			pipelineSelect.disabled = false;
+			availablePipelines.forEach(function(pipeline) {
+				var option = document.createElement('option');
+				option.value = pipeline.id;
+				option.textContent = pipeline.name + (pipeline.preferred ? ' (Preferred)' : '');
+				pipelineSelect.appendChild(option);
+			});
+			// No saved choice shows the first pipeline, as a select does by
+			// default. A saved pipeline that no longer exists leaves nothing
+			// selected, and the watch then falls back to the preferred one.
+			if (selectedPipeline) {
+				pipelineSelect.value = selectedPipeline;
+				if (pipelineSelect.value !== selectedPipeline) { pipelineSelect.selectedIndex = -1; }
+			}
+			show(pipelineWarning, false);
+		} else {
+			pipelineSelect.disabled = true;
+			var none = document.createElement('option');
+			none.value = '';
+			none.textContent = 'No pipelines available';
+			pipelineSelect.appendChild(none);
+			show(pipelineWarning, true);
+		}
+	}
+
+	// ===== Form <-> config ==================================================
+
+	function getFormValues() {
+		var values = {
+			'ha_url': urlInput.value.trim().replace(/\/+$/, ''),
+			'token': tokenInput.value.trim(),
+			'order_by': orderByInput.value,
+			'order_dir': orderDirInput.value,
+			'voice_enabled': voiceEnabled.checked,
+			'voice_confirm': voiceConfirm.checked,
+			'voice_backlight_trigger': voiceBacklightTrigger.checked,
+			'voice_backlight_hold': voiceBacklightHold.checked,
+			'assist_stream_reply': assistStreamReply.checked,
+			'assist_vibration_feedback': assistVibrationFeedback.checked,
+			'voice_font_size': parseInt(voiceFontSize.value, 10),
+			// While the dropdown is empty (not connected) the saved choice
+			// stands, rather than being wiped by a dropout
+			'selected_pipeline': pipelineSelect.disabled ? currentPipeline() : (pipelineSelect.value || null),
+			'quick_launch_behavior': quickLaunchBehavior.value,
+			'quick_launch_favorite_entity': quickLaunchFavoriteEntity.value || null,
+			'quick_launch_exit_on_back': quickLaunchExitOnBack.checked,
+			'menu_background_mode': menuBackground.value,
+			'assist_background_mode': assistBackground.value,
+			'menu_scroll_wrap': menuScrollWrap.checked,
+			'touch_enabled': touchEnabled.checked,
+			'touch_long_press': touchLongPress.checked,
+			'inactivity_timeout': parseInt(inactivityTimeout.value, 10) || 0,
+			// Domain menu settings
+			'domain_menu_enabled': 'conditional', // Default global setting
+			'domain_menu_all_entities': domainMenuAll.value,
+			'domain_menu_areas': domainMenuAreas.value,
+			'domain_menu_labels': domainMenuLabels.value,
+			'domain_menu_favorites': domainMenuFavorites.value,
+			'domain_menu_min_entities': domainMenuMinEntitiesCheck.checked ? parseInt(domainMenuMinEntities.value, 10) : 0,
+			'domain_menu_min_domains': domainMenuMinDomainsCheck.checked ? parseInt(domainMenuMinDomains.value, 10) : 0,
+			'favorite_entities': listItems(favoritesSortable).map(entityFromRow),
+			'ignore_domains': listItems(ignoreDomainsList).map(function(li) { return li.dataset.domain; }),
+			// Entity state handling settings
+			'unavailable_entity_handling': unavailableHandling.value,
+			'unknown_entity_handling': unknownHandling.value,
+			// Automation long-press action
+			'automation_longpress_action': automationLongpress.value,
+			// Main menu order settings
+			'main_menu_custom_order_enabled': mainMenuCustomOrderEnabled.checked,
+			'main_menu_order': listItems(mainMenuSortable).map(function(li) { return li.dataset.itemId; }),
+			// Pinned entities
+			'pinned_entities': listItems(pinnedSortable).map(entityFromRow),
+			// Shared with other apps through the plugin
+			'plugin_exposed_entities': listItems(pluginSortable).map(entityFromRow),
+			'plugin_share_assistant': pluginShareAssistant.checked,
+			// Calendars: null order means "use Home Assistant's order"
+			'calendar_order': calendarsCustomized
+				? listItems(calendarsSortable).map(function(li) { return li.dataset.entityId; })
+				: null,
+			'hidden_calendars': getHiddenCalendarIds()
+		};
+
+		// Preserve timeline_token if it exists
+		if (watch_config && watch_config.timeline_token) {
+			values.timeline_token = watch_config.timeline_token;
+		}
+
+		// If the calendar list was never rendered (no available_calendars in
+		// the config data), keep the previously saved calendar settings
+		if (listItems(calendarsSortable).length === 0) {
+			values.calendar_order = (watch_config && watch_config['calendar_order']) || null;
+			values.hidden_calendars = (watch_config && watch_config['hidden_calendars']) || [];
+		}
+
+		return values;
+	}
+
+	function defaulted(value, fallback) {
+		return typeof value !== 'undefined' ? value : fallback;
+	}
+
+	function updateFavoriteEntityVisibility() {
+		show(quickLaunchFavoriteEntityContainer, quickLaunchBehavior.value === 'favorite_entity');
+	}
+
+	function updateConditionalVisibility() {
+		show(conditionalSettings,
+			domainMenuAll.value === 'conditional' ||
+			domainMenuAreas.value === 'conditional' ||
+			domainMenuLabels.value === 'conditional' ||
+			domainMenuFavorites.value === 'conditional');
+	}
+
+	function populateForm() {
+		urlInput.value = watch_config['ha_url'] || '';
+		tokenInput.value = watch_config['token'] || '';
+		validateUrl();
+		if (watch_config['order_by']) { orderByInput.value = watch_config['order_by']; }
+		if (watch_config['order_dir']) { orderDirInput.value = watch_config['order_dir']; }
+
+		voiceEnabled.checked = defaulted(watch_config['voice_enabled'], true);
+		voiceConfirm.checked = watch_config['voice_confirm'] === true;
+		voiceBacklightTrigger.checked = defaulted(watch_config['voice_backlight_trigger'], true);
+		voiceBacklightHold.checked = watch_config['voice_backlight_hold'] === true;
+		assistStreamReply.checked = defaulted(watch_config['assist_stream_reply'], true);
+		assistVibrationFeedback.checked = defaulted(watch_config['assist_vibration_feedback'], true);
+		voiceFontSize.value = watch_config['voice_font_size'] ? String(watch_config['voice_font_size']) : '18';
+
+		chosenPipeline = null;
+		renderPipelines();
+
+		quickLaunchBehavior.value = watch_config['quick_launch_behavior'] || 'main_menu';
+		quickLaunchExitOnBack.checked = !!watch_config['quick_launch_exit_on_back'];
+
+		// Background colours, black unless they have been changed
+		menuBackground.value = watch_config['menu_background_mode'] || 'black';
+		assistBackground.value = watch_config['assist_background_mode'] || 'black';
+
+		menuScrollWrap.checked = defaulted(watch_config['menu_scroll_wrap'], true);
+		touchEnabled.checked = defaulted(watch_config['touch_enabled'], true);
+		touchLongPress.checked = defaulted(watch_config['touch_long_press'], true);
+		show(touchLongPressWrap, touchEnabled.checked);
+
+		inactivityTimeout.value = defaulted(watch_config['inactivity_timeout'], 0);
+
+		domainMenuAll.value = watch_config['domain_menu_all_entities'] || 'conditional';
+		domainMenuAreas.value = watch_config['domain_menu_areas'] || 'conditional';
+		domainMenuLabels.value = watch_config['domain_menu_labels'] || 'conditional';
+		domainMenuFavorites.value = watch_config['domain_menu_favorites'] || 'conditional';
+
+		if (typeof watch_config['domain_menu_min_entities'] !== 'undefined') {
+			var minEntities = watch_config['domain_menu_min_entities'];
+			domainMenuMinEntitiesCheck.checked = minEntities > 0;
+			domainMenuMinEntities.value = minEntities > 0 ? minEntities : 10;
+		}
+		if (typeof watch_config['domain_menu_min_domains'] !== 'undefined') {
+			var minDomains = watch_config['domain_menu_min_domains'];
+			domainMenuMinDomainsCheck.checked = minDomains > 0;
+			domainMenuMinDomains.value = minDomains > 0 ? minDomains : 2;
+		}
+		updateConditionalVisibility();
+
+		unavailableHandling.value = watch_config['unavailable_entity_handling'] || 'sort_to_end';
+		unknownHandling.value = watch_config['unknown_entity_handling'] || 'sort_normally';
+		automationLongpress.value = watch_config['automation_longpress_action'] || 'toggle';
+
+		renderFavorites(watch_config['favorite_entities']);
+		quickLaunchFavoriteEntity.value = watch_config['quick_launch_favorite_entity'] || '';
+		updateFavoriteEntityVisibility();
+
+		mainMenuCustomOrderEnabled.checked = !!watch_config['main_menu_custom_order_enabled'];
+		show(mainMenuOrderContainer, mainMenuCustomOrderEnabled.checked);
+		renderMainMenuOrder();
+
+		buildCalendarList();
+		renderPinned(watch_config['pinned_entities']);
+		renderPluginExposed(watch_config['plugin_exposed_entities']);
+		pluginShareAssistant.checked = watch_config['plugin_share_assistant'] === true;
+		renderIgnoreDomains(watch_config['ignore_domains']);
+
+		// Set up the timeline token section if there is a token worth showing
+		if (hasTimelineToken(watch_config['timeline_token'])) {
+			timelineTokenDisplay.textContent = watch_config['timeline_token'];
+			show(timelineSection, true);
+		} else {
+			show(timelineSection, false);
+		}
+	}
+
+	// ===== Static handlers ==================================================
+
+	$('toggle-token-visibility').addEventListener('click', function() {
+		var hidden = tokenInput.getAttribute('type') === 'password';
+		tokenInput.setAttribute('type', hidden ? 'text' : 'password');
+		$('toggle-token-icon').innerHTML = '<use href="#' + (hidden ? 'i-eye-slash' : 'i-eye') + '"/>';
+	});
+
+	function validateUrl() {
+		var value = urlInput.value.trim();
+		var bad = value && !/^https?:\/\//.test(value);
+		show($('ha-url-invalid'), !!bad);
+		urlInput.classList.toggle('is-invalid', !!bad);
+		return !bad;
+	}
+	urlInput.addEventListener('input', validateUrl);
+
+	quickLaunchBehavior.addEventListener('change', updateFavoriteEntityVisibility);
+
+	touchEnabled.addEventListener('change', function() {
+		show(touchLongPressWrap, touchEnabled.checked);
+	});
+
+	Array.prototype.forEach.call(document.querySelectorAll('.domain-menu-select'), function(select) {
+		select.addEventListener('change', updateConditionalVisibility);
+	});
+
+	mainMenuCustomOrderEnabled.addEventListener('change', function() {
+		show(mainMenuOrderContainer, mainMenuCustomOrderEnabled.checked);
+	});
+
+	function selectTimelineToken() {
+		var selection = window.getSelection();
+		var range = document.createRange();
+		range.selectNodeContents(timelineTokenDisplay);
+		selection.removeAllRanges();
+		selection.addRange(range);
+	}
+
+	timelineTokenDisplay.addEventListener('click', selectTimelineToken);
+
+	$('copy-timeline-token').addEventListener('click', function() {
+		var button = this;
+		selectTimelineToken();
+		try { document.execCommand('copy'); } catch (e) { /* selection is left for a manual copy */ }
+		var originalHTML = button.innerHTML;
+		button.innerHTML = icon('i-check') + ' Copied!';
+		setTimeout(function() { button.innerHTML = originalHTML; }, 2000);
+	});
+
+	// ===== Saving ===========================================================
+
+	function validateForSave(values) {
+		display_alert();
+		if (!values['ha_url']) {
+			display_alert('danger', '<strong>Oops!</strong> Looks like you missed filling out your Home Assistant URL');
+			revealConnectionSettings();
+			return false;
+		}
+		if (!/^https?:\/\//.test(values['ha_url'])) {
+			display_alert('danger', '<strong>Oops!</strong> The Home Assistant URL must begin with http:// or https://');
+			revealConnectionSettings();
+			return false;
+		}
+		if (!values['token']) {
+			display_alert('danger', '<strong>Oops!</strong> Looks like you missed filling out your Home Assistant Token');
+			revealConnectionSettings();
+			return false;
+		}
+		return true;
+	}
+
+	// Classic flow: hand the settings back through the close URL, which shuts
+	// the page. The emulator asks for them at a return_to URL instead.
+	function saveLegacy(values) {
+		var urlParams = new URLSearchParams(window.location.search);
+		var returnTo = urlParams.get('return_to');
+		var configData = encodeURIComponent(JSON.stringify(values));
+		var location = returnTo
+			? decodeURIComponent(returnTo) + configData
+			: 'pebblejs://close#' + configData;
+
+		storage.set('watch_config', JSON.stringify(values));
+		console.log('Navigating to:', location);
+		window.location.href = location;
+	}
+
+	// Bundled flow: the watch app stores them, and the page stays put
+	function saveOverBridge(values) {
+		saveBtn.disabled = true;
+		saveBtn.textContent = 'Saving…';
+		request({ type: 'save_settings', settings: values }).then(function(reply) {
+			saveBtn.disabled = false;
+			saveBtn.textContent = 'Save';
+			if (!reply.ok) {
+				display_alert('danger', '<strong>Not saved.</strong> ' + esc(reply.error.message));
+				alertContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+				return;
+			}
+			// The saved copy is now what the watch holds; only the values the
+			// watch fills in for us are carried over
+			['ha_connected', 'available_pipelines', 'available_calendars'].forEach(function(key) {
+				if (watch_config[key] !== undefined) { values[key] = watch_config[key]; }
+			});
+			watch_config = values;
+			refreshPlugin();
+			display_alert('success', '<strong>Saved.</strong> The watch is applying your settings.');
+			alertContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
+		});
+	}
+
+	saveBtn.addEventListener('click', function() {
+		var values = getFormValues();
+		if (!validateForSave(values)) { return; }
+		console.log(JSON.stringify(values));
+		if (bridge) {
+			saveOverBridge(values);
+		} else {
+			saveLegacy(values);
+		}
+	});
+
+	// ===== Bridge: connection status ========================================
+
+	var lastStatus = null;
+
+	function describeStatus(status) {
+		if (!status) { return { cls: '', text: 'Asking the watch how the connection is doing…' }; }
+		switch (status.phase) {
+			case 'unconfigured':
+				return { cls: '', text: 'Not connected yet. Enter the URL and token, then press Connect.' };
+			case 'auth_failed':
+				return { cls: 'auth_failed', text: 'Home Assistant refused the token' +
+					(status.error && status.error.message ? ': ' + status.error.message : '') };
+			case 'connected':
+				return { cls: 'connected', text: 'Connected' +
+					(status.ha_version ? ' to Home Assistant ' + status.ha_version : '') +
+					(status.states_loaded ? ' · ' + status.entity_count + ' entities' : ' · loading entities…') };
+			case 'connecting':
+			default:
+				if (status.error && status.error.message) {
+					return { cls: 'error', text: status.error.message + '…' };
+				}
+				return { cls: 'connecting', text: 'Connecting to ' + (status.ha_url || 'Home Assistant') + '…' };
+		}
+	}
+
+	function applyStatus(status) {
+		lastStatus = status || null;
+		var described = describeStatus(status);
+		connectStatus.className = 'status-line ' + described.cls;
+		connectStatus.querySelector('.status-text').textContent = described.text;
+		updateSearchAvailability();
+	}
+
+	// Values the watch fills in while the page is open: a fresh connection
+	// brings pipelines and calendars the page did not have when it loaded
+	function mergeLiveSettings(settings) {
+		if (!settings || typeof settings !== 'object') { return; }
+		var pipelinesChanged = JSON.stringify(settings['available_pipelines'] || null) !==
+			JSON.stringify(watch_config['available_pipelines'] || null);
+		var calendarsChanged = JSON.stringify(settings['available_calendars'] || null) !==
+			JSON.stringify(watch_config['available_calendars'] || null);
+		var connectedChanged = settings['ha_connected'] !== undefined &&
+			!!settings['ha_connected'] !== !!watch_config['ha_connected'];
+
+		Object.keys(settings).forEach(function(key) {
+			if (settings[key] !== undefined) { watch_config[key] = settings[key]; }
+		});
+
+		if (pipelinesChanged || connectedChanged) { renderPipelines(); }
+		// Redrawing a list the wearer has been dragging would lose their
+		// changes, so only a list that has nothing in it yet is filled
+		if (calendarsChanged && listItems(calendarsSortable).length === 0) { buildCalendarList(); }
+	}
+
+	connectBtn.addEventListener('click', function() {
+		display_alert();
+		var url = urlInput.value.trim().replace(/\/+$/, '');
+		var token = tokenInput.value.trim();
+		if (!validateForSave({ ha_url: url, token: token })) { return; }
+
+		connectBtn.disabled = true;
+		connectBtn.textContent = 'Connecting…';
+		connectStatus.className = 'status-line connecting';
+		connectStatus.querySelector('.status-text').textContent = 'Trying ' + url + '…';
+
+		request({ type: 'connect', ha_url: url, token: token }).then(function(reply) {
+			connectBtn.disabled = false;
+			connectBtn.textContent = 'Connect';
+			if (!reply.ok) {
+				connectStatus.className = 'status-line error';
+				connectStatus.querySelector('.status-text').textContent = reply.error.message;
+				display_alert('danger', '<strong>Could not connect.</strong> ' + esc(reply.error.message));
+				return;
+			}
+			// The watch has kept these; the rest of the form still needs Save
+			watch_config['ha_url'] = url;
+			watch_config['token'] = token;
+			urlInput.value = url;
+			connectStatus.className = 'status-line connected';
+			connectStatus.querySelector('.status-text').textContent = 'Connected' +
+				(reply.ha_version ? ' to Home Assistant ' + reply.ha_version : '') + ' · loading entities…';
+			display_alert('success', '<strong>Connected' +
+				(reply.ha_version ? ' to Home Assistant ' + esc(reply.ha_version) : '') +
+				'.</strong> The URL and token have been saved to the watch.');
+		});
+	});
+
+	// ===== Bridge: entity search ============================================
+
+	var searchTimer = null;
+	var searchSeq = 0;
+	var pendingQuery = null;
+
+	function statesReady() {
+		return !!(lastStatus && lastStatus.states_loaded);
+	}
+
+	function updateSearchAvailability() {
+		if (!bridge) { return; }
+		if (statesReady()) {
+			if (pendingQuery !== null) {
+				var query = pendingQuery;
+				pendingQuery = null;
+				runSearch(query);
+			} else if (!entitySearch.value.trim()) {
+				entitySearchMeta.textContent = 'Type to search ' + lastStatus.entity_count + ' entities.';
+			}
+		} else if (!entitySearch.value.trim()) {
+			entitySearchMeta.textContent = lastStatus && lastStatus.phase === 'unconfigured'
+				? 'Connect to Home Assistant above to search its entities.'
+				: 'Waiting for the watch to load entities from Home Assistant…';
+		}
+	}
+
+	function searchRow(result) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		li.dataset.entityId = result.entity_id;
+		li.dataset.friendlyName = result.name && result.name !== result.entity_id ? result.name : '';
+		var stateText = result.state !== undefined && result.state !== null && result.state !== '' ? String(result.state) : '';
+		li.innerHTML =
+			'<div class="entity-info">' +
+				'<div class="entity-name">' + esc(result.name || result.entity_id) + '</div>' +
+				'<div class="entity-id">' + esc(result.entity_id) + '</div>' +
+				(stateText ? '<div class="entity-state">' + esc(stateText) + '</div>' : '') +
+			'</div>' +
+			'<div class="entity-actions">' +
+				'<button type="button" class="btn search-favorite" aria-pressed="false" aria-label="Add to favorites">' + icon('i-star') + '</button>' +
+				'<button type="button" class="btn search-pin" aria-pressed="false" aria-label="Pin to the main menu">' + icon('i-pin') + '</button>' +
+				'<button type="button" class="btn search-share" aria-pressed="false" aria-label="Share with other apps">' + icon('i-share') + '</button>' +
+			'</div>';
+
+		li.querySelector('.search-share').addEventListener('click', function() {
+			var entityId = li.dataset.entityId;
+			if (isAlwaysShared(entityId)) { return; }
+			var existing = listItems(pluginSortable).filter(function(row) { return row.dataset.entityId === entityId; })[0];
+			if (existing) {
+				existing.remove();
+				updatePluginEmpty();
+			} else {
+				addPluginRow(entityId, li.dataset.friendlyName || null);
+			}
+			refreshSearchButtons();
+		});
+
+		li.querySelector('.search-favorite').addEventListener('click', function() {
+			var entityId = li.dataset.entityId;
+			var name = li.dataset.friendlyName || null;
+			var existing = listItems(favoritesSortable).filter(function(row) { return row.dataset.entityId === entityId; })[0];
+			if (existing) {
+				existing.remove();
+				removeQuickLaunchOption(entityId);
+				show(favoritesContainer, listItems(favoritesSortable).length > 0);
+			} else {
+				addFavoriteRow(entityId, name);
+			}
+			refreshSearchButtons();
+		});
+
+		li.querySelector('.search-pin').addEventListener('click', function() {
+			var entityId = li.dataset.entityId;
+			var name = li.dataset.friendlyName || null;
+			var pinnedId = 'pinned:' + entityId;
+			var existing = listItems(pinnedSortable).filter(function(row) { return row.dataset.entityId === entityId; })[0];
+			if (existing) {
+				existing.remove();
+				listItems(mainMenuSortable).forEach(function(row) {
+					if (row.dataset.itemId === pinnedId) { row.remove(); }
+				});
+				show(pinnedContainer, listItems(pinnedSortable).length > 0);
+			} else {
+				addPinnedRow(entityId, name);
+				var inMenu = listItems(mainMenuSortable).some(function(row) { return row.dataset.itemId === pinnedId; });
+				if (!inMenu) {
+					insertBeforeSettings(mainMenuSortable, mainMenuRow({ id: pinnedId, name: name || entityId, isPinned: true, entityId: entityId }));
+				}
+			}
+			refreshSearchButtons();
+		});
+
+		return li;
+	}
+
+	// The buttons on each result show whether it is already in a list
+	function refreshSearchButtons() {
+		listItems(entitySearchResults).forEach(function(li) {
+			var entityId = li.dataset.entityId;
+			var favorite = li.querySelector('.search-favorite');
+			var pin = li.querySelector('.search-pin');
+			var isFavorite = listHas(favoritesSortable, entityId);
+			var isPinned = listHas(pinnedSortable, entityId);
+			favorite.classList.toggle('active', isFavorite);
+			favorite.setAttribute('aria-pressed', String(isFavorite));
+			favorite.setAttribute('aria-label', isFavorite ? 'Remove from favorites' : 'Add to favorites');
+			favorite.title = favorite.getAttribute('aria-label');
+			pin.classList.toggle('active', isPinned);
+			pin.setAttribute('aria-pressed', String(isPinned));
+			pin.setAttribute('aria-label', isPinned ? 'Unpin from the main menu' : 'Pin to the main menu');
+			pin.title = pin.getAttribute('aria-label');
+			var share = li.querySelector('.search-share');
+			var always = isAlwaysShared(entityId);
+			var isShared = always || listHas(pluginSortable, entityId);
+			share.classList.toggle('active', isShared);
+			share.disabled = always;
+			share.setAttribute('aria-pressed', String(isShared));
+			share.setAttribute('aria-label', always ? 'Weather is always shared with other apps'
+				: (isShared ? 'Stop sharing with other apps' : 'Share with other apps'));
+			share.title = share.getAttribute('aria-label');
+		});
+	}
+
+	function runSearch(query) {
+		var seq = ++searchSeq;
+		if (!query) {
+			pendingQuery = null;
+			entitySearchResults.innerHTML = '';
+			updateSearchAvailability();
+			return;
+		}
+		if (!statesReady()) {
+			pendingQuery = query;
+			entitySearchMeta.textContent = 'Waiting for the watch to load entities…';
+			return;
+		}
+		entitySearchMeta.textContent = 'Searching…';
+		request({ type: 'search_entities', query: query, limit: 30 }).then(function(reply) {
+			// A newer search has been typed since
+			if (seq !== searchSeq) { return; }
+			if (!reply.ok) {
+				if (reply.error.code === 'not_loaded') {
+					pendingQuery = query;
+					entitySearchMeta.textContent = 'Waiting for the watch to load entities…';
+				} else {
+					entitySearchMeta.textContent = 'Search failed: ' + reply.error.message;
+				}
+				return;
+			}
+			entitySearchResults.innerHTML = '';
+			reply.results.forEach(function(result) {
+				entitySearchResults.appendChild(searchRow(result));
+			});
+			refreshSearchButtons();
+			if (reply.total === 0) {
+				entitySearchMeta.textContent = 'Nothing matches "' + query + '".';
+			} else if (reply.total > reply.results.length) {
+				entitySearchMeta.textContent = 'Showing ' + reply.results.length + ' of ' + reply.total + ' matches. Keep typing to narrow it down.';
+			} else {
+				entitySearchMeta.textContent = reply.total + (reply.total === 1 ? ' match' : ' matches');
+			}
+		});
+	}
+
+	entitySearch.addEventListener('input', function() {
+		if (searchTimer) { clearTimeout(searchTimer); }
+		var query = entitySearch.value.trim();
+		searchTimer = setTimeout(function() { runSearch(query); }, 250);
+	});
+
+	// ===== Bridge: app log ==================================================
+	//
+	// The watch app keeps its recent log lines; the dialog shows them and lets
+	// them be copied out for a bug report. The phone's WebView has no way to
+	// save a file, so the clipboard is the way out.
+
+	var logDialog = $('log-dialog'),
+		logText = $('log-text'),
+		logMeta = $('log-dialog-meta'),
+		logHint = $('log-hint');
+	var logLoaded = false;
+
+	function setLogHint(text) {
+		logHint.textContent = text || '';
+	}
+
+	function loadLog() {
+		setLogHint('');
+		logMeta.textContent = 'Loading…';
+		return request({ type: 'get_logs' }).then(function(reply) {
+			if (!reply.ok) {
+				logText.textContent = 'Could not fetch the log: ' + reply.error.message;
+				logMeta.textContent = '';
+				logLoaded = false;
+				return;
+			}
+			logText.textContent = reply.text || '';
+			logMeta.textContent = reply.lines + (reply.lines === 1 ? ' line' : ' lines') +
+				(reply.previous_lines ? ' + ' + reply.previous_lines + ' from last run' : '');
+			logLoaded = true;
+			// The newest lines are what a problem is usually about
+			logText.scrollTop = logText.scrollHeight;
+		});
+	}
+
+	function openLogDialog() {
+		show(logDialog, true);
+		document.body.style.overflow = 'hidden';
+		loadLog().then(function() { logText.focus(); });
+	}
+
+	function closeLogDialog() {
+		if (!isShown(logDialog)) { return; }
+		show(logDialog, false);
+		document.body.style.overflow = '';
+		$('view-log-btn').focus();
+	}
+
+	function currentLogText() {
+		return logLoaded ? logText.textContent : '';
+	}
+
+	// Copies through a hidden textarea, since the clipboard API needs a
+	// secure context and the bundled page does not have one
+	function copyText(text) {
+		var area = document.createElement('textarea');
+		area.value = text;
+		area.setAttribute('readonly', '');
+		area.style.position = 'fixed';
+		area.style.top = '0';
+		area.style.left = '0';
+		area.style.opacity = '0';
+		document.body.appendChild(area);
+		area.focus();
+		area.select();
+		area.setSelectionRange(0, text.length);
+		var copied = false;
+		try { copied = document.execCommand('copy'); } catch (e) { copied = false; }
+		document.body.removeChild(area);
+		$('log-copy').focus();
+		return copied;
+	}
+
+	$('view-log-btn').addEventListener('click', openLogDialog);
+	$('log-close').addEventListener('click', closeLogDialog);
+	logDialog.addEventListener('click', function(e) {
+		if (e.target === logDialog) { closeLogDialog(); }
+	});
+	document.addEventListener('keydown', function(e) {
+		if ((e.key === 'Escape' || e.key === 'Esc' || e.keyCode === 27) && isShown(logDialog)) { closeLogDialog(); }
+	});
+
+	$('log-refresh').addEventListener('click', function() { loadLog(); });
+
+	$('log-copy').addEventListener('click', function() {
+		var text = currentLogText();
+		if (!text) { setLogHint('Nothing to copy yet.'); return; }
+		setLogHint(copyText(text)
+			? 'Copied to the clipboard.'
+			: 'Could not copy automatically. Select the text above and copy it by hand.');
+	});
+
+	$('log-clear').addEventListener('click', function() {
+		request({ type: 'clear_logs' }).then(function(reply) {
+			if (!reply.ok) { setLogHint('Could not clear the log: ' + reply.error.message); return; }
+			loadLog().then(function() { setLogHint('Log cleared.'); });
+		});
+	});
+
+	// ===== Loading ==========================================================
+
+	function loadFromHash() {
+		var hash = window.location.hash.substring(1);
+		if (hash) {
+			try {
+				watch_config = JSON.parse(decodeURIComponent(hash));
+			} catch (e) {
+				console.error('Error parsing hash config', e);
+				watch_config = {};
+			}
+		} else {
+			// Otherwise try localStorage (for returning visits)
+			try {
+				watch_config = JSON.parse(storage.get('watch_config')) || {};
+			} catch (e) {
+				console.error('Error parsing localStorage config', e);
+				watch_config = {};
+			}
+		}
+		populateForm();
+	}
+
+	// The watch app registers its handler as it starts, and the phone opens
+	// this page as soon as the app is running, so the first ask can land before
+	// the handler is there. The phone answers for it then; ask again, for a
+	// while. An app that is there but never answers is not worth waiting on.
+	var LOAD_RETRY_WINDOW_MS = 15000;
+	var LOAD_RETRY_MS = 700;
+
+	function loadFromWatch(startedAt) {
+		startedAt = startedAt || Date.now();
+		display_alert('info', 'Loading your settings from the watch…');
+		request({ type: 'get_settings' }).then(function(reply) {
+			if (!reply.ok) {
+				var retryable = (reply.error.code === 'host' || reply.error.code === 'send_failed') &&
+					reply.error.message.indexOf('did not answer') === -1;
+				if (retryable && Date.now() - startedAt < LOAD_RETRY_WINDOW_MS) {
+					setTimeout(function() { loadFromWatch(startedAt); }, LOAD_RETRY_MS);
+					return;
+				}
+				display_alert('danger', '<strong>Could not reach the watch app.</strong> ' +
+					esc(reply.error.message) + '. Make sure the app is open on the watch. ' +
+					'<a href="#" id="retry-load">Try again</a>');
+				$('retry-load').addEventListener('click', function(e) {
+					e.preventDefault();
+					loadFromWatch();
+				});
+				return;
+			}
+			display_alert();
+			watch_config = reply.settings || {};
+			populateForm();
+			applyStatus(reply.status);
+			// The lists have been drawn; keep the form usable
+			saveBtn.disabled = false;
+			connectBtn.disabled = false;
+		});
+	}
+
+	// ===== Bridge: the plugin ==============================================
+	//
+	// The page can also talk to the plugin in the same pbw, once the phone says
+	// it is running. It is only there on phones with plugins turned on, so
+	// nothing here is required for the page to work.
+
+	var pluginReady = false;
+
+	function setPluginStatus(cls, text) {
+		pluginStatus.className = 'status-line bridge-only ' + cls;
+		pluginStatus.querySelector('.status-text').textContent = text;
+	}
+
+	function checkPlugin() {
+		bridge.sendMessage('plugin', { type: 'status' }).then(function(reply) {
+			if (reply && reply.ok) {
+				setPluginStatus('connected', 'The plugin can reach Home Assistant. ' +
+					reply.shared + (reply.shared === 1 ? ' entity' : ' entities') + ' shared, plus ' +
+					reply.weather + ' weather.');
+			} else {
+				var message = reply && reply.error && (reply.error.message || reply.error);
+				setPluginStatus('error', 'The plugin cannot reach Home Assistant' + (message ? ': ' + message : '.'));
+			}
+		}, function() {
+			setPluginStatus('error', 'The plugin did not answer.');
+		});
+	}
+
+	//! After a save, whatever reads the shared entities reads them again now
+	function refreshPlugin() {
+		if (!pluginReady) { return; }
+		bridge.sendMessage('plugin', { type: 'refresh' }).then(checkPlugin, function() {});
+	}
+
+	function startOverBridge() {
+		document.documentElement.classList.add('has-bridge');
+		saveBtn.disabled = true;
+		connectBtn.disabled = true;
+		display_alert('info', 'Waiting for the watch app…');
+
+		bridge.addEventListener('message', function(e) {
+			var data = e && e.data;
+			if (!data || data.type !== 'status') { return; }
+			mergeLiveSettings(data.settings);
+			applyStatus(data.status);
+		});
+
+		setPluginStatus('', 'Plugins are not turned on in the Pebble app, so other apps cannot see these yet.');
+		bridge.addEventListener('ready', function(e) {
+			if (e.target !== 'plugin' || pluginReady) { return; }
+			pluginReady = true;
+			setPluginStatus('connecting', 'Checking the plugin…');
+			checkPlugin();
+		});
+
+		var started = false;
+		bridge.addEventListener('ready', function(e) {
+			if (e.target !== 'pkjs' || started) { return; }
+			started = true;
+			loadFromWatch();
+		});
+
+		// The phone only says the watch app is ready once it is running
+		setTimeout(function() {
+			if (!started) {
+				display_alert('warning', '<strong>Still waiting for the watch app.</strong> ' +
+					'Make sure Home Assistant WS is open on the watch.');
+			}
+		}, 15000);
+	}
+
+	try {
+		if (bridge) {
+			startOverBridge();
+		} else {
+			loadFromHash();
+		}
+	} catch (e) {
+		console.error('Error loading settings', e);
+		watch_config = watch_config || {};
+	}
+})();
+</script>
+</body>
+</html>
