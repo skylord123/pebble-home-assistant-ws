@@ -172,6 +172,13 @@ var SettingsManager = {
         log('Main menu custom order enabled: ' + appState.main_menu_custom_order_enabled);
 
         // Reload stores
+        if (appState.pluginExposedStore) {
+            appState.pluginExposedStore.load();
+        }
+
+        // Whether other apps may talk to the assistant through the plugin
+        appState.plugin_share_assistant = Settings.option('plugin_share_assistant') === true;
+
         if (appState.pinnedEntityStore) {
             appState.pinnedEntityStore.load();
             log('Pinned entities reloaded: ' + JSON.stringify(appState.pinnedEntityStore.all()));

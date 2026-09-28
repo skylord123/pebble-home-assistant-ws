@@ -52,7 +52,10 @@ function loadAssistPipelines(callback) {
                 return {
                     id: p.id,
                     name: p.name,
-                    preferred: p.id === appState.preferred_pipeline
+                    preferred: p.id === appState.preferred_pipeline,
+                    // For the plugin, which can only reach the agent itself
+                    conversation_engine: p.conversation_engine || null,
+                    conversation_language: p.conversation_language || null
                 };
             });
             Settings.option('available_pipelines', pipelineOptions);

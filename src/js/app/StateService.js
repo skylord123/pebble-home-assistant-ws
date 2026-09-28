@@ -6,6 +6,26 @@ var AppState = require('app/AppState');
 var helpers = require('app/helpers');
 
 /**
+ * Tell the plugin which weather entities there are. Weather is shared with
+ * other apps without being chosen, and the plugin would otherwise have to
+ * fetch every state in the house to find it.
+ */
+function publishWeatherEntities(appState) {
+    var ids = [];
+    for (var i = 0; i < appState.ha_state_cache.length; i++) {
+        var entityId = appState.ha_state_cache[i].entity_id;
+        if (entityId.indexOf('weather.') === 0) {
+            ids.push(entityId);
+        }
+    }
+    ids.sort();
+    var previous = Settings.option('plugin_weather_entities');
+    if (JSON.stringify(ids) !== JSON.stringify(previous || [])) {
+        Settings.option('plugin_weather_entities', ids);
+    }
+}
+
+/**
  * Publish the available calendars to settings so the config page can offer
  * per-calendar visibility and ordering. The array order matches Home
  * Assistant's state order, which is the default calendar order.
@@ -25,6 +45,7 @@ function publishAvailableCalendars(appState) {
     }
 
     var previous = Settings.option('available_calendars');
+    publishWeatherEntities(appState);
     if (JSON.stringify(calendars) !== JSON.stringify(previous || [])) {
         Settings.option('available_calendars', calendars);
         helpers.log_message('Published ' + calendars.length + ' calendars for config page');
