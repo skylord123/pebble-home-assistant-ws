@@ -13,6 +13,10 @@ var store = require('store');
 var STATES_TTL_MS = 10000;
 //! Past this many entities one full /api/states beats fetching them one by one
 var BULK_THRESHOLD = 15;
+//! How long a refused token is left alone before it is tried again
+var AUTH_RETRY_MS = 30 * 60 * 1000;
+
+var REFUSED = 'Home Assistant refused the access token. Update it in the watch app\'s settings.';
 
 function PluginError(code, message) {
     this.code = code;
@@ -30,15 +34,49 @@ function fingerprint(token) {
 }
 
 /**
- * Make one request. A token Home Assistant has refused is not tried again
- * until it changes: every refused attempt counts towards Home Assistant's IP
- * ban, and a plugin polled every thirty seconds would get the phone banned.
+ * Whether this token was refused recently. A refused token is left alone for
+ * a while: every refused attempt counts towards Home Assistant's IP ban, and
+ * a plugin polled every thirty seconds would get the phone banned.
  */
+function tokenRefused(conn) {
+    var failed = store.get('auth_failed');
+    return !!(failed && failed.print === fingerprint(conn.token) &&
+        Date.now() - failed.at < AUTH_RETRY_MS);
+}
+
+/** Try the token again on the next request, e.g. when the settings page asks */
+function forgetRefusal() {
+    store.set('auth_failed', null);
+}
+
+/**
+ * Home Assistant also answers 401 when the token is fine but its user may
+ * not do something (reloads and other admin-only services). Only a 401 from
+ * the API root means the token itself is bad.
+ */
+function refused(conn, path) {
+    var verdict = path === '/api/' ? Promise.resolve(true) : fetch(conn.url + '/api/', {
+        method: 'GET',
+        headers: { 'Authorization': 'Bearer ' + conn.token }
+    }).then(function(response) {
+        return response.status === 401;
+    }, function() {
+        return false;
+    });
+    return verdict.then(function(tokenBad) {
+        if (tokenBad) {
+            store.set('auth_failed', { print: fingerprint(conn.token), at: Date.now() });
+            throw new PluginError('AUTH_REQUIRED', REFUSED);
+        }
+        throw new PluginError('PERMISSION_DENIED',
+            'Home Assistant does not let this token\'s user do that');
+    });
+}
+
+/** Make one request */
 function request(conn, method, path, body) {
-    var print = fingerprint(conn.token);
-    if (store.get('auth_failed') === print) {
-        return Promise.reject(new PluginError('AUTH_REQUIRED',
-            'Home Assistant refused the access token. Update it in the watch app\'s settings.'));
+    if (tokenRefused(conn)) {
+        return Promise.reject(new PluginError('AUTH_REQUIRED', REFUSED));
     }
 
     var init = {
@@ -53,13 +91,18 @@ function request(conn, method, path, body) {
     }
 
     return fetch(conn.url + path, init).then(function(response) {
-        if (response.status === 401 || response.status === 403) {
-            store.set('auth_failed', print);
-            throw new PluginError('AUTH_REQUIRED',
-                'Home Assistant refused the access token. Update it in the watch app\'s settings.');
+        if (response.status === 401) {
+            return refused(conn, path);
+        }
+        if (response.status === 403) {
+            // A ban, or a proxy in front of Home Assistant: nothing to do with the token
+            throw new PluginError('PERMISSION_DENIED', 'Home Assistant answered 403');
         }
         if (response.status === 404) {
             return null;
+        }
+        if (response.status === 400) {
+            throw new PluginError('INVALID_ARGS', 'Home Assistant did not accept that');
         }
         if (!response.ok) {
             throw new PluginError('PLUGIN_UNAVAILABLE', 'Home Assistant answered ' + response.status);
@@ -73,19 +116,47 @@ function request(conn, method, path, body) {
     });
 }
 
+/**
+ * Cached states, each stamped with when it was fetched, so one entity read
+ * now does not make another read a minute ago look fresh.
+ * @returns {Object} entity_id -> { at, state }, only the fresh ones
+ */
+function stateEntries() {
+    var entries = store.get('states') || {};
+    var now = Date.now();
+    var fresh = {};
+    Object.keys(entries).forEach(function(id) {
+        var entry = entries[id];
+        if (entry && typeof entry.at === 'number' && entry.state && now - entry.at < STATES_TTL_MS) {
+            fresh[id] = entry;
+        }
+    });
+    return fresh;
+}
+
 function cachedStates() {
-    return store.fresh('states', STATES_TTL_MS) || {};
+    var entries = stateEntries();
+    var byId = {};
+    Object.keys(entries).forEach(function(id) { byId[id] = entries[id].state; });
+    return byId;
 }
 
 /** Keep states that just came back, whether from a fetch or a service call */
 function rememberStates(states) {
-    var byId = cachedStates();
+    var entries = stateEntries();
+    var now = Date.now();
     for (var i = 0; i < states.length; i++) {
         if (states[i] && states[i].entity_id) {
-            byId[states[i].entity_id] = states[i];
+            entries[states[i].entity_id] = { at: now, state: states[i] };
         }
     }
-    store.remember('states', byId);
+    store.set('states', entries);
+}
+
+function forgetState(id) {
+    var entries = stateEntries();
+    delete entries[id];
+    store.set('states', entries);
 }
 
 /**
@@ -160,10 +231,8 @@ function callService(conn, domain, service, data) {
         }
         // Whatever did not come back is stale now
         if (data && data.entity_id) {
-            var byId = cachedStates();
             if (!changed || !changed.some(function(s) { return s.entity_id === data.entity_id; })) {
-                delete byId[data.entity_id];
-                store.remember('states', byId);
+                forgetState(data.entity_id);
             }
         }
         return changed;
@@ -181,6 +250,7 @@ function callServiceForResponse(conn, domain, service, data) {
 module.exports = {
     PluginError: PluginError,
     request: request,
+    forgetRefusal: forgetRefusal,
     getStates: getStates,
     discoverWeather: discoverWeather,
     callService: callService,

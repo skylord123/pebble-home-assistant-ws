@@ -33,9 +33,10 @@ function weatherIds(conn, opts) {
 }
 
 function homeSource(conn, opts, item) {
-    return weatherIds(conn, opts).then(function(weatherList) {
+    // Weather is shared without being chosen, and only belongs in the full list
+    var listed = item === 'entity' ? weatherIds(conn, opts) : Promise.resolve([]);
+    return listed.then(function(weatherList) {
         var ids = options.exposedIds(opts);
-        // Weather is shared without being chosen, and belongs in the full list
         if (item === 'entity') {
             weatherList.forEach(function(id) {
                 if (ids.indexOf(id) === -1) { ids.push(id); }
@@ -113,6 +114,8 @@ Pebble.registerConfigHandler(function(message, respond) {
         if (!conn) {
             return respond({ ok: false, error: { code: 'AUTH_REQUIRED', message: 'Home Assistant is not set up yet' } });
         }
+        // Someone is looking at the settings, so a refused token gets another try
+        ha.forgetRefusal();
         return ha.request(conn, 'GET', '/api/').then(function() {
             respond({
                 ok: true,

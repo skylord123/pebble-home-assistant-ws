@@ -118,8 +118,9 @@ function withUnit(value, unit) {
 
 function numericState(entity) {
     if (isUnavailable(entity)) { return null; }
-    var value = parseFloat(entity.state);
-    return isFinite(value) && String(entity.state).trim() !== '' ? value : null;
+    // Strictly a number: timestamps and versions start with digits too
+    var text = String(entity.state).trim();
+    return /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text) ? Number(text) : null;
 }
 
 /** Whether the entity is on, in whatever sense its kind has one, or null */
