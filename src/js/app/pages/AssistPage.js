@@ -69,7 +69,10 @@ function loadAssistPipelines(callback) {
                     stt: !!p.stt_engine,
                     // ...and only one with a text-to-speech engine can
                     // answer out loud
-                    tts: !!p.tts_engine
+                    tts: !!p.tts_engine,
+                    // For the plugin, which can only reach the agent itself
+                    conversation_engine: p.conversation_engine || null,
+                    conversation_language: p.conversation_language || null
                 };
             });
             Settings.option('available_pipelines', pipelineOptions);
