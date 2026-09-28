@@ -1071,7 +1071,7 @@
 						<label class="form-check-label" for="plugin-share-assistant">Share with other apps</label>
 						<input class="form-check-input" type="checkbox" id="plugin-share-assistant">
 					</div>
-					<small class="form-text">Lets other watch apps send the assistant text and read its reply, through the plugin. It can do whatever Home Assistant exposes to Assist, not only the entities shared below.</small>
+					<small class="form-text">Lets other watch apps send the assistant text and read its reply, through the plugin. It can do whatever Home Assistant exposes to Assist, not only the entities shared below, and it does not ask on the watch before acting.</small>
 				</div>
 				<div class="component" id="pipeline-container">
 					<div class="form-group">
@@ -2511,7 +2511,6 @@
 			: 'pebblejs://close#' + configData;
 
 		storage.set('watch_config', JSON.stringify(values));
-		console.log('Navigating to:', location);
 		window.location.href = location;
 	}
 
@@ -2542,7 +2541,6 @@
 	saveBtn.addEventListener('click', function() {
 		var values = getFormValues();
 		if (!validateForSave(values)) { return; }
-		console.log(JSON.stringify(values));
 		if (bridge) {
 			saveOverBridge(values);
 		} else {
