@@ -1278,6 +1278,13 @@
 						<span class="status-text">Checking the plugin…</span>
 					</div>
 				</div>
+				<div class="component">
+					<div class="form-switch">
+						<label class="form-check-label" for="plugin-allow-unlock">Let other apps unlock and open doors</label>
+						<input class="form-check-input" type="checkbox" id="plugin-allow-unlock">
+					</div>
+					<small class="form-text">Lets other watch apps unlock shared locks, disarm shared alarms and open shared garage doors, gates and doors. The Pebble app does not ask on the watch first yet, so leave this off unless you trust every app you install.</small>
+				</div>
 			</div>
 		</details>
 
@@ -1632,6 +1639,7 @@
 		pluginEmpty = $('plugin-empty'),
 		pluginStatus = $('plugin-status'),
 		pluginShareAssistant = $('plugin-share-assistant'),
+		pluginAllowUnlock = $('plugin-allow-unlock'),
 		calendarsSection = $('calendars-section'),
 		calendarsSortable = $('calendars-sortable'),
 		calendarOrderReset = $('calendar-order-reset'),
@@ -2314,6 +2322,7 @@
 			// Shared with other apps through the plugin
 			'plugin_exposed_entities': listItems(pluginSortable).map(entityFromRow),
 			'plugin_share_assistant': pluginShareAssistant.checked,
+			'plugin_allow_unlock': pluginAllowUnlock.checked,
 			// Calendars: null order means "use Home Assistant's order"
 			'calendar_order': calendarsCustomized
 				? listItems(calendarsSortable).map(function(li) { return li.dataset.entityId; })
@@ -2417,6 +2426,7 @@
 		renderPinned(watch_config['pinned_entities']);
 		renderPluginExposed(watch_config['plugin_exposed_entities']);
 		pluginShareAssistant.checked = watch_config['plugin_share_assistant'] === true;
+		pluginAllowUnlock.checked = watch_config['plugin_allow_unlock'] === true;
 		renderIgnoreDomains(watch_config['ignore_domains']);
 
 		// Set up the timeline token section if there is a token worth showing

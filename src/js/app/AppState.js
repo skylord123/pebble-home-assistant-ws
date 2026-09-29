@@ -97,6 +97,7 @@ class AppState {
         this.pinnedEntityStore = null;
         this.pluginExposedStore = null;
         this.plugin_share_assistant = false;
+        this.plugin_allow_unlock = false;
         this.alarmCodeStore = null;
 
         // UI state
