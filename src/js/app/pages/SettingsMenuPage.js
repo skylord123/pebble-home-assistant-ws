@@ -335,6 +335,19 @@ function showVoiceAssistantSettings(onClose) {
             }
         });
 
+        // Other apps may send the assistant text through the plugin. Off
+        // unless asked for: it reaches whatever Home Assistant exposes to
+        // Assist, not only the entities shared here.
+        voiceSettingsMenu.item(0, menuIndex++, {
+            title: "Share with Apps",
+            subtitle: appState.plugin_share_assistant ? "True" : "False",
+            on_click: function(e) {
+                appState.plugin_share_assistant = !appState.plugin_share_assistant;
+                Settings.option('plugin_share_assistant', appState.plugin_share_assistant);
+                updateMenuItems();
+            }
+        });
+
         // Vibration feedback while streaming replies
         voiceSettingsMenu.item(0, menuIndex++, {
             title: "Vibration Feedback",
@@ -477,6 +490,21 @@ function showEntitySettings() {
             subtitle: getAutomationLongpressText(appState.automation_longpress_action),
             on_click: function(e) {
                 showAutomationLongpressMenu();
+            }
+        });
+
+        // Whether other apps may unlock, disarm or open doors through the plugin
+        entitySettingsMenu.item(0, 5, {
+            title: "Apps Can Unlock",
+            subtitle: appState.plugin_allow_unlock ? "True" : "False",
+            on_click: function(e) {
+                appState.plugin_allow_unlock = !appState.plugin_allow_unlock;
+                Settings.option('plugin_allow_unlock', appState.plugin_allow_unlock);
+                entitySettingsMenu.item(0, 5, {
+                    title: "Apps Can Unlock",
+                    subtitle: appState.plugin_allow_unlock ? "True" : "False",
+                    on_click: e.item.on_click
+                });
             }
         });
     });

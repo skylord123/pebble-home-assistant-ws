@@ -906,6 +906,43 @@ var EntityService = {
     },
 
     /**
+     * Share an entity with other apps through the plugin, or stop sharing it.
+     * Weather entities are always shared and cannot be toggled.
+     * @param {Object} entity - The entity object
+     * @returns {boolean} true if now shared, false if no longer shared
+     */
+    togglePluginExposed: function(entity) {
+        if (!entity || !entity.entity_id) {
+            helpers.log_message('togglePluginExposed: Invalid entity provided');
+            return false;
+        }
+        var store = AppState.getInstance().pluginExposedStore;
+        var entityId = entity.entity_id;
+        if (this.isAlwaysPluginExposed(entityId)) {
+            return true;
+        }
+        if (store.has(entityId)) {
+            helpers.log_message('No longer sharing ' + entityId + ' with other apps');
+            store.remove(entityId);
+            return false;
+        }
+        helpers.log_message('Sharing ' + entityId + ' with other apps');
+        store.add(entityId, entity.attributes && entity.attributes.friendly_name
+            ? entity.attributes.friendly_name : null);
+        return true;
+    },
+
+    /** Weather is shared with other apps whether or not it is listed */
+    isAlwaysPluginExposed: function(entityId) {
+        return typeof entityId === 'string' && entityId.indexOf('weather.') === 0;
+    },
+
+    isPluginExposed: function(entityId) {
+        var store = AppState.getInstance().pluginExposedStore;
+        return this.isAlwaysPluginExposed(entityId) || !!(store && store.has(entityId));
+    },
+
+    /**
      * Toggle pinned status for an entity
      * @param {Object} entity - The entity object
      * @returns {boolean} true if pinned, false if unpinned

@@ -38,6 +38,11 @@ def build(ctx):
 
     binaries = []
     js_target = ctx.concat_javascript(js_path='src/js')
+    # The plugin other apps read Home Assistant through: its own bundle, built
+    # with the same module loader, added to the pbw after it is zipped
+    plugin_target = ctx.concat_javascript(js_path='plugin/js',
+                                          loader_path='src/js/loader.js',
+                                          target='build/plugin/plugin.js')
 
     if ctx.env.TARGET_PLATFORMS:
         for platform in ctx.env.TARGET_PLATFORMS:
@@ -54,8 +59,9 @@ def build(ctx):
                        worker_elf=elfs['worker_elf'] if 'worker_elf' in elfs else None,
                        js=js_target)
 
-    # The settings page goes into the pbw once it has been zipped
+    # The settings page and the plugin go into the pbw once it has been zipped
     ctx.add_post_fun(lambda bld: bld.bundle_config_page())
+    ctx.add_post_fun(lambda bld: bld.bundle_plugin(plugin_target.abspath()))
 
 
 @conf
@@ -95,13 +101,19 @@ def build_platform(ctx, platform=None, binaries=None):
 
 
 @conf
-def concat_javascript(ctx, js_path=None):
+def concat_javascript(ctx, js_path=None, loader_path=None,
+                      target='build/src/js/pebble-js-app.js'):
     js_nodes = (ctx.path.ant_glob(js_path + '/**/*.js') +
                 ctx.path.ant_glob(js_path + '/**/*.json') +
                 ctx.path.ant_glob(js_path + '/**/*.coffee'))
 
     if not js_nodes:
         return []
+
+    # A bundle whose sources live elsewhere borrows the app's module loader
+    loader_node = ctx.path.make_node(loader_path) if loader_path else None
+    if loader_node is not None:
+        js_nodes = [loader_node] + js_nodes
 
     def concat_javascript_task(task):
         LOADER_PATH = "loader.js"
@@ -131,7 +143,10 @@ def concat_javascript(ctx, js_path=None):
 
         sources = []
         for node in task.inputs:
-            relpath = os.path.relpath(node.abspath(), js_path)
+            if loader_node is not None and node.abspath() == loader_node.abspath():
+                relpath = LOADER_PATH
+            else:
+                relpath = os.path.relpath(node.abspath(), js_path)
             with open(node.abspath(), 'r') as f:
                 body = f.read()
                 if relpath.endswith('.json'):
@@ -167,7 +182,7 @@ def concat_javascript(ctx, js_path=None):
                 f.write(body + '\n')
                 lineno += body.count('\n') + 1
 
-    js_target = ctx.path.make_node('build/src/js/pebble-js-app.js')
+    js_target = ctx.path.make_node(target)
 
     # appinfo.json is baked into the bundle (resource ids come from its media
     # order), so it must be a declared dependency or icon ids go stale when
