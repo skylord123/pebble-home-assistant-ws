@@ -176,6 +176,15 @@ function stateText(entity) {
                 return String(attrs.media_title);
             }
             break;
+        // Their state is when they last ran, which reads badly as text; the
+        // time itself is in last_changed
+        case 'scene':
+            return 'Scene';
+        case 'button':
+        case 'input_button':
+            return 'Button';
+        case 'event':
+            return attrs.event_type ? humanize(String(attrs.event_type)) : 'Event';
     }
 
     var value = numericState(entity);

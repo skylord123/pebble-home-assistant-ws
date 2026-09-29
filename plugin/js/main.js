@@ -104,6 +104,8 @@ Pebble.registerConfigHandler(function(message, respond) {
     var opts = options.read();
 
     if (type === 'refresh') {
+        // Asked for because something changed; a cached answer would hide it
+        ha.forgetStates();
         Pebble.refreshSources(['home/entity', 'weather/location', 'weather/hour']
             .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
         return respond({ ok: true });
