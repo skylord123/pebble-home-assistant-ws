@@ -157,6 +157,11 @@ function rememberStates(states) {
     store.set('states', entries);
 }
 
+/** Drop every cached state, so the next read asks Home Assistant */
+function forgetStates() {
+    store.set('states', null);
+}
+
 function forgetState(id) {
     var entries = stateEntries();
     delete entries[id];
@@ -255,6 +260,7 @@ module.exports = {
     PluginError: PluginError,
     request: request,
     forgetRefusal: forgetRefusal,
+    forgetStates: forgetStates,
     getStates: getStates,
     discoverWeather: discoverWeather,
     callService: callService,
