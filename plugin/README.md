@@ -109,7 +109,7 @@ happened, and asks the sources that show that entity to refresh.
 | `toggle` | Toggles. A locked lock is refused (use `unlock`), and a closed garage door, gate or door is refused (use `open`). |
 | `activate` | Runs a scene or script, presses a button, or triggers an automation. |
 | `set_brightness` `{ percent }` | Sets a light's brightness. |
-| `set_temperature` `{ temperature }` | Sets the target temperature. |
+| `set_temperature` `{ temperature }` or `{ target_temp_low, target_temp_high }` | Sets the target temperature, or the range for a thermostat that keeps one (heat_cool). |
 | `set_hvac_mode` `{ hvac_mode }` | Sets the heating or cooling mode. |
 | `set_position` `{ position }` | Sets a cover's position. A garage door, gate or door can only be closed (position 0). |
 | `open` `{ code? }`, `close`, `stop` | Covers and valves. `open` also unlatches a lock. |
@@ -118,6 +118,11 @@ happened, and asks the sources that show that entity to refresh.
 | `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
 | `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
 | `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
+
+Actions check the entity's `supported_features` first. Asking a window
+that cannot be positioned to move to 40%, or a player that cannot skip to
+skip, is refused with `INVALID_ARGS` and a line saying so. Otherwise Home
+Assistant answers 500, which would look like an outage.
 
 Three actions ask the wearer before running: `unlock`, `alarm_disarm` and
 `open`. That confirmation cannot be skipped another way:
