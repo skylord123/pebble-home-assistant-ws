@@ -302,7 +302,7 @@
     },
     {
       "name": "open",
-      "description": "Open a Home Assistant cover or valve, or open (unlatch) a lock. Asks the wearer first. Locks that need a code take it in code.",
+      "description": "Open a Home Assistant cover or valve, or open (unlatch) a lock. Locks, garage doors, gates and doors only open when the wearer has allowed apps to unlock in the watch app. Locks that need a code take it in code.",
       "parameters": {
         "type": "object",
         "required": ["instanceId"],
@@ -350,7 +350,7 @@
     },
     {
       "name": "unlock",
-      "description": "Unlock a Home Assistant lock. Locks that need a code take it in code.",
+      "description": "Unlock a Home Assistant lock, when the wearer has allowed apps to unlock in the watch app. Locks that need a code take it in code.",
       "parameters": {
         "type": "object",
         "required": ["instanceId"],
@@ -379,7 +379,7 @@
     },
     {
       "name": "alarm_disarm",
-      "description": "Disarm a Home Assistant alarm panel. Panels that need a code take it in code.",
+      "description": "Disarm a Home Assistant alarm panel, when the wearer has allowed apps to unlock in the watch app. Panels that need a code take it in code.",
       "parameters": {
         "type": "object",
         "required": ["instanceId"],

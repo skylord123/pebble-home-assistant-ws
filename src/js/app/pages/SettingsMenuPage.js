@@ -492,6 +492,21 @@ function showEntitySettings() {
                 showAutomationLongpressMenu();
             }
         });
+
+        // Whether other apps may unlock, disarm or open doors through the plugin
+        entitySettingsMenu.item(0, 5, {
+            title: "Apps Can Unlock",
+            subtitle: appState.plugin_allow_unlock ? "True" : "False",
+            on_click: function(e) {
+                appState.plugin_allow_unlock = !appState.plugin_allow_unlock;
+                Settings.option('plugin_allow_unlock', appState.plugin_allow_unlock);
+                entitySettingsMenu.item(0, 5, {
+                    title: "Apps Can Unlock",
+                    subtitle: appState.plugin_allow_unlock ? "True" : "False",
+                    on_click: e.item.on_click
+                });
+            }
+        });
     });
 
     entitySettingsMenu.on('select', function(e) {

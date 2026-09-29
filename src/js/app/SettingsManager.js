@@ -178,6 +178,7 @@ var SettingsManager = {
 
         // Whether other apps may talk to the assistant through the plugin
         appState.plugin_share_assistant = Settings.option('plugin_share_assistant') === true;
+        appState.plugin_allow_unlock = Settings.option('plugin_allow_unlock') === true;
 
         if (appState.pinnedEntityStore) {
             appState.pinnedEntityStore.load();

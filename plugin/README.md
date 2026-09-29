@@ -124,8 +124,18 @@ that cannot be positioned to move to 40%, or a player that cannot skip to
 skip, is refused with `INVALID_ARGS` and a line saying so. Otherwise Home
 Assistant answers 500, which would look like an outage.
 
-Three actions ask the wearer before running: `unlock`, `alarm_disarm` and
-`open`. That confirmation cannot be skipped another way:
+Three actions are marked `requiresConfirmation`: `unlock`, `alarm_disarm`
+and `open`. The Pebble app does not ask the wearer before them yet (as of
+1.14 the flag is read but not acted on). Until it does, the plugin refuses
+the following with `PERMISSION_DENIED` unless the wearer has turned on
+**Apps Can Unlock** (watch: Settings → Entity Settings; settings page: "Let
+other apps unlock and open doors"):
+
+- `unlock`;
+- `alarm_disarm`;
+- `open` on a lock or on a garage door, gate or door.
+
+None of these actions can be done another way:
 
 - `toggle` never unlocks a lock.
 - A garage door, gate or door (a cover with that device class) never opens

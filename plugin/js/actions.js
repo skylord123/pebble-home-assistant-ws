@@ -94,6 +94,16 @@ function isGuarded(entity) {
         GUARDED_COVERS[(entity.attributes || {}).device_class] === true;
 }
 
+/**
+ * The phone does not yet ask the wearer before an action marked
+ * requiresConfirmation, so the actions that let people in stay off until
+ * the wearer turns on "Apps Can Unlock" in the watch app.
+ */
+function needsUnlockPermission(name, entity) {
+    if (name === 'unlock' || name === 'alarm_disarm') { return true; }
+    return name === 'open' && (entities.domainOf(entity.entity_id) === 'lock' || isGuarded(entity));
+}
+
 function mustAsk(entity) {
     return new PluginError('PERMISSION_DENIED',
         entities.nameOf(entity) + ' only opens with the open action, which asks first');
@@ -434,6 +444,10 @@ function runEntityAction(conn, opts, name, args) {
         var entity = states[id];
         if (!entity) {
             throw new PluginError('PLUGIN_UNAVAILABLE', id + ' is not in Home Assistant');
+        }
+        if (needsUnlockPermission(name, entity) && opts.plugin_allow_unlock !== true) {
+            throw new PluginError('PERMISSION_DENIED',
+                'Unlocking and opening from other apps is turned off in the watch app\'s settings');
         }
         var call = ENTITY_ACTIONS[name](entity, args);
         var data = call.data || {};
