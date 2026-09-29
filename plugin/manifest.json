@@ -261,13 +261,15 @@
     },
     {
       "name": "set_temperature",
-      "description": "Set the target temperature of a Home Assistant thermostat or water heater.",
+      "description": "Set the target temperature of a Home Assistant thermostat or water heater. A thermostat keeping a range (heat_cool) takes target_temp_low and target_temp_high instead of temperature.",
       "parameters": {
         "type": "object",
-        "required": ["instanceId", "temperature"],
+        "required": ["instanceId"],
         "properties": {
           "instanceId": { "type": "string" },
-          "temperature": { "type": "number" }
+          "temperature": { "type": "number" },
+          "target_temp_low": { "type": "number" },
+          "target_temp_high": { "type": "number" }
         }
       },
       "targets": ["home/climate/target_temperature"]

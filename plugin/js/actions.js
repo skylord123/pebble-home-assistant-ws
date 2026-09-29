@@ -99,6 +99,34 @@ function mustAsk(entity) {
         entities.nameOf(entity) + ' only opens with the open action, which asks first');
 }
 
+/**
+ * The supported_features bits the actions below depend on. Home Assistant
+ * answers 500 when an entity is asked for something it cannot do, which
+ * would look like an outage, so they are checked first.
+ */
+var FEATURE = {
+    cover: { open: 1, close: 2, set_position: 4, stop: 8 },
+    valve: { open: 1, close: 2, set_position: 4, stop: 8 },
+    lock: { open: 1 },
+    climate: { target_temperature: 1, target_temperature_range: 2 },
+    water_heater: { target_temperature: 1 },
+    media_player: { pause: 1, volume_set: 4, previous_track: 16, next_track: 32, play: 16384 }
+};
+
+//! Whether the entity can do `feature`. One that does not say is given the benefit of the doubt.
+function supports(entity, feature) {
+    var bits = (FEATURE[entities.domainOf(entity.entity_id)] || {})[feature];
+    var features = (entity.attributes || {}).supported_features;
+    if (bits === undefined || typeof features !== 'number') { return true; }
+    return (features & bits) !== 0;
+}
+
+function requireFeature(entity, feature, what) {
+    if (!supports(entity, feature)) {
+        throw invalid(entities.nameOf(entity) + ' cannot ' + what);
+    }
+}
+
 function invalid(message) {
     return new PluginError('INVALID_ARGS', message);
 }
@@ -211,6 +239,10 @@ var ENTITY_ACTIONS = {
 
     set_brightness: function(entity, args) {
         requireDomain(entity, ['light'], 'set a brightness');
+        var modes = (entity.attributes || {}).supported_color_modes;
+        if (Array.isArray(modes) && modes.length === 1 && modes[0] === 'onoff') {
+            throw invalid(entities.nameOf(entity) + ' cannot be dimmed');
+        }
         var percent = percentArg(args, 'percent');
         if (percent === 0) {
             return { domain: 'light', service: 'turn_off', text: 'Turned off ' + entities.nameOf(entity) + '.' };
@@ -221,10 +253,28 @@ var ENTITY_ACTIONS = {
 
     set_temperature: function(entity, args) {
         var domain = requireDomain(entity, ['climate', 'water_heater'], 'set a temperature');
+        var name = entities.nameOf(entity);
+        var low = Number(args.target_temp_low);
+        var high = Number(args.target_temp_high);
+        var hasRange = args.target_temp_low !== undefined && args.target_temp_high !== undefined;
+        // A thermostat keeping a range (heat_cool) takes a low and a high instead
+        if (hasRange || !supports(entity, 'target_temperature')) {
+            if (!supports(entity, 'target_temperature_range')) {
+                throw invalid(name + ' cannot ' + (hasRange ? 'keep a range' : 'take a target temperature'));
+            }
+            if (!hasRange || !isFinite(low) || !isFinite(high) || low > high) {
+                throw invalid(name + ' keeps a range: give target_temp_low and target_temp_high');
+            }
+            return { domain: domain, service: 'set_temperature',
+                data: { target_temp_low: low, target_temp_high: high },
+                text: 'Set ' + name + ' to ' + low + '-' + high + '°.' };
+        }
         var value = Number(args.temperature);
-        if (!isFinite(value)) { throw invalid('temperature must be a number'); }
+        if (args.temperature === undefined || args.temperature === null || !isFinite(value)) {
+            throw invalid('temperature must be a number');
+        }
         return { domain: domain, service: 'set_temperature', data: { temperature: value },
-            text: 'Set ' + entities.nameOf(entity) + ' to ' + value + '°.' };
+            text: 'Set ' + name + ' to ' + value + '°.' };
     },
 
     set_hvac_mode: function(entity, args) {
@@ -236,6 +286,7 @@ var ENTITY_ACTIONS = {
 
     set_position: function(entity, args) {
         var domain = requireDomain(entity, ['cover', 'valve'], 'set a position');
+        requireFeature(entity, 'set_position', 'move to a position');
         var position = percentArg(args, 'position');
         if (position > 0 && isGuarded(entity)) { throw mustAsk(entity); }
         return { domain: domain, service: domain === 'cover' ? 'set_cover_position' : 'set_valve_position',
@@ -244,6 +295,7 @@ var ENTITY_ACTIONS = {
 
     open: function(entity, args) {
         var domain = requireDomain(entity, ['cover', 'valve', 'lock'], 'open');
+        requireFeature(entity, 'open', 'open');
         // Only locks take a code; covers and valves refuse one
         var service = domain === 'lock' ? 'open' : 'open_' + domain;
         return { domain: domain, service: service, data: domain === 'lock' ? withCode({}, args) : {},
@@ -252,12 +304,14 @@ var ENTITY_ACTIONS = {
 
     close: function(entity) {
         var domain = requireDomain(entity, ['cover', 'valve'], 'close');
+        requireFeature(entity, 'close', 'close');
         return { domain: domain, service: 'close_' + domain,
             text: 'Closing ' + entities.nameOf(entity) + '.' };
     },
 
     stop: function(entity) {
         var domain = requireDomain(entity, ['cover', 'valve'], 'stop');
+        requireFeature(entity, 'stop', 'stop');
         return { domain: domain, service: 'stop_' + domain,
             text: 'Stopped ' + entities.nameOf(entity) + '.' };
     },
@@ -292,22 +346,26 @@ var ENTITY_ACTIONS = {
     set_playing: function(entity, args) {
         requireDomain(entity, ['media_player'], 'play');
         if (typeof args.playing !== 'boolean') { throw invalid('playing must be true or false'); }
+        requireFeature(entity, args.playing ? 'play' : 'pause', args.playing ? 'play' : 'pause');
         return { domain: 'media_player', service: args.playing ? 'media_play' : 'media_pause',
             text: (args.playing ? 'Playing ' : 'Paused ') + entities.nameOf(entity) + '.' };
     },
 
     next_track: function(entity) {
         requireDomain(entity, ['media_player'], 'skip');
+        requireFeature(entity, 'next_track', 'skip to the next track');
         return { domain: 'media_player', service: 'media_next_track', text: 'Next track.' };
     },
 
     previous_track: function(entity) {
         requireDomain(entity, ['media_player'], 'skip back');
+        requireFeature(entity, 'previous_track', 'go back a track');
         return { domain: 'media_player', service: 'media_previous_track', text: 'Previous track.' };
     },
 
     set_volume: function(entity, args) {
         requireDomain(entity, ['media_player'], 'change volume');
+        requireFeature(entity, 'volume_set', 'set its volume');
         var percent = percentArg(args, 'percent');
         return { domain: 'media_player', service: 'volume_set', data: { volume_level: percent / 100 },
             text: 'Volume ' + percent + '%.' };
@@ -438,7 +496,7 @@ function askAssistant(conn, opts, args) {
         return {
             text: speech || (response.response_type === 'action_done' ? 'Done.' : 'The assistant gave no answer.'),
             // Whatever it did could have changed anything shared
-            refreshed: ['home/entity'].concat(entities.ITEMS.map(function(item) { return 'home/' + item; }))
+            refreshed: entities.ITEMS.map(function(item) { return 'home/' + item; })
         };
     });
 }

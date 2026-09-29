@@ -104,6 +104,10 @@ function request(conn, method, path, body) {
         if (response.status === 400) {
             throw new PluginError('INVALID_ARGS', 'Home Assistant did not accept that');
         }
+        // A service that fails answers 500; the server itself is fine
+        if (response.status === 500 && method === 'POST') {
+            throw new PluginError('UNKNOWN', 'Home Assistant could not do that');
+        }
         if (!response.ok) {
             throw new PluginError('PLUGIN_UNAVAILABLE', 'Home Assistant answered ' + response.status);
         }
