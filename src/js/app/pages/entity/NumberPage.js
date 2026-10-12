@@ -39,7 +39,7 @@ function getNumberData(updatedEntity) {
 
 function showNumberEntity(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id],
+    let entity = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!entity) {
@@ -50,10 +50,6 @@ function showNumberEntity(entity_id) {
 
     let numberMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: entity.attributes.friendly_name || entity_id
         }]
@@ -100,13 +96,27 @@ function showNumberEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as a
+    // second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     numberMenu.on('show', function() {
-        entity = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
         updateNumberMenuItems(entity);
 
         // Only the status row's time suffix changes on a tick
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
-            let currentEntity = appState.ha_state_dict[entity_id];
+            let currentEntity = appState.getEntity(entity_id);
             if (currentEntity) {
                 numberMenu.item(0, 0, buildStatusItem(currentEntity));
             }
@@ -127,15 +137,7 @@ function showNumberEntity(entity_id) {
         });
     });
 
-    numberMenu.on('hide', function() {
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    numberMenu.on('hide', releaseUpdates);
 
     numberMenu.show();
 }
@@ -146,7 +148,7 @@ function showNumberEntity(entity_id) {
 function showValueEditor(entity_id) {
     var appState = AppState.getInstance();
     var domain = entity_id.split('.')[0];
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message(`showValueEditor: entity ${entity_id} not found in state dict`);
         return;

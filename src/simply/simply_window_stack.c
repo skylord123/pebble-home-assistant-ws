@@ -115,7 +115,16 @@ static void show_window_sdk_3(SimplyWindowStack *self, SimplyWindow *window, boo
 
   window_stack_push(window->window, animated);
 
-  if (IF_APLITE_ELSE(true, animated)) {
+  // Only a JS window is replaced. The native screens take themselves down
+  // when covered, and removing the system dictation window out from under a
+  // session can end it without ever calling back.
+  bool prev_is_ours = false;
+  for (int i = 0; i < WINDOW_TYPE_COUNT; i++) {
+    if (prev_window && prev_window == self->simply->windows[i]->window) {
+      prev_is_ours = true;
+    }
+  }
+  if (prev_is_ours && IF_APLITE_ELSE(true, animated)) {
     window_stack_remove(prev_window, animated);
   }
 }

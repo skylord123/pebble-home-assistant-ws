@@ -74,7 +74,10 @@ var RegistryService = {
         // or linked to a device without an area
         for (var entity_id in appState.entity_registry_cache) {
             var entity = appState.entity_registry_cache[entity_id];
-            if (!entity.area_id || noAreaDevices.has(entity.device_id)) {
+            // An entity's own area overrides its device's
+            if (entity.area_id
+                    ? false
+                    : (!entity.device_id || noAreaDevices.has(entity.device_id))) {
                 results[entity_id] = entity;
             }
         }
@@ -172,10 +175,16 @@ var RegistryService = {
             floors.push(appState.floor_registry_cache[floor_id]);
         }
 
-        // Sort by level if available, otherwise by name
+        // Sort by level if available, otherwise by name. Level is optional and
+        // comes back null when unset, which subtracted as if it were 0.
         floors.sort(function(a, b) {
-            if (a.level !== undefined && b.level !== undefined) {
+            var aLevel = typeof a.level === 'number';
+            var bLevel = typeof b.level === 'number';
+            if (aLevel && bLevel && a.level !== b.level) {
                 return a.level - b.level;
+            }
+            if (aLevel !== bLevel) {
+                return aLevel ? -1 : 1;
             }
             if (a.sortOrder !== undefined && b.sortOrder !== undefined) {
                 return a.sortOrder - b.sortOrder;

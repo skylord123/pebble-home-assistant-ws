@@ -1,5 +1,7 @@
 #include "simply_res.h"
 
+#include "simply_window.h"
+
 #include "util/color.h"
 #include "util/graphics.h"
 #include "util/memory.h"
@@ -18,6 +20,9 @@ static void destroy_image(SimplyRes *self, SimplyImage *image) {
   }
 
   list1_remove(&self->images, &image->node);
+  if (self->simply) {
+    simply_window_forget_image(self->simply, image->bitmap);
+  }
   gbitmap_destroy(image->bitmap);
   free(image->palette);
   free(image);
@@ -84,6 +89,9 @@ static void setup_image(SimplyImage *image) {
 
   GColor8 *palette = gbitmap_get_palette(image->bitmap);
   GColor8 *palette_copy = malloc0(2 * sizeof(GColor8));
+  if (!palette_copy) {
+    return;
+  }
   memcpy(palette_copy, palette, 2 * sizeof(GColor8));
   gbitmap_set_palette(image->bitmap, palette_copy, false);
   image->palette = palette_copy;
@@ -192,6 +200,16 @@ SimplyImage *simply_res_add_image(SimplyRes *self, uint32_t id, int16_t width, i
     destroy_image(self, image);
   }
 
+  // A failed decode is taken for a full heap and empties the cache, so data
+  // that can never decode (a placeholder, or something that is not a PNG)
+  // must not get that far
+  static const uint8_t s_png_signature[] = { 0x89, 'P', 'N', 'G' };
+  if (!pixels || IF_SDK_3_ELSE(pixels_length < sizeof(s_png_signature) ||
+                               memcmp(pixels, s_png_signature, sizeof(s_png_signature)),
+                               !pixels_length)) {
+    return NULL;
+  }
+
   CreateDataContext context = {
     .size = GSize(width, height),
     .data_length = pixels_length,
@@ -238,6 +256,7 @@ GFont simply_res_add_custom_font(SimplyRes *self, uint32_t id) {
 
   ResHandle handle = resource_get_handle(id);
   if (!handle) {
+    free(font);
     return NULL;
   }
 
@@ -281,9 +300,9 @@ void simply_res_clear(SimplyRes *self) {
   }
 }
 
-SimplyRes *simply_res_create() {
+SimplyRes *simply_res_create(Simply *simply) {
   SimplyRes *self = malloc(sizeof(*self));
-  *self = (SimplyRes) { .images = NULL };
+  *self = (SimplyRes) { .simply = simply };
 
   while (resource_get_handle(self->num_bundled_res + 1)) {
     ++self->num_bundled_res;
@@ -293,6 +312,8 @@ SimplyRes *simply_res_create() {
 }
 
 void simply_res_destroy(SimplyRes *self) {
+  // The windows are already gone at exit
+  self->simply = NULL;
   simply_res_clear(self);
   free(self);
 }

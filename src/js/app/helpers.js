@@ -149,6 +149,20 @@ function getNextHumanDiffChangeMs(lastChanged) {
 }
 
 /**
+ * Entity ids from a set of entity registry entries, leaving out the ones HA's
+ * own area and label views leave out: hidden, disabled, and config or
+ * diagnostic entities
+ * @param {Object} entries - Registry entries keyed by entity_id
+ * @returns {Array} Entity IDs
+ */
+function shownRegistryEntityIds(entries) {
+    return Object.keys(entries || {}).filter(function(entity_id) {
+        var entry = entries[entity_id];
+        return !entry.hidden_by && !entry.disabled_by && !entry.entity_category;
+    });
+}
+
+/**
  * Helper function to determine if we should show domain menu based on settings
  * @param {Array} entities - Array of entity IDs
  * @param {string} menuSetting - 'yes', 'no', or 'conditional'
@@ -159,8 +173,12 @@ function getNextHumanDiffChangeMs(lastChanged) {
  */
 function shouldShowDomainMenu(entities, menuSetting, options) {
     options = options || {};
-    var minEntities = options.minEntities || 10;
-    var minDomains = options.minDomains || 2;
+    // 0 is what the config page saves for a condition that is switched off,
+    // so only a missing value falls back to the default
+    var minEntities = parseInt(options.minEntities, 10);
+    var minDomains = parseInt(options.minDomains, 10);
+    if (isNaN(minEntities)) minEntities = 10;
+    if (isNaN(minDomains)) minDomains = 2;
 
     var Platform = require('platform');
 
@@ -203,20 +221,36 @@ function shouldShowDomainMenu(entities, menuSetting, options) {
 }
 
 /**
- * Log a message if debug mode is enabled
+ * Log a message. It is always kept in the log the settings page can fetch;
+ * debug mode only decides whether it also goes to the console.
  * @param {string} msg - Message to log
  * @param {*} extra - Optional extra data to log
  */
 function log_message(msg, extra) {
     var Constants = require('app/Constants');
-    if (!Constants.debugMode) return;
+    var LogBuffer = require('app/LogBuffer');
+    var line = '[App] ' + msg;
 
     if (extra) {
-        console.log('[App] ' + msg, extra);
-        return;
+        var extraText;
+        try {
+            extraText = typeof extra === 'string' ? extra : JSON.stringify(extra);
+        } catch (e) {
+            extraText = String(extra);
+        }
+        LogBuffer.record(line + ' ' + extraText);
+    } else {
+        LogBuffer.record(line);
     }
 
-    console.log('[App] ' + msg);
+    if (!Constants.debugMode) return;
+
+    // Straight to the console: the line above has already been recorded
+    if (extra) {
+        LogBuffer.console(line, extra);
+        return;
+    }
+    LogBuffer.console(line);
 }
 
 function pad2(n) {
@@ -291,5 +325,6 @@ module.exports = {
     humanDiff: humanDiff,
     getNextHumanDiffChangeMs: getNextHumanDiffChangeMs,
     shouldShowDomainMenu: shouldShowDomainMenu,
+    shownRegistryEntityIds: shownRegistryEntityIds,
     log_message: log_message
 };

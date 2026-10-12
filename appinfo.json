@@ -3,7 +3,18 @@
   "capabilities": [
     "configurable"
   ],
+  "companionApp": {
+    "android": {
+      "apps": [
+        {
+          "package": "tech.skylar.pebbleha"
+        }
+      ],
+      "required": false
+    }
+  },
   "companyName": "skylar.tech",
+  "configPage": "config.html",
   "longName": "Home Assistant WS",
   "resources": {
     "media": [
@@ -203,7 +214,7 @@
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
-  "versionLabel": "3.0",
+  "versionLabel": "4.0",
   "watchapp": {
     "hiddenApp": false,
     "watchface": false

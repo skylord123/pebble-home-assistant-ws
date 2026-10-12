@@ -74,5 +74,10 @@ enum Command {
   CommandNumberSelectorResult,
   CommandNumberSelectorClosedEvent,
   CommandNumberSelectorChangeEvent,
+  CommandAssistShow,
+  CommandAssistHide,
+  CommandAssistMessage,
+  CommandAssistTranscript,
+  CommandAssistAction,
   NumCommands,
 };

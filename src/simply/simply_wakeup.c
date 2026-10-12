@@ -82,6 +82,7 @@ static void wakeup_handler(WakeupId wakeup_id, int32_t cookie) {
 static void wakeup_set_timer_callback(void *data) {
   WakeupSetContext *context = data;
   send_wakeup_signal(CommandWakeupSetResult, context->id, context->cookie);
+  free(context);
 }
 
 static void process_launch_reason() {

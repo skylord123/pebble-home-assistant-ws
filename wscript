@@ -34,6 +34,7 @@ def configure(ctx):
 
 def build(ctx):
     ctx.load('pebble_sdk')
+    ctx.load('bundle_config_page', tooldir='waftools')
 
     binaries = []
     js_target = ctx.concat_javascript(js_path='src/js')
@@ -52,6 +53,9 @@ def build(ctx):
         ctx.pbl_bundle(elf=elfs['app_elf'],
                        worker_elf=elfs['worker_elf'] if 'worker_elf' in elfs else None,
                        js=js_target)
+
+    # The settings page goes into the pbw once it has been zipped
+    ctx.add_post_fun(lambda bld: bld.bundle_config_page())
 
 
 @conf

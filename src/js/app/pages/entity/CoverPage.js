@@ -15,19 +15,20 @@ var Vibe = require('ui/vibe');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
-// Menu selection tracking
-var menuSelections = {
-    coverMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showCoverEntity(entity_id) {
     var appState = AppState.getInstance();
-    let cover = appState.ha_state_dict[entity_id],
+    let cover = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!cover) {
@@ -123,10 +124,6 @@ function showCoverEntity(entity_id) {
     // Create the cover menu
     let coverMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: coverData.friendly_name
         }]
@@ -308,11 +305,14 @@ function showCoverEntity(entity_id) {
         let returnToIndex = selectedIndex;
         let current_value = opts.current;
 
+        // Reached from a menu, so it wears the menu's colours
+        let colors = Theme.menuColors();
+
         let sliderWindow = new UI.Window({
-            backgroundColor: 'white',
+            backgroundColor: colors.backgroundColor,
             status: {
-                color: 'black',
-                backgroundColor: 'white',
+                color: colors.textColor,
+                backgroundColor: colors.backgroundColor,
                 seperator: "dotted"
             }
         });
@@ -320,7 +320,7 @@ function showCoverEntity(entity_id) {
         // Add title
         let title = new UI.Text({
             text: opts.title,
-            color: "black",
+            color: colors.textColor,
             font: "gothic_24_bold",
             position: new Vector(0, 0),
             size: new Vector(Feature.resolution().x, 30),
@@ -331,7 +331,7 @@ function showCoverEntity(entity_id) {
         // Add current value text
         let valueText = new UI.Text({
             text: `${current_value}%`,
-            color: "black",
+            color: colors.textColor,
             font: "gothic_24",
             position: new Vector(0, 35),
             size: new Vector(Feature.resolution().x, 30),
@@ -343,7 +343,9 @@ function showCoverEntity(entity_id) {
         let sliderBg = new UI.Rect({
             position: new Vector(20, 70),
             size: new Vector(Feature.resolution().x - 40, 20),
-            backgroundColor: 'lightGray'
+            backgroundColor: 'clear',
+            borderColor: colors.textColor,
+            borderWidth: 1
         });
 
         // Add slider foreground (progress)
@@ -351,13 +353,14 @@ function showCoverEntity(entity_id) {
         let sliderFg = new UI.Rect({
             position: new Vector(20, 70),
             size: new Vector(sliderWidth, 20),
-            backgroundColor: 'black'
+            backgroundColor: colors.textColor,
+            borderColor: 'clear'
         });
 
         // Add instructions
         let instructions = new UI.Text({
             text: "UP/DOWN: Adjust | SELECT: Set",
-            color: "black",
+            color: colors.textColor,
             font: "gothic_14",
             position: new Vector(0, 100),
             size: new Vector(Feature.resolution().x, 20),
@@ -405,34 +408,33 @@ function showCoverEntity(entity_id) {
             sliderFg.size(new Vector(sliderWidth, 20));
         }
 
-        // Subscribe to entity updates
-        let slider_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": opts.entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Cover entity update for ${opts.title} slider ${opts.entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedCover = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[opts.entity_id] = updatedCover;
+        let slider_subscription_msg_id = null;
+        function releaseSliderUpdates() {
+            if (slider_subscription_msg_id) {
+                appState.haws.unsubscribe(slider_subscription_msg_id);
+                slider_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        sliderWindow.on('show', function() {
+            releaseSliderUpdates();
+            slider_subscription_msg_id = EntityService.subscribeEntity(opts.entity_id, function(updatedCover, isSnapshot) {
+                // The slider opened on this same state; only follow changes, so
+                // presses made before the snapshot lands are not undone
+                if (isSnapshot) { return; }
+                helpers.log_message(`Cover entity update for ${opts.title} slider ${opts.entity_id}`);
                 let value = opts.getCurrent(getCoverData(updatedCover));
                 if (value !== null) {
                     current_value = value;
                     updateSliderUI();
                 }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${opts.entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         sliderWindow.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (slider_subscription_msg_id) {
-                appState.haws.unsubscribe(slider_subscription_msg_id);
-            }
+            releaseSliderUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -448,7 +450,7 @@ function showCoverEntity(entity_id) {
     coverMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.coverMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Cover menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {
@@ -456,10 +458,25 @@ function showCoverEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as
+    // a second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     // Set up event handlers for the cover menu
     coverMenu.on('show', function() {
+        releaseUpdates();
+
         // Get the latest cover data
-        cover = appState.ha_state_dict[entity_id];
+        cover = appState.getEntity(entity_id) || cover;
         coverData = getCoverData(cover);
         features = supported_features(cover);
 
@@ -469,7 +486,7 @@ function showCoverEntity(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current cover and update the menu
-            let currentCover = appState.ha_state_dict[entity_id];
+            let currentCover = appState.getEntity(entity_id);
             if (currentCover) {
                 updateCoverMenuItems(currentCover);
             }
@@ -477,36 +494,23 @@ function showCoverEntity(entity_id) {
         relativeTimeUpdater.register(entity_id, cover.last_changed);
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedCover) {
             helpers.log_message(`Cover entity update for ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedCover = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedCover;
+            // Update the menu items directly without redrawing the entire menu
+            updateCoverMenuItems(updatedCover);
 
-                // Update the menu items directly without redrawing the entire menu
-                updateCoverMenuItems(updatedCover);
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedCover.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedCover.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         // Restore the previously selected index
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.coverMenu > 0 && menuSelections.coverMenu < coverMenu.items(0).length) {
-                coverMenu.selection(0, menuSelections.coverMenu);
-                selectedIndex = menuSelections.coverMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < coverMenu.items(0).length) {
+                coverMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < coverMenu.items(0).length) {
@@ -515,18 +519,7 @@ function showCoverEntity(entity_id) {
         }, 100);
     });
 
-    coverMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    coverMenu.on('hide', releaseUpdates);
 
     // Show the menu
     coverMenu.show();

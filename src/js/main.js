@@ -6,6 +6,10 @@
  * By default, this will run app.js
  */
 
+// Everything written to the console from here on is kept for the settings
+// page's log viewer, so this goes before anything else can log
+require('app/LogBuffer').install();
+
 var safe = require('safe');
 var util2 = require('util2');
 require('vendor/event-target-polyfill');

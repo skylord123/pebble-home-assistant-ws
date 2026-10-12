@@ -139,6 +139,9 @@ void simply_ui_set_style(SimplyUi *self, int style_index) {
     fonts_unload_custom_font(self->ui_layer.custom_body_font);
     self->ui_layer.custom_body_font = NULL;
   }
+  if (style_index < 0 || style_index >= StyleIndexCount) {
+    style_index = StyleIndex_Default;
+  }
   self->ui_layer.style = &STYLES[style_index];
   if (self->ui_layer.style->custom_body_font_id) {
     self->ui_layer.custom_body_font = fonts_load_custom_font(
@@ -213,9 +216,10 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
   bool has_subtitle = is_string(subtitle->text);
   bool has_body = is_string(body->text);
 
-  GSize title_size, subtitle_size;
+  // An icon or image can be set without the text beside it
+  GSize title_size = GSizeZero, subtitle_size = GSizeZero;
   GPoint title_pos, subtitle_pos, image_pos = GPointZero;
-  GRect body_rect;
+  GRect body_rect = { .size = text_frame.size };
 
   SimplyImage *title_icon = simply_res_get_image(
       self->window.simply->res, self->ui_layer.imagefields[UiTitleIcon]);
@@ -223,6 +227,15 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
       self->window.simply->res, self->ui_layer.imagefields[UiSubtitleIcon]);
   SimplyImage *body_image = simply_res_get_image(
       self->window.simply->res, self->ui_layer.imagefields[UiBodyImage]);
+  // Loading one image can evict another fetched just before it. Loading
+  // schedules another render, which draws whatever is missing this time.
+  List1Node * const images = self->window.simply->res->images;
+  if (title_icon && list1_index(images, &title_icon->node) < 0) {
+    title_icon = NULL;
+  }
+  if (subtitle_icon && list1_index(images, &subtitle_icon->node) < 0) {
+    subtitle_icon = NULL;
+  }
 
   GRect title_icon_bounds =
       title_icon ? gbitmap_get_bounds(title_icon->bitmap) : GRectZero;
@@ -323,7 +336,9 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
     GRect icon_frame = title_icon_bounds;
     icon_frame.origin.x =
         PBL_IF_ROUND_ELSE((frame.size.w - title_icon_bounds.size.w) / 2, margin_x);
-    PBL_IF_RECT_ELSE(icon_frame.size.h = title_size.h, NOOP);
+    if (has_title) {
+      PBL_IF_RECT_ELSE(icon_frame.size.h = title_size.h, NOOP);
+    }
     graphics_context_set_alpha_blended(ctx, true);
     graphics_draw_bitmap_centered(ctx, title_icon->bitmap, icon_frame);
   }
@@ -337,7 +352,9 @@ static void layer_update_callback(Layer *layer, GContext *ctx) {
     GRect subicon_frame = subtitle_icon_bounds;
     subicon_frame.origin.x =
         PBL_IF_ROUND_ELSE((frame.size.w - subtitle_icon_bounds.size.w) / 2, margin_x);
-    PBL_IF_RECT_ELSE(subicon_frame.size.h = subtitle_size.h, NOOP);
+    if (has_subtitle) {
+      PBL_IF_RECT_ELSE(subicon_frame.size.h = subtitle_size.h, NOOP);
+    }
     graphics_context_set_alpha_blended(ctx, true);
     graphics_draw_bitmap_centered(ctx, subtitle_icon->bitmap, subicon_frame);
   }
@@ -493,8 +510,10 @@ void simply_ui_destroy(SimplyUi *self) {
 
   simply_ui_clear(self, ~0);
 
-  fonts_unload_custom_font(self->ui_layer.custom_body_font);
-  self->ui_layer.custom_body_font = NULL;
+  if (self->ui_layer.custom_body_font) {
+    fonts_unload_custom_font(self->ui_layer.custom_body_font);
+    self->ui_layer.custom_body_font = NULL;
+  }
 
   simply_window_deinit(&self->window);
 

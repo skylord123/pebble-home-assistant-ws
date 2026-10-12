@@ -2,6 +2,10 @@
 
 #include "simply_window.h"
 
+// For SIMPLY_HAS_TOUCH, which decides whether the touch entry points below
+// exist at all
+#include "simply_touch.h"
+
 #include "simply_msg.h"
 
 #include "simply.h"
@@ -46,10 +50,30 @@ struct SimplyMenu {
   SimplyWindow window;
   SimplyMenuLayer menu_layer;
   AppTimer *spinner_timer;
+  //! Spinner frames since placeholders were last requested from the phone
+  uint8_t spinner_ticks;
   AppTimer *reload_timer;  // Timer for debounced reloads
 #if !defined(PBL_PLATFORM_APLITE)
   AppTimer *scroll_timer;
   MenuIndex scroll_index;
+#ifdef SIMPLY_HAS_TOUCH
+  //! Whether scroll_index was put there by a finger rather than by the
+  //! selection. A drag leaves a row sitting in the middle of the screen
+  //! without selecting it, and that row is the one worth marqueeing, so it
+  //! holds the marquee until the selection moves again.
+  bool scroll_index_pinned;
+  //! The scroll position cue drawn over the list while a finger moves it, on
+  //! its own layer above the menu. See simply_menu_touch_scrolled.
+  Layer *scrollbar_layer;
+  AppTimer *scrollbar_timer;
+  //! The offset the cue was last drawn at, so a fling still moving the list
+  //! after the finger has gone keeps it up
+  int16_t scrollbar_offset_y;
+  bool scrollbar_visible;
+  //! A release threw the list and it is still travelling; only then does the
+  //! list moving on its own keep the cue up
+  bool scrollbar_coasting;
+#endif
   int16_t scroll_offset;
   int16_t max_scroll_offset;
   bool scrolling_active;
@@ -127,6 +151,27 @@ bool simply_menu_handle_long_press(SimplyMenu *self, int16_t x, int16_t y);
 //! Touch counts as user input for the menu's idle tracking (marquee scroll,
 //! inactivity timeout).
 void simply_menu_touch_note_input(SimplyMenu *self);
+
+#ifdef SIMPLY_HAS_TOUCH
+
+//! The scroll offsets a finger may drag this menu between. Returns false when
+//! the menu has no opinion and the ordinary content bounds apply, which is
+//! every rectangular platform.
+bool simply_menu_scroll_limits(SimplyMenu *self, int *min_y, int *max_y);
+
+//! Marquee whichever row the middle of the screen ends up over once a drag has
+//! come to rest at `scroll_offset_y`, so a long title can still be read without
+//! the row having to be selected first. On the watches with no digitizer the
+//! marquee simply follows the selection, since nothing else can move the list.
+void simply_menu_marquee_at(SimplyMenu *self, int scroll_offset_y);
+
+//! A finger has moved the list: show the scroll position for a moment, the
+//! way the firmware's own menus do. Buttons step the selection and never
+//! call this. `coasting` says the finger has gone but threw the list, so the
+//! cue stays up until the list comes to rest.
+void simply_menu_touch_scrolled(SimplyMenu *self, bool coasting);
+
+#endif
 
 
 bool simply_menu_handle_packet(Simply *simply, Packet *packet);

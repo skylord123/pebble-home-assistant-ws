@@ -157,32 +157,6 @@ class BasePage {
     }
 
     /**
-     * Subscribe to HAWS trigger events for a single entity
-     * @param {string} entityId - Entity ID to subscribe to
-     * @param {Function} callback - Callback for updates
-     */
-    subscribeTrigger(entityId, callback) {
-        if (this.subscriptionId) {
-            this.unsubscribe();
-        }
-
-        var self = this;
-        this.subscriptionId = this.appState.haws.subscribeTrigger(
-            {
-                "type": "subscribe_trigger",
-                "trigger": {
-                    "platform": "state",
-                    "entity_id": entityId
-                }
-            },
-            callback,
-            function(error) {
-                helpers.log_message('Subscribe trigger error: ' + JSON.stringify(error));
-            }
-        );
-    }
-
-    /**
      * Unsubscribe from HAWS updates
      */
     unsubscribe() {
@@ -198,11 +172,7 @@ class BasePage {
      */
     getDefaultMenuOptions() {
         return {
-            status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black'
+            status: false
         };
     }
 

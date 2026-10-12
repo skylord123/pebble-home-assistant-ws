@@ -117,17 +117,13 @@ class BaseEntityPage extends BasePage {
     subscribeToEntity(updateCallback) {
         var self = this;
 
-        this.subscribeTrigger(this.entityId, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger) {
-                var toState = data.event.variables.trigger.to_state;
-                if (toState) {
-                    // Update the entity in state dict
-                    self.appState.setEntity(self.entityId, toState);
-                    self.entity = toState;
+        this.subscribe([this.entityId], function(data) {
+            var updated = EntityService.applyCompressedEvent(self.entityId, data, self.entity);
+            if (updated) {
+                self.entity = updated;
 
-                    if (typeof updateCallback === 'function') {
-                        updateCallback(toState);
-                    }
+                if (typeof updateCallback === 'function') {
+                    updateCallback(updated);
                 }
             }
         });

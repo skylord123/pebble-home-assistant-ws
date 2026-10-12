@@ -77,7 +77,13 @@ struct.types.cstring.get = function(offset) {
     chars[j] = String.fromCharCode(buffer.getUint8(i));
   }
   this._advance = chars.length + 1;
-  return decodeURIComponent(escape(chars.join('')));
+  var raw = chars.join('');
+  // A string cut mid-character on the watch is not valid UTF-8
+  try {
+    return decodeURIComponent(escape(raw));
+  } catch (e) {
+    return raw;
+  }
 };
 
 struct.types.cstring.set = function(offset, value) {
@@ -85,7 +91,7 @@ struct.types.cstring.set = function(offset, value) {
   this._grow(offset + value.length + 1);
   var i = offset;
   var buffer = this._view;
-  for (var j = 0, jj = value.length; j < jj && value[i] !== '\0'; ++i, ++j) {
+  for (var j = 0, jj = value.length; j < jj && value[j] !== '\0'; ++i, ++j) {
     buffer.setUint8(i, value.charCodeAt(j));
   }
   buffer.setUint8(i, 0);

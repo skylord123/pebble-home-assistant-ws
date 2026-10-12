@@ -25,7 +25,7 @@ function showEntityMenu(entity_id) {
     var appState = AppState.getInstance();
     var favoriteEntityStore = appState.favoriteEntityStore;
     var pinnedEntityStore = appState.pinnedEntityStore;
-    let entity = appState.ha_state_dict[entity_id];
+    let entity = appState.getEntity(entity_id);
     let relativeTimeUpdater = null;
     if(!entity){
         throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
@@ -49,13 +49,8 @@ function showEntityMenu(entity_id) {
         return EntityService.getStateText(entity) + ' > ' + timeStr;
     }
 
-    // Set Menu colors
     let showEntityMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'white',
-        textColor: 'black',
-        highlightBackgroundColor: 'black',
-        highlightTextColor: 'white',
         sections: [
             {
                 title: entity.attributes.friendly_name ? entity.attributes.friendly_name : entity.entity_id
@@ -161,66 +156,40 @@ function showEntityMenu(entity_id) {
         domain === "humidifier"
     )
     {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Toggle',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'toggle',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Turn On',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'turn_on',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Turn Off',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'turn_off',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
+        // Fans register turn_on and turn_off behind FanEntityFeature
+        // TURN_ON (32) and TURN_OFF (16), and toggle behind either
+        let fanFeatures = entity.attributes.supported_features || 0;
+        let canTurnOn = domain !== "fan" || !!(fanFeatures & 32);
+        let canTurnOff = domain !== "fan" || !!(fanFeatures & 16);
+        let onOffServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function(){
+                    appState.haws.callService(
+                        domain,
+                        service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            Vibe.vibrate('short');
+                            helpers.log_message(JSON.stringify(data));
+                        },
+                        function(error) {
+                            Vibe.vibrate('double');
+                            helpers.log_message('no response');
+                        });
+                }
+            };
+        };
+        if (canTurnOn || canTurnOff) {
+            showEntityMenu.item(1, servicesCount++, onOffServiceItem('Toggle', 'toggle'));
+        }
+        if (canTurnOn) {
+            showEntityMenu.item(1, servicesCount++, onOffServiceItem('Turn On', 'turn_on'));
+        }
+        if (canTurnOff) {
+            showEntityMenu.item(1, servicesCount++, onOffServiceItem('Turn Off', 'turn_off'));
+        }
     }
 
     if(domain === "cover") {
@@ -267,45 +236,23 @@ function showEntityMenu(entity_id) {
     }
 
     if(domain === "lock") {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Lock',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'lock',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Unlock',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'unlock',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
+        // LockPage.performAction prompts for a code when the lock has one
+        // (lazy require: LockPage imports this module at top level)
+        let LockPage = require('app/pages/entity/LockPage');
+        let lockServiceItem = function(title, service) {
+            return {
+                title: title,
+                on_click: function() {
+                    LockPage.performAction(entity.entity_id, service);
+                }
+            };
+        };
+        showEntityMenu.item(1, servicesCount++, lockServiceItem('Lock', 'lock'));
+        showEntityMenu.item(1, servicesCount++, lockServiceItem('Unlock', 'unlock'));
+        // LockEntityFeature.OPEN
+        if ((entity.attributes.supported_features || 0) & 1) {
+            showEntityMenu.item(1, servicesCount++, lockServiceItem('Open', 'open'));
+        }
     }
 
     if(domain === "alarm_control_panel") {
@@ -323,7 +270,9 @@ function showEntityMenu(entity_id) {
         };
         let alarmFeatures = entity.attributes.supported_features || 0;
 
-        showEntityMenu.item(1, servicesCount++, alarmServiceItem('Disarm', 'alarm_disarm'));
+        if (entity.state !== 'disarmed') {
+            showEntityMenu.item(1, servicesCount++, alarmServiceItem('Disarm', 'alarm_disarm'));
+        }
         AlarmPanelPage.ARM_MODES.forEach(function(mode) {
             if (alarmFeatures & mode.feature) {
                 showEntityMenu.item(1, servicesCount++, alarmServiceItem(mode.title, mode.service));
@@ -444,27 +393,6 @@ function showEntityMenu(entity_id) {
                     });
             }
         });
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Apply',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'apply',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        Vibe.vibrate('short');
-                        helpers.log_message(JSON.stringify(data));
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
     }
 
     if(
@@ -558,149 +486,38 @@ function showEntityMenu(entity_id) {
         });
     }
 
-    if(
-        domain === "automation" ||
-        domain === "script" ||
-        domain === "button" ||
-        domain === "input_boolean"
-    ) {
-        showEntityMenu.item(1, servicesCount++, { //menuIndex
-            title: 'Reload',
-            on_click: function(){
-                appState.haws.callService(
-                    domain,
-                    'reload',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        // {"id":4,"type":"result","success":true,"result":{"context":{"id":"01GAJKZ6HN5AHKZN06B5D706K6","parent_id":null,"user_id":"b2a77a8a08fc45f59f43a8218dc05121"}}}
-                        // Success!
-                        helpers.log_message(JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        // Failure!
-                        Vibe.vibrate('double');
-                        helpers.log_message('no response');
-                    });
-            }
-        });
-    }
-
     if(domain === "vacuum") {
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Start',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.start for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'start',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.start success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.start failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Pause',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.pause for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'pause',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.pause success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.pause failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Stop',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.stop for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'stop',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.stop success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.stop failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Return to Base',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.return_to_base for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'return_to_base',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.return_to_base success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.return_to_base failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Locate',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.locate for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'locate',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.locate success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.locate failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
-        });
-        showEntityMenu.item(1, servicesCount++, {
-            title: 'Clean Spot',
-            on_click: function(){
-                helpers.log_message('Calling vacuum.clean_spot for ' + entity.entity_id);
-                appState.haws.callService(
-                    'vacuum',
-                    'clean_spot',
-                    {},
-                    {entity_id: entity.entity_id},
-                    function(data) {
-                        helpers.log_message('vacuum.clean_spot success: ' + JSON.stringify(data));
-                        Vibe.vibrate('short');
-                    },
-                    function(error) {
-                        helpers.log_message('vacuum.clean_spot failed: ' + JSON.stringify(error));
-                        Vibe.vibrate('double');
-                    });
-            }
+        // Home Assistant registers each vacuum service behind its own
+        // VacuumEntityFeature bit
+        let vacuumFeatures = entity.attributes.supported_features || 0;
+        [
+            { title: 'Start', service: 'start', feature: 8192 },
+            { title: 'Pause', service: 'pause', feature: 4 },
+            { title: 'Stop', service: 'stop', feature: 8 },
+            { title: 'Return to Base', service: 'return_to_base', feature: 16 },
+            { title: 'Locate', service: 'locate', feature: 512 },
+            { title: 'Clean Spot', service: 'clean_spot', feature: 1024 }
+        ].forEach(function(action) {
+            if (!(vacuumFeatures & action.feature)) { return; }
+            showEntityMenu.item(1, servicesCount++, {
+                title: action.title,
+                on_click: function(){
+                    helpers.log_message('Calling vacuum.' + action.service + ' for ' + entity.entity_id);
+                    appState.haws.callService(
+                        'vacuum',
+                        action.service,
+                        {},
+                        {entity_id: entity.entity_id},
+                        function(data) {
+                            helpers.log_message('vacuum.' + action.service + ' success: ' + JSON.stringify(data));
+                            Vibe.vibrate('short');
+                        },
+                        function(error) {
+                            helpers.log_message('vacuum.' + action.service + ' failed: ' + JSON.stringify(error));
+                            Vibe.vibrate('double');
+                        });
+                }
+            });
         });
     }
 
@@ -747,7 +564,7 @@ function showEntityMenu(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current entity and update the state field
-            let currentEntity = appState.ha_state_dict[entity_id];
+            let currentEntity = appState.getEntity(entity_id);
             if (currentEntity) {
                 showEntityMenu.item(0, stateIndex, {
                     title: 'State',
@@ -757,40 +574,27 @@ function showEntityMenu(entity_id) {
         });
         relativeTimeUpdater.register(entity_id, entity.last_changed);
 
-        msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity.entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedEntity = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedEntity;
+        msg_id = EntityService.subscribeEntity(entity.entity_id, function(updatedEntity) {
+            // Update state field with new state and relative time
+            showEntityMenu.item(0, stateIndex, {
+                title: 'State',
+                subtitle: getStateSubtitle(updatedEntity)
+            });
 
-                // Update state field with new state and relative time
-                showEntityMenu.item(0, stateIndex, {
-                    title: 'State',
-                    subtitle: getStateSubtitle(updatedEntity)
-                });
+            // Update last changed and last updated fields
+            showEntityMenu.item(0, stateIndex + 1, {
+                title: 'Last Changed',
+                subtitle: formatDateTime(updatedEntity.last_changed)
+            });
+            showEntityMenu.item(0, stateIndex + 2, {
+                title: 'Last Updated',
+                subtitle: formatDateTime(updatedEntity.last_updated)
+            });
 
-                // Update last changed and last updated fields
-                showEntityMenu.item(0, stateIndex + 1, {
-                    title: 'Last Changed',
-                    subtitle: formatDateTime(updatedEntity.last_changed)
-                });
-                showEntityMenu.item(0, stateIndex + 2, {
-                    title: 'Last Updated',
-                    subtitle: formatDateTime(updatedEntity.last_updated)
-                });
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedEntity.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedEntity.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity.entity_id}]: ` + JSON.stringify(error));
         });
     });
     // 'hide', not 'close': the runtime has no close event, so what used to be
@@ -803,7 +607,7 @@ function showEntityMenu(entity_id) {
 
 function showEntityAttributesMenu(entity_id) {
     var appState = AppState.getInstance();
-    let entity = appState.ha_state_dict[entity_id];
+    let entity = appState.getEntity(entity_id);
     if(!entity){
         throw new Error(`Entity ${entity_id} not found in appState.ha_state_dict`);
     }
@@ -811,10 +615,6 @@ function showEntityAttributesMenu(entity_id) {
     // Create a menu for the attributes
     let attributesMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'white',
-        textColor: 'black',
-        highlightBackgroundColor: 'black',
-        highlightTextColor: 'white',
         sections: [{
             title: 'Attributes'
         }]
@@ -830,7 +630,18 @@ function showEntityAttributesMenu(entity_id) {
 
     let msg_id = null;
 
+    function releaseUpdates() {
+        if (msg_id) {
+            appState.haws.unsubscribe(msg_id);
+            msg_id = null;
+        }
+    }
+
     attributesMenu.on('show', function() {
+        // A second 'show' can arrive without a 'hide' in between
+        releaseUpdates();
+        entity = appState.getEntity(entity_id) || entity;
+
         var arr = Object.getOwnPropertyNames(entity.attributes);
         helpers.log_message(`Showing attributes for ${entity.entity_id}: ${arr.length} attributes`);
 
@@ -844,40 +655,22 @@ function showEntityAttributesMenu(entity_id) {
         }
 
         // Subscribe to entity updates
-        msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedEntity = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedEntity;
-
-                // Update all attribute values
-                for (let i = 0; i < attributesMenu.items(0).length; i++) {
-                    const item = attributesMenu.item(0, i);
-                    if (item.attribute_name && updatedEntity.attributes[item.attribute_name] !== undefined) {
-                        attributesMenu.item(0, i, {
-                            title: item.attribute_name,
-                            subtitle: updatedEntity.attributes[item.attribute_name],
-                            attribute_name: item.attribute_name
-                        });
-                    }
+        msg_id = EntityService.subscribeEntity(entity_id, function(updatedEntity) {
+            // Update all attribute values
+            for (let i = 0; i < attributesMenu.items(0).length; i++) {
+                const item = attributesMenu.item(0, i);
+                if (item.attribute_name && updatedEntity.attributes[item.attribute_name] !== undefined) {
+                    attributesMenu.item(0, i, {
+                        title: item.attribute_name,
+                        subtitle: updatedEntity.attributes[item.attribute_name],
+                        attribute_name: item.attribute_name
+                    });
                 }
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
     });
 
-    attributesMenu.on('hide', function() {
-        // Unsubscribe from entity updates when menu is closed
-        if (msg_id) {
-            appState.haws.unsubscribe(msg_id);
-        }
-    });
+    attributesMenu.on('hide', releaseUpdates);
 
     attributesMenu.show();
 }

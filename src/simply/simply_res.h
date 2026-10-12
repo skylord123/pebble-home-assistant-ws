@@ -14,6 +14,7 @@
 typedef struct SimplyRes SimplyRes;
 
 struct SimplyRes {
+  Simply *simply;
   List1Node *images;
   List1Node *fonts;
   uint32_t num_bundled_res;
@@ -55,7 +56,7 @@ struct SimplyFont {
   GFont font;
 };
 
-SimplyRes *simply_res_create();
+SimplyRes *simply_res_create(Simply *simply);
 void simply_res_destroy(SimplyRes *self);
 void simply_res_clear(SimplyRes *self);
 

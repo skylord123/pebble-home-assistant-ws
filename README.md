@@ -55,6 +55,13 @@ After installation, you'll need to configure the app to connect to your Home Ass
    - **Voice Confirmation**: Enable/disable voice command confirmation
    - **Enable Voice**: Turn on/off voice assistant functionality
 
+On phone apps that can open the settings page from inside the watch app (the
+Core Devices Pebble app with plugins enabled), the page also has a **Connect**
+button that checks the URL and token against Home Assistant before saving them,
+and a **Find Entities** search for adding favorites and pinned entities. Other
+phone apps open the same page from GitHub Pages and save the classic way; see
+[config/README.md](config/README.md).
+
 ### Home Assistant Setup Requirements
 
 - Enable the [Conversation integration](https://www.home-assistant.io/integrations/conversation/) for voice control

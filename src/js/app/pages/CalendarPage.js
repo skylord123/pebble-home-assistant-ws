@@ -244,7 +244,7 @@ function eventLaunchCode(entity_id, event) {
  */
 function getCalendarFeatures(entity_id) {
     var appState = AppState.getInstance();
-    var entity = appState.ha_state_dict[entity_id];
+    var entity = appState.getEntity(entity_id);
     var sf = (entity && entity.attributes && entity.attributes.supported_features) || 0;
     return {
         create: !!(sf & 1),
@@ -344,10 +344,6 @@ function showCalendarList() {
 
     var calendarMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Calendars'
         }]
@@ -403,10 +399,6 @@ function showCalendarEvents(title, entityIds) {
 
     var eventsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: title + ' - updating ...'
         }]
@@ -422,10 +414,6 @@ function showCalendarEvents(title, entityIds) {
 
         var pickerMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Add to calendar'
             }]
@@ -454,6 +442,20 @@ function showCalendarEvents(title, entityIds) {
         pickerMenu.show();
     }
 
+    // Sections are written one by one, so a shorter list than last time has
+    // to drop the leftover days (holding events that may be gone) itself
+    var renderedSections = 1;
+    function dropSectionsFrom(count) {
+        if (renderedSections > count) {
+            var kept = [];
+            for (var s = 0; s < count; s++) {
+                kept.push(eventsMenu.section(s));
+            }
+            eventsMenu.sections(kept);
+        }
+        renderedSections = count;
+    }
+
     function renderEvents(events) {
         var firstDaySection = 0;
         if (createableIds.length) {
@@ -471,6 +473,7 @@ function showCalendarEvents(title, entityIds) {
                 title: 'No upcoming events',
                 subtitle: 'Next ' + EVENT_WINDOW_DAYS + ' days'
             }]);
+            dropSectionsFrom(firstDaySection + 1);
             return;
         }
 
@@ -516,6 +519,7 @@ function showCalendarEvents(title, entityIds) {
             eventsMenu.section(firstDaySection + i, { title: dayLabel(sections[i].day) });
             eventsMenu.items(firstDaySection + i, sections[i].items);
         }
+        dropSectionsFrom(firstDaySection + sections.length);
     }
 
     // The native menu keeps the previously shown menu's selected index (the
@@ -536,7 +540,7 @@ function showCalendarEvents(title, entityIds) {
 
         fetchEvents(entityIds, start, end, function(events) {
             renderEvents(events);
-            if (restoreSelection) {
+            if (restoreSelection && restoreSelection.sectionIndex < renderedSections) {
                 eventsMenu.selection(restoreSelection.sectionIndex, restoreSelection.itemIndex);
             } else if (!hasRendered) {
                 eventsMenu.selection(0, 0);
@@ -711,10 +715,6 @@ function confirmDeleteEvent(event, onDeleted) {
 
     var confirmMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Delete event?'
         }]
@@ -817,10 +817,6 @@ function showEventForm(event, detailWindow, calendarEntityId) {
 
     var editMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: isCreate ? 'New Event' : 'Edit Event'
         }]

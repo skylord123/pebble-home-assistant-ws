@@ -11,15 +11,24 @@ class HAWS {
         // separate flag a reconnect attempt can start a second socket while
         // the first is still negotiating
         this.connecting = false;
+        // Set on auth_ok. Home Assistant answers anything other than the auth
+        // message itself with auth_invalid, so commands wait for this, not
+        // for the socket to open.
+        this.authenticated = false;
         this.reconnectTimeout = null;
         this.selfDisconnect = false;
         this.ha_url = ha_url;
         this.token = token;
         this.ws = null;
         this._last_cmd_id = 0;
+        this._featuresId = null;
         this._commands = new Map();
         this._subscriptions = [];
-        this.reconnectInterval = 2500;
+        // Retries back off from the first delay to the cap, and start over
+        // once a connection authenticates
+        this.reconnectInterval = 1000;
+        this.maxReconnectInterval = 15000;
+        this._reconnectAttempts = 0;
         this.debug = debug || false;
         this.coalesce_messages = coalesce_messages || false;
 
@@ -88,6 +97,7 @@ class HAWS {
         let dead = this.ws;
         this.ws = null;
         this.connected = false;
+        this.authenticated = false;
         this.connecting = false;
         this.stopHeartbeat();
         this._resetConnectionState();
@@ -109,8 +119,9 @@ class HAWS {
         }
     }
 
+    // Usable for commands, which is later than the socket being open
     isConnected() {
-        return this.connected;
+        return this.authenticated;
     }
 
     /**
@@ -132,17 +143,35 @@ class HAWS {
     /**
      * Drop everything that only made sense on the socket that just died.
      *
-     * Command ids, pending callbacks and subscription ids are all scoped to a
-     * single connection: Home Assistant forgets every subscription when the
-     * socket drops, and the id counter starts again on the next one. Keeping
-     * the old ids around meant a fresh command could be handed an id that was
-     * still listed as a subscription, and _handleMessage would then swallow
-     * its result instead of calling back.
+     * Pending callbacks and subscription ids are scoped to a single
+     * connection: Home Assistant forgets every subscription when the socket
+     * drops. The id counter is not reset. Pages keep their subscription ids
+     * across a reconnect and unsubscribe them later, and an id reused on the
+     * new socket would cancel whatever now holds it.
+     *
+     * Commands still waiting on an answer are failed rather than forgotten,
+     * so their callers can stop waiting. Subscriptions are left alone: pages
+     * take new ones when the reconnect splash comes down.
      */
     _resetConnectionState() {
+        let pending = [];
+        this._commands.forEach((callback, id) => {
+            if (callback[2] || this._subscriptions.indexOf(id) === -1) {
+                pending.push([id, callback[1]]);
+            }
+        });
+
         this._commands = new Map();
         this._subscriptions = [];
-        this._last_cmd_id = 0;
+
+        pending.forEach(function(entry) {
+            if (typeof entry[1] !== 'function') { return; }
+            try {
+                entry[1](HAWS._failure(entry[0], 'connection_lost', 'Lost the connection to Home Assistant'));
+            } catch (e) {
+                console.log(`[HAWS] error callback for ${entry[0]} threw: ${e}`);
+            }
+        });
     }
 
     connect() {
@@ -175,6 +204,7 @@ class HAWS {
             // to a socket that had already closed, which throws and aborts the
             // rest of the listener before it could release its timers.
             that.connected = false;
+            that.authenticated = false;
             that.stopHeartbeat();
             that._resetConnectionState();
 
@@ -198,7 +228,13 @@ class HAWS {
 
         socket.onmessage = function(evt) {
             if (!isCurrent()) { return; }
-            let data = JSON.parse(evt.data);
+            let data;
+            try {
+                data = JSON.parse(evt.data);
+            } catch (e) {
+                console.log(`[HAWS] could not parse message: ${e}`);
+                return;
+            }
 
             // Handle coalesced messages (array of messages)
             if(Array.isArray(data)) {
@@ -206,10 +242,10 @@ class HAWS {
                     console.log(`[HAWS] WebSocket received ${data.length} coalesced messages`);
                 }
                 for(let message of data) {
-                    that._handleMessage(message);
+                    that._handleMessageSafely(message);
                 }
             } else {
-                that._handleMessage(data);
+                that._handleMessageSafely(data);
             }
         };
 
@@ -226,6 +262,16 @@ class HAWS {
             // is a no-op
             socket.close();
         };
+    }
+
+    // A callback that throws must not take the rest of a coalesced batch
+    // with it, command results included
+    _handleMessageSafely(data) {
+        try {
+            this._handleMessage(data);
+        } catch (e) {
+            console.log(`[HAWS] handling ${data && data.type} ${data && data.id} threw: ${e && e.stack || e}`);
+        }
     }
 
     _handleMessage(data) {
@@ -246,19 +292,16 @@ class HAWS {
 
             case 'auth_ok':
                 // Nothing issued on a previous socket can be answered on this
-                // one, and Home Assistant restarts its own id counter for each
-                // connection. Carrying the old bookkeeping over meant a fresh
-                // command could be handed an id still listed as a subscription,
-                // and its result was then discarded instead of delivered - the
-                // reconnect data fetch would stall there forever.
+                // one
                 this._resetConnectionState();
+                this.authenticated = true;
+                this._reconnectAttempts = 0;
 
                 // Send supported_features if coalesce_messages is enabled
                 if(this.coalesce_messages) {
-                    // Set _last_cmd_id to 1 so the first real command will be id 2
-                    this._last_cmd_id = 1;
+                    this._featuresId = this._genCmdId();
                     this.ws.send(JSON.stringify({
-                        id: 1,
+                        id: this._featuresId,
                         type: 'supported_features',
                         features: { coalesce_messages: 1 }
                     }));
@@ -286,6 +329,14 @@ class HAWS {
                 break;
 
             case 'auth_invalid':
+                // Retrying a token Home Assistant has just refused only piles
+                // up failed logins, and with ip_ban_enabled enough of those
+                // ban the phone. A new token comes with a new instance.
+                this.selfDisconnect = true;
+                if (this.reconnectTimeout) {
+                    clearTimeout(this.reconnectTimeout);
+                    this.reconnectTimeout = null;
+                }
                 this.trigger("auth_invalid", {detail: data});
                 this.close();
                 break;
@@ -302,8 +353,8 @@ class HAWS {
                 break;
 
             case 'result':
-                // Ignore the result from supported_features message (id: 1)
-                if(data.id === 1 && this.coalesce_messages) {
+                // Ignore the result from supported_features
+                if(data.id === this._featuresId) {
                     if(this.debug) {
                         console.log('[HAWS] Received supported_features response');
                     }
@@ -313,19 +364,21 @@ class HAWS {
                 if(typeof data.id !== 'undefined' && this._commands.has(data.id)) {
                     let callback = this._commands.get(data.id);
 
+                    // Answered either way, so removed before a callback can
+                    // throw and leave it to be failed again on disconnect
                     if (data.success) {
                         // ignore subscription success messages
                         if(this._subscriptions.indexOf(data.id) === -1) {
+                            this._commands.delete(data.id);
                             if(typeof callback[0] == "function") {
                                 callback[0](data);
                             }
-                            this._commands.delete(data.id);
                         }
                     } else {
-                        if(typeof callback[1] !== 'undefined') {
+                        this._commands.delete(data.id);
+                        if(typeof callback[1] === 'function') {
                             callback[1](data);
                         }
-                        this._commands.delete(data.id);
                     }
                 }
 
@@ -344,8 +397,12 @@ class HAWS {
             this.reconnectTimeout = null;
         }
 
+        let delay = Math.min(this.reconnectInterval * Math.pow(2, this._reconnectAttempts),
+            this.maxReconnectInterval);
+        this._reconnectAttempts++;
+
         if(this.debug) {
-            console.log(`[HAWS] Reconnection attempt in ${this.reconnectInterval/1000}s`);
+            console.log(`[HAWS] Reconnection attempt in ${delay/1000}s`);
         }
 
         this.reconnectTimeout = setTimeout(function(){
@@ -354,7 +411,7 @@ class HAWS {
                 console.log(`[HAWS] Attempting connection`);
             }
             that.connect();
-        }, this.reconnectInterval);
+        }, delay);
     }
 
     disconnect() {
@@ -362,6 +419,8 @@ class HAWS {
             console.log(`[HAWS] Disconnecting..`);
         }
         this.selfDisconnect = true;
+        // The close lands later; nothing sent meanwhile would be answered
+        this.authenticated = false;
         this.stopHeartbeat();
         if (this.reconnectTimeout) {
             clearTimeout(this.reconnectTimeout);
@@ -375,7 +434,7 @@ class HAWS {
     }
 
     send(msg, successCallback, errorCallback) {
-        if(this.connected) {
+        if(this.authenticated) {
             if(!msg.id) {
                 msg.id = this._genCmdId();
             }
@@ -384,7 +443,17 @@ class HAWS {
             return msg.id;
         }
 
+        // Nothing will ever answer this, so say so now rather than leave the
+        // caller waiting on a callback that cannot come
+        if (typeof errorCallback === 'function') {
+            errorCallback(HAWS._failure(msg.id, 'not_connected', 'Not connected to Home Assistant'));
+        }
         return false;
+    }
+
+    // Shaped like a failed result frame, which is what error callbacks get
+    static _failure(id, code, message) {
+        return { id: id, type: 'result', success: false, error: { code: code, message: message } };
     }
 
     unsubscribe(msg_id) {
@@ -429,6 +498,28 @@ class HAWS {
 
         if(this.debug) {
             console.log(`[HAWS] subscribe: ${JSON.stringify(data, null, 4)}`);
+        }
+
+        return msg_id;
+    }
+
+    // Subscribe to events on the bus, optionally of one type only
+    // https://developers.home-assistant.io/docs/api/websocket#subscribe-to-events
+    subscribeEvents(event_type, successCallback, errorCallback) {
+        let msg = { type: 'subscribe_events' };
+        if (event_type) {
+            msg.event_type = event_type;
+        }
+
+        let msg_id = this.send(msg, successCallback, errorCallback);
+        // send returns false while disconnected, and false never matches an
+        // incoming id, so tracking it only grows the list
+        if (msg_id !== false) {
+            this._subscriptions.push(msg_id);
+        }
+
+        if(this.debug) {
+            console.log(`[HAWS] subscribe: ${JSON.stringify(msg, null, 4)}`);
         }
 
         return msg_id;
@@ -503,7 +594,15 @@ class HAWS {
         }
 
         if(this.debug) {
-            console.log(`[HAWS] call_service: ${JSON.stringify(data, null, 4)}`);
+            // An alarm panel's code travels in service_data and must not be
+            // written anywhere
+            let shown = data;
+            if (data.service_data && data.service_data.code !== undefined) {
+                shown = Object.assign({}, data, {
+                    service_data: Object.assign({}, data.service_data, { code: '<redacted>' })
+                });
+            }
+            console.log(`[HAWS] call_service: ${JSON.stringify(shown, null, 4)}`);
         }
 
         return this.send(data, successCallback, errorCallback);
@@ -690,16 +789,15 @@ class HAWS {
         if(this.connected) {
             this.ws.close();
             this.connected = false;
+            this.authenticated = false;
             this._resetConnectionState();
         }
     }
 
     _genCmdId() {
         // No wrap. Home Assistant rejects any id that is not greater than the
-        // last one it saw on this connection (error code id_reuse), so rolling
-        // back to 0 after 9999 commands would get every later command refused
-        // for the rest of the session. The counter is per-connection and
-        // starts again on the next socket, so letting it climb is correct.
+        // last one it saw on this connection (error code id_reuse). It only
+        // asks that they climb, so one counter serves every connection.
         return ++this._last_cmd_id;
     }
 
@@ -708,12 +806,30 @@ class HAWS {
         return this.send({ type: 'assist_pipeline/pipeline/list' }, successCallback, errorCallback);
     }
 
-    // Add new method for running pipeline
-    runPipeline(data, successCallback, errorCallback) {
+    /**
+     * Run an assist pipeline.
+     *
+     * `progressCallback` is optional and only ever called where Home Assistant
+     * streams the answer as the agent writes it (intent-progress events, core
+     * 2025.3 and later). It receives each new piece of text on its own; an
+     * older instance simply never sends them and the answer arrives whole at
+     * the end as it always did.
+     */
+    runPipeline(data, successCallback, errorCallback, progressCallback) {
         const msg = {
             type: 'assist_pipeline/run',
             ...data
         };
+
+        // Writing straight to the socket skipped every check send() makes: a
+        // dropped connection either threw or swallowed the request, and
+        // neither callback ever ran
+        if (!this.authenticated) {
+            if (errorCallback) {
+                errorCallback(HAWS._failure(undefined, 'not_connected', 'Not connected to Home Assistant'));
+            }
+            return false;
+        }
 
         msg.id = this._genCmdId();
 
@@ -721,13 +837,27 @@ class HAWS {
         const subscriptionId = msg.id;
         this._subscriptions.push(subscriptionId);
 
+        // Which message the streamed deltas currently belong to. A delta with
+        // a role opens a new one and the ones after it continue it, the same
+        // as Home Assistant's chat log and its own frontend read them.
+        let deltaRole = '';
+
+        // A run answers once, so losing the connection after the answer
+        // arrived must not report a failure as well
+        let settled = false;
+        const fail = (error) => {
+            if (settled) { return; }
+            settled = true;
+            if (errorCallback) {
+                errorCallback(error);
+            }
+        };
+
         // Create a handler for the subscription responses
         const handler = (response) => {
             if (response.type === 'result') {
                 if (!response.success) {
-                    if (errorCallback) {
-                        errorCallback(response.error || 'Failed to start pipeline');
-                    }
+                    fail(response.error || 'Failed to start pipeline');
                     this.unsubscribe(subscriptionId);
                     return;
                 }
@@ -746,33 +876,63 @@ class HAWS {
 
                 // Check for error event
                 if (event.type === 'error') {
-                    if (errorCallback) {
-                        const errorMessage = event.data && event.data.message ? event.data.message : 'Pipeline error';
-                        const errorCode = event.data && event.data.code ? event.data.code : 'unknown';
-                        errorCallback({
-                            error: errorMessage,
-                            code: errorCode
-                        });
-                    }
+                    const errorMessage = event.data && event.data.message ? event.data.message : 'Pipeline error';
+                    const errorCode = event.data && event.data.code ? event.data.code : 'unknown';
+                    fail({
+                        error: errorMessage,
+                        code: errorCode
+                    });
                     this.unsubscribe(subscriptionId);
+                    return;
+                }
+
+                // A piece of the answer, while the agent is still writing it.
+                // The delta carries whatever the agent felt like reporting,
+                // including its own private reasoning under other keys, so
+                // only actual answer text is taken and only when it is text.
+                //
+                // A delta carrying a role closes the message before it and
+                // opens a new one, and the same delta may carry the first of
+                // the new message's content. Only the assistant writes what
+                // the wearer reads, so anything said under another role, a
+                // tool result's included, is passed over.
+                if (event.type === 'intent-progress' && progressCallback &&
+                    event.data && event.data.chat_log_delta) {
+                    const delta = event.data.chat_log_delta;
+                    if (delta.role) {
+                        deltaRole = delta.role;
+                    }
+                    if (deltaRole !== 'assistant') {
+                        return;
+                    }
+                    const opens = delta.role === 'assistant';
+                    const piece = typeof delta.content === 'string' ? delta.content : '';
+                    if (opens || piece.length) {
+                        progressCallback(piece, opens);
+                    }
                     return;
                 }
 
                 // Check for intent-end event to get the response
                 if (event.type === 'intent-end' && event.data && event.data.intent_output) {
+                    settled = true;
                     if (successCallback) {
                         successCallback({
                             success: true,
                             response: event.data.intent_output.response,
-                            conversation_id: event.data.intent_output.conversation_id
+                            conversation_id: event.data.intent_output.conversation_id,
+                            // The agent asked something back and expects the
+                            // mic to reopen for the answer
+                            continue_conversation: !!event.data.intent_output.continue_conversation
                         });
                     }
                 }
             }
         };
 
-        // Store the command and handler
-        this._commands.set(subscriptionId, [handler, errorCallback]);
+        // Store the command and handler. The third slot marks it to be failed
+        // if the connection drops, which subscriptions otherwise are not.
+        this._commands.set(subscriptionId, [handler, fail, true]);
 
         // Send the message
         this.ws.send(JSON.stringify(msg));

@@ -18,22 +18,26 @@ var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 
-// Menu selection tracking
-var menuSelections = {
-    climateMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showClimateEntity(entity_id) {
     var appState = AppState.getInstance();
-    let climate = appState.ha_state_dict[entity_id],
+    let climate = appState.getEntity(entity_id),
         subscription_msg_id = null;
     if (!climate) {
         throw new Error(`Climate entity ${entity_id} not found in appState.ha_state_dict`);
     }
 
     helpers.log_message(`Showing climate entity ${entity_id}: ${JSON.stringify(climate, null, 4)}`);
+
+    // The latest state, or the last one seen if it has left the state dict
+    function currentClimate() {
+        return appState.getEntity(entity_id) || climate;
+    }
 
     // Helper function to get climate data
     function getClimateData(climate) {
@@ -44,6 +48,7 @@ function showClimateEntity(entity_id) {
             target_temp_low: climate.attributes.target_temp_low,
             target_temp_high: climate.attributes.target_temp_high,
             hvac_mode: climate.state,
+            hvac_action: climate.attributes.hvac_action,
             hvac_modes: climate.attributes.hvac_modes || [],
             fan_mode: climate.attributes.fan_mode,
             fan_modes: climate.attributes.fan_modes || [],
@@ -53,7 +58,9 @@ function showClimateEntity(entity_id) {
             swing_modes: climate.attributes.swing_modes || [],
             min_temp: climate.attributes.min_temp || 7,
             max_temp: climate.attributes.max_temp || 35,
-            temp_step: climate.attributes.target_temperature_step || 0.5,
+            // The frontend's fallback when the entity doesn't publish a step
+            temp_step: climate.attributes.target_temp_step ||
+                (appState.ha_temperature_unit === '\u00b0F' ? 1 : 0.5),
             supported_features: climate.attributes.supported_features || 0
         };
     }
@@ -67,9 +74,53 @@ function showClimateEntity(entity_id) {
             fan_mode: !!(supported_features & 8), // FAN_MODE
             preset_mode: !!(supported_features & 16), // PRESET_MODE
             swing_mode: !!(supported_features & 32), // SWING_MODE
-            turn_on: !!(supported_features & 128), // TURN_ON
-            turn_off: !!(supported_features & 256) // TURN_OFF
+            turn_off: !!(supported_features & 128), // TURN_OFF
+            turn_on: !!(supported_features & 256) // TURN_ON
         };
+    }
+
+    // Which setpoint the entity takes right now, chosen like the frontend
+    // does: single when TARGET_TEMPERATURE is set and temperature is known,
+    // else a range when TARGET_TEMPERATURE_RANGE is set and both ends are
+    function setpointMode(data) {
+        let features = getSupportedFeatures(data.supported_features);
+        if (features.target_temperature && data.target_temp !== undefined && data.target_temp !== null) {
+            return 'single';
+        }
+        if (features.target_temperature_range &&
+            data.target_temp_low !== undefined && data.target_temp_low !== null &&
+            data.target_temp_high !== undefined && data.target_temp_high !== null) {
+            return 'range';
+        }
+        return null;
+    }
+
+    function hasTemperatureRow(data) {
+        let features = getSupportedFeatures(data.supported_features);
+        return features.target_temperature || features.target_temperature_range;
+    }
+
+    // The mode, plus what the unit is doing right now when it says
+    function hvacSubtitle(data) {
+        let text = data.hvac_mode ? helpers.ucwords(data.hvac_mode.replace('_', ' ')) : 'Unknown';
+        if (data.hvac_action && data.hvac_action !== data.hvac_mode) {
+            text += ' (' + data.hvac_action.replace('_', ' ') + ')';
+        }
+        return text;
+    }
+
+    function temperatureSubtitle(data) {
+        let parts = [];
+        if (data.current_temp !== undefined && data.current_temp !== null) {
+            parts.push(`Cur: ${data.current_temp}\u00b0`);
+        }
+        let mode = setpointMode(data);
+        if (mode === 'range') {
+            parts.push(`Set: ${data.target_temp_low}\u00b0-${data.target_temp_high}\u00b0`);
+        } else if (mode === 'single') {
+            parts.push(`Set: ${data.target_temp}\u00b0`);
+        }
+        return parts.join(' - ');
     }
 
     // Get initial climate data
@@ -82,18 +133,26 @@ function showClimateEntity(entity_id) {
     // Create the climate menu
     let climateMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: climate.attributes.friendly_name ? climate.attributes.friendly_name : entity_id
         }]
     });
 
+    // 'show' runs this first too, as a second 'show' can arrive without a
+    // 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+    }
+
     climateMenu.on('show', function() {
-        // Get the latest climate data
-        climate = appState.ha_state_dict[entity_id];
+        releaseUpdates();
+
+        // Get the latest climate data, keeping the last copy if it has gone
+        // from the state dict
+        climate = appState.getEntity(entity_id) || climate;
         climateData = getClimateData(climate);
         supportedFeatures = getSupportedFeatures(climateData.supported_features);
 
@@ -101,131 +160,122 @@ function showClimateEntity(entity_id) {
         climateMenu.items(0, []);
         let menuIndex = 0;
 
-        // Add Temperature item
-        let tempSubtitle = '';
-        if (climateData.hvac_mode === 'heat_cool' && climateData.target_temp_low !== undefined && climateData.target_temp_high !== undefined) {
-            tempSubtitle = `Cur: ${climateData.current_temp}° - Set: ${climateData.target_temp_low}°-${climateData.target_temp_high}°`;
-        } else if (climateData.target_temp !== undefined) {
-            tempSubtitle = `Cur: ${climateData.current_temp}° - Set: ${climateData.target_temp}°`;
-        } else {
-            tempSubtitle = `Current: ${climateData.current_temp}°`;
-        }
+        // Add Temperature item, only for entities that take a setpoint
+        if (hasTemperatureRow(climateData)) {
+            climateMenu.item(0, menuIndex++, {
+                title: 'Temperature',
+                subtitle: temperatureSubtitle(climateData),
+                on_click: function() {
+                    // Always get the latest climate data when clicked
+                    let latestClimate = currentClimate();
+                    let latestData = getClimateData(latestClimate);
+                    let setpoint = setpointMode(latestData);
 
-        climateMenu.item(0, menuIndex++, {
-            title: 'Temperature',
-            subtitle: tempSubtitle,
-            on_click: function() {
-                // Always get the latest climate data when clicked
-                let latestClimate = appState.ha_state_dict[entity_id];
-                let latestData = getClimateData(latestClimate);
-
-                if (latestData.hvac_mode === 'heat_cool') {
-                    // Show menu to select high or low temp
-                    let tempRangeMenu = new UI.Menu({
-                        status: false,
-                        backgroundColor: 'black',
-                        textColor: 'white',
-                        highlightBackgroundColor: 'white',
-                        highlightTextColor: 'black',
-                        sections: [{
-                            title: 'Set Temperature Range'
-                        }]
-                    });
-
-                    // These rows stay on screen while the setpoint changes, so
-                    // the bound has to be read when the row is pressed. Closing
-                    // over latestData would open the selector on the value from
-                    // when the menu was built, and confirming it would quietly
-                    // put back the temperature the user just moved away from.
-                    function openRangeEnd(which) {
-                        let d = getClimateData(appState.ha_state_dict[entity_id]);
-                        showTemperatureMenu(entity_id, which,
-                            which === 'low' ? d.target_temp_low : d.target_temp_high,
-                            d.min_temp, d.max_temp, d.temp_step);
+                    if (!setpoint) {
+                        // No setpoint in this mode (usually off)
+                        Vibe.vibrate('double');
+                        return;
                     }
 
-                    tempRangeMenu.item(0, 0, {
-                        title: 'Low Temperature',
-                        subtitle: `${latestData.target_temp_low}°`,
-                        on_click: function() { openRangeEnd('low'); }
-                    });
+                    if (setpoint === 'range') {
+                        // Show menu to select high or low temp
+                        let tempRangeMenu = new UI.Menu({
+                            status: false,
+                            sections: [{
+                                title: 'Set Temperature Range'
+                            }]
+                        });
 
-                    tempRangeMenu.item(0, 1, {
-                        title: 'High Temperature',
-                        subtitle: `${latestData.target_temp_high}°`,
-                        on_click: function() { openRangeEnd('high'); }
-                    });
+                        // These rows stay on screen while the setpoint changes, so
+                        // the bound has to be read when the row is pressed. Closing
+                        // over latestData would open the selector on the value from
+                        // when the menu was built, and confirming it would quietly
+                        // put back the temperature the user just moved away from.
+                        function openRangeEnd(which) {
+                            let d = getClimateData(currentClimate());
+                            showTemperatureMenu(entity_id, which,
+                                which === 'low' ? d.target_temp_low : d.target_temp_high,
+                                d.min_temp, d.max_temp, d.temp_step);
+                        }
 
-
-
-                    // Helper function to update temperature range menu items
-                    function updateTempRangeMenuItems(updatedClimate) {
-                        let updatedData = getClimateData(updatedClimate);
-
-                        // Update menu items to reflect current state
                         tempRangeMenu.item(0, 0, {
                             title: 'Low Temperature',
-                            subtitle: `${updatedData.target_temp_low}°`,
-                            on_click: tempRangeMenu.items(0)[0].on_click
+                            subtitle: `${latestData.target_temp_low}°`,
+                            on_click: function() { openRangeEnd('low'); }
                         });
 
                         tempRangeMenu.item(0, 1, {
                             title: 'High Temperature',
-                            subtitle: `${updatedData.target_temp_high}°`,
-                            on_click: tempRangeMenu.items(0)[1].on_click
+                            subtitle: `${latestData.target_temp_high}°`,
+                            on_click: function() { openRangeEnd('high'); }
                         });
+
+
+
+                        // Helper function to update temperature range menu items
+                        function updateTempRangeMenuItems(updatedClimate) {
+                            let updatedData = getClimateData(updatedClimate);
+
+                            // Update menu items to reflect current state
+                            tempRangeMenu.item(0, 0, {
+                                title: 'Low Temperature',
+                                subtitle: `${updatedData.target_temp_low}°`,
+                                on_click: tempRangeMenu.items(0)[0].on_click
+                            });
+
+                            tempRangeMenu.item(0, 1, {
+                                title: 'High Temperature',
+                                subtitle: `${updatedData.target_temp_high}°`,
+                                on_click: tempRangeMenu.items(0)[1].on_click
+                            });
+                        }
+
+                        let temp_range_subscription_msg_id = null;
+                        function releaseTempRangeUpdates() {
+                            if (temp_range_subscription_msg_id) {
+                                appState.haws.unsubscribe(temp_range_subscription_msg_id);
+                                temp_range_subscription_msg_id = null;
+                            }
+                        }
+
+                        // Subscribe on every show, so coming back after a reconnect
+                        // follows the entity again
+                        tempRangeMenu.on('show', function() {
+                            releaseTempRangeUpdates();
+                            temp_range_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
+                                helpers.log_message(`Climate entity update for temperature range menu ${entity_id}`);
+                                // Update menu items directly
+                                updateTempRangeMenuItems(updatedClimate);
+                            });
+                        });
+
+                        tempRangeMenu.on('select', function(e) {
+                            helpers.log_message(`Temperature range menu item ${e.item.title} was selected!`);
+                            if(typeof e.item.on_click === 'function') {
+                                e.item.on_click(e);
+                            }
+                        });
+
+                        tempRangeMenu.on('hide', function() {
+                            releaseTempRangeUpdates();
+                        });
+
+                        tempRangeMenu.show();
+                    } else {
+                        // Show temperature selection menu directly
+                        showTemperatureMenu(entity_id, 'single', latestData.target_temp, latestData.min_temp, latestData.max_temp, latestData.temp_step);
                     }
-
-                    // Subscribe to entity updates
-                    let temp_range_subscription_msg_id = appState.haws.subscribeTrigger({
-                        "type": "subscribe_trigger",
-                        "trigger": {
-                            "platform": "state",
-                            "entity_id": entity_id,
-                        },
-                    }, function(data) {
-                        helpers.log_message(`Climate entity update for temperature range menu ${entity_id}`);
-                        // Update the climate entity in the cache
-                        if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                            let updatedClimate = data.event.variables.trigger.to_state;
-                            appState.ha_state_dict[entity_id] = updatedClimate;
-
-                            // Update menu items directly
-                            updateTempRangeMenuItems(updatedClimate);
-                        }
-                    }, function(error) {
-                        helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
-                    });
-
-                    tempRangeMenu.on('select', function(e) {
-                        helpers.log_message(`Temperature range menu item ${e.item.title} was selected!`);
-                        if(typeof e.item.on_click === 'function') {
-                            e.item.on_click(e);
-                        }
-                    });
-
-                    tempRangeMenu.on('hide', function() {
-                        // Unsubscribe from entity updates
-                        if (temp_range_subscription_msg_id) {
-                            appState.haws.unsubscribe(temp_range_subscription_msg_id);
-                        }
-                    });
-
-                    tempRangeMenu.show();
-                } else {
-                    // Show temperature selection menu directly
-                    showTemperatureMenu(entity_id, 'single', latestData.target_temp, latestData.min_temp, latestData.max_temp, latestData.temp_step);
                 }
-            }
-        });
+            });
+        }
 
         // Add HVAC Mode item
         climateMenu.item(0, menuIndex++, {
             title: 'HVAC Mode',
-            subtitle: climateData.hvac_mode ? helpers.ucwords(climateData.hvac_mode.replace('_', ' ')) : 'Unknown',
+            subtitle: hvacSubtitle(climateData),
             on_click: function() {
                 // Always get the latest climate data when clicked
-                let latestClimate = appState.ha_state_dict[entity_id];
+                let latestClimate = currentClimate();
                 let latestData = getClimateData(latestClimate);
                 showHvacModeMenu(entity_id, latestData.hvac_mode, latestData.hvac_modes);
             }
@@ -238,7 +288,7 @@ function showClimateEntity(entity_id) {
                 subtitle: climateData.fan_mode ? helpers.ucwords(climateData.fan_mode.replace('_', ' ')) : 'Unknown',
                 on_click: function() {
                     // Always get the latest climate data when clicked
-                    let latestClimate = appState.ha_state_dict[entity_id];
+                    let latestClimate = currentClimate();
                     let latestData = getClimateData(latestClimate);
                     showFanModeMenu(entity_id, latestData.fan_mode, latestData.fan_modes);
                 }
@@ -252,7 +302,7 @@ function showClimateEntity(entity_id) {
                 subtitle: climateData.preset_mode ? helpers.ucwords(climateData.preset_mode.replace('_', ' ')) : 'None',
                 on_click: function() {
                     // Always get the latest climate data when clicked
-                    let latestClimate = appState.ha_state_dict[entity_id];
+                    let latestClimate = currentClimate();
                     let latestData = getClimateData(latestClimate);
                     showPresetModeMenu(entity_id, latestData.preset_mode, latestData.preset_modes);
                 }
@@ -266,7 +316,7 @@ function showClimateEntity(entity_id) {
                 subtitle: climateData.swing_mode ? helpers.ucwords(climateData.swing_mode.replace('_', ' ')) : 'Unknown',
                 on_click: function() {
                     // Always get the latest climate data when clicked
-                    let latestClimate = appState.ha_state_dict[entity_id];
+                    let latestClimate = currentClimate();
                     let latestData = getClimateData(latestClimate);
                     showSwingModeMenu(entity_id, latestData.swing_mode, latestData.swing_modes);
                 }
@@ -287,28 +337,20 @@ function showClimateEntity(entity_id) {
             let updatedData = getClimateData(updatedClimate);
             let menuIndex = 0;
 
-            // Update Temperature item
-            let tempSubtitle = '';
-            if (updatedData.hvac_mode === 'heat_cool' && updatedData.target_temp_low !== undefined && updatedData.target_temp_high !== undefined) {
-                tempSubtitle = `Cur: ${updatedData.current_temp}\u00b0 - Set: ${updatedData.target_temp_low}\u00b0-${updatedData.target_temp_high}\u00b0`;
-            } else if (updatedData.target_temp !== undefined) {
-                tempSubtitle = `Cur: ${updatedData.current_temp}\u00b0 - Set: ${updatedData.target_temp}\u00b0`;
-            } else {
-                tempSubtitle = `Current: ${updatedData.current_temp}\u00b0`;
-            }
-
             // Update the temperature menu item
-            climateMenu.item(0, menuIndex++, {
-                title: 'Temperature',
-                subtitle: tempSubtitle,
-                on_click: climateMenu.items(0)[0].on_click
-            });
+            if (hasTemperatureRow(updatedData)) {
+                climateMenu.item(0, menuIndex++, {
+                    title: 'Temperature',
+                    subtitle: temperatureSubtitle(updatedData),
+                    on_click: climateMenu.items(0)[menuIndex-1].on_click
+                });
+            }
 
             // Update HVAC Mode item
             climateMenu.item(0, menuIndex++, {
                 title: 'HVAC Mode',
-                subtitle: updatedData.hvac_mode ? helpers.ucwords(updatedData.hvac_mode.replace('_', ' ')) : 'Unknown',
-                on_click: climateMenu.items(0)[1].on_click
+                subtitle: hvacSubtitle(updatedData),
+                on_click: climateMenu.items(0)[menuIndex-1].on_click
             });
 
             // Update other items based on supported features
@@ -343,32 +385,18 @@ function showClimateEntity(entity_id) {
         }
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
             helpers.log_message(`Climate entity update for ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
-
-                // Update the menu items directly without redrawing the entire menu
-                updateClimateMenuItems(updatedClimate);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            // Update the menu items directly without redrawing the entire menu
+            updateClimateMenuItems(updatedClimate);
         });
 
         // Restore the previously selected index after a short delay
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.climateMenu > 0 && menuSelections.climateMenu < climateMenu.items(0).length) {
-                climateMenu.selection(0, menuSelections.climateMenu);
-                selectedIndex = menuSelections.climateMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < climateMenu.items(0).length) {
+                climateMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < climateMenu.items(0).length) {
@@ -380,7 +408,7 @@ function showClimateEntity(entity_id) {
     climateMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.climateMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Climate menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {
@@ -388,18 +416,13 @@ function showClimateEntity(entity_id) {
         }
     });
 
-    climateMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-    });
+    climateMenu.on('hide', releaseUpdates);
 
     // Temperature selection via the native number selector. mode is
     // 'single', 'low', or 'high'; low/high are bounded by each other so a
     // heat_cool range can't be set inverted.
     function showTemperatureMenu(entity_id, mode, current_temp, min_temp, max_temp, step) {
-        let climateData = getClimateData(appState.ha_state_dict[entity_id]);
+        let climateData = getClimateData(currentClimate());
 
         let title = 'Temperature';
         if (mode === 'low') {
@@ -453,7 +476,7 @@ function showClimateEntity(entity_id) {
             onSet: function(value) {
                 // Re-read the other end of the range at set time so a
                 // concurrent change isn't clobbered with stale data
-                let latestData = getClimateData(appState.ha_state_dict[entity_id]);
+                let latestData = getClimateData(currentClimate());
                 let data = {};
                 if (mode === 'low') {
                     data.target_temp_low = value;
@@ -487,17 +510,13 @@ function showClimateEntity(entity_id) {
     // Helper function to show HVAC mode selection menu
     function showHvacModeMenu(entity_id, current_mode, available_modes) {
         // Get the latest climate data to ensure we have the most up-to-date values
-        let climate = appState.ha_state_dict[entity_id];
+        let climate = currentClimate();
         let climateData = getClimateData(climate);
 
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'HVAC Mode'
             }]
@@ -541,20 +560,20 @@ function showClimateEntity(entity_id) {
         // Scroll to the current mode
         modeMenu.selection(0, currentIndex);
 
-        // Subscribe to entity updates
-        let hvac_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Climate entity update for HVAC mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+        let hvac_subscription_msg_id = null;
+        function releaseHvacUpdates() {
+            if (hvac_subscription_msg_id) {
+                appState.haws.unsubscribe(hvac_subscription_msg_id);
+                hvac_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        modeMenu.on('show', function() {
+            releaseHvacUpdates();
+            hvac_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
+                helpers.log_message(`Climate entity update for HVAC mode menu ${entity_id}`);
                 // Get updated climate data
                 let updatedData = getClimateData(updatedClimate);
 
@@ -570,9 +589,7 @@ function showClimateEntity(entity_id) {
                         on_click: modeMenu.items(0)[i].on_click
                     });
                 }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         modeMenu.on('select', function(e) {
@@ -583,10 +600,7 @@ function showClimateEntity(entity_id) {
         });
 
         modeMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (hvac_subscription_msg_id) {
-                appState.haws.unsubscribe(hvac_subscription_msg_id);
-            }
+            releaseHvacUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -598,17 +612,13 @@ function showClimateEntity(entity_id) {
     // Helper function to show fan mode selection menu
     function showFanModeMenu(entity_id, current_mode, available_modes) {
         // Get the latest climate data to ensure we have the most up-to-date values
-        let climate = appState.ha_state_dict[entity_id];
+        let climate = currentClimate();
         let climateData = getClimateData(climate);
 
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Fan Mode'
             }]
@@ -652,20 +662,20 @@ function showClimateEntity(entity_id) {
         // Scroll to the current mode
         modeMenu.selection(0, currentIndex);
 
-        // Subscribe to entity updates
-        let fan_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Climate entity update for fan mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+        let fan_subscription_msg_id = null;
+        function releaseFanUpdates() {
+            if (fan_subscription_msg_id) {
+                appState.haws.unsubscribe(fan_subscription_msg_id);
+                fan_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        modeMenu.on('show', function() {
+            releaseFanUpdates();
+            fan_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
+                helpers.log_message(`Climate entity update for fan mode menu ${entity_id}`);
                 // Get updated climate data
                 let updatedData = getClimateData(updatedClimate);
 
@@ -681,9 +691,7 @@ function showClimateEntity(entity_id) {
                         on_click: modeMenu.items(0)[i].on_click
                     });
                 }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         modeMenu.on('select', function(e) {
@@ -694,10 +702,7 @@ function showClimateEntity(entity_id) {
         });
 
         modeMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (fan_subscription_msg_id) {
-                appState.haws.unsubscribe(fan_subscription_msg_id);
-            }
+            releaseFanUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -709,17 +714,13 @@ function showClimateEntity(entity_id) {
     // Helper function to show preset mode selection menu
     function showPresetModeMenu(entity_id, current_mode, available_modes) {
         // Get the latest climate data to ensure we have the most up-to-date values
-        let climate = appState.ha_state_dict[entity_id];
+        let climate = currentClimate();
         let climateData = getClimateData(climate);
 
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Preset Mode'
             }]
@@ -763,20 +764,20 @@ function showClimateEntity(entity_id) {
         // Scroll to the current mode
         modeMenu.selection(0, currentIndex);
 
-        // Subscribe to entity updates
-        let preset_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Climate entity update for preset mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+        let preset_subscription_msg_id = null;
+        function releasePresetUpdates() {
+            if (preset_subscription_msg_id) {
+                appState.haws.unsubscribe(preset_subscription_msg_id);
+                preset_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        modeMenu.on('show', function() {
+            releasePresetUpdates();
+            preset_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
+                helpers.log_message(`Climate entity update for preset mode menu ${entity_id}`);
                 // Get updated climate data
                 let updatedData = getClimateData(updatedClimate);
 
@@ -792,9 +793,7 @@ function showClimateEntity(entity_id) {
                         on_click: modeMenu.items(0)[i].on_click
                     });
                 }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         modeMenu.on('select', function(e) {
@@ -805,10 +804,7 @@ function showClimateEntity(entity_id) {
         });
 
         modeMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (preset_subscription_msg_id) {
-                appState.haws.unsubscribe(preset_subscription_msg_id);
-            }
+            releasePresetUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -820,17 +816,13 @@ function showClimateEntity(entity_id) {
     // Helper function to show swing mode selection menu
     function showSwingModeMenu(entity_id, current_mode, available_modes) {
         // Get the latest climate data to ensure we have the most up-to-date values
-        let climate = appState.ha_state_dict[entity_id];
+        let climate = currentClimate();
         let climateData = getClimateData(climate);
 
         // Remember which menu item we came from
         let returnToIndex = selectedIndex;
         let modeMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Swing Mode'
             }]
@@ -874,20 +866,20 @@ function showClimateEntity(entity_id) {
         // Scroll to the current mode
         modeMenu.selection(0, currentIndex);
 
-        // Subscribe to entity updates
-        let swing_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Climate entity update for swing mode menu ${entity_id}`);
-            // Update the climate entity in the cache
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedClimate = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedClimate;
+        let swing_subscription_msg_id = null;
+        function releaseSwingUpdates() {
+            if (swing_subscription_msg_id) {
+                appState.haws.unsubscribe(swing_subscription_msg_id);
+                swing_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        modeMenu.on('show', function() {
+            releaseSwingUpdates();
+            swing_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedClimate) {
+                helpers.log_message(`Climate entity update for swing mode menu ${entity_id}`);
                 // Get updated climate data
                 let updatedData = getClimateData(updatedClimate);
 
@@ -903,9 +895,7 @@ function showClimateEntity(entity_id) {
                         on_click: modeMenu.items(0)[i].on_click
                     });
                 }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         modeMenu.on('select', function(e) {
@@ -916,10 +906,7 @@ function showClimateEntity(entity_id) {
         });
 
         modeMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (swing_subscription_msg_id) {
-                appState.haws.unsubscribe(swing_subscription_msg_id);
-            }
+            releaseSwingUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;

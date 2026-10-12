@@ -16,19 +16,19 @@ var Vibe = require('ui/vibe');
 
 var BaseEntityPage = require('app/pages/entity/BaseEntityPage');
 var AppState = require('app/AppState');
+var EntityService = require('app/EntityService');
 var helpers = require('app/helpers');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 
-// Menu selection tracking
-var menuSelections = {
-    fanMenu: 0
-};
+// Last selected row per entity, so another entity's page (with other rows)
+// doesn't open on it
+var menuSelections = {};
 
 var GenericEntityPage = require('app/pages/entity/GenericEntityPage');
 
 function showFanEntity(entity_id) {
     var appState = AppState.getInstance();
-    let fan = appState.ha_state_dict[entity_id],
+    let fan = appState.getEntity(entity_id),
         subscription_msg_id = null,
         relativeTimeUpdater = null;
     if (!fan) {
@@ -94,10 +94,6 @@ function showFanEntity(entity_id) {
     // Create the fan menu
     let fanMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: fanData.friendly_name
         }]
@@ -115,6 +111,11 @@ function showFanEntity(entity_id) {
             subtitle: `${updatedData.is_on ? 'on' : 'off'} > ${updatedData.last_changed_time}`,
             icon: updatedData.is_on ? 'images/icon_switch_on.png' : 'images/icon_switch_off.png',
             on_click: function() {
+                // fan.toggle needs TURN_OFF or TURN_ON
+                if (!((updatedFan.attributes.supported_features || 0) & (16 | 32))) {
+                    Vibe.vibrate('double');
+                    return;
+                }
                 // Toggle fan on/off
                 appState.haws.callService(
                     "fan",
@@ -343,34 +344,33 @@ function showFanEntity(entity_id) {
             sliderFg.size(new Vector(sliderWidth, 20));
         }
 
-        // Subscribe to entity updates
-        let speed_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Fan entity update for speed menu ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedFan = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedFan;
+        let speed_subscription_msg_id = null;
+        function releaseSpeedUpdates() {
+            if (speed_subscription_msg_id) {
+                appState.haws.unsubscribe(speed_subscription_msg_id);
+                speed_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        speedWindow.on('show', function() {
+            releaseSpeedUpdates();
+            speed_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan, isSnapshot) {
+                // The slider opened on this same state; only follow changes, so
+                // presses made before the snapshot lands are not undone
+                if (isSnapshot) { return; }
+                helpers.log_message(`Fan entity update for speed menu ${entity_id}`);
                 let updatedData = getFanData(updatedFan);
                 if (updatedData.is_on && updatedData.percentage !== null) {
                     current_percentage = updatedData.percentage;
                     updateSpeedUI();
                 }
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         speedWindow.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (speed_subscription_msg_id) {
-                appState.haws.unsubscribe(speed_subscription_msg_id);
-            }
+            releaseSpeedUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -387,10 +387,6 @@ function showFanEntity(entity_id) {
         // Create preset mode selection menu
         let presetMenu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{
                 title: 'Select Preset'
             }]
@@ -439,31 +435,27 @@ function showFanEntity(entity_id) {
             }
         }
 
-        // Subscribe to entity updates
-        let preset_subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
-            helpers.log_message(`Fan entity update for preset menu ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedFan = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedFan;
+        let preset_subscription_msg_id = null;
+        function releasePresetUpdates() {
+            if (preset_subscription_msg_id) {
+                appState.haws.unsubscribe(preset_subscription_msg_id);
+                preset_subscription_msg_id = null;
+            }
+        }
 
+        // Subscribe on every show, so coming back after a reconnect
+        // follows the entity again
+        presetMenu.on('show', function() {
+            releasePresetUpdates();
+            preset_subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan) {
+                helpers.log_message(`Fan entity update for preset menu ${entity_id}`);
                 // Update menu items directly
                 updatePresetMenuItems(updatedFan);
-            }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
+            });
         });
 
         presetMenu.on('hide', function() {
-            // Unsubscribe from entity updates
-            if (preset_subscription_msg_id) {
-                appState.haws.unsubscribe(preset_subscription_msg_id);
-            }
+            releasePresetUpdates();
 
             // Restore the selection in the parent menu
             selectedIndex = returnToIndex;
@@ -479,7 +471,7 @@ function showFanEntity(entity_id) {
     fanMenu.on('select', function(e) {
         // Store the current selection index
         selectedIndex = e.itemIndex;
-        menuSelections.fanMenu = e.itemIndex;
+        menuSelections[entity_id] = e.itemIndex;
 
         helpers.log_message(`Fan menu item ${e.item.title} was selected! Index: ${selectedIndex}`);
         if(typeof e.item.on_click === 'function') {
@@ -487,13 +479,28 @@ function showFanEntity(entity_id) {
         }
     });
 
+    // Releases the subscription and the timer; 'show' runs it first too, as
+    // a second 'show' can arrive without a 'hide' in between
+    function releaseUpdates() {
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+            subscription_msg_id = null;
+        }
+        if (relativeTimeUpdater) {
+            relativeTimeUpdater.destroy();
+            relativeTimeUpdater = null;
+        }
+    }
+
     // Set up event handlers for the fan menu
     fanMenu.on('show', function() {
+        releaseUpdates();
+
         // Clear the menu
         fanMenu.items(0, []);
 
         // Get the latest fan data
-        fan = appState.ha_state_dict[entity_id];
+        fan = appState.getEntity(entity_id) || fan;
         fanData = getFanData(fan);
         features = supported_features(fan);
 
@@ -503,7 +510,7 @@ function showFanEntity(entity_id) {
         // Create RelativeTimeUpdater for live time updates
         relativeTimeUpdater = new RelativeTimeUpdater(function(id, lastChanged) {
             // Get current fan and update the menu
-            let currentFan = appState.ha_state_dict[entity_id];
+            let currentFan = appState.getEntity(entity_id);
             if (currentFan) {
                 updateFanMenuItems(currentFan);
             }
@@ -511,36 +518,23 @@ function showFanEntity(entity_id) {
         relativeTimeUpdater.register(entity_id, fan.last_changed);
 
         // Subscribe to entity updates
-        subscription_msg_id = appState.haws.subscribeTrigger({
-            "type": "subscribe_trigger",
-            "trigger": {
-                "platform": "state",
-                "entity_id": entity_id,
-            },
-        }, function(data) {
+        subscription_msg_id = EntityService.subscribeEntity(entity_id, function(updatedFan) {
             helpers.log_message(`Fan entity update for ${entity_id}`);
-            if (data.event && data.event.variables && data.event.variables.trigger && data.event.variables.trigger.to_state) {
-                let updatedFan = data.event.variables.trigger.to_state;
-                appState.ha_state_dict[entity_id] = updatedFan;
+            // Update the menu items directly without redrawing the entire menu
+            updateFanMenuItems(updatedFan);
 
-                // Update the menu items directly without redrawing the entire menu
-                updateFanMenuItems(updatedFan);
-
-                // Update the RelativeTimeUpdater with the new timestamp
-                if (relativeTimeUpdater) {
-                    relativeTimeUpdater.update(entity_id, updatedFan.last_changed);
-                }
+            // Update the RelativeTimeUpdater with the new timestamp
+            if (relativeTimeUpdater) {
+                relativeTimeUpdater.update(entity_id, updatedFan.last_changed);
             }
-        }, function(error) {
-            helpers.log_message(`ENTITY UPDATE ERROR [${entity_id}]: ${JSON.stringify(error)}`);
         });
 
         // Restore the previously selected index
         setTimeout(function() {
             // First try to use the global menu selection
-            if (menuSelections.fanMenu > 0 && menuSelections.fanMenu < fanMenu.items(0).length) {
-                fanMenu.selection(0, menuSelections.fanMenu);
-                selectedIndex = menuSelections.fanMenu;
+            if (menuSelections[entity_id] > 0 && menuSelections[entity_id] < fanMenu.items(0).length) {
+                fanMenu.selection(0, menuSelections[entity_id]);
+                selectedIndex = menuSelections[entity_id];
             }
             // Fall back to the local selectedIndex if needed
             else if (selectedIndex > 0 && selectedIndex < fanMenu.items(0).length) {
@@ -549,18 +543,7 @@ function showFanEntity(entity_id) {
         }, 100);
     });
 
-    fanMenu.on('hide', function() {
-        // Unsubscribe from entity updates
-        if (subscription_msg_id) {
-            appState.haws.unsubscribe(subscription_msg_id);
-        }
-
-        // Destroy the RelativeTimeUpdater
-        if (relativeTimeUpdater) {
-            relativeTimeUpdater.destroy();
-            relativeTimeUpdater = null;
-        }
-    });
+    fanMenu.on('hide', releaseUpdates);
 
     // Show the menu
     fanMenu.show();

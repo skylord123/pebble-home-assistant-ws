@@ -9,6 +9,18 @@ var Touch = require('ui/touch');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
+var Theme = require('app/ui/Theme');
+var LogBuffer = require('app/LogBuffer');
+
+/**
+ * Read one of the background settings, falling back to black for anything
+ * unrecognised so an older or hand-edited value cannot leave the app unreadable
+ */
+function readBackgroundMode(key) {
+    var modes = Constants.backgroundModes;
+    var value = Settings.option(key);
+    return (value === modes.WHITE || value === modes.SUN) ? value : modes.BLACK;
+}
 
 var SettingsManager = {
     /**
@@ -21,14 +33,19 @@ var SettingsManager = {
         // Core settings
         appState.ha_url = Settings.option('ha_url');
         appState.ha_password = Settings.option('token');
+        // Neither may ever show up in the log
+        LogBuffer.setSecrets([appState.ha_url, appState.ha_password]);
         appState.ha_refresh_interval = Settings.option('refreshTime') ? Settings.option('refreshTime') : 15;
         appState.ha_order_by = Settings.option('order_by') || 'attributes.friendly_name';
         appState.ha_order_dir = Settings.option('order_dir') || 'asc';
 
         // Voice settings
         appState.voice_enabled = Feature.microphone(true, false) && Settings.option('voice_enabled') !== false;
-        appState.voice_confirm = Settings.option('voice_confirm');
+        appState.voice_confirm = Settings.option('voice_confirm') === true;
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
+        appState.voice_backlight_hold = Settings.option('voice_backlight_hold') === true;
+        appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
+        appState.assist_vibration_feedback = Settings.option('assist_vibration_feedback') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 
         // Quick launch settings
@@ -133,6 +150,12 @@ var SettingsManager = {
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
 
+        // Background colour, black unless it has been changed. Applying it here
+        // covers both startup and a change made on the config page.
+        appState.menu_background_mode = readBackgroundMode('menu_background_mode');
+        appState.assist_background_mode = readBackgroundMode('assist_background_mode');
+        Theme.configure();
+
         // Touch input settings (both default enabled; only meaningful on
         // watches with a touchscreen)
         appState.touch_enabled = Settings.option('touch_enabled') !== false;
@@ -223,7 +246,7 @@ var SettingsManager = {
                 return;
             }
 
-            log('returned_settings: ' + JSON.stringify(e.options));
+            log('returned_settings: ' + Object.keys(e.options || {}).length + ' keys');
             // Settings.onCloseConfig has already merged and persisted the new
             // options via autoSave, so no second Settings.option() call here.
 

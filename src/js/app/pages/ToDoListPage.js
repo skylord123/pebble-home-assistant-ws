@@ -18,14 +18,25 @@ var BasePage = require('app/pages/BasePage');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
 
+// TodoListEntityFeature bits; Home Assistant only registers each service
+// (and only accepts a description) for lists that advertise the bit
+var TodoFeature = {
+    CREATE_TODO_ITEM: 1,
+    DELETE_TODO_ITEM: 2,
+    UPDATE_TODO_ITEM: 4,
+    SET_DESCRIPTION_ON_ITEM: 64
+};
+
+function todoSupports(entity_id, feature) {
+    var entity = AppState.getInstance().getEntity(entity_id);
+    var features = entity && entity.attributes ? entity.attributes.supported_features || 0 : 0;
+    return !!(features & feature);
+}
+
 function showToDoLists() {
     var appState = AppState.getInstance();
     let toDoListsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'To-Do Lists'
         }]
@@ -92,8 +103,19 @@ function showToDoLists() {
         }
     });
 
+    function releaseSubscriptions() {
+        for(let entity_id in subscriptionIds) {
+            if (subscriptionIds[entity_id]) {
+                appState.haws.unsubscribe(subscriptionIds[entity_id]);
+            }
+        }
+        subscriptionIds = {};
+    }
+
     // Subscribe to all todo lists when menu is shown
     toDoListsMenu.on('show', function() {
+        // A second 'show' can arrive without a 'hide' in between
+        releaseSubscriptions();
         let todoLists = getSortedTodoLists();
 
         todoLists.forEach(function(entity) {
@@ -103,11 +125,15 @@ function showToDoLists() {
                 "type": "todo/item/subscribe",
                 "entity_id": entity_id
             }, function(data) {
-                // When items change, update the count in appState.ha_state_dict
+                // When items change, update the count in appState.ha_state_dict.
+                // HA's todo state counts only the items still to do
                 if (data.event && data.event.items) {
-                    let itemCount = data.event.items.length;
-                    if (appState.ha_state_dict[entity_id]) {
-                        appState.ha_state_dict[entity_id].state = itemCount;
+                    let itemCount = data.event.items.filter(function(item) {
+                        return item.status === 'needs_action';
+                    }).length;
+                    let current = appState.getEntity(entity_id);
+                    if (current) {
+                        current.state = String(itemCount);
                     }
                     // Update the menu to reflect the new count
                     updateMenuItems();
@@ -119,14 +145,7 @@ function showToDoLists() {
     });
 
     // Unsubscribe when menu is hidden
-    toDoListsMenu.on('hide', function() {
-        for(let entity_id in subscriptionIds) {
-            if (subscriptionIds[entity_id]) {
-                appState.haws.unsubscribe(subscriptionIds[entity_id]);
-            }
-        }
-        subscriptionIds = {};
-    });
+    toDoListsMenu.on('hide', releaseSubscriptions);
 
     // Initial menu population
     updateMenuItems();
@@ -147,10 +166,6 @@ function showToDoList(entity_id) {
 
     let todoListMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [
             {
                 title: 'To Do'
@@ -304,47 +319,50 @@ function showToDoList(entity_id) {
         // Add action items to section 2
         let actionIndex = 0;
 
-        // Always show "Clear List" action
-        todoListMenu.item(2, actionIndex++, {
-            title: 'Clear List',
-            on_click: function(e) {
-                confirmAction(
-                    'Clear all items from this list?',
-                    function() {
-                        // Success callback - clear all items in a single API call
-                        helpers.log_message(`Clearing all items from ${entity_id}`);
-                        let allItems = incompleteItems.concat(completedItems);
-                        let allUids = allItems.map(function(item) { return item.uid; });
+        let canDelete = todoSupports(entity_id, TodoFeature.DELETE_TODO_ITEM);
 
-                        if (allUids.length > 0) {
-                            appState.haws.callService(
-                                'todo',
-                                'remove_item',
-                                { item: allUids },
-                                { entity_id: entity_id },
-                                function(data) {
-                                    Vibe.vibrate('short');
-                                    helpers.log_message(`Successfully cleared ${allUids.length} items from list`);
-                                },
-                                function(error) {
-                                    Vibe.vibrate('double');
-                                    helpers.log_message(`Error clearing list: ${JSON.stringify(error)}`);
-                                }
-                            );
-                        } else {
-                            helpers.log_message('No items to clear');
+        if (canDelete) {
+            todoListMenu.item(2, actionIndex++, {
+                title: 'Clear List',
+                on_click: function(e) {
+                    confirmAction(
+                        'Clear all items from this list?',
+                        function() {
+                            // Success callback - clear all items in a single API call
+                            helpers.log_message(`Clearing all items from ${entity_id}`);
+                            let allItems = incompleteItems.concat(completedItems);
+                            let allUids = allItems.map(function(item) { return item.uid; });
+
+                            if (allUids.length > 0) {
+                                appState.haws.callService(
+                                    'todo',
+                                    'remove_item',
+                                    { item: allUids },
+                                    { entity_id: entity_id },
+                                    function(data) {
+                                        Vibe.vibrate('short');
+                                        helpers.log_message(`Successfully cleared ${allUids.length} items from list`);
+                                    },
+                                    function(error) {
+                                        Vibe.vibrate('double');
+                                        helpers.log_message(`Error clearing list: ${JSON.stringify(error)}`);
+                                    }
+                                );
+                            } else {
+                                helpers.log_message('No items to clear');
+                            }
+                        },
+                        function() {
+                            // Failure/cancel callback
+                            helpers.log_message('Clear list cancelled');
                         }
-                    },
-                    function() {
-                        // Failure/cancel callback
-                        helpers.log_message('Clear list cancelled');
-                    }
-                );
-            }
-        });
+                    );
+                }
+            });
+        }
 
         // Only show "Clear Completed" if there are completed items
-        if (completedItems.length > 0) {
+        if (canDelete && completedItems.length > 0) {
             todoListMenu.item(2, actionIndex++, {
                 title: 'Clear Completed',
                 on_click: function(e) {
@@ -378,7 +396,8 @@ function showToDoList(entity_id) {
         }
 
         // Add "Add Item" action if microphone is available
-        if (Feature.microphone(true, false)) {
+        if (Feature.microphone(true, false) &&
+            todoSupports(entity_id, TodoFeature.CREATE_TODO_ITEM)) {
             todoListMenu.item(2, actionIndex++, {
                 title: 'Add Item',
                 on_click: function(e) {
@@ -527,6 +546,11 @@ function showToDoList(entity_id) {
 
         // items with a uid are todo list items otherwise they are actions
         if (e.item && e.item.uid) {
+            if (!todoSupports(entity_id, TodoFeature.UPDATE_TODO_ITEM)) {
+                // A list that can't update items can't complete them either
+                Vibe.vibrate('double');
+                return;
+            }
             // Tap toggles completion status
             let newStatus = e.item.status === 'completed' ? 'needs_action' : 'completed';
             helpers.log_message(`Tap: Toggling item ${e.item.title} from ${e.item.status} to ${newStatus}`);
@@ -603,6 +627,10 @@ function showToDoList(entity_id) {
 
 
     todoListMenu.on('show', function() {
+        // A second 'show' can arrive without a 'hide' in between
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+        }
         subscription_msg_id = appState.haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
@@ -627,10 +655,6 @@ function confirmAction(message, successCallback, failureCallback) {
 
     let confirmMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: message
         }]
@@ -683,10 +707,6 @@ function showToDoItemMenu(entity_id, item) {
 
     let itemMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [
             {
                 title: 'Item'
@@ -727,12 +747,14 @@ function showToDoItemMenu(entity_id, item) {
 
         // Update Section 0 - Item Fields
         let fieldIndex = 0;
+        let canUpdate = todoSupports(entity_id, TodoFeature.UPDATE_TODO_ITEM);
+        let canDescribe = canUpdate && todoSupports(entity_id, TodoFeature.SET_DESCRIPTION_ON_ITEM);
 
         // 1. Update Name/Summary field
         itemMenu.item(0, fieldIndex++, {
             title: 'Name',
             subtitle: updatedItem.summary,
-            on_click: hasMicrophone ? function(e) {
+            on_click: hasMicrophone && canUpdate ? function(e) {
                 helpers.log_message('Starting voice dictation for item name');
                 Voice.dictate('start', true, function(voiceEvent) {
                     if (voiceEvent.err) {
@@ -772,7 +794,7 @@ function showToDoItemMenu(entity_id, item) {
         itemMenu.item(0, fieldIndex++, {
             title: 'Description',
             subtitle: updatedItem.description || '',
-            on_click: hasMicrophone ? function(e) {
+            on_click: hasMicrophone && canDescribe ? function(e) {
                 // If description exists, show options menu
                 if (currentItem.description) {
                     showToDoItemDescriptionOptionsMenu(entity_id, currentItem);
@@ -794,42 +816,46 @@ function showToDoItemMenu(entity_id, item) {
         itemMenu.items(1, []);
         let actionIndex = 0;
 
-        // 1. Delete action (always present)
-        itemMenu.item(1, actionIndex++, {
-            title: 'Delete',
-            on_click: function(e) {
-                confirmAction(
-                    'Delete this item?',
-                    function() {
-                        // Success callback - delete the item
-                        helpers.log_message(`Deleting item: ${currentItem.summary} (${currentItem.uid})`);
-                        appState.haws.callService(
-                            'todo',
-                            'remove_item',
-                            { item: currentItem.uid },
-                            { entity_id: entity_id },
-                            function(data) {
-                                Vibe.vibrate('short');
-                                helpers.log_message(`Successfully deleted item: ${JSON.stringify(data)}`);
-                                // Hide the menu to return to the todo list
-                                itemMenu.hide();
-                            },
-                            function(error) {
-                                Vibe.vibrate('double');
-                                helpers.log_message(`Error deleting item: ${JSON.stringify(error)}`);
-                            }
-                        );
-                    },
-                    function() {
-                        // Failure/cancel callback
-                        helpers.log_message('Delete item cancelled');
-                    }
-                );
-            }
-        });
+        // 1. Delete action
+        if (todoSupports(entity_id, TodoFeature.DELETE_TODO_ITEM)) {
+            itemMenu.item(1, actionIndex++, {
+                title: 'Delete',
+                on_click: function(e) {
+                    confirmAction(
+                        'Delete this item?',
+                        function() {
+                            // Success callback - delete the item
+                            helpers.log_message(`Deleting item: ${currentItem.summary} (${currentItem.uid})`);
+                            appState.haws.callService(
+                                'todo',
+                                'remove_item',
+                                { item: currentItem.uid },
+                                { entity_id: entity_id },
+                                function(data) {
+                                    Vibe.vibrate('short');
+                                    helpers.log_message(`Successfully deleted item: ${JSON.stringify(data)}`);
+                                    // Hide the menu to return to the todo list
+                                    itemMenu.hide();
+                                },
+                                function(error) {
+                                    Vibe.vibrate('double');
+                                    helpers.log_message(`Error deleting item: ${JSON.stringify(error)}`);
+                                }
+                            );
+                        },
+                        function() {
+                            // Failure/cancel callback
+                            helpers.log_message('Delete item cancelled');
+                        }
+                    );
+                }
+            });
+        }
 
         // 2. Toggle completion status action (conditional based on current status)
-        if (updatedItem.status !== 'completed') {
+        if (!canUpdate) {
+            // Read-only list: nothing to toggle
+        } else if (updatedItem.status !== 'completed') {
             itemMenu.item(1, actionIndex++, {
                 title: 'Mark Completed',
                 on_click: function(e) {
@@ -892,6 +918,10 @@ function showToDoItemMenu(entity_id, item) {
     // Subscribe when menu is shown
     itemMenu.on('show', function() {
         helpers.log_message(`Subscribing to todo items for ${entity_id}`);
+        // A second 'show' can arrive without a 'hide' in between
+        if (subscription_msg_id) {
+            appState.haws.unsubscribe(subscription_msg_id);
+        }
         subscription_msg_id = appState.haws.subscribeTrigger({
             "type": "todo/item/subscribe",
             "entity_id": entity_id
@@ -926,10 +956,6 @@ function showToDoItemDescriptionOptionsMenu(entity_id, item) {
 
     let descOptionsMenu = new UI.Menu({
         status: false,
-        backgroundColor: 'black',
-        textColor: 'white',
-        highlightBackgroundColor: 'white',
-        highlightTextColor: 'black',
         sections: [{
             title: 'Description'
         }]

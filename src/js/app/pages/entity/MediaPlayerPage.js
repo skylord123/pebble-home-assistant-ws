@@ -280,7 +280,7 @@ class MediaPlayerPage extends BaseEntityPage {
         var self = this;
         var appState = this.appState;
 
-        var mediaPlayer = appState.ha_state_dict[this.entityId];
+        var mediaPlayer = appState.getEntity(this.entityId);
         if (!mediaPlayer) {
             throw new Error("Media player entity " + this.entityId + " not found in ha_state_dict");
         }
@@ -417,11 +417,11 @@ class MediaPlayerPage extends BaseEntityPage {
         });
 
         this.mediaControlWindow.on('click', 'up', function(e) {
-            appState.haws.mediaPlayerVolumeUp(self.entityId, function(d) {});
+            self.stepVolume('up');
         });
 
         this.mediaControlWindow.on('longClick', 'up', function(e) {
-            var current = appState.ha_state_dict[self.entityId];
+            var current = appState.getEntity(self.entityId);
             if (!supports(current, FEATURE.NEXT_TRACK)) {
                 // Saying nothing at all reads as a frozen watch
                 Vibe.vibrate('double');
@@ -432,11 +432,11 @@ class MediaPlayerPage extends BaseEntityPage {
         });
 
         this.mediaControlWindow.on('click', 'down', function(e) {
-            appState.haws.mediaPlayerVolumeDown(self.entityId, function(d) {});
+            self.stepVolume('down');
         });
 
         this.mediaControlWindow.on('longClick', 'down', function(e) {
-            var current = appState.ha_state_dict[self.entityId];
+            var current = appState.getEntity(self.entityId);
             if (!supports(current, FEATURE.VOLUME_MUTE)) {
                 Vibe.vibrate('double');
                 helpers.log_message('Media player ' + self.entityId + ' cannot mute');
@@ -496,19 +496,11 @@ class MediaPlayerPage extends BaseEntityPage {
             // Re-entered whenever a sub-menu closes, so never stack a second
             // subscription on top of a live one
             self.unsubscribeMedia();
-            self.subscription_msg_id = appState.haws.subscribeTrigger({
-                "type": "subscribe_trigger",
-                "trigger": {
-                    "platform": "state",
-                    "entity_id": self.entityId,
-                },
-            }, function(data) {
-                self.updateMediaWindow(data.event.variables.trigger.to_state);
-            }, function(error) {
-                helpers.log_message("ENTITY UPDATE ERROR [" + self.entityId + "]: " + JSON.stringify(error));
+            self.subscription_msg_id = require('app/EntityService').subscribeEntity(self.entityId, function(updated) {
+                self.updateMediaWindow(updated);
             });
 
-            self.updateMediaWindow(appState.ha_state_dict[self.entityId] || mediaPlayer);
+            self.updateMediaWindow(appState.getEntity(self.entityId) || mediaPlayer);
         });
 
         // 'close' is not an event this runtime emits, so the old handler here
@@ -561,7 +553,7 @@ class MediaPlayerPage extends BaseEntityPage {
      * them refuses it outright. Pick the specific service in that case.
      */
     playPause() {
-        var entity = this.appState.ha_state_dict[this.entityId];
+        var entity = this.appState.getEntity(this.entityId);
         var haws = this.appState.haws;
         if (supports(entity, FEATURE.PLAY) && supports(entity, FEATURE.PAUSE)) {
             haws.mediaPlayerPlayPause(this.entityId);
@@ -603,15 +595,11 @@ class MediaPlayerPage extends BaseEntityPage {
         var self = this;
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{ title: title }]
         });
 
         function build() {
-            var entity = self.appState.ha_state_dict[self.entityId];
+            var entity = self.appState.getEntity(self.entityId);
             if (!entity) { return; }
             var list = entity.attributes[listAttr] || [];
             var current = entity.attributes[currentAttr];
@@ -649,15 +637,11 @@ class MediaPlayerPage extends BaseEntityPage {
         var self = this;
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{ title: 'Play In Sync' }]
         });
 
         function build() {
-            var entity = self.appState.ha_state_dict[self.entityId];
+            var entity = self.appState.getEntity(self.entityId);
             if (!entity) { return; }
             var peers = groupPeers(entity);
             var items = [];
@@ -676,7 +660,7 @@ class MediaPlayerPage extends BaseEntityPage {
                     on_click: function() {
                         // Re-read rather than trusting the row: after joining,
                         // a stale flag would join the same player again
-                        var live = self.appState.ha_state_dict[self.entityId];
+                        var live = self.appState.getEntity(self.entityId);
                         var livePeers = groupPeers(live || entity);
                         if (livePeers.indexOf(id) > -1) {
                             // Leaving is done by the member, not the master
@@ -724,15 +708,11 @@ class MediaPlayerPage extends BaseEntityPage {
         var selectedIndex = 0;
         var menu = new UI.Menu({
             status: false,
-            backgroundColor: 'black',
-            textColor: 'white',
-            highlightBackgroundColor: 'white',
-            highlightTextColor: 'black',
             sections: [{ title: 'Options' }]
         });
 
         function build() {
-            var entity = self.appState.ha_state_dict[self.entityId];
+            var entity = self.appState.getEntity(self.entityId);
             if (!entity) { return; }
             var attrs = entity.attributes || {};
             var items = [];
@@ -793,7 +773,7 @@ class MediaPlayerPage extends BaseEntityPage {
                         // Read at press time: a snapshot taken when the row
                         // was built can only ever send the same value, so
                         // shuffle could be turned on but never off
-                        var live = self.appState.ha_state_dict[self.entityId];
+                        var live = self.appState.getEntity(self.entityId);
                         var on = !!(live && live.attributes && live.attributes.shuffle);
                         self.callMedia('shuffle_set', { shuffle: !on });
                     }
@@ -810,7 +790,7 @@ class MediaPlayerPage extends BaseEntityPage {
                     on_click: function() {
                         // Same reason as shuffle: cycling from a frozen value
                         // meant "one" could never be reached
-                        var live = self.appState.ha_state_dict[self.entityId];
+                        var live = self.appState.getEntity(self.entityId);
                         var now = (live && live.attributes && live.attributes.repeat) || 'off';
                         var index = order.indexOf(now);
                         if (index === -1) { index = 0; }
@@ -1020,7 +1000,7 @@ class MediaPlayerPage extends BaseEntityPage {
      * the player chase every position it passes.
      */
     beginDrag(which, x) {
-        var current = this.appState.ha_state_dict[this.entityId];
+        var current = this.appState.getEntity(this.entityId);
         if (which === 'volume' && !supports(current, FEATURE.VOLUME_SET)) { return false; }
         if (which === 'seek') {
             if (!supports(current, FEATURE.SEEK) || !hasPlaybackPosition(current)) { return false; }
@@ -1033,6 +1013,25 @@ class MediaPlayerPage extends BaseEntityPage {
         }
         this.previewDrag();
         return true;
+    }
+
+    /**
+     * volume_up / volume_down, which Home Assistant only registers for
+     * players with VOLUME_SET or VOLUME_STEP
+     */
+    stepVolume(direction) {
+        var appState = AppState.getInstance();
+        var current = appState.getEntity(this.entityId);
+        if (!supports(current, FEATURE.VOLUME_SET) && !supports(current, FEATURE.VOLUME_STEP)) {
+            Vibe.vibrate('double');
+            helpers.log_message('Media player ' + this.entityId + ' has no volume control');
+            return;
+        }
+        var call = direction === 'up' ? 'mediaPlayerVolumeUp' : 'mediaPlayerVolumeDown';
+        appState.haws[call](this.entityId, function(d) {}, function(error) {
+            Vibe.vibrate('double');
+            helpers.log_message('Volume ' + direction + ' failed: ' + JSON.stringify(error));
+        });
     }
 
     /**
@@ -1073,7 +1072,7 @@ class MediaPlayerPage extends BaseEntityPage {
             this.volume_label.text(Math.round(this.dragRatio * 100) + "%");
             this.scheduleVolume();
         } else {
-            var entity = this.appState.ha_state_dict[this.entityId];
+            var entity = this.appState.getEntity(this.entityId);
             var duration = entity && entity.attributes && entity.attributes.media_duration;
             if (duration) { this.time_elapsed.text(secToTime(duration * this.dragRatio)); }
         }
@@ -1085,7 +1084,7 @@ class MediaPlayerPage extends BaseEntityPage {
         this.dragging = null;
 
         var appState = this.appState;
-        var entity = appState.ha_state_dict[this.entityId];
+        var entity = appState.getEntity(this.entityId);
         if (which === 'volume') {
             // Release is the final word on where the finger left the bar, so
             // it goes out now rather than waiting on the settle timer
@@ -1181,7 +1180,7 @@ class MediaPlayerPage extends BaseEntityPage {
         this.position_ticker = setInterval(function() {
             // Read the entity fresh each tick so a track change that has not
             // reached us yet cannot keep an old duration on screen
-            var current = self.appState.ha_state_dict[self.entityId] || mediaPlayer;
+            var current = self.appState.getEntity(self.entityId) || mediaPlayer;
             self.drawPosition(current);
         }, 1000);
     }
