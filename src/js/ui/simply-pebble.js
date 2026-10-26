@@ -1718,6 +1718,27 @@ SimplyPebble.stage = function(def, clear, pushing) {
 
 SimplyPebble.window = SimplyPebble.stage;
 
+// Not every phone app's JS engine has atob, so this decodes by hand
+var base64ToByteArray = function(text) {
+  var alphabet = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+  var bytes = [];
+  var bits = 0;
+  var bitCount = 0;
+  for (var i = 0; i < text.length; ++i) {
+    var value = alphabet.indexOf(text.charAt(i));
+    if (value === -1) {
+      continue;
+    }
+    bits = (bits << 6) | value;
+    bitCount += 6;
+    if (bitCount >= 8) {
+      bitCount -= 8;
+      bytes.push((bits >> bitCount) & 0xff);
+    }
+  }
+  return bytes;
+};
+
 var toArrayBuffer = function(array, length) {
   length = length || array.length;
   var copy = new DataView(new ArrayBuffer(length));
@@ -1927,7 +1948,17 @@ SimplyPebble.onPacket = function(buffer, offset) {
 };
 
 SimplyPebble.onAppMessage = function(e) {
-  var data = e.payload[0];
+  // Phone apps disagree on how key 0 arrives. The SDK emulator passes both
+  // the number and its name from appKeys, the Core app only the name, and
+  // Gadgetbridge only the name with the bytes as a base64 string. Gadgetbridge
+  // drops keys that have no name at all, which is why appKeys names it.
+  var data = e.payload[0] !== undefined ? e.payload[0] : e.payload.data;
+  if (data === undefined) {
+    return;
+  }
+  if (typeof data === 'string') {
+    data = base64ToByteArray(data);
+  }
 
   Packet._view = toArrayBuffer(data);
 
