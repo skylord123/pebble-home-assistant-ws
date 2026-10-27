@@ -1262,7 +1262,8 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
       prv_append(self, AssistRoleError, "No connection for dictation");
       break;
     case DictationSessionStatusFailureDisabled:
-      prv_append(self, AssistRoleError, "Dictation is turned off for this account");
+      prv_append(self, AssistRoleError,
+                 "Voice isn't available. Your phone app has it turned off or doesn't support it.");
       break;
     default:
       prv_append(self, AssistRoleError, "Dictation failed");

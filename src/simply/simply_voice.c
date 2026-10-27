@@ -96,6 +96,10 @@ static void timer_callback_start_dictation(void *data) {
     return;
   }
   dictation_session_enable_confirmation(s_voice->session, (bool)(uintptr_t) data);
+  // The Assistant writes its own line for every failure, so the firmware's
+  // dialogs would only repeat it. Its "Enable voice in the settings page"
+  // one is also wrong under phone apps that have no voice support at all.
+  dictation_session_enable_error_dialogs(s_voice->session, !s_voice->for_assist);
   // A session that refuses to start never calls back, which would leave
   // in_progress set for good
   const DictationSessionStatus status = dictation_session_start(s_voice->session);
