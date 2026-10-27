@@ -212,7 +212,10 @@ Settings.onCloseConfig = function(e) {
   var options = {};
   var format;
   if (e.response) {
-    options = parseJson(decodeURIComponent(e.response));
+    // Gadgetbridge hands the response over already decoded, and decoding it a
+    // second time would break on any % in a value
+    var response = e.response.charAt(0) === '{' ? e.response : decodeURIComponent(e.response);
+    options = parseJson(response);
     if (typeof options === 'object' && options !== null) {
       format = 'json';
     }
