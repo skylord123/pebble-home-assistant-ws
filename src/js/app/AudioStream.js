@@ -7,17 +7,18 @@
  * Assist pipeline's speech-to-text takes, so a turn can be heard by Home
  * Assistant itself.
  *
- * Whether it works depends on three things, and only the watch can find out
- * the last of them:
+ * Whether it works depends on three things:
  *
  *  - the watch: a Pebble Time 2, Core 2 Duo or Core Time Round on 4.43 or later
  *  - the setting, which is on unless the wearer turned it off
- *  - the phone app, which either takes the stream, refuses it, or (if it has
- *    never heard of streams) says nothing at all
+ *  - the phone app, which has to know about streams before the watch may even
+ *    ask. Core's Pebble app before 1.16.0.1 drops its connection to the watch
+ *    when asked, and the legacy Pebble app and Gadgetbridge were never meant
+ *    to be. A Pebble app that does know may still refuse the microphone.
  *
- * The watch asks, and falls back to dictation by itself whenever the answer
- * is anything but yes. What it learned is kept here, so a phone that cannot
- * stream is not asked every time.
+ * The watch asks only when all three allow it, and falls back to dictation by
+ * itself whenever the answer is anything but yes. What it learned is kept
+ * here, so a phone that refuses is not asked every time.
  */
 var Settings = require('settings');
 var helpers = require('app/helpers');
@@ -78,6 +79,19 @@ AudioStream.watchCanStream = function() {
         (fw.major === STREAM_FIRMWARE[0] && fw.minor >= STREAM_FIRMWARE[1]);
 };
 
+/**
+ * Whether the phone app takes a microphone stream. Core's Pebble app defines
+ * signalAudioStream for this JS from 1.16.0.1, the first version that does,
+ * on Android and iOS alike. There is nothing else to ask it, and a phone app
+ * without it must never see a stream request, since the ones before it
+ * cannot read one.
+ */
+AudioStream.phoneCanStream = function() {
+    var root = typeof globalThis !== 'undefined' ? globalThis :
+        (typeof window !== 'undefined' ? window : null);
+    return !!root && typeof root.signalAudioStream === 'function';
+};
+
 /** Whether this watch is one that could stream, whatever its firmware. */
 AudioStream.watchHasStreamPlatform = function() {
     var info = watchInfo();
@@ -96,12 +110,14 @@ function status() {
 
 /**
  * Why a turn would be dictated rather than streamed, or null when it would
- * be streamed. One of 'off', 'watch', 'firmware', 'refused', 'noanswer'.
+ * be streamed. One of 'off', 'watch', 'firmware', 'phone', 'refused',
+ * 'noanswer'.
  */
 AudioStream.blocker = function() {
     if (!AudioStream.enabled()) { return 'off'; }
     if (!AudioStream.watchHasStreamPlatform()) { return 'watch'; }
     if (!AudioStream.watchCanStream()) { return 'firmware'; }
+    if (!AudioStream.phoneCanStream()) { return 'phone'; }
     if (refusedThisLaunch) { return 'refused'; }
     var last = status();
     if (last && last.result === 'noanswer' && Date.now() - last.at < NO_ANSWER_RETRY_MS) {
@@ -134,6 +150,7 @@ AudioStream.describe = function(hearsAudio) {
         case 'off': return 'Phone dictation';
         case 'watch': return 'Not on this watch';
         case 'firmware': return 'Dictation (update watch)';
+        case 'phone': return 'Dictation (phone app)';
         case 'refused': return 'Dictation (allow mic)';
         case 'noanswer': return 'Dictation (phone app)';
     }

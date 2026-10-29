@@ -2196,6 +2196,9 @@
 		if (watch === 'firmware') {
 			return 'Update the watch to firmware 4.43 or newer to send your voice to Home Assistant. Until then the phone\'s dictation is used.';
 		}
+		if (watch === 'phone') {
+			return 'Your phone app cannot take the watch microphone, so the phone\'s dictation is used. Core\'s Pebble app can from version 1.16.0.1.';
+		}
 		var pipelines = watch_config['available_pipelines'] || [];
 		var selected = pipelineSelect.disabled ? currentPipeline() : pipelineSelect.value;
 		for (var i = 0; i < pipelines.length; i++) {
