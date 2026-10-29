@@ -1104,7 +1104,7 @@
 		<details class="section">
 			<summary class="section-header">
 				<span class="section-title">Display Settings</span>
-				<span class="section-hint">Menu background, scrolling, touch, and the inactivity timeout</span>
+				<span class="section-hint">Menu background, text size, scrolling, touch, and the inactivity timeout</span>
 			</summary>
 			<div class="section-body">
 				<div class="component">
@@ -1116,6 +1116,17 @@
 							<option value="sun">Follow the sun</option>
 						</select>
 						<small class="form-text">Menus are white on black by default. White inverts them to black text on white, and following the sun uses white while the sun is up where you are and black once it has set. The sun is worked out on your phone from its location.</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-menu-text-size">Text Size</label>
+						<select class="form-select" id="ha-menu-text-size">
+							<option value="smaller">Smaller</option>
+							<option value="default">Default</option>
+							<option value="larger">Larger</option>
+						</select>
+						<small class="form-text">Changes the size of the text in the app's menus, in the same steps as the watch's own Text Size setting. Also configurable on the watch under Settings, Display. Not available on the original Pebble and Pebble Steel.</small>
 					</div>
 				</div>
 				<div class="component">
@@ -1580,6 +1591,7 @@
 		quickLaunchExitOnBack = $('ha-quick-launch-exit-on-back'),
 		menuBackground = $('ha-menu-background'),
 		assistBackground = $('ha-assist-background'),
+		menuTextSize = $('ha-menu-text-size'),
 		menuScrollWrap = $('ha-menu-scroll-wrap'),
 		touchEnabled = $('ha-touch-enabled'),
 		touchLongPress = $('ha-touch-long-press'),
@@ -2211,6 +2223,7 @@
 			'quick_launch_exit_on_back': quickLaunchExitOnBack.checked,
 			'menu_background_mode': menuBackground.value,
 			'assist_background_mode': assistBackground.value,
+			'menu_text_size': menuTextSize.value,
 			'menu_scroll_wrap': menuScrollWrap.checked,
 			'touch_enabled': touchEnabled.checked,
 			'touch_long_press': touchLongPress.checked,
@@ -2297,6 +2310,11 @@
 		// Background colours, black unless they have been changed
 		menuBackground.value = watch_config['menu_background_mode'] || 'black';
 		assistBackground.value = watch_config['assist_background_mode'] || 'black';
+
+		// Anything but the three sizes, a missing setting included, shows as
+		// Default, which is also how the watch reads it
+		var textSize = watch_config['menu_text_size'];
+		menuTextSize.value = (textSize === 'smaller' || textSize === 'larger') ? textSize : 'default';
 
 		menuScrollWrap.checked = defaulted(watch_config['menu_scroll_wrap'], true);
 		touchEnabled.checked = defaulted(watch_config['touch_enabled'], true);

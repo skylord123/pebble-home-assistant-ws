@@ -42,6 +42,9 @@ class AppState {
         // set separately, so the conversation can stay dark in a white app
         this.menu_background_mode = 'black';
         this.assist_background_mode = 'black';
+        // 'smaller', 'default' or 'larger', the same steps as the watch's own
+        // Text Size setting, applied to the app's menus
+        this.menu_text_size = 'default';
         this.quick_launch_behavior = 'main_menu';
         this.quick_launch_favorite_entity = null;
         this.quick_launch_exit_on_back = false;

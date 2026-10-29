@@ -14,9 +14,6 @@
 
 #include <pebble.h>
 
-//! Default cell height in pixels
-#define MENU_CELL_BASIC_CELL_HEIGHT ((const int16_t) 44)
-
 typedef enum SimplyMenuType SimplyMenuType;
 
 enum SimplyMenuType {
@@ -42,6 +39,16 @@ struct SimplyMenuLayer {
   GColor8 normal_background;
   GColor8 highlight_foreground;
   GColor8 highlight_background;
+#if !defined(PBL_PLATFORM_APLITE)
+  //! The Text Size the phone asked for (MenuTextSize in simply_menu.c), and the
+  //! content size it works out to on this display
+  uint8_t text_size;
+  uint8_t content_size;
+  //! Line heights of the current title and subtitle fonts, measured once when
+  //! the size changes rather than every time a row is drawn
+  int16_t title_height;
+  int16_t subtitle_height;
+#endif
 };
 
 typedef struct SimplyMenu SimplyMenu;
@@ -91,9 +98,6 @@ struct SimplyMenu {
   int16_t subtitle_max_scroll_offset;
   bool subtitle_needs_scroll;
   bool subtitle_scrolling_active;
-  // Cached font heights to avoid expensive measurements every frame
-  int16_t title_height;
-  int16_t subtitle_height;
 #endif
 #endif
 };

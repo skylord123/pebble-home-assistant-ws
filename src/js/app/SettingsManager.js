@@ -150,6 +150,13 @@ var SettingsManager = {
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
 
+        // Menu text size (default 'default'). Setting it here covers both
+        // startup and a change made on the config page, and redraws the menu
+        // on screen if the size changed.
+        appState.menu_text_size = Menu.normalizeTextSize(Settings.option('menu_text_size'));
+        Menu.setTextSize(appState.menu_text_size);
+        log('Menu text size: ' + appState.menu_text_size);
+
         // Background colour, black unless it has been changed. Applying it here
         // covers both startup and a change made on the config page.
         appState.menu_background_mode = readBackgroundMode('menu_background_mode');

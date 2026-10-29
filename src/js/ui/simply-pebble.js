@@ -377,6 +377,16 @@ var StatusBarSeparatorModeTypes = [
 
 var StatusBarSeparatorModeType = makeArrayType(StatusBarSeparatorModeTypes);
 
+// The index of each name is what goes over the wire. 'default' is 0 so a
+// watch reading a zeroed field draws menus exactly as it always has.
+var MenuTextSizeTypes = [
+  'default',
+  'smaller',
+  'larger',
+];
+
+var MenuTextSizeType = makeArrayType(MenuTextSizeTypes);
+
 var Packet = new struct([
   ['uint16', 'type'],
   ['uint16', 'length'],
@@ -592,6 +602,7 @@ var MenuPropsPacket = new struct([
   ['uint8', 'highlightBackgroundColor', ColorType],
   ['uint8', 'highlightTextColor', ColorType],
   ['bool', 'scrollWrap', BoolType],
+  ['uint8', 'textSize', MenuTextSizeType],
 ]);
 
 var MenuSectionPacket = new struct([
@@ -1370,9 +1381,13 @@ SimplyPebble.menuClearSection = function(section) {
 };
 
 SimplyPebble.menuProps = function(def) {
-  // scrollWrap is set explicitly because the packet buffer is reused between
-  // sends and prop() skips fields missing from def
-  SimplyPebble.sendPacket(MenuPropsPacket.prop(def).scrollWrap(def.scrollWrap !== false));
+  // scrollWrap and textSize are set explicitly because the packet buffer is
+  // reused between sends and prop() skips fields missing from def. The text
+  // size is one setting for the whole app rather than a property of any one
+  // menu, so it is read from Menu instead of def.
+  SimplyPebble.sendPacket(MenuPropsPacket.prop(def)
+    .scrollWrap(def.scrollWrap !== false)
+    .textSize(Menu.textSize()));
 };
 
 SimplyPebble.menuSection = function(section, def, clear) {

@@ -31,6 +31,36 @@ Menu.setScrollWrapDefault = function(enabled) {
   defaults.scrollWrap = (enabled !== false);
 };
 
+var textSizes = ['smaller', 'default', 'larger'];
+
+// The watch's own Text Size setting, mirrored for the app's menus. It is one
+// value for every menu rather than a property of each, so it lives here and
+// is read when a menu's props are sent.
+var textSize = 'default';
+
+// Anything that is not one of the three sizes, a missing setting included,
+// reads as 'default', which is how menus looked before there was a choice.
+Menu.normalizeTextSize = function(name) {
+  return textSizes.indexOf(name) !== -1 ? name : 'default';
+};
+
+Menu.textSize = function() {
+  return textSize;
+};
+
+// Changes the text size of every menu. Only the top of the stack is on screen
+// and needs its props sent again now; the ones underneath send theirs in full
+// when they come back to it, and pick the new size up then.
+Menu.setTextSize = function(name) {
+  name = Menu.normalizeTextSize(name);
+  if (name === textSize) { return; }
+  textSize = name;
+  var top = WindowStack.top();
+  if (top instanceof Menu) {
+    top._prop(top.state);
+  }
+};
+
 var colorProps = [
   'backgroundColor',
   'textColor',
@@ -91,6 +121,18 @@ Menu.prototype._numPreloadItems = (Platform.version() === 'aplite' ? 5 : 50);
 Menu.prototype._prop = function(state, clear, pushing) {
   if (this === WindowStack.top()) {
     this._resolveMenu(clear, pushing);
+    // The watch finds where the selected row sits by adding up the rows above
+    // it, and counts a section it has not been sent yet as a single row. So
+    // when a menu is put up afresh, every section before the selected one goes
+    // first, or a menu coming back with its selection in a later section
+    // scrolls to where the selection would be if those sections were one row
+    // each, and leaves it off screen once their real rows arrive. A menu that
+    // is only being updated has had them all already.
+    if (clear) {
+      for (var i = 0; i < this._selection.sectionIndex; ++i) {
+        this._resolveSection({ sectionIndex: i }, undefined, true);
+      }
+    }
     this._resolveSection(this._selection);
   }
 };
