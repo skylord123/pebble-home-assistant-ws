@@ -536,6 +536,15 @@ Assist.stopListening = function() {
 };
 
 /**
+ * How loud each band of the wearer's voice is just now, 0 to 255 each, for
+ * the bars on the listening screen.
+ */
+Assist.levels = function(levels) {
+  if (!state.active || !levels) { return; }
+  simply.impl.assistLevels(levels);
+};
+
+/**
  * This turn cannot go to Home Assistant as audio after all, such as a pipeline
  * with no speech-to-text, so the watch closes the stream and dictates it.
  */

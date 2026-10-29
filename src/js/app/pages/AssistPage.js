@@ -18,6 +18,7 @@ var Settings = require('settings');
 
 var AppState = require('app/AppState');
 var AudioStream = require('app/AudioStream');
+var AudioLevels = require('app/AudioLevels');
 var ConnectionService = require('app/ConnectionService');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -347,6 +348,7 @@ function startListening() {
     turn.sink = {
         audio: function(bytes) {
             if (turn.ended) { return; }
+            Assist.levels(AudioLevels.analyze(bytes));
             if (turn.handlerId === null) {
                 turn.queue.push(bytes);
             } else {
@@ -358,6 +360,7 @@ function startListening() {
         }
     };
     listening = turn;
+    AudioLevels.reset();
     AudioStream.attach(turn.sink);
 
     var input = { sample_rate: AudioStream.SAMPLE_RATE };

@@ -902,6 +902,12 @@ var AssistListenPacket = new struct([
   ['uint8', 'op'],
 ]);
 
+var AssistLevelsPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'count'],
+  ['data', 'levels'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -981,6 +987,7 @@ var CommandPackets = [
   AssistTranscriptPacket,
   AssistActionPacket,
   AssistListenPacket,
+  AssistLevelsPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1031,6 +1038,9 @@ SimplyPebble.init = function() {
 
   // Initialize the packet queue
   state.packetQueue = new PacketQueue();
+  state.messageQueue.onIdle = function() {
+    flushLevels();
+  };
 
   // Signal the Pebble that the Phone's app message is ready
   SimplyPebble.ready();
@@ -1049,6 +1059,9 @@ var MessageQueue = function() {
 
 MessageQueue.prototype.stop = function() {
   this._sending = false;
+  if (this.onIdle) {
+    this.onIdle();
+  }
 };
 
 MessageQueue.prototype.consume = function() {
@@ -1724,6 +1737,25 @@ SimplyPebble.assistTheme = function(dark) {
 
 SimplyPebble.assistListen = function(op) {
   SimplyPebble.sendPacket(AssistListenPacket.op(op));
+};
+
+// Only the newest levels are worth anything. While a message is still on its
+// way they wait here, each replacing the last, rather than queueing behind it
+// and putting the bars further and further behind the voice.
+var pendingLevels = null;
+
+var flushLevels = function() {
+  if (!pendingLevels) { return; }
+  var levels = pendingLevels;
+  pendingLevels = null;
+  SimplyPebble.sendPacket(AssistLevelsPacket.count(levels.length).levels(levels));
+};
+
+SimplyPebble.assistLevels = function(levels) {
+  pendingLevels = levels;
+  if (!state.messageQueue._sending) {
+    flushLevels();
+  }
 };
 
 SimplyPebble.assistHide = function() {

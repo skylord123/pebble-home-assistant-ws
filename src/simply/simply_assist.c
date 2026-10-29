@@ -46,6 +46,14 @@
 // would otherwise pulse forever, so the watch gives up on its own and says so.
 #define THINK_TIMEOUT_MS 45000
 
+// The voice bars move this often while the wearer talks. The phone sends new
+// levels ten times a second; the frames between ease the bars toward them, so
+// they rise and fall rather than jump.
+#define METER_TICK_MS 40
+
+// One bar per frequency band the phone measures, the lowest in the middle
+#define METER_BARS 9
+
 // How long the phone has to take the microphone stream before the turn goes
 // to dictation instead. A phone app that knows about streams answers at once,
 // yes or no; one that does not never answers at all, and the firmware's own
@@ -215,6 +223,13 @@ struct SimplyAssist {
   //! Keep listening until the wearer presses select, rather than until Home
   //! Assistant hears them stop talking
   bool stream_manual;
+  //! How loud each band of the voice was in the phone's latest measure, and
+  //! how tall its bar stands now on the way there, both 0 to 255
+  uint8_t level_target[METER_BARS];
+  uint8_t level_shown[METER_BARS];
+  //! Meter frames since the phone last sent levels. Past a few, the voice is
+  //! taken to have gone quiet and the bars settle back down.
+  uint8_t level_age;
   bool backlight;
   //! Keep the screen lit for as long as an answer is streaming in, and light
   //! it once more as the last of it lands, rather than only flashing it up
@@ -290,6 +305,15 @@ enum {
   //! What Home Assistant heard the wearer say, from audio streamed to it. It
   //! goes up as the wearer's turn, and the wait for the answer starts there.
   MessageFlagTranscript = 8,
+};
+
+typedef struct AssistLevelsPacket AssistLevelsPacket;
+
+//! How loud each band of the wearer's voice is, lowest band first
+struct __attribute__((__packed__)) AssistLevelsPacket {
+  Packet packet;
+  uint8_t count;
+  uint8_t levels[METER_BARS];
 };
 
 typedef struct AssistListenPacket AssistListenPacket;
@@ -608,12 +632,13 @@ static int16_t prv_dot_size(GRect frame) {
   return frame.size.w / 40 < 4 ? 4 : frame.size.w / 40;
 }
 
-//! The line under the level meter saying what the microphone is doing
+//! The line under the voice bars saying what the microphone is doing
 #define LISTEN_CAPTION_HEIGHT 20
 
-//! Height of the level meter, which stands where the wearer's words will be
+//! Height of the voice bars, which stand where the wearer's words will be
 static int16_t prv_meter_height(GRect frame) {
-  return 4 * prv_dot_size(frame);
+  const int16_t tall = frame.size.h / 3;
+  return tall > 4 * prv_dot_size(frame) ? tall : 4 * prv_dot_size(frame);
 }
 
 //! How much room the animation layer needs: the dots, or the meter and its
@@ -1085,30 +1110,34 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   return PBL_IF_ROUND_ELSE(bottom, bottom + CONTENT_MARGIN_BOTTOM);
 }
 
-//! The microphone open to Home Assistant: bars rising and falling where the
-//! wearer's words will appear, and a line saying how the turn ends. There is
-//! no level to show, as the audio never passes through this app, so the bars
-//! only say that it is listening, the way the dots only say it is waiting.
+//! Which bar a band stands in: the lowest in the middle, where most of a voice
+//! is, and the rest alternating outward, right then left, as they rise
+static int16_t prv_meter_slot(int16_t band) {
+  const int16_t middle = METER_BARS / 2;
+  if (band == 0) { return middle; }
+  return (band & 1) ? middle + (band + 1) / 2 : middle - band / 2;
+}
+
+//! The microphone open to Home Assistant: a bar for each band of the voice,
+//! growing up and down from the middle with how loud that band is, and a line
+//! saying how the turn ends. Until the phone takes the stream the bars are
+//! grey dots: nothing is being heard yet, and moving them would say otherwise.
 static void prv_draw_listening(SimplyAssist *self, Layer *layer, GContext *ctx) {
-  static const uint8_t WAVE[8] = { 1, 2, 4, 6, 7, 6, 4, 2 };
   const GRect bounds = layer_get_bounds(layer);
   const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
   const int16_t meter_h = prv_meter_height(frame);
-  const int16_t bar_w = prv_dot_size(frame);
+  const int16_t bar_w = frame.size.w / 26 < 4 ? 4 : frame.size.w / 26;
   const int16_t gap = bar_w;
-  const int16_t bars = 5;
-  const int16_t left = (bounds.size.w - (bars * bar_w + (bars - 1) * gap)) / 2;
+  const int16_t left = (bounds.size.w - (METER_BARS * bar_w + (METER_BARS - 1) * gap)) / 2;
   const bool asking = (self->listen == AssistListenAsking);
 
   graphics_context_set_fill_color(ctx, asking ?
       PBL_IF_COLOR_ELSE(GColorDarkGray, prv_foreground(self)) : prv_accent(self));
-  for (int16_t i = 0; i < bars; ++i) {
-    // Until the phone takes the stream the bars sit low and still: nothing is
-    // being heard yet, and moving them would say otherwise
-    const int16_t level = asking ? 1 : WAVE[(self->tick + 3 * i) % 8];
-    const int16_t h = bar_w + (meter_h - bar_w) * level / 7;
-    graphics_fill_rect(ctx, GRect(left + i * (bar_w + gap), (meter_h - h) / 2, bar_w, h),
-                       bar_w / 2, GCornersAll);
+  for (int16_t band = 0; band < METER_BARS; ++band) {
+    const int16_t level = asking ? 0 : self->level_shown[band];
+    const int16_t h = bar_w + (meter_h - bar_w) * level / 255;
+    const int16_t x = left + prv_meter_slot(band) * (bar_w + gap);
+    graphics_fill_rect(ctx, GRect(x, (meter_h - h) / 2, bar_w, h), bar_w / 2, GCornersAll);
   }
 
   const char *caption = asking ? "Starting microphone" :
@@ -1262,6 +1291,42 @@ static const VibePattern s_stream_vibe = {
 
 // MARK: - Thinking state
 
+//! Ease each voice bar one frame toward its level: quickly up, so a sound
+//! shows as it is made, and more gently down. Returns whether any bar moved.
+static bool prv_meter_step(SimplyAssist *self) {
+  // The phone stopped sending, so whatever it last measured has passed
+  const bool quiet = self->level_age > 4;
+  if (self->level_age < UINT8_MAX) {
+    self->level_age++;
+  }
+  bool moved = false;
+  for (int16_t band = 0; band < METER_BARS; ++band) {
+    if (quiet) {
+      self->level_target[band] = self->level_target[band] * 3 / 4;
+    }
+    const int16_t target = self->level_target[band];
+    const int16_t shown = self->level_shown[band];
+    int16_t next = shown;
+    if (target > shown) {
+      next = shown + (target - shown + 1) / 2;
+    } else if (target < shown) {
+      const int16_t fall = (shown - target) / 4;
+      next = shown - (fall > 6 ? fall : (shown - target < 6 ? shown - target : 6));
+    }
+    if (next != shown) {
+      self->level_shown[band] = next;
+      moved = true;
+    }
+  }
+  return moved;
+}
+
+static void prv_meter_clear(SimplyAssist *self) {
+  memset(self->level_target, 0, sizeof(self->level_target));
+  memset(self->level_shown, 0, sizeof(self->level_shown));
+  self->level_age = 0;
+}
+
 static void prv_think_tick(void *data) {
   SimplyAssist *self = data;
   self->think_timer = NULL;
@@ -1269,9 +1334,16 @@ static void prv_think_tick(void *data) {
   // answer being waited on is not; the animation picks up again on the way
   // back in rather than being torn down and restarted
   if ((!self->thinking && self->listen == AssistListenIdle) || !self->dots_layer) { return; }
-  // Wrapped to a length both waves divide, the dots' six steps and the
-  // meter's eight, so neither phase can jump when a plain counter would have
-  // rolled over
+  if (self->listen == AssistListenStreaming) {
+    // The bars follow the voice, and only need drawing when they move
+    if (prv_meter_step(self)) {
+      layer_mark_dirty(self->dots_layer);
+    }
+    self->think_timer = app_timer_register(METER_TICK_MS, prv_think_tick, self);
+    return;
+  }
+  // Wrapped so the dots' six steps never jump when a plain counter would
+  // have rolled over
   self->tick = (self->tick + 1) % 24;
   layer_mark_dirty(self->dots_layer);
   self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
@@ -1395,7 +1467,7 @@ static bool prv_listening(SimplyAssist *self) {
 }
 
 //! Keep the animation running. Listening and thinking share it: it is the
-//! dots while the phone works, and a level meter while the wearer talks.
+//! dots while the phone works, and the voice bars while the wearer talks.
 static void prv_start_ticking(SimplyAssist *self) {
   if (!self->think_timer) {
     self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
@@ -1463,6 +1535,7 @@ static void prv_stream_started(void *context) {
   if (self->listen != AssistListenAsking) { return; }
   prv_cancel_listen_timer(self);
   self->listen = AssistListenStreaming;
+  prv_meter_clear(self);
   prv_send_action(AssistActionStreamStarted);
   if (self->dots_layer) {
     layer_mark_dirty(self->dots_layer);
@@ -1903,6 +1976,18 @@ static void prv_clear_conversation(SimplyAssist *self) {
   self->stream_chunk_count = 0;
 }
 
+//! The phone's measure of the voice it is being streamed
+static void prv_handle_levels(Simply *simply, Packet *data) {
+  SimplyAssist *self = simply->assist;
+  if (!self || self->destroying || self->listen != AssistListenStreaming) { return; }
+  AssistLevelsPacket *packet = (AssistLevelsPacket *)data;
+  if (packet->count != METER_BARS || packet->packet.length < sizeof(AssistLevelsPacket)) {
+    return;
+  }
+  memcpy(self->level_target, packet->levels, sizeof(self->level_target));
+  self->level_age = 0;
+}
+
 //! The phone steering a stream it is in the middle of
 static void prv_handle_listen(Simply *simply, Packet *data) {
   SimplyAssist *self = simply->assist;
@@ -2113,6 +2198,9 @@ bool simply_assist_handle_packet(Simply *simply, Packet *packet) {
       return true;
     case CommandAssistListen:
       prv_handle_listen(simply, packet);
+      return true;
+    case CommandAssistLevels:
+      prv_handle_levels(simply, packet);
       return true;
   }
   return false;
