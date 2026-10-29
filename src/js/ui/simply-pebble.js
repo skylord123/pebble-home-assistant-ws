@@ -872,6 +872,7 @@ var AssistShowPacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'fontSize'],
   ['uint8', 'flags'],
+  ['uint8', 'streamFlags'],
 ]);
 
 var AssistHidePacket = new struct([
@@ -894,6 +895,11 @@ var AssistTranscriptPacket = new struct([
 var AssistActionPacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'action'],
+]);
+
+var AssistListenPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'op'],
 ]);
 
 var CommandPackets = [
@@ -974,6 +980,7 @@ var CommandPackets = [
   AssistMessagePacket,
   AssistTranscriptPacket,
   AssistActionPacket,
+  AssistListenPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1701,7 +1708,10 @@ SimplyPebble.assistShow = function(opts) {
     .fontSize(opts.fontSize || 18)
     .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0) |
            (opts.listen ? 8 : 0) | (opts.reset ? 32 : 0) |
-           (opts.backlightHold ? 64 : 0) | (opts.vibrationFeedback ? 128 : 0));
+           (opts.backlightHold ? 64 : 0) | (opts.vibrationFeedback ? 128 : 0))
+    // StreamFlag in simply_assist.c: whether the microphone may go to Home
+    // Assistant, and whether the wearer ends the turn rather than it
+    .streamFlags((opts.stream ? 1 : 0) | (opts.streamManual ? 2 : 0));
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 
@@ -1710,6 +1720,10 @@ SimplyPebble.assistShow = function(opts) {
 SimplyPebble.assistTheme = function(dark) {
   AssistShowPacket.fontSize(0).flags(16 | (dark ? 4 : 0));
   SimplyPebble.sendPacket(AssistShowPacket);
+};
+
+SimplyPebble.assistListen = function(op) {
+  SimplyPebble.sendPacket(AssistListenPacket.op(op));
 };
 
 SimplyPebble.assistHide = function() {

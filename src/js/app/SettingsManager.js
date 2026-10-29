@@ -7,6 +7,7 @@ var Menu = require('ui/menu');
 var InactivityTimer = require('app/InactivityTimer');
 var Touch = require('ui/touch');
 var AppState = require('app/AppState');
+var AudioStream = require('app/AudioStream');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -45,6 +46,18 @@ var SettingsManager = {
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
         appState.voice_backlight_hold = Settings.option('voice_backlight_hold') === true;
         appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
+        // On unless the wearer has turned it off. Where it cannot work the
+        // watch dictates as it always has, so nothing ever needs to turn it on
+        // or off on the wearer's behalf, and a choice to turn it off stays.
+        appState.assist_stream_audio = Settings.option('assist_stream_audio') !== false;
+        appState.assist_stream_end = Settings.option('assist_stream_end') === 'manual' ? 'manual' : 'auto';
+        // The config page cannot see the watch, so it is told whether this one
+        // could stream, to explain why dictation is being used if not
+        var streamWatch = AudioStream.watchCanStream() ? 'ready' :
+            (AudioStream.watchHasStreamPlatform() ? 'firmware' : 'unsupported');
+        if (Settings.option('assist_stream_watch') !== streamWatch) {
+            Settings.option('assist_stream_watch', streamWatch);
+        }
         appState.assist_vibration_feedback = Settings.option('assist_vibration_feedback') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 

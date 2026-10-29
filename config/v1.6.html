@@ -1057,6 +1057,24 @@
 				</div>
 				<div class="component">
 					<div class="form-switch">
+						<label class="form-check-label" for="ha-assist-stream-audio">Send your voice to Home Assistant</label>
+						<input class="form-check-input" type="checkbox" id="ha-assist-stream-audio" checked>
+					</div>
+					<small class="form-text">Your pipeline's own speech-to-text hears you instead of the phone's dictation, and there is no limit on how long you can talk. Needs a Pebble Time 2, Core 2 Duo or Core Time Round on firmware 4.43 or newer, and the Core Devices Pebble app with its Plugins preview turned on and the watch microphone allowed for this app. Anywhere it cannot work, dictation is used as before.</small>
+					<div id="assist-stream-status" class="alert alert-warning mt-2 hidden" role="alert"></div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-stream-end">Stop Listening</label>
+						<select class="form-select" id="ha-assist-stream-end">
+							<option value="auto">When I stop talking</option>
+							<option value="manual">When I press Select</option>
+						</select>
+						<small class="form-text">For your voice sent to Home Assistant. When you stop talking, Home Assistant ends the turn itself after a short pause, and never later than 15 seconds in. When you press Select, it keeps listening for as long as you talk, which suits dictating long notes. Select ends a turn early either way.</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
 						<label class="form-check-label" for="ha-assist-vibration-feedback">Vibration feedback</label>
 						<input class="form-check-input" type="checkbox" id="ha-assist-vibration-feedback" checked>
 					</div>
@@ -1567,6 +1585,9 @@
 		voiceBacklightTrigger = $('ha-voice-backlight-trigger'),
 		voiceBacklightHold = $('ha-voice-backlight-hold'),
 		assistStreamReply = $('ha-assist-stream-reply'),
+		assistStreamAudio = $('ha-assist-stream-audio'),
+		assistStreamEnd = $('ha-assist-stream-end'),
+		assistStreamStatus = $('assist-stream-status'),
 		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
 		voiceFontSize = $('ha-voice-font-size'),
 		pipelineSelect = $('ha-pipeline-select'),
@@ -2161,7 +2182,44 @@
 
 	pipelineSelect.addEventListener('change', function() {
 		chosenPipeline = pipelineSelect.value;
+		renderStreamStatus();
 	});
+
+	// Why a voice sent to Home Assistant would go to dictation instead, as
+	// far as the page can tell from what the watch app last saw
+	function streamStatusText() {
+		if (!assistStreamAudio.checked) { return ''; }
+		var watch = watch_config['assist_stream_watch'];
+		if (watch === 'unsupported') {
+			return 'This watch cannot send its microphone to Home Assistant, so the phone\'s dictation is used.';
+		}
+		if (watch === 'firmware') {
+			return 'Update the watch to firmware 4.43 or newer to send your voice to Home Assistant. Until then the phone\'s dictation is used.';
+		}
+		var pipelines = watch_config['available_pipelines'] || [];
+		var selected = pipelineSelect.disabled ? currentPipeline() : pipelineSelect.value;
+		for (var i = 0; i < pipelines.length; i++) {
+			if (pipelines[i].id === selected && pipelines[i].stt === false) {
+				return 'This pipeline has no speech-to-text engine, so the phone\'s dictation is used with it. Give it one in Home Assistant under Settings, Voice assistants, or pick another pipeline.';
+			}
+		}
+		var last = watch_config['assist_stream_status'];
+		if (last && last.result === 'refused') {
+			return 'The Pebble app refused the microphone the last time the watch asked. Turn on the Plugins preview in the Pebble app\'s settings, open the assistant once, and allow the watch microphone when the Pebble app asks (or on this app\'s page in the Pebble app). It is asked again the next time the app opens.';
+		}
+		if (last && last.result === 'noanswer') {
+			return 'Your phone app did not answer when the watch asked to send its microphone, so it probably does not support it yet and the phone\'s dictation is used. It is asked again in two weeks, or after you turn this off, save, and turn it back on.';
+		}
+		return '';
+	}
+
+	function renderStreamStatus() {
+		var text = streamStatusText();
+		assistStreamStatus.textContent = text;
+		show(assistStreamStatus, !!text);
+	}
+
+	assistStreamAudio.addEventListener('change', renderStreamStatus);
 
 	function currentPipeline() {
 		if (chosenPipeline !== null) { return chosenPipeline; }
@@ -2198,6 +2256,7 @@
 			pipelineSelect.appendChild(none);
 			show(pipelineWarning, true);
 		}
+		renderStreamStatus();
 	}
 
 	// ===== Form <-> config ==================================================
@@ -2214,6 +2273,8 @@
 			'voice_backlight_hold': voiceBacklightHold.checked,
 			'assist_stream_reply': assistStreamReply.checked,
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
+			'assist_stream_audio': assistStreamAudio.checked,
+			'assist_stream_end': assistStreamEnd.value,
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
 			// While the dropdown is empty (not connected) the saved choice
 			// stands, rather than being wiped by a dropout
@@ -2254,6 +2315,13 @@
 				: null,
 			'hidden_calendars': getHiddenCalendarIds()
 		};
+
+		// Turning it back on asks the phone afresh, rather than holding on to
+		// whatever it said last time: the wearer may have just allowed the
+		// microphone or updated the app
+		if (assistStreamAudio.checked && watch_config['assist_stream_audio'] === false) {
+			values.assist_stream_status = null;
+		}
 
 		// Preserve timeline_token if it exists
 		if (watch_config && watch_config.timeline_token) {
@@ -2299,6 +2367,8 @@
 		voiceBacklightHold.checked = watch_config['voice_backlight_hold'] === true;
 		assistStreamReply.checked = defaulted(watch_config['assist_stream_reply'], true);
 		assistVibrationFeedback.checked = defaulted(watch_config['assist_vibration_feedback'], true);
+		assistStreamAudio.checked = defaulted(watch_config['assist_stream_audio'], true);
+		assistStreamEnd.value = watch_config['assist_stream_end'] === 'manual' ? 'manual' : 'auto';
 		voiceFontSize.value = watch_config['voice_font_size'] ? String(watch_config['voice_font_size']) : '18';
 
 		chosenPipeline = null;
