@@ -186,10 +186,12 @@ struct SimplyAssist {
   //! Ticks while an answer is streaming in, keeping the screen lit. See
   //! BACKLIGHT_HOLD_TICK_MS.
   AppTimer *backlight_timer;
+#if defined(SIMPLY_HAS_MIC_STREAM)
   //! Waiting on the phone to answer a request to stream the microphone
   AppTimer *listen_timer;
   //! Dictation about to take over from a stream the phone would not take
   AppTimer *dictate_timer;
+#endif
   char *arena;
   uint16_t arena_used;
   //! Content y of the last message, so a new one can be scrolled to its own
@@ -215,6 +217,7 @@ struct SimplyAssist {
   //! has to leave the stack for it, but the conversation is not over.
   bool awaiting_settings;
   bool dictation_confirm;
+#if defined(SIMPLY_HAS_MIC_STREAM)
   //! Where the microphone goes when the wearer speaks. See AssistListen.
   uint8_t listen;
   //! The phone has said the microphone may go to Home Assistant rather than to
@@ -230,6 +233,7 @@ struct SimplyAssist {
   //! Meter frames since the phone last sent levels. Past a few, the voice is
   //! taken to have gone quiet and the bars settle back down.
   uint8_t level_age;
+#endif
   bool backlight;
   //! Keep the screen lit for as long as an answer is streaming in, and light
   //! it once more as the last of it lands, rather than only flashing it up
@@ -341,6 +345,14 @@ typedef enum AssistListen {
   //! The wearer is talking, and every word is on its way to Home Assistant
   AssistListenStreaming,
 } AssistListen;
+
+//! Whether the microphone is open to Home Assistant, or about to be. Never,
+//! on a watch that cannot stream, which then carries none of it.
+#if defined(SIMPLY_HAS_MIC_STREAM)
+#define prv_listening(self) ((self)->listen != AssistListenIdle)
+#else
+#define prv_listening(self) ((void)(self), false)
+#endif
 
 typedef struct AssistTranscriptPacket AssistTranscriptPacket;
 
@@ -632,6 +644,7 @@ static int16_t prv_dot_size(GRect frame) {
   return frame.size.w / 40 < 4 ? 4 : frame.size.w / 40;
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
 //! The line under the voice bars saying what the microphone is doing
 #define LISTEN_CAPTION_HEIGHT 20
 
@@ -640,13 +653,16 @@ static int16_t prv_meter_height(GRect frame) {
   const int16_t tall = frame.size.h / 3;
   return tall > 4 * prv_dot_size(frame) ? tall : 4 * prv_dot_size(frame);
 }
+#endif
 
 //! How much room the animation layer needs: the dots, or the meter and its
 //! caption while the wearer is talking
 static int16_t prv_indicator_height(SimplyAssist *self, GRect frame) {
-  if (self->listen != AssistListenIdle) {
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (prv_listening(self)) {
     return prv_meter_height(frame) + LISTEN_CAPTION_HEIGHT;
   }
+#endif
   return 2 * prv_dot_size(frame);
 }
 
@@ -949,7 +965,7 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
 static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
 
-  if (self->count == 0 && !self->thinking && self->listen == AssistListenIdle) {
+  if (self->count == 0 && !self->thinking && !prv_listening(self)) {
     // Nothing said yet: an invitation rather than an empty screen. This is
     // what the wearer sees when the microphone could not be opened at all.
     if (ctx) {
@@ -1045,7 +1061,7 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
     y += MESSAGE_GAP;
   }
 
-  if (self->listen != AssistListenIdle) {
+  if (prv_listening(self)) {
     // The wearer's turn, still being spoken. It takes the place their words
     // will fill once Home Assistant says what it heard: the label they will
     // sit under, and a meter where the text will go.
@@ -1110,6 +1126,7 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   return PBL_IF_ROUND_ELSE(bottom, bottom + CONTENT_MARGIN_BOTTOM);
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
 //! Which bar a band stands in: the lowest in the middle, where most of a voice
 //! is, and the rest alternating outward, right then left, as they rise
 static int16_t prv_meter_slot(int16_t band) {
@@ -1147,15 +1164,18 @@ static void prv_draw_listening(SimplyAssist *self, Layer *layer, GContext *ctx) 
                      GRect(0, meter_h, bounds.size.w, LISTEN_CAPTION_HEIGHT),
                      GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
 }
+#endif
 
 //! The waiting animation, on its own layer above the conversation
 static void prv_dots_update(Layer *layer, GContext *ctx) {
   SimplyAssist *self = window_get_user_data(layer_get_window(layer));
   if (!self) { return; }
-  if (self->listen != AssistListenIdle) {
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (prv_listening(self)) {
     prv_draw_listening(self, layer, ctx);
     return;
   }
+#endif
   if (!self->thinking) { return; }
 
   // Three dots breathing in a wave. The wearer is watching this while the
@@ -1224,7 +1244,7 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
 
   layer_set_frame(self->dots_layer,
                   GRect(0, self->thinking_y, frame.size.w, prv_indicator_height(self, frame)));
-  layer_set_hidden(self->dots_layer, !self->thinking && self->listen == AssistListenIdle);
+  layer_set_hidden(self->dots_layer, !self->thinking && !prv_listening(self));
   layer_mark_dirty(self->dots_layer);
 
   // Text landing below the bottom of the screen changes nothing anyone can
@@ -1291,6 +1311,7 @@ static const VibePattern s_stream_vibe = {
 
 // MARK: - Thinking state
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
 //! Ease each voice bar one frame toward its level: quickly up, so a sound
 //! shows as it is made, and more gently down. Returns whether any bar moved.
 static bool prv_meter_step(SimplyAssist *self) {
@@ -1326,6 +1347,7 @@ static void prv_meter_clear(SimplyAssist *self) {
   memset(self->level_shown, 0, sizeof(self->level_shown));
   self->level_age = 0;
 }
+#endif
 
 static void prv_think_tick(void *data) {
   SimplyAssist *self = data;
@@ -1333,7 +1355,8 @@ static void prv_think_tick(void *data) {
   // The layers are gone while the settings menu has the screen, but the
   // answer being waited on is not; the animation picks up again on the way
   // back in rather than being torn down and restarted
-  if ((!self->thinking && self->listen == AssistListenIdle) || !self->dots_layer) { return; }
+  if ((!self->thinking && !prv_listening(self)) || !self->dots_layer) { return; }
+#if defined(SIMPLY_HAS_MIC_STREAM)
   if (self->listen == AssistListenStreaming) {
     // The bars follow the voice, and only need drawing when they move
     if (prv_meter_step(self)) {
@@ -1342,6 +1365,7 @@ static void prv_think_tick(void *data) {
     self->think_timer = app_timer_register(METER_TICK_MS, prv_think_tick, self);
     return;
   }
+#endif
   // Wrapped so the dots' six steps never jump when a plain counter would
   // have rolled over
   self->tick = (self->tick + 1) % 24;
@@ -1462,10 +1486,6 @@ static void prv_start_dictation(SimplyAssist *self) {
   }
 }
 
-static bool prv_listening(SimplyAssist *self) {
-  return self->listen != AssistListenIdle;
-}
-
 //! Keep the animation running. Listening and thinking share it: it is the
 //! dots while the phone works, and the voice bars while the wearer talks.
 static void prv_start_ticking(SimplyAssist *self) {
@@ -1474,6 +1494,7 @@ static void prv_start_ticking(SimplyAssist *self) {
   }
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
 static void prv_cancel_listen_timer(SimplyAssist *self) {
   if (self->listen_timer) {
     app_timer_cancel(self->listen_timer);
@@ -1616,6 +1637,20 @@ static void prv_speak(SimplyAssist *self) {
   }
 }
 
+#else
+
+// A watch that cannot stream always dictates, and has no stream to end
+static inline void prv_end_stream(SimplyAssist *self) {}
+static inline void prv_cancel_stream(SimplyAssist *self) {}
+
+static void prv_speak(SimplyAssist *self) {
+  prv_start_dictation(self);
+}
+
+#define prv_start_listening(self) prv_start_dictation(self)
+
+#endif
+
 bool simply_assist_handle_dictation(Simply *simply, int status, const char *transcription) {
   SimplyAssist *self = simply->assist;
   if (!self || self->destroying) { return false; }
@@ -1695,7 +1730,7 @@ static void prv_open_settings(SimplyAssist *self) {
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
   // The microphone is open, and the settings would take the screen from under
   // it. Holding select is far more likely the wearer pressing to finish.
-  if (prv_listening(context)) { return; }
+  if (prv_listening((SimplyAssist *)context)) { return; }
   prv_open_settings(context);
 }
 
@@ -1879,10 +1914,12 @@ static void prv_destroy(SimplyAssist *self) {
 #endif
   prv_stop_thinking(self);
   prv_end_stream(self);
+#if defined(SIMPLY_HAS_MIC_STREAM)
   if (self->dictate_timer) {
     app_timer_cancel(self->dictate_timer);
     self->dictate_timer = NULL;
   }
+#endif
   window_destroy(self->window);
   self->simply->assist = NULL;
   free(self->arena);
@@ -1976,6 +2013,7 @@ static void prv_clear_conversation(SimplyAssist *self) {
   self->stream_chunk_count = 0;
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
 //! The phone's measure of the voice it is being streamed
 static void prv_handle_levels(Simply *simply, Packet *data) {
   SimplyAssist *self = simply->assist;
@@ -2006,6 +2044,7 @@ static void prv_handle_listen(Simply *simply, Packet *data) {
       return;
   }
 }
+#endif
 
 static void prv_handle_show(Simply *simply, Packet *data) {
   AssistShowPacket *packet = (AssistShowPacket *)data;
@@ -2040,8 +2079,10 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->backlight_hold = (packet->flags & ShowFlagBacklightHold);
   self->vibration_feedback = (packet->flags & ShowFlagVibrationFeedback);
   self->dark = (packet->flags & ShowFlagDark);
+#if defined(SIMPLY_HAS_MIC_STREAM)
   self->stream_allowed = (packet->stream_flags & StreamFlagAllowed);
   self->stream_manual = (packet->stream_flags & StreamFlagManual);
+#endif
   //! Whether to open the microphone straight away. Coming back from the
   //! settings menu should land on the conversation, not on the dictation UI.
   const bool open_mic = (packet->flags & ShowFlagListen);
@@ -2196,12 +2237,14 @@ bool simply_assist_handle_packet(Simply *simply, Packet *packet) {
     case CommandAssistMessage:
       prv_handle_message(simply, packet);
       return true;
+#if defined(SIMPLY_HAS_MIC_STREAM)
     case CommandAssistListen:
       prv_handle_listen(simply, packet);
       return true;
     case CommandAssistLevels:
       prv_handle_levels(simply, packet);
       return true;
+#endif
   }
   return false;
 }
