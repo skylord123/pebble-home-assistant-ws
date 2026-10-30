@@ -1723,6 +1723,11 @@ struct AssistConfirm {
   TextLayer *text_layer;
   ActionBarLayer *action_bar;
   GBitmap *icon;
+  //! Up and down on the action bar while there is more to read that way,
+  //! the same as the system's dictation screen shows them
+  GBitmap *up_icon;
+  GBitmap *down_icon;
+  AppTimer *arrows_timer;
   char text[];
 };
 
@@ -1781,6 +1786,38 @@ static void prv_confirm_back_click(ClickRecognizerRef recognizer, void *context)
   prv_reflow(self, AssistFocusMessage);
 }
 
+//! Show each arrow only while the words can still scroll that way
+static void prv_confirm_update_arrows(AssistConfirm *confirm) {
+  const GPoint offset = scroll_layer_get_content_offset(confirm->scroll_layer);
+  const GSize content_size = scroll_layer_get_content_size(confirm->scroll_layer);
+  const int16_t frame_h = layer_get_frame(scroll_layer_get_layer(confirm->scroll_layer)).size.h;
+  if (offset.y < 0) {
+    action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_UP, confirm->up_icon);
+  } else {
+    action_bar_layer_clear_icon(confirm->action_bar, BUTTON_ID_UP);
+  }
+  if (content_size.h + offset.y > frame_h) {
+    action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_DOWN, confirm->down_icon);
+  } else {
+    action_bar_layer_clear_icon(confirm->action_bar, BUTTON_ID_DOWN);
+  }
+}
+
+static void prv_confirm_arrows_timer(void *data) {
+  AssistConfirm *confirm = data;
+  confirm->arrows_timer = NULL;
+  prv_confirm_update_arrows(confirm);
+}
+
+//! The offset moves throughout a scroll's animation, and can change in the
+//! middle of drawing, so the action bar is updated after it rather than here
+static void prv_confirm_offset_changed(ScrollLayer *scroll_layer, void *context) {
+  AssistConfirm *confirm = context;
+  if (!confirm->arrows_timer) {
+    confirm->arrows_timer = app_timer_register(0, prv_confirm_arrows_timer, confirm);
+  }
+}
+
 static void prv_confirm_click_config_provider(void *context) {
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_confirm_select_click);
   window_single_click_subscribe(BUTTON_ID_BACK, prv_confirm_back_click);
@@ -1802,8 +1839,10 @@ static void prv_confirm_window_load(Window *window) {
 
   confirm->scroll_layer = scroll_layer_create(GRect(0, 0, view_w, bounds.size.h));
   scroll_layer_set_shadow_hidden(confirm->scroll_layer, true);
+  scroll_layer_set_context(confirm->scroll_layer, confirm);
   scroll_layer_set_callbacks(confirm->scroll_layer, (ScrollLayerCallbacks) {
     .click_config_provider = prv_confirm_click_config_provider,
+    .content_offset_changed_handler = prv_confirm_offset_changed,
   });
 
   confirm->text_layer = text_layer_create(GRect(inset_x, 0, text_w, 2000));
@@ -1836,12 +1875,14 @@ static void prv_confirm_window_load(Window *window) {
   scroll_layer_set_content_size(confirm->scroll_layer,
                                 GSize(view_w, content_h > bounds.size.h ? content_h : bounds.size.h));
 
-  // Only select gets an icon: up and down scroll, and back needs none
   confirm->action_bar = action_bar_layer_create();
   action_bar_layer_set_background_color(confirm->action_bar,
       PBL_IF_COLOR_ELSE(self->dark ? GColorDarkGray : GColorBlack, GColorBlack));
   confirm->icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_CONFIRM);
   action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_SELECT, confirm->icon);
+  confirm->up_icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_UP);
+  confirm->down_icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_DOWN);
+  prv_confirm_update_arrows(confirm);
   action_bar_layer_add_to_window(confirm->action_bar, window);
   // After the action bar, which takes the window's buttons for its own when
   // it is added. Up and down scroll the words; select and back come from
@@ -1851,8 +1892,14 @@ static void prv_confirm_window_load(Window *window) {
 
 static void prv_confirm_window_unload(Window *window) {
   AssistConfirm *confirm = window_get_user_data(window);
+  if (confirm->arrows_timer) {
+    app_timer_cancel(confirm->arrows_timer);
+    confirm->arrows_timer = NULL;
+  }
   action_bar_layer_destroy(confirm->action_bar);
   gbitmap_destroy(confirm->icon);
+  gbitmap_destroy(confirm->up_icon);
+  gbitmap_destroy(confirm->down_icon);
   text_layer_destroy(confirm->text_layer);
   scroll_layer_destroy(confirm->scroll_layer);
 }
