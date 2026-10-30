@@ -84,6 +84,18 @@ phone apps open the same page from GitHub Pages and save the classic way; see
 4. View the response and scroll if needed using up/down buttons
 5. Long-press the middle button to change conversation agents
 
+#### Sending your voice to Home Assistant
+
+On a Pebble Time 2, Core 2 Duo or Core Time Round running firmware 4.43 or newer, the watch can send your voice straight to Home Assistant instead of using the phone's dictation. Your pipeline's own speech-to-text (Whisper, Home Assistant Cloud, Speech-to-Phrase and so on) hears you, and there is no limit on how long you can talk.
+
+It is on by default and is used whenever it can be. To make it work:
+
+1. Use the Core Devices Pebble app and turn on its Plugins preview in the app's settings.
+2. Open the assistant once. The Pebble app asks for permission to use the watch microphone; allow it, then reopen Home Assistant WS.
+3. Pick a pipeline that has a speech-to-text engine.
+
+While it is listening the screen shows a small meter. Home Assistant ends the turn when you stop talking (never later than 15 seconds in), or set **Stop Listening** to **On SELECT** in the assistant settings to keep talking as long as you like and press the middle button when you are done. Back drops what you were saying. Anywhere it cannot work, such as an older watch, another phone app or a pipeline without speech-to-text, the phone's dictation is used exactly as before, and you can turn it off under **Speech** in the assistant settings or on the settings page.
+
 ### Entity Control
 
 - **Short press** on an entity to view its details and controls

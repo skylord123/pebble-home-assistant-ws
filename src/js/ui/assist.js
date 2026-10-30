@@ -10,7 +10,16 @@ var simply = require('ui/simply');
  * the answer back.
  *
  * Assist.show({ fontSize, confirm, backlight, backlightHold, dark, listen,
- *               onTranscript, onSettings, onClose })
+ *               stream, streamManual, onTranscript, onStream, onSettings,
+ *               onClose })
+ *   stream             - the microphone may go straight to Home Assistant
+ *                        rather than through the phone's dictation, where the
+ *                        watch's firmware can. The watch decides each turn.
+ *   onStream(event)    - a turn going to Home Assistant as audio. `event` is
+ *                        one of the Stream* names below; answer 'requested' by
+ *                        starting a pipeline run that takes the audio, then
+ *                        steer the watch with stopListening(), dictateInstead()
+ *                        and transcript().
  *   onTranscript(text) - the wearer said something. Run the pipeline and
  *                        answer with Assist.reply(), or stream it in with
  *                        Assist.streamReply() and Assist.endReply(); the watch
@@ -29,6 +38,7 @@ var state = {
   active: false,
   dark: true,
   onTranscript: null,
+  onStream: null,
   onSettings: null,
   onClose: null,
   isDictating: false,
@@ -36,8 +46,9 @@ var state = {
 };
 
 // Must match AssistRole in simply_assist.h. The wearer's own turn is written
-// by the watch as soon as dictation returns, so only the two answers are sent
-// from here.
+// by the watch as soon as dictation returns. Only a turn streamed to Home
+// Assistant is sent from here, since only Home Assistant knows what it heard.
+var RoleUser = 0;
 var RoleAssistant = 1;
 var RoleError = 2;
 
@@ -45,6 +56,11 @@ var RoleError = 2;
 var FlagAppend = 1;      // add to the answer already on screen
 var FlagStreaming = 2;   // more is coming, keep the dots running
 var FlagKeepAlive = 4;   // nothing to add, but the phone is still working
+var FlagTranscript = 8;  // what Home Assistant heard the wearer say
+
+// Must match the ListenOp values in simply_assist.c
+var ListenOpStop = 0;
+var ListenOpDictate = 1;
 
 // Must match TEXT_BOLD_ON/OFF in simply_assist.c. Home Assistant's
 // conversation agents answer in markdown, and the watch has no business
@@ -253,6 +269,23 @@ var ActionSettings = 1;
 // every way a dictation can end short of a transcript.
 var ActionDictationStarted = 2;
 var ActionDictationEnded = 3;
+// A turn going to Home Assistant as audio rather than through dictation. The
+// watch starts every one of these itself.
+var ActionStreamRequested = 4;
+var ActionStreamStarted = 5;
+var ActionStreamFinished = 6;
+var ActionStreamCancelled = 7;
+var ActionStreamRefused = 8;
+var ActionStreamNoAnswer = 9;
+
+// What each of them is called when it is handed to onStream
+var streamEvents = {};
+streamEvents[ActionStreamRequested] = 'requested';
+streamEvents[ActionStreamStarted] = 'started';
+streamEvents[ActionStreamFinished] = 'finished';
+streamEvents[ActionStreamCancelled] = 'cancelled';
+streamEvents[ActionStreamRefused] = 'refused';
+streamEvents[ActionStreamNoAnswer] = 'noanswer';
 
 // The answer being streamed in: what the agent has written so far, and how
 // much of the converted form the watch has already been told about.
@@ -281,6 +314,7 @@ function resetStream() {
 Assist.show = function(opts) {
   state.active = true;
   state.onTranscript = opts.onTranscript;
+  state.onStream = opts.onStream;
   state.onSettings = opts.onSettings;
   state.onClose = opts.onClose;
   state.onDictationEnd = opts.onDictationEnd;
@@ -299,6 +333,8 @@ Assist.show = function(opts) {
     backlight: !!opts.backlight,
     backlightHold: !!opts.backlightHold,
     vibrationFeedback: !!opts.vibrationFeedback,
+    stream: !!opts.stream,
+    streamManual: !!opts.streamManual,
   };
   sendShow(opts.listen !== false, !!opts.reset);
 };
@@ -311,6 +347,8 @@ function sendShow(listen, reset) {
     backlight: o.backlight,
     backlightHold: o.backlightHold,
     vibrationFeedback: o.vibrationFeedback,
+    stream: o.stream,
+    streamManual: o.streamManual,
     dark: state.dark,
     listen: listen,
     reset: reset,
@@ -478,11 +516,56 @@ Assist.reply = function(markdown) {
   simply.impl.assistMessage(RoleAssistant, toWatchText(markdown), 0);
 };
 
-/** Something went wrong. Also ends the thinking animation. */
+/**
+ * Something went wrong. Also ends the thinking animation, and closes the
+ * microphone if the turn that failed was still being spoken.
+ */
 Assist.error = function(text) {
   if (!state.active) { return; }
   resetStream();
   simply.impl.assistMessage(RoleError, toWatchText(text), 0);
+};
+
+/**
+ * Home Assistant heard the wearer stop talking, so the watch can close the
+ * microphone and wait for what it heard.
+ */
+Assist.stopListening = function() {
+  if (!state.active) { return; }
+  simply.impl.assistListen(ListenOpStop);
+};
+
+/**
+ * How loud each band of the wearer's voice is just now, 0 to 255 each, for
+ * the bars on the listening screen.
+ */
+Assist.levels = function(levels) {
+  if (!state.active || !levels) { return; }
+  simply.impl.assistLevels(levels);
+};
+
+/**
+ * This turn cannot go to Home Assistant as audio after all, such as a pipeline
+ * with no speech-to-text, so the watch closes the stream and dictates it.
+ */
+Assist.dictateInstead = function() {
+  if (!state.active) { return; }
+  simply.impl.assistListen(ListenOpDictate);
+};
+
+/**
+ * What Home Assistant heard. It goes up as the wearer's own turn, and the
+ * watch waits for the answer under it.
+ */
+Assist.transcript = function(text) {
+  if (!state.active) { return; }
+  // Plain words: markers are ours alone, and a long dictation is cut to what
+  // the watch will hold rather than sent over to be dropped on arrival
+  var plain = String(text || '').replace(/[\u0001\u0002]/g, '');
+  if (utf8Length(plain) > replyLimit) {
+    plain = prefixWithinBytes(plain, replyLimit - 4) + '…';
+  }
+  simply.impl.assistMessage(RoleUser, plain, FlagTranscript);
 };
 
 /** The watch reporting how long an answer it can hold, in bytes. */
@@ -507,6 +590,20 @@ Assist.isDictating = function() {
 };
 
 Assist.emitAction = function(action) {
+  if (streamEvents[action]) {
+    // The microphone is open from the moment it is asked for until the wearer
+    // finishes or drops the turn. A refused stream goes on to dictation, which
+    // reports its own start.
+    state.isDictating = (action === ActionStreamRequested || action === ActionStreamStarted);
+    if (state.onStream) {
+      state.onStream(streamEvents[action]);
+    }
+    if (!state.isDictating && action !== ActionStreamRefused &&
+        action !== ActionStreamNoAnswer && state.onDictationEnd) {
+      state.onDictationEnd();
+    }
+    return;
+  }
   if (action === ActionDictationStarted || action === ActionDictationEnded) {
     state.isDictating = (action === ActionDictationStarted);
     if (action === ActionDictationEnded && state.onDictationEnd) {
@@ -529,6 +626,7 @@ Assist.emitAction = function(action) {
     state.isDictating = false;
     resetStream();
     state.onTranscript = null;
+    state.onStream = null;
     state.onSettings = null;
     state.onClose = null;
     state.onDictationEnd = null;

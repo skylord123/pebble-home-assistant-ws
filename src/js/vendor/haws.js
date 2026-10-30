@@ -801,6 +801,32 @@ class HAWS {
         return ++this._last_cmd_id;
     }
 
+    /**
+     * Send audio to a pipeline run. Home Assistant routes a binary frame by its
+     * first byte, the handler id the run announced in run-start, and treats a
+     * frame with nothing after that byte as the end of the audio. Pass no
+     * bytes to end it; never pass an empty chunk mid-stream.
+     *
+     * @param {number} handlerId - runner_data.stt_binary_handler_id
+     * @param {ArrayBuffer|Uint8Array} [bytes] - 16-bit PCM, or nothing to end
+     * @returns {boolean} whether it was written
+     */
+    sendAudio(handlerId, bytes) {
+        if (!this.authenticated || !this.ws) {
+            return false;
+        }
+        const audio = bytes ? new Uint8Array(bytes.buffer || bytes,
+            bytes.byteOffset || 0, bytes.byteLength) : new Uint8Array(0);
+        const frame = new Uint8Array(audio.length + 1);
+        frame[0] = handlerId;
+        frame.set(audio, 1);
+        // The view rather than its buffer: both are standard, but the
+        // emulator's runtime sends a bare ArrayBuffer as an empty frame, and
+        // Home Assistant drops the whole connection for one of those
+        this.ws.send(frame);
+        return true;
+    }
+
     // Add new method for listing pipelines
     getPipelines(successCallback, errorCallback) {
         return this.send({ type: 'assist_pipeline/pipeline/list' }, successCallback, errorCallback);
@@ -814,8 +840,13 @@ class HAWS {
      * 2025.3 and later). It receives each new piece of text on its own; an
      * older instance simply never sends them and the answer arrives whole at
      * the end as it always did.
+     *
+     * `eventCallback` is optional and receives the events a run starting at
+     * speech-to-text goes through before its answer: run-start, which carries
+     * the id its audio is sent under, stt-start, stt-vad-start, stt-vad-end
+     * and stt-end with what was heard.
      */
-    runPipeline(data, successCallback, errorCallback, progressCallback) {
+    runPipeline(data, successCallback, errorCallback, progressCallback, eventCallback) {
         const msg = {
             type: 'assist_pipeline/run',
             ...data
@@ -871,6 +902,19 @@ class HAWS {
                 // Check for run-end event to clean up subscription
                 if (event.type === 'run-end') {
                     this.unsubscribe(subscriptionId);
+                    // A run that ends without an answer or an error was cut
+                    // off by its own timeout, which Home Assistant reports
+                    // after run-end, by which time nothing is listening
+                    fail({
+                        error: 'Timeout running pipeline',
+                        code: 'timeout'
+                    });
+                    return;
+                }
+
+                if (eventCallback && (event.type === 'run-start' ||
+                        event.type.indexOf('stt-') === 0)) {
+                    eventCallback(event);
                     return;
                 }
 

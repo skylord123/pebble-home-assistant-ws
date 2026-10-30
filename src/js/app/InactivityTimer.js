@@ -64,6 +64,13 @@ var InactivityTimer = {
 
     _expire: function() {
         this._timer = null;
+        // Someone talking is not inactive. A turn streamed to Home Assistant
+        // can run for minutes with no button pressed at all, and nothing
+        // crosses from the watch until it ends.
+        if (Assist.isDictating()) {
+            this.reset();
+            return;
+        }
         helpers.log_message('InactivityTimer: no activity for ' +
             this._timeoutSeconds + 's, exiting app');
 
