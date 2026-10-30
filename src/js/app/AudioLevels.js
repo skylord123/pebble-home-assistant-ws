@@ -7,8 +7,14 @@
  * bar for each and animates between them.
  *
  * Bands are spaced evenly in pitch from the bottom of a man's voice to the
- * top of its sibilants. Higher bands carry less energy in speech, so they are
- * lifted a little per octave to keep the outer bars moving too.
+ * top of its sibilants.
+ *
+ * A bar shows how far its band stands above the room, not how loud it is.
+ * Each band keeps track of its own background noise, which drops to meet
+ * any quieter moment at once and only creeps back up, so the gaps between
+ * words keep it honest while a voice cannot drag it up with it. Silence then
+ * shows dots however much a microphone hisses, and a voice shows against it
+ * however quiet the microphone.
  */
 var AudioLevels = {};
 
@@ -18,23 +24,25 @@ var SAMPLE_RATE = 16000;
 var FFT_SIZE = 512;
 var LOW_HZ = 120;
 var HIGH_HZ = 7000;
-// Lift per octave above the lowest band, in dB
-var TILT_DB = 2.5;
-// The loudest the voice has been lately sets the top of the bars, so a quiet
-// microphone fills them as well as a loud one. It falls back this fast once
-// the voice drops, in dB per chunk, and never below the floor, so silence
-// is not blown up into bars.
-var PEAK_FALL_DB = 0.6;
-var PEAK_FLOOR_DB = -55;
-// How far under the peak a band can be and still show above a dot
-var RANGE_DB = 33;
+// How far over its noise a band has to be before its bar rises, in dB. The
+// noise wanders by a few dB from one chunk to the next on its own.
+var GATE_DB = 6;
+// How fast a band's noise creeps back up, in dB per 100 ms chunk
+var NOISE_RISE_DB = 0.1;
+// The loudest the voice has been lately, above its noise, sets the top of the
+// bars, so a quiet voice fills them as well as a loud one. It falls back this
+// fast, in dB per chunk, but never closer to the gate than MIN_SPAN_DB, so a
+// band barely over it never stands as a full bar.
+var PEAK_FALL_DB = 0.5;
+var MIN_SPAN_DB = 20;
+
+var bandNoise = null;
+var peakDb = MIN_SPAN_DB;
 
 var hann = null;
 var cosTable = null;
 var sinTable = null;
 var bandBins = null;
-var bandLift = null;
-var peakDb = PEAK_FLOOR_DB;
 
 function setup() {
     var i;
@@ -49,7 +57,6 @@ function setup() {
         sinTable[i] = Math.sin(2 * Math.PI * i / FFT_SIZE);
     }
     bandBins = [];
-    bandLift = [];
     var binHz = SAMPLE_RATE / FFT_SIZE;
     var ratio = Math.pow(HIGH_HZ / LOW_HZ, 1 / AudioLevels.BANDS);
     for (i = 0; i < AudioLevels.BANDS; i++) {
@@ -58,7 +65,6 @@ function setup() {
         var first = Math.max(1, Math.round(lo / binHz));
         var last = Math.max(first, Math.round(hi / binHz) - 1);
         bandBins.push([first, last]);
-        bandLift.push(TILT_DB * Math.log(lo / LOW_HZ) / Math.LN2);
     }
 }
 
@@ -95,9 +101,13 @@ function fft(re, im) {
     }
 }
 
-/** Start a new turn: the last one's loudness says nothing about this one. */
+/**
+ * Start a new turn: the last one's loudness and noise say nothing about this
+ * one, which may well be in another room.
+ */
 AudioLevels.reset = function() {
-    peakDb = PEAK_FLOOR_DB;
+    bandNoise = null;
+    peakDb = MIN_SPAN_DB;
 };
 
 /**
@@ -128,27 +138,32 @@ AudioLevels.analyze = function(buffer) {
         windows++;
     }
 
-    // A full-scale sine lands near 0 dB in its band
-    var norm = 4 / (FFT_SIZE * FFT_SIZE * 0.25 * windows);
-    var db = [];
-    var loudest = -200;
+    // How far each band stands above its noise
+    var above = [];
+    var loudest = 0;
+    if (!bandNoise) { bandNoise = []; }
     for (var b = 0; b < AudioLevels.BANDS; b++) {
         var sum = 0;
         for (i = bandBins[b][0]; i <= bandBins[b][1]; i++) {
             sum += power[i];
         }
-        var value = 10 * Math.log(sum * norm + 1e-12) / Math.LN10 + bandLift[b];
-        db.push(value);
-        if (value > loudest) { loudest = value; }
+        var db = 10 * Math.log(sum / windows + 1e-12) / Math.LN10;
+        var noise = bandNoise[b];
+        if (noise === undefined || db < noise) {
+            noise = db;
+        } else {
+            noise += Math.min(db - noise, NOISE_RISE_DB);
+        }
+        bandNoise[b] = noise;
+        above.push(db - noise - GATE_DB);
+        if (above[b] > loudest) { loudest = above[b]; }
     }
 
-    peakDb = Math.max(loudest, peakDb - PEAK_FALL_DB, PEAK_FLOOR_DB);
+    peakDb = Math.max(loudest, peakDb - PEAK_FALL_DB, MIN_SPAN_DB);
     var levels = [];
     for (b = 0; b < AudioLevels.BANDS; b++) {
-        var level = Math.max(0, Math.min(1, (db[b] - (peakDb - RANGE_DB)) / RANGE_DB));
-        // Curved so the loudest bands stand clear of the rest rather than all
-        // crowding the top together
-        levels.push(Math.round(Math.pow(level, 1.4) * 255));
+        var level = Math.max(0, Math.min(1, above[b] / peakDb));
+        levels.push(Math.round(level * 255));
     }
     return levels;
 };
