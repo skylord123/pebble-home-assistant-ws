@@ -10,8 +10,8 @@
  * top of its sibilants.
  *
  * A bar shows how far its band stands above the room, not how loud it is.
- * Each band keeps track of its own background noise, which drops to meet
- * any quieter moment at once and only creeps back up, so the gaps between
+ * Each band keeps track of its own background noise, which drops quickly
+ * toward any quieter moment and only creeps back up, so the gaps between
  * words keep it honest while a voice cannot drag it up with it. Silence then
  * shows dots however much a microphone hisses, and a voice shows against it
  * however quiet the microphone.
@@ -25,9 +25,15 @@ var FFT_SIZE = 512;
 var LOW_HZ = 120;
 var HIGH_HZ = 7000;
 // How far over its noise a band has to be before its bar rises, in dB. The
-// noise wanders by a few dB from one chunk to the next on its own.
+// noise wanders by a few dB from one chunk to the next on its own, and more
+// in the lowest bands, which are measured from only a few FFT bins, so they
+// take a higher gate.
 var GATE_DB = 6;
-// How fast a band's noise creeps back up, in dB per 100 ms chunk
+var GATE_BINS = 4;
+// How much of the way a band's noise drops toward a quieter chunk, and how
+// fast it creeps back up, in dB per 100 ms chunk. Dropping all the way would
+// chase every chance dip and leave the noise too low.
+var NOISE_DROP = 0.3;
 var NOISE_RISE_DB = 0.1;
 // The loudest the voice has been lately, above its noise, sets the top of the
 // bars, so a quiet voice fills them as well as a loud one. It falls back this
@@ -43,6 +49,7 @@ var hann = null;
 var cosTable = null;
 var sinTable = null;
 var bandBins = null;
+var bandGate = null;
 
 function setup() {
     var i;
@@ -57,6 +64,7 @@ function setup() {
         sinTable[i] = Math.sin(2 * Math.PI * i / FFT_SIZE);
     }
     bandBins = [];
+    bandGate = [];
     var binHz = SAMPLE_RATE / FFT_SIZE;
     var ratio = Math.pow(HIGH_HZ / LOW_HZ, 1 / AudioLevels.BANDS);
     for (i = 0; i < AudioLevels.BANDS; i++) {
@@ -65,6 +73,7 @@ function setup() {
         var first = Math.max(1, Math.round(lo / binHz));
         var last = Math.max(first, Math.round(hi / binHz) - 1);
         bandBins.push([first, last]);
+        bandGate.push(GATE_DB * Math.max(1, Math.sqrt(GATE_BINS / (last - first + 1))));
     }
 }
 
@@ -149,13 +158,15 @@ AudioLevels.analyze = function(buffer) {
         }
         var db = 10 * Math.log(sum / windows + 1e-12) / Math.LN10;
         var noise = bandNoise[b];
-        if (noise === undefined || db < noise) {
+        if (noise === undefined) {
             noise = db;
+        } else if (db < noise) {
+            noise += (db - noise) * NOISE_DROP;
         } else {
             noise += Math.min(db - noise, NOISE_RISE_DB);
         }
         bandNoise[b] = noise;
-        above.push(db - noise - GATE_DB);
+        above.push(db - noise - bandGate[b]);
         if (above[b] > loudest) { loudest = above[b]; }
     }
 
