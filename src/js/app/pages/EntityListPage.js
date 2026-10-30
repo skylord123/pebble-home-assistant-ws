@@ -4,6 +4,7 @@
 var UI = require('ui');
 var sortJSON = require('vendor/sortjson');
 var BasePage = require('app/pages/BasePage');
+var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
@@ -524,6 +525,9 @@ function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipI
     });
     page.show();
 }
+
+showEntityList = NavRoute.wrap('entityList', showEntityList);
+showEntityDomainsFromList = NavRoute.wrap('entityDomains', showEntityDomainsFromList);
 
 module.exports = EntityListPage;
 module.exports.showEntityList = showEntityList;

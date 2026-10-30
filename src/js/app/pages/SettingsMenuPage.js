@@ -7,6 +7,7 @@ var Feature = require('platform/feature');
 var Platform = require('platform');
 var Vibe = require('ui/vibe');
 var BasePage = require('app/pages/BasePage');
+var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
@@ -1203,6 +1204,8 @@ function showSettingsMenu() {
     var page = new SettingsMenuPage();
     page.show();
 }
+
+showSettingsMenu = NavRoute.wrap('settings', showSettingsMenu);
 
 module.exports = SettingsMenuPage;
 module.exports.showSettingsMenu = showSettingsMenu;

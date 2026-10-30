@@ -8,6 +8,7 @@ var Constants = require('app/Constants');
 var RegistryService = require('app/RegistryService');
 var EntityListPage = require('app/pages/EntityListPage');
 var helpers = require('app/helpers');
+var NavRoute = require('app/NavRoute');
 
 // Module-level cache for area menu
 var areaMenu = null;
@@ -160,23 +161,7 @@ class AreaMenuPage extends BasePage {
                         subtitle: entry.areaObjectCount + ' ' +
                             ((entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'),
                         on_click: function(e) {
-                            var areaObjects = RegistryService.getEntitiesForArea(entry.area_id);
-                            var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
-
-                            var shouldShowDomains = helpers.shouldShowDomainMenu(
-                                entityKeys,
-                                appState.domain_menu_areas,
-                                {
-                                    minEntities: appState.domain_menu_min_entities,
-                                    minDomains: appState.domain_menu_min_domains
-                                }
-                            );
-
-                            if (shouldShowDomains) {
-                                EntityListPage.showEntityDomainsFromList(entityKeys, entry.display_name);
-                            } else {
-                                EntityListPage.showEntityList(entry.display_name, entityKeys, true, true, true);
-                            }
+                            showArea(entry.area_id, entry.display_name);
                         }
                     });
                 })(areaEntries[i]);
@@ -246,23 +231,7 @@ function showAreasForFloor(floor_id, floor_name) {
                     subtitle: entry.areaObjectCount + ' ' +
                         ((entry.areaObjectCount > 1 || entry.areaObjectCount === 0) ? 'entities' : 'entity'),
                     on_click: function(e) {
-                        var areaObjects = RegistryService.getEntitiesForArea(entry.area_id);
-                        var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
-
-                        var shouldShowDomains = helpers.shouldShowDomainMenu(
-                            entityKeys,
-                            appState.domain_menu_areas,
-                            {
-                                minEntities: appState.domain_menu_min_entities,
-                                minDomains: appState.domain_menu_min_domains
-                            }
-                        );
-
-                        if (shouldShowDomains) {
-                            EntityListPage.showEntityDomainsFromList(entityKeys, entry.display_name);
-                        } else {
-                            EntityListPage.showEntityList(entry.display_name, entityKeys, true, true, true);
-                        }
+                        showArea(entry.area_id, entry.display_name);
                     }
                 });
             })(areaEntries[i]);
@@ -282,6 +251,30 @@ function showAreasForFloor(floor_id, floor_name) {
 }
 
 /**
+ * Show what is in one area, by domain when there is enough of it
+ */
+function showArea(area_id, display_name) {
+    var appState = AppState.getInstance();
+    var areaObjects = RegistryService.getEntitiesForArea(area_id);
+    var entityKeys = helpers.shownRegistryEntityIds(areaObjects);
+
+    var shouldShowDomains = helpers.shouldShowDomainMenu(
+        entityKeys,
+        appState.domain_menu_areas,
+        {
+            minEntities: appState.domain_menu_min_entities,
+            minDomains: appState.domain_menu_min_domains
+        }
+    );
+
+    if (shouldShowDomains) {
+        EntityListPage.showEntityDomainsFromList(entityKeys, display_name);
+    } else {
+        EntityListPage.showEntityList(display_name, entityKeys, true, true, true);
+    }
+}
+
+/**
  * Show the area menu (convenience function)
  */
 function showAreaMenu() {
@@ -296,6 +289,10 @@ function resetAreaMenu() {
     areaMenu = null;
     areaMenuUsingFloors = null;
 }
+
+showArea = NavRoute.wrap('area', showArea);
+showAreasForFloor = NavRoute.wrap('floor', showAreasForFloor);
+showAreaMenu = NavRoute.wrap('areas', showAreaMenu);
 
 module.exports = AreaMenuPage;
 module.exports.showAreaMenu = showAreaMenu;

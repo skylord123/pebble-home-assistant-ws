@@ -5,6 +5,7 @@ var UI = require('ui');
 var BasePage = require('app/pages/BasePage');
 var AppState = require('app/AppState');
 var EntityListPage = require('app/pages/EntityListPage');
+var NavRoute = require('app/NavRoute');
 var helpers = require('app/helpers');
 
 class FavoritesPage extends BasePage {
@@ -66,6 +67,8 @@ function showFavorites() {
     var page = new FavoritesPage();
     page.show();
 }
+
+showFavorites = NavRoute.wrap('favorites', showFavorites);
 
 module.exports = FavoritesPage;
 module.exports.showFavorites = showFavorites;

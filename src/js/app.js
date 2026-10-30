@@ -25,6 +25,7 @@ var StateService = require('app/StateService');
 var ConnectionService = require('app/ConnectionService');
 var ConfigBridge = require('app/ConfigBridge');
 var EntityService = require('app/EntityService');
+var NavRoute = require('app/NavRoute');
 
 // === Page Imports ===
 var MainMenuPage = require('app/pages/MainMenuPage');
@@ -373,8 +374,27 @@ function start_data_fetch() {
         var launchReason = simply.impl.state.launchReason;
         log('Launch reason: ' + launchReason);
 
-        if (!launchReason && retryCount < 10) {
-            setTimeout(function() { handleQuickLaunch(retryCount + 1); }, 10);
+        // The watch answers the JS's ready with it, and over Bluetooth that
+        // can take a good part of a second
+        if (!launchReason && retryCount < 100) {
+            setTimeout(function() { handleQuickLaunch(retryCount + 1); }, 20);
+            return;
+        }
+
+        // The phone app lost this JS and started it again while the app
+        // stayed open on the watch. The wearer is still in the middle of
+        // whatever they were doing, not opening the app, so they go back to
+        // it rather than to the main menu or a quick launch target.
+        if (simply.impl.state.launchResumed && NavRoute.available()) {
+            log('Resumed after the phone came back, reopening the pages that were open');
+            whenStatesLoaded(function() {
+                NavRoute.restore(function(count) {
+                    if (!count) {
+                        MainMenuPage.showMainMenu();
+                    }
+                    loadingCard.hide();
+                });
+            });
             return;
         }
 

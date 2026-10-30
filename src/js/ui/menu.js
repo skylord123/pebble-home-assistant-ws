@@ -282,8 +282,15 @@ Menu.prototype._preloadItems = function(e) {
   }
 };
 
+// Told whenever the wearer moves the highlight, for anything that keeps track
+// of where they are
+Menu.onSelectionChange = null;
+
 Menu.prototype._emitSelect = function(e) {
   this._selection = e;
+  if (Menu.onSelectionChange) {
+    Menu.onSelectionChange(this);
+  }
   var item = this._getItem(e);
   switch (e.type) {
     case 'select':

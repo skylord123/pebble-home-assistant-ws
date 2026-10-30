@@ -15,6 +15,7 @@ var Voice = require('ui/voice');
 var Feature = require('platform/feature');
 
 var BasePage = require('app/pages/BasePage');
+var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
 
@@ -1057,6 +1058,9 @@ function showEntityList(title, entity_id_list, ignoreEntityCache, sortItems, ski
 function showToDoListsPage() {
     showToDoLists();
 }
+
+showToDoLists = NavRoute.wrap('todoLists', showToDoLists);
+showToDoList = NavRoute.wrap('todoList', showToDoList);
 
 module.exports.showToDoLists = showToDoLists;
 module.exports.showToDoList = showToDoList;

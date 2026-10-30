@@ -21,6 +21,7 @@ var simply = require('ui/simply');
 var AppState = require('app/AppState');
 var HistoryService = require('app/HistoryService');
 var helpers = require('app/helpers');
+var NavRoute = require('app/NavRoute');
 
 var PERIODS = [
     { label: 'Last 15 minutes', minutes: 15 },
@@ -522,6 +523,8 @@ function showHistoryChanges(entity_id) {
 
     changesMenu.show();
 }
+
+show = NavRoute.wrap('history', show);
 
 module.exports.show = show;
 module.exports.isSupported = isSupported;

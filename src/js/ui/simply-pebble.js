@@ -409,6 +409,7 @@ var LaunchReasonPacket = new struct([
   ['uint32', 'time'],
   ['bool', 'isTimezone'],
   ['bool', 'is24h'],
+  ['bool', 'isResumed'],
 ]);
 
 var WakeupSetPacket = new struct([
@@ -1780,6 +1781,9 @@ SimplyPebble.onLaunchReason = function(packet) {
   // the args value is the pin action's launchCode.
   state.launchReason = reason;
   state.launchArgs = args;
+  // A new copy of this JS taking over an app that was already open on the
+  // watch, after the phone app lost it and started it again
+  state.launchResumed = packet.isResumed();
 };
 
 SimplyPebble.onWakeupSetResult = function(packet) {

@@ -19,6 +19,9 @@ struct __attribute__((__packed__)) LaunchReasonPacket {
   //! The watch's own 12 or 24 hour clock setting, so the app can show times
   //! the way the wearer already asked their watch to
   uint8_t is_24h:8;
+  //! A new JS taking over an app that was already running, after the phone
+  //! reconnected, rather than the app being opened
+  uint8_t is_resumed:8;
 };
 
 typedef struct WakeupSetPacket WakeupSetPacket;
@@ -61,6 +64,7 @@ static bool send_launch_reason(AppLaunchReason reason, uint32_t args) {
     .time = time(NULL),
     .is_timezone = clock_is_timezone_set(),
     .is_24h = clock_is_24h_style(),
+    .is_resumed = simply_msg_js_restarted(),
   };
   return simply_msg_send_packet(&packet.packet);
 }
