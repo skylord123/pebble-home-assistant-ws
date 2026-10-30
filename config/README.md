@@ -1,7 +1,7 @@
 # Settings page
 
 The watch app's settings page lives in this folder, one file per version
-(`v1.6.html` is current; `src/js/app/Constants.js` names the version in
+(`v1.7.html` is current; `src/js/app/Constants.js` names the version in
 `confVersion`). Each file is self-contained: no scripts, stylesheets or images
 are loaded from anywhere else. That is what lets one file serve two very
 different homes.
@@ -70,13 +70,20 @@ goes out whenever the connection changes state and when the states, pipelines
 and calendars have been fetched, so a page opened before the first connection
 fills its dropdowns as soon as Connect succeeds.
 
+From v1.7 the page also talks to the plugin (`plugin/`), when the phone has
+plugins turned on: `Pebble.sendMessage('plugin', { type: 'status' })` to show
+whether other apps can reach Home Assistant, and `{ type: 'refresh' }` after a
+save so they pick up a changed list of shared entities. The phone fires
+`ready` with `{ target: 'plugin' }` once the plugin can be reached. See
+`plugin/README.md`.
+
 ## Working on the page
 
-Open `config/v1.6.html` in a browser with the settings in the hash to work on
+Open `config/v1.7.html` in a browser with the settings in the hash to work on
 the hosted mode, e.g.
 
 ```
-file:///…/config/v1.6.html#%7B%22ha_url%22%3A%22https%3A%2F%2Fha.example.com%22%7D
+file:///…/config/v1.7.html#%7B%22ha_url%22%3A%22https%3A%2F%2Fha.example.com%22%7D
 ```
 
 Save then navigates to `pebblejs://close#…`, which a browser cannot open;

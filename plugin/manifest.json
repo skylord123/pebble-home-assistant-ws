@@ -1,0 +1,469 @@
+{
+  "description": "Home Assistant entities shared from the Home Assistant WS watch app, and Home Assistant weather. Read their state and control them. Only the entities chosen in the watch app are served; weather is always shared.",
+  "script": "plugin.js",
+  "usesPermissions": [
+    "LocalNetwork",
+    "Internet"
+  ],
+  "sources": [
+    {
+      "category": "home",
+      "items": ["entity"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "state": ["shortText", "longText", "numericValue", "timestamp"],
+        "on": ["boolean"],
+        "domain": ["shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["light"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "on": ["boolean", "shortText"],
+        "brightness": ["numericValue", "shortText"],
+        "color_temp": ["numericValue", "shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["switch"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "on": ["boolean", "shortText"],
+        "speed": ["numericValue", "shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["sensor"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "value": ["shortText", "longText", "numericValue", "timestamp"],
+        "device_class": ["shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 60
+    },
+    {
+      "category": "home",
+      "items": ["binary_sensor"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "on": ["boolean", "shortText"],
+        "state": ["shortText", "longText"],
+        "device_class": ["shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["climate"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "current_temperature": ["numericValue", "shortText"],
+        "target_temperature": ["numericValue", "shortText"],
+        "on": ["boolean", "shortText"],
+        "hvac_mode": ["shortText"],
+        "hvac_action": ["shortText"],
+        "summary": ["shortText", "longText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 60
+    },
+    {
+      "category": "home",
+      "items": ["cover"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "open": ["boolean", "shortText"],
+        "position": ["numericValue", "shortText"],
+        "state": ["shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["lock"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "locked": ["boolean", "shortText"],
+        "state": ["shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["media_player"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "on": ["boolean", "shortText"],
+        "playing": ["boolean"],
+        "state": ["shortText"],
+        "title": ["shortText", "longText"],
+        "artist": ["shortText", "longText"],
+        "volume": ["numericValue", "shortText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "home",
+      "items": ["person"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "home": ["boolean", "shortText"],
+        "zone": ["shortText", "longText"],
+        "since": ["timestamp"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 120
+    },
+    {
+      "category": "home",
+      "items": ["scene"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "running": ["boolean"],
+        "last_run": ["timestamp"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 120
+    },
+    {
+      "category": "home",
+      "items": ["alarm"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "armed": ["boolean", "shortText"],
+        "state": ["shortText", "longText"],
+        "last_changed": ["timestamp"],
+        "last_updated": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 30
+    },
+    {
+      "category": "weather",
+      "items": ["location"],
+      "properties": {
+        "name": ["shortText"],
+        "temperature": ["shortText", "longText", "numericValue"],
+        "feels_like": ["shortText", "longText", "numericValue"],
+        "high": ["shortText", "longText", "numericValue"],
+        "low": ["shortText", "longText", "numericValue"],
+        "condition": ["shortText", "longText"],
+        "condition_code": ["longText"],
+        "uv_index": ["numericValue", "shortText"],
+        "precipitation": ["numericValue", "shortText"],
+        "last_changed": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 900
+    },
+    {
+      "category": "weather",
+      "items": ["hour"],
+      "properties": {
+        "temperature": ["numericValue", "shortText"],
+        "condition": ["shortText"],
+        "condition_code": ["longText"],
+        "time": ["timestamp"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 900
+    }
+  ],
+  "actions": [
+    {
+      "name": "set_on",
+      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans, media players and climate turn on and off; covers and valves open and close (a garage door, gate or door only opens with the open action); scenes and scripts run.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "on"],
+        "properties": {
+          "item": { "type": "string", "enum": ["entity", "light", "switch", "cover", "media_player", "climate", "scene"] },
+          "instanceId": { "type": "string", "description": "The entity_id, from any home/* source" },
+          "on": { "type": "boolean" }
+        }
+      },
+      "targets": ["home/light/on", "home/switch/on", "home/entity/on", "home/cover/open", "home/media_player/on", "home/climate/on"]
+    },
+    {
+      "name": "toggle",
+      "description": "Toggle a Home Assistant entity: on and off, open and closed, play and pause, or run a scene, script or button. A lock only locks (unlock it with unlock), and a garage door, gate or door only closes (open it with open).",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string", "description": "The entity_id, from any home/* source" }
+        }
+      },
+      "targets": ["home/entity", "home/light", "home/switch", "home/cover", "home/lock", "home/media_player", "home/climate", "home/scene"]
+    },
+    {
+      "name": "activate",
+      "description": "Run a Home Assistant scene or script, press a button, or trigger an automation.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string", "description": "The entity_id of a scene, script, button or automation" }
+        }
+      },
+      "targets": ["home/scene", "home/entity"]
+    },
+    {
+      "name": "set_brightness",
+      "description": "Set a Home Assistant light's brightness. 0 turns it off.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "percent"],
+        "properties": {
+          "item": { "type": "string", "enum": ["light", "entity"] },
+          "instanceId": { "type": "string" },
+          "percent": { "type": "integer", "minimum": 0, "maximum": 100 }
+        }
+      },
+      "targets": ["home/light/brightness"]
+    },
+    {
+      "name": "set_temperature",
+      "description": "Set the target temperature of a Home Assistant thermostat or water heater. A thermostat keeping a range (heat_cool) takes target_temp_low and target_temp_high instead of temperature.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "temperature": { "type": "number" },
+          "target_temp_low": { "type": "number" },
+          "target_temp_high": { "type": "number" }
+        }
+      },
+      "targets": ["home/climate/target_temperature"]
+    },
+    {
+      "name": "set_hvac_mode",
+      "description": "Set a Home Assistant thermostat's mode, such as heat, cool, heat_cool, auto or off.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "hvac_mode"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "hvac_mode": { "type": "string" }
+        }
+      },
+      "targets": ["home/climate/hvac_mode"]
+    },
+    {
+      "name": "set_position",
+      "description": "Move a Home Assistant cover or valve to a position, 0 closed to 100 open. A garage door, gate or door can only be closed this way (open it with open).",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "position"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "position": { "type": "integer", "minimum": 0, "maximum": 100 }
+        }
+      },
+      "targets": ["home/cover/position"]
+    },
+    {
+      "name": "open",
+      "description": "Open a Home Assistant cover or valve, or open (unlatch) a lock. Locks, garage doors, gates and doors only open when the wearer has allowed apps to unlock in the watch app. Locks that need a code take it in code.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      },
+      "targets": ["home/cover", "home/lock"],
+      "destructive": true,
+      "requiresConfirmation": true
+    },
+    {
+      "name": "close",
+      "description": "Close a Home Assistant cover or valve.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": { "instanceId": { "type": "string" } }
+      },
+      "targets": ["home/cover"]
+    },
+    {
+      "name": "stop",
+      "description": "Stop a Home Assistant cover or valve that is moving.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": { "instanceId": { "type": "string" } }
+      },
+      "targets": ["home/cover"]
+    },
+    {
+      "name": "lock",
+      "description": "Lock a Home Assistant lock. Locks that need a code take it in code.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      },
+      "targets": ["home/lock/locked"]
+    },
+    {
+      "name": "unlock",
+      "description": "Unlock a Home Assistant lock, when the wearer has allowed apps to unlock in the watch app. Locks that need a code take it in code.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      },
+      "targets": ["home/lock/locked"],
+      "destructive": true,
+      "requiresConfirmation": true
+    },
+    {
+      "name": "alarm_arm",
+      "description": "Arm a Home Assistant alarm panel. Panels that need a code take it in code.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "mode": { "type": "string", "enum": ["home", "away", "night", "vacation", "custom_bypass"] },
+          "code": { "type": "string" }
+        }
+      },
+      "targets": ["home/alarm/armed"]
+    },
+    {
+      "name": "alarm_disarm",
+      "description": "Disarm a Home Assistant alarm panel, when the wearer has allowed apps to unlock in the watch app. Panels that need a code take it in code.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "code": { "type": "string" }
+        }
+      },
+      "targets": ["home/alarm/armed"],
+      "destructive": true,
+      "requiresConfirmation": true
+    },
+    {
+      "name": "set_playing",
+      "description": "Play or pause a Home Assistant media player.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "playing"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "playing": { "type": "boolean" }
+        }
+      },
+      "targets": ["home/media_player/playing"]
+    },
+    {
+      "name": "next_track",
+      "description": "Skip to the next track on a Home Assistant media player.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": { "instanceId": { "type": "string" } }
+      },
+      "targets": ["home/media_player"]
+    },
+    {
+      "name": "previous_track",
+      "description": "Go back to the previous track on a Home Assistant media player.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId"],
+        "properties": { "instanceId": { "type": "string" } }
+      },
+      "targets": ["home/media_player"]
+    },
+    {
+      "name": "set_volume",
+      "description": "Set a Home Assistant media player's volume.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "percent"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "percent": { "type": "integer", "minimum": 0, "maximum": 100 }
+        }
+      },
+      "targets": ["home/media_player/volume"]
+    },
+    {
+      "name": "call_service",
+      "description": "Call a service of a shared entity's own domain on that entity, with optional service data, for what the other actions do not cover (numbers, selects, vacuums, fan speeds, ...). Only services that act on the named entity are allowed, and never unlock, open a lock, disarm, or open a garage door, gate or door; those have actions of their own that ask first.",
+      "parameters": {
+        "type": "object",
+        "required": ["instanceId", "service"],
+        "properties": {
+          "instanceId": { "type": "string" },
+          "service": { "type": "string", "description": "A service of the entity's own domain, such as set_value or select_option" },
+          "data": { "type": "object", "description": "Service data, without any target" }
+        }
+      },
+      "targets": ["home/entity"]
+    },
+    {
+      "name": "ask_assistant",
+      "description": "Ask Home Assistant's assistant something, or tell it to do something, in plain language, and get its reply as text. The conversation continues across asks made within a few minutes. Only works when the user has allowed it in the watch app.",
+      "parameters": {
+        "type": "object",
+        "required": ["text"],
+        "properties": {
+          "text": { "type": "string" },
+          "new_conversation": { "type": "boolean", "description": "Start afresh rather than continue the last conversation" }
+        }
+      },
+      "targets": []
+    }
+  ]
+}

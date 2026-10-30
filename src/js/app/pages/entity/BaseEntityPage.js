@@ -177,7 +177,38 @@ class BaseEntityPage extends BasePage {
     }
 
     /**
-     * Add common entity menu items (attributes, favorite, pinned)
+     * Share with other apps through the plugin. Weather is always shared, so
+     * it only says so.
+     * @param {number} sectionIndex - Menu section index for the button
+     * @param {number} itemIndex - Menu item index for the button
+     */
+    setupPluginButton(sectionIndex, itemIndex) {
+        var self = this;
+
+        function render() {
+            if (EntityService.isAlwaysPluginExposed(self.entityId)) {
+                self.menu.item(sectionIndex, itemIndex, {
+                    title: 'Plugin Exposed',
+                    subtitle: 'Weather is always'
+                });
+                return;
+            }
+            var exposed = EntityService.isPluginExposed(self.entityId);
+            self.menu.item(sectionIndex, itemIndex, {
+                title: exposed ? 'Hide from Plugins' : 'Expose to Plugins',
+                subtitle: exposed ? 'Shared with other apps' : '',
+                on_click: function(e) {
+                    EntityService.togglePluginExposed(self.getEntity());
+                    render();
+                }
+            });
+        }
+
+        render();
+    }
+
+    /**
+     * Add common entity menu items (attributes, favorite, pinned, plugin)
      * @param {number} sectionIndex - Menu section index
      * @param {number} startIndex - Starting item index
      * @returns {number} Next available item index
@@ -201,6 +232,9 @@ class BaseEntityPage extends BasePage {
 
         // Pinned button
         this.setupPinnedButton(sectionIndex, index++);
+
+        // Shared with other apps through the plugin
+        this.setupPluginButton(sectionIndex, index++);
 
         return index;
     }

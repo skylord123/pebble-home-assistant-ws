@@ -12,6 +12,7 @@ var UI = require('ui');
 var Settings = require('settings');
 var FavoriteEntityStore = require('vendor/FavoriteEntityStore');
 var PinnedEntityStore = require('vendor/PinnedEntityStore');
+var PluginExposedStore = require('vendor/PluginExposedStore');
 var AlarmCodeStore = require('vendor/AlarmCodeStore');
 var simply = require('ui/simply');
 
@@ -147,6 +148,7 @@ var appState = AppState.getInstance();
 // === Initialize Stores ===
 appState.favoriteEntityStore = new FavoriteEntityStore();
 appState.pinnedEntityStore = new PinnedEntityStore();
+appState.pluginExposedStore = new PluginExposedStore();
 appState.alarmCodeStore = new AlarmCodeStore();
 
 // === Loading Card ===
