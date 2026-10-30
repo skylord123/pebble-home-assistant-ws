@@ -57,6 +57,7 @@ var FlagAppend = 1;      // add to the answer already on screen
 var FlagStreaming = 2;   // more is coming, keep the dots running
 var FlagKeepAlive = 4;   // nothing to add, but the phone is still working
 var FlagTranscript = 8;  // what Home Assistant heard the wearer say
+var FlagConfirm = 16;    // what it heard, for the wearer to accept first
 
 // Must match the ListenOp values in simply_assist.c
 var ListenOpStop = 0;
@@ -559,14 +560,28 @@ Assist.dictateInstead = function() {
  */
 Assist.transcript = function(text) {
   if (!state.active) { return; }
-  // Plain words: markers are ours alone, and a long dictation is cut to what
-  // the watch will hold rather than sent over to be dropped on arrival
+  simply.impl.assistMessage(RoleUser, heardText(text), FlagTranscript);
+};
+
+/**
+ * What Home Assistant heard, for the wearer to accept or turn down before it
+ * goes any further. Accepted, it comes back through onTranscript exactly as
+ * dictation would; turned down, nothing more is heard of it.
+ */
+Assist.confirmTranscript = function(text) {
+  if (!state.active) { return; }
+  simply.impl.assistMessage(RoleUser, heardText(text), FlagConfirm);
+};
+
+// Plain words: markers are ours alone, and a long dictation is cut to what
+// the watch will hold rather than sent over to be dropped on arrival
+function heardText(text) {
   var plain = String(text || '').replace(/[\u0001\u0002]/g, '');
   if (utf8Length(plain) > replyLimit) {
     plain = prefixWithinBytes(plain, replyLimit - 4) + '…';
   }
-  simply.impl.assistMessage(RoleUser, plain, FlagTranscript);
-};
+  return plain;
+}
 
 /** The watch reporting how long an answer it can hold, in bytes. */
 Assist.setReplyLimit = function(bytes) {

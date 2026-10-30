@@ -334,6 +334,10 @@ function endAudio(turn) {
 function startListening() {
     var appState = AppState.getInstance();
     var manual = appState.assist_stream_end === 'manual';
+    // The wearer wants to see what was heard before it goes to the agent, so
+    // Home Assistant only transcribes, and the words come back here to be
+    // confirmed on the watch. Accepting sends them on as a typed turn would.
+    var confirm = !!appState.voice_confirm;
 
     abandonRun();
     var gen = runGeneration;
@@ -370,10 +374,11 @@ function startListening() {
         input.no_vad = true;
     }
 
-    helpers.log_message("Listening through Home Assistant" + (manual ? " until select" : ""));
+    helpers.log_message("Listening through Home Assistant" + (manual ? " until select" : "") +
+        (confirm ? ", to confirm" : ""));
     startRun({
         start_stage: "stt",
-        end_stage: "intent",
+        end_stage: confirm ? "stt" : "intent",
         input: input,
         pipeline: appState.selected_pipeline,
         conversation_id: conversation_id,
@@ -410,7 +415,9 @@ function startListening() {
                 var heard = data.stt_output && typeof data.stt_output.text === 'string' ?
                     data.stt_output.text.trim() : '';
                 // Nothing heard is reported as its own error straight after
-                if (heard) {
+                if (heard && confirm) {
+                    Assist.confirmTranscript(heard);
+                } else if (heard) {
                     Assist.transcript(heard);
                 }
                 return;
@@ -515,6 +522,13 @@ function startRun(body, onEvent) {
                 cancelStream();
                 Assist.error('Request failed');
                 ConnectionService.showPendingReconnectDialog();
+                return;
+            }
+
+            // Only transcribing, for the wearer to confirm. What was heard
+            // has already gone to the watch, and the answer is a later run.
+            if (body.end_stage === 'stt') {
+                cancelStream();
                 return;
             }
 

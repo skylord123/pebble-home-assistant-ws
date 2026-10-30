@@ -233,6 +233,9 @@ struct SimplyAssist {
   //! Meter frames since the phone last sent levels. Past a few, the voice is
   //! taken to have gone quiet and the bars settle back down.
   uint8_t level_age;
+  //! What Home Assistant heard, up on its own screen for the wearer to accept
+  //! or throw away. See AssistConfirm.
+  struct AssistConfirm *confirm;
 #endif
   bool backlight;
   //! Keep the screen lit for as long as an answer is streaming in, and light
@@ -309,6 +312,9 @@ enum {
   //! What Home Assistant heard the wearer say, from audio streamed to it. It
   //! goes up as the wearer's turn, and the wait for the answer starts there.
   MessageFlagTranscript = 8,
+  //! What Home Assistant heard, held back for the wearer to accept before it
+  //! goes to the agent, as Confirm Dictation does for dictation
+  MessageFlagConfirm = 16,
 };
 
 typedef struct AssistLevelsPacket AssistLevelsPacket;
@@ -1701,6 +1707,185 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
   return true;
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
+// MARK: - Confirming what was heard
+
+//! Confirm Dictation for a turn streamed to Home Assistant. The system's own
+//! confirmation only ever follows its own dictation, so this stands in for it
+//! and works the same way: the words on a screen over the conversation, up
+//! and down to read them, select to send them and back to throw them away.
+typedef struct AssistConfirm AssistConfirm;
+
+struct AssistConfirm {
+  SimplyAssist *assist;
+  Window *window;
+  ScrollLayer *scroll_layer;
+  TextLayer *text_layer;
+  ActionBarLayer *action_bar;
+  GBitmap *icon;
+  char text[];
+};
+
+#define CONFIRM_MARGIN 6
+
+static void prv_confirm_free(AssistConfirm *confirm) {
+  window_stack_remove(confirm->window, false);
+  window_destroy(confirm->window);
+  free(confirm);
+}
+
+static void prv_confirm_free_later(void *data) {
+  prv_confirm_free(data);
+}
+
+//! Take the screen down. It goes on the next pass of the event loop, since
+//! this is usually called from one of its own buttons.
+static void prv_confirm_dismiss(SimplyAssist *self) {
+  AssistConfirm *confirm = self->confirm;
+  if (!confirm) { return; }
+  self->confirm = NULL;
+  window_stack_remove(confirm->window, false);
+  app_timer_register(0, prv_confirm_free_later, confirm);
+}
+
+//! The words are the wearer's turn, exactly as if dictation had returned them
+static void prv_confirm_send(SimplyAssist *self, const char *text) {
+  self->ever_spoke = true;
+  self->user_scrolled = false;
+  self->stream_chunk_count = 0;
+  prv_append(self, AssistRoleUser, text);
+  prv_start_thinking(self);
+  prv_reflow(self, AssistFocusThinking);
+  prv_send_transcript(text);
+}
+
+//! The screen whose button was pressed. The scroll layer hands its click
+//! handlers a context of its own, so this one is found from its window, which
+//! is the one on top while its buttons are being pressed.
+static AssistConfirm *prv_confirm_pressed(void) {
+  return window_get_user_data(window_stack_get_top_window());
+}
+
+static void prv_confirm_select_click(ClickRecognizerRef recognizer, void *context) {
+  AssistConfirm *confirm = prv_confirm_pressed();
+  SimplyAssist *self = confirm->assist;
+  prv_confirm_send(self, confirm->text);
+  prv_confirm_dismiss(self);
+}
+
+//! Back to the conversation, where select starts the turn over
+static void prv_confirm_back_click(ClickRecognizerRef recognizer, void *context) {
+  AssistConfirm *confirm = prv_confirm_pressed();
+  SimplyAssist *self = confirm->assist;
+  prv_confirm_dismiss(self);
+  prv_reflow(self, AssistFocusMessage);
+}
+
+static void prv_confirm_click_config_provider(void *context) {
+  window_single_click_subscribe(BUTTON_ID_SELECT, prv_confirm_select_click);
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_confirm_back_click);
+}
+
+static void prv_confirm_window_load(Window *window) {
+  AssistConfirm *confirm = window_get_user_data(window);
+  SimplyAssist *self = confirm->assist;
+  Layer *root_layer = window_get_root_layer(window);
+  const GRect bounds = layer_get_bounds(root_layer);
+  window_set_background_color(window, self->dark ? GColorBlack : GColorWhite);
+
+  // Round starts the words in from the curve, where text flow takes over, and
+  // rectangular screens need only a little room at the edges
+  const int16_t inset_x = PBL_IF_ROUND_ELSE(bounds.size.w / 10, CONFIRM_MARGIN);
+  const int16_t inset_y = PBL_IF_ROUND_ELSE(bounds.size.h / 8, CONFIRM_MARGIN);
+  const int16_t view_w = bounds.size.w - ACTION_BAR_WIDTH;
+  const int16_t text_w = view_w - inset_x - CONFIRM_MARGIN;
+
+  confirm->scroll_layer = scroll_layer_create(GRect(0, 0, view_w, bounds.size.h));
+  scroll_layer_set_shadow_hidden(confirm->scroll_layer, true);
+  scroll_layer_set_callbacks(confirm->scroll_layer, (ScrollLayerCallbacks) {
+    .click_config_provider = prv_confirm_click_config_provider,
+  });
+
+  confirm->text_layer = text_layer_create(GRect(inset_x, 0, text_w, 2000));
+  text_layer_set_text(confirm->text_layer, confirm->text);
+  text_layer_set_font(confirm->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_text_color(confirm->text_layer, prv_foreground(self));
+  text_layer_set_background_color(confirm->text_layer, GColorClear);
+  text_layer_set_overflow_mode(confirm->text_layer, GTextOverflowModeWordWrap);
+  text_layer_set_text_alignment(confirm->text_layer,
+                                PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft));
+
+  scroll_layer_add_child(confirm->scroll_layer, text_layer_get_layer(confirm->text_layer));
+  layer_add_child(root_layer, scroll_layer_get_layer(confirm->scroll_layer));
+#if defined(PBL_ROUND)
+  // Each line is fitted inside the circle and the words turn a page at a
+  // time, as round dictation shows them. It needs the layer on the window.
+  text_layer_enable_screen_text_flow_and_paging(confirm->text_layer, CONFIRM_MARGIN);
+  scroll_layer_set_paging(confirm->scroll_layer, true);
+#endif
+
+  // A few words stand in the middle, the way the system shows them. More
+  // than a screen's worth starts at the top and scrolls.
+  const int16_t text_h = text_layer_get_content_size(confirm->text_layer).h + 4;
+  const bool fits = (text_h + 2 * inset_y <= bounds.size.h);
+  // Round pages only line up with text that starts at the top of a page; the
+  // flow keeps the first lines clear of the curve by itself
+  const int16_t top = fits ? (bounds.size.h - text_h) / 2 : PBL_IF_ROUND_ELSE(0, inset_y);
+  const int16_t content_h = text_h + (fits ? 0 : 2 * top);
+  layer_set_frame(text_layer_get_layer(confirm->text_layer), GRect(inset_x, top, text_w, text_h));
+  scroll_layer_set_content_size(confirm->scroll_layer,
+                                GSize(view_w, content_h > bounds.size.h ? content_h : bounds.size.h));
+
+  // Only select gets an icon: up and down scroll, and back needs none
+  confirm->action_bar = action_bar_layer_create();
+  action_bar_layer_set_background_color(confirm->action_bar,
+      PBL_IF_COLOR_ELSE(self->dark ? GColorDarkGray : GColorBlack, GColorBlack));
+  confirm->icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_CONFIRM);
+  action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_SELECT, confirm->icon);
+  action_bar_layer_add_to_window(confirm->action_bar, window);
+  // After the action bar, which takes the window's buttons for its own when
+  // it is added. Up and down scroll the words; select and back come from
+  // prv_confirm_click_config_provider on top of that.
+  scroll_layer_set_click_config_onto_window(confirm->scroll_layer, window);
+}
+
+static void prv_confirm_window_unload(Window *window) {
+  AssistConfirm *confirm = window_get_user_data(window);
+  action_bar_layer_destroy(confirm->action_bar);
+  gbitmap_destroy(confirm->icon);
+  text_layer_destroy(confirm->text_layer);
+  scroll_layer_destroy(confirm->scroll_layer);
+}
+
+//! Put what was heard up for the wearer to accept, over the conversation
+static void prv_confirm_show(SimplyAssist *self, const char *text) {
+  if (self->confirm) {
+    prv_confirm_free(self->confirm);
+    self->confirm = NULL;
+  }
+  const size_t text_length = strlen(text) + 1;
+  AssistConfirm *confirm = malloc(sizeof(*confirm) + text_length);
+  Window *window = confirm ? window_create() : NULL;
+  if (!window) {
+    // Short of memory, sending the words is better than losing them
+    free(confirm);
+    prv_confirm_send(self, text);
+    return;
+  }
+  *confirm = (AssistConfirm) { .assist = self, .window = window };
+  memcpy(confirm->text, text, text_length);
+  window_set_user_data(window, confirm);
+  window_set_window_handlers(window, (WindowHandlers) {
+    .load = prv_confirm_window_load,
+    .unload = prv_confirm_window_unload,
+  });
+  // Set first: the conversation underneath disappears as this goes up, and
+  // must know it is only being covered
+  self->confirm = confirm;
+  window_stack_push(window, true);
+}
+#endif
+
 // MARK: - Buttons
 
 static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
@@ -1922,6 +2107,10 @@ static void prv_destroy(SimplyAssist *self) {
     app_timer_cancel(self->dictate_timer);
     self->dictate_timer = NULL;
   }
+  if (self->confirm) {
+    prv_confirm_free(self->confirm);
+    self->confirm = NULL;
+  }
 #endif
   window_destroy(self->window);
   self->simply->assist = NULL;
@@ -1964,6 +2153,10 @@ static void prv_window_disappear(Window *window) {
   // That is not the conversation ending, so hold everything and wait for it
   // to come back.
   if (simply_voice_dictation_in_progress()) { return; }
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  // Nor is the confirmation of what Home Assistant heard
+  if (self->confirm) { return; }
+#endif
   // Nor is stepping aside for the settings menu
   if (self->awaiting_settings) {
     self->awaiting_settings = false;
@@ -2134,6 +2327,22 @@ static void prv_handle_message(Simply *simply, Packet *data) {
   // Anything else that arrives settles the turn, so a microphone still open
   // for it closes. An error part way through a stream is the usual case.
   prv_end_stream(self);
+
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (packet->flags & MessageFlagConfirm) {
+    // Heard, and waiting on the wearer rather than on Home Assistant
+    prv_stop_thinking(self);
+    self->ever_spoke = true;
+    prv_reflow(self, AssistFocusMessage);
+    // Only over the conversation itself. With the settings menu up the
+    // conversation is not on the stack to come back to, and the words are
+    // dropped, the same as a turn backed out of.
+    if (window_stack_get_top_window() == self->window) {
+      prv_confirm_show(self, packet->text);
+    }
+    return;
+  }
+#endif
 
   if (packet->flags & MessageFlagTranscript) {
     // What Home Assistant heard. It is the wearer's turn, shown as if they had

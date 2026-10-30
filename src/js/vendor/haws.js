@@ -915,6 +915,16 @@ class HAWS {
                 if (eventCallback && (event.type === 'run-start' ||
                         event.type.indexOf('stt-') === 0)) {
                     eventCallback(event);
+                    // A run asked to stop at speech-to-text is answered by
+                    // what was heard. Nothing heard is an error that follows.
+                    if (event.type === 'stt-end' && data.end_stage === 'stt' &&
+                            event.data && event.data.stt_output &&
+                            event.data.stt_output.text) {
+                        settled = true;
+                        if (successCallback) {
+                            successCallback({ success: true, stt_output: event.data.stt_output });
+                        }
+                    }
                     return;
                 }
 
