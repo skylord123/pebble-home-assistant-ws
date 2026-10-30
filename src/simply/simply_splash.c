@@ -492,20 +492,21 @@ bool simply_splash_handle_packet(Simply *simply, Packet *packet) {
   return false;
 }
 
+//! Put the watch's own words on the splash. They are all short enough to fit.
+static void prv_say(SimplySplash *self, const char *status, const char *body, uint8_t mode) {
+  strcpy(self->status, status);
+  strcpy(self->body, body);
+  prv_set_mode(self, mode);
+}
+
 void simply_splash_show_phone_lost(Simply *simply, bool reconnected) {
   SimplySplash *self = prv_ensure(simply);
-  strncpy(self->title, "Home Assistant", sizeof(self->title) - 1);
-  self->title[sizeof(self->title) - 1] = '\0';
+  strcpy(self->title, "Home Assistant");
   if (reconnected) {
-    strncpy(self->status, "Reconnecting", sizeof(self->status) - 1);
-    self->body[0] = '\0';
+    prv_say(self, "Reconnecting", "", SplashModeConnecting);
   } else {
-    strncpy(self->status, "Phone disconnected", sizeof(self->status) - 1);
-    strncpy(self->body, "Waiting for the Pebble app", sizeof(self->body) - 1);
+    prv_say(self, "Phone disconnected", "Waiting for the Pebble app", SplashModeError);
   }
-  self->status[sizeof(self->status) - 1] = '\0';
-  self->body[sizeof(self->body) - 1] = '\0';
-  prv_set_mode(self, reconnected ? SplashModeConnecting : SplashModeError);
 }
 
 void simply_splash_phone_back(Simply *simply) {
@@ -514,9 +515,7 @@ void simply_splash_phone_back(Simply *simply) {
   if (s_js_wants_splash) {
     // What JS last said is lost under the watch's own words, and JS will
     // only say more when something changes
-    strncpy(self->status, "Reconnecting", sizeof(self->status) - 1);
-    self->body[0] = '\0';
-    prv_set_mode(self, SplashModeConnecting);
+    prv_say(self, "Reconnecting", "", SplashModeConnecting);
   } else {
     // Revealing the page asks JS to draw it again
     window_stack_remove(self->window, false);

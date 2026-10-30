@@ -59,27 +59,14 @@ static bool s_broadcast_window = true;
 #define BACK_REPEAT_MS 1000
 
 static AppTimer *s_back_timer = NULL;
-static int64_t s_back_pressed_ms = 0;
+static uint32_t s_back_pressed_ms = 0;
 
-static int64_t prv_now_ms(void) {
+// Wraps every 49 days, which the difference between two presses survives
+static uint32_t prv_now_ms(void) {
   time_t seconds;
   uint16_t ms;
   time_ms(&seconds, &ms);
-  return (int64_t)seconds * 1000 + ms;
-}
-
-static void prv_leave_app(void) {
-  if (s_back_timer) {
-    app_timer_cancel(s_back_timer);
-    s_back_timer = NULL;
-  }
-  APP_LOG(APP_LOG_LEVEL_WARNING, "Back was not answered, leaving the app");
-  window_stack_pop_all(false);
-}
-
-static void prv_back_unanswered(void *data) {
-  s_back_timer = NULL;
-  prv_leave_app();
+  return (uint32_t)seconds * 1000 + ms;
 }
 
 static void prv_back_answered(void) {
@@ -87,6 +74,16 @@ static void prv_back_answered(void) {
     app_timer_cancel(s_back_timer);
     s_back_timer = NULL;
   }
+}
+
+static void prv_leave_app(void) {
+  prv_back_answered();
+  window_stack_pop_all(false);
+}
+
+static void prv_back_unanswered(void *data) {
+  s_back_timer = NULL;
+  prv_leave_app();
 }
 
 static bool send_window(SimplyMsg *self, Command type, uint32_t id) {
