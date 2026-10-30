@@ -363,6 +363,18 @@ static void window_disappear(Window *window) {
   app_timer_register(0, prv_destroy_later, self);
 }
 
+// Back leaves the app from the splash, as it does at launch when there is
+// nothing under it. Popping only the splash would uncover a page that JS
+// cannot serve while it waits for a connection, and that page would then
+// hold the wearer, since every button on it waits for JS.
+static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
+  window_stack_pop_all(false);
+}
+
+static void prv_click_config_provider(void *context) {
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_back_click);
+}
+
 SimplySplash *simply_splash_create(Simply *simply) {
   SimplySplash *self = malloc(sizeof(*self));
   *self = (SimplySplash) { .simply = simply };
@@ -378,6 +390,7 @@ SimplySplash *simply_splash_create(Simply *simply) {
     .appear = window_appear,
     .disappear = window_disappear,
   });
+  window_set_click_config_provider(self->window, prv_click_config_provider);
 
   return self;
 }

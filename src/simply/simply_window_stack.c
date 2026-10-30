@@ -49,6 +49,46 @@ typedef WindowEventPacket WindowHideEventPacket;
 
 static bool s_broadcast_window = true;
 
+// Back on a JS window is only a request: JS decides what comes up next and
+// the watch waits to be told. A JS that never answers, because the phone
+// dropped it, restarted it or lost track of this window, used to leave the
+// wearer on a screen no button could leave. So the watch waits this long and
+// then leaves the app itself, and a second press while the first is still
+// unanswered leaves at once.
+#define BACK_ANSWER_MS 4000
+#define BACK_REPEAT_MS 1000
+
+static AppTimer *s_back_timer = NULL;
+static int64_t s_back_pressed_ms = 0;
+
+static int64_t prv_now_ms(void) {
+  time_t seconds;
+  uint16_t ms;
+  time_ms(&seconds, &ms);
+  return (int64_t)seconds * 1000 + ms;
+}
+
+static void prv_leave_app(void) {
+  if (s_back_timer) {
+    app_timer_cancel(s_back_timer);
+    s_back_timer = NULL;
+  }
+  APP_LOG(APP_LOG_LEVEL_WARNING, "Back was not answered, leaving the app");
+  window_stack_pop_all(false);
+}
+
+static void prv_back_unanswered(void *data) {
+  s_back_timer = NULL;
+  prv_leave_app();
+}
+
+static void prv_back_answered(void) {
+  if (s_back_timer) {
+    app_timer_cancel(s_back_timer);
+    s_back_timer = NULL;
+  }
+}
+
 static bool send_window(SimplyMsg *self, Command type, uint32_t id) {
   if (!s_broadcast_window) {
     return false;
@@ -165,6 +205,19 @@ void simply_window_stack_pop(SimplyWindowStack *self, SimplyWindow *window) {
 }
 
 void simply_window_stack_back(SimplyWindowStack *self, SimplyWindow *window) {
+  // A window JS never named cannot be asked about, so nothing would answer
+  if (!window->id) {
+    prv_leave_app();
+    return;
+  }
+  if (s_back_timer) {
+    if (prv_now_ms() - s_back_pressed_ms >= BACK_REPEAT_MS) {
+      prv_leave_app();
+    }
+    return;
+  }
+  s_back_pressed_ms = prv_now_ms();
+  s_back_timer = app_timer_register(BACK_ANSWER_MS, prv_back_unanswered, NULL);
   self->is_hiding = true;
   simply_window_stack_send_hide(self, window);
   self->is_hiding = false;
@@ -188,12 +241,14 @@ void simply_window_stack_send_hide(SimplyWindowStack *self, SimplyWindow *window
 }
 
 static void handle_window_show_packet(Simply *simply, Packet *data) {
+  prv_back_answered();
   WindowShowPacket *packet = (WindowShowPacket*) data;
   SimplyWindow *window = simply->windows[MIN(WindowTypeLast - 1, packet->type)];
   simply_window_stack_show(simply->window_stack, window, packet->pushing);
 }
 
 static void handle_window_hide_packet(Simply *simply, Packet *data) {
+  prv_back_answered();
   WindowHidePacket *packet = (WindowHidePacket*) data;
   SimplyWindow *window = simply_window_stack_get_top_window(simply);
   if (!window) {
