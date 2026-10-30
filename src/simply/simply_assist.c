@@ -1157,8 +1157,11 @@ static void prv_draw_listening(SimplyAssist *self, Layer *layer, GContext *ctx) 
     graphics_fill_rect(ctx, GRect(x, (meter_h - h) / 2, bar_w, h), bar_w / 2, GCornersAll);
   }
 
+  // The watch says it is recording by itself once the stream is running, so
+  // only what it does not say is worth a line here
   const char *caption = asking ? "Starting microphone" :
-      (self->stream_manual ? "SELECT when done" : "Listening");
+      (self->stream_manual ? "SELECT when done" : NULL);
+  if (!caption) { return; }
   graphics_context_set_text_color(ctx, prv_foreground(self));
   graphics_draw_text(ctx, caption, fonts_get_system_font(FONT_KEY_GOTHIC_14),
                      GRect(0, meter_h, bounds.size.w, LISTEN_CAPTION_HEIGHT),
