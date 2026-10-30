@@ -1641,15 +1641,24 @@ SimplyPebble.stageElement = function(id, type, def, index) {
 
 SimplyPebble.stageRemove = SimplyPebble.elementRemove;
 
+// What the splash was last told, so it can be put back as it was when the
+// watch had to take it over while the phone was away
+var splashState = { wanted: false, title: '', status: '', body: '', mode: 0 };
+
 SimplyPebble.splashShow = function() {
+  splashState.wanted = true;
   SimplyPebble.sendPacket(SplashShowPacket);
 };
 
 SimplyPebble.splashHide = function() {
+  splashState.wanted = false;
   SimplyPebble.sendPacket(SplashHidePacket);
 };
 
 SimplyPebble.splashStatus = function(title, status, body) {
+  splashState.title = title;
+  splashState.status = status;
+  splashState.body = body;
   SplashStatusPacket
     .titleLength(title)
     .statusLength(status)
@@ -1712,6 +1721,7 @@ SimplyPebble.assistMessage = function(role, text, flags) {
 };
 
 SimplyPebble.splashMode = function(mode) {
+  splashState.mode = mode;
   SimplyPebble.sendPacket(SplashModePacket.mode(mode));
 };
 
@@ -1876,6 +1886,15 @@ SimplyPebble.onPacket = function(buffer, offset) {
       Assist.emitAction(packet.action());
       break;
     case SplashRevealPacket:
+      // The watch put the splash up itself while the phone was away and is
+      // asking whether anyone is still here. This JS was waiting behind a
+      // splash of its own, so that is what goes back up.
+      if (splashState.wanted) {
+        SimplyPebble.sendPacket(SplashShowPacket);
+        SimplyPebble.splashStatus(splashState.title, splashState.status, splashState.body);
+        SimplyPebble.sendPacket(SplashModePacket.mode(splashState.mode));
+        break;
+      }
       // The splash was covering the current window, which reloaded empty on
       // the watch; re-render the top window (images must re-send too)
       ImageService.markAllUnloaded();

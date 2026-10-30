@@ -223,6 +223,15 @@ void simply_window_stack_back(SimplyWindowStack *self, SimplyWindow *window) {
   self->is_hiding = false;
 }
 
+void simply_window_stack_forget(Simply *simply) {
+  prv_back_answered();
+  for (int i = 0; i < WINDOW_TYPE_COUNT; i++) {
+    if (simply->windows[i]) {
+      simply->windows[i]->id = 0;
+    }
+  }
+}
+
 void simply_window_stack_send_show(SimplyWindowStack *self, SimplyWindow *window) {
   if (window->id && self->is_showing) {
     send_window_show(self->simply->msg, window->id);

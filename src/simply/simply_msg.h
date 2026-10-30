@@ -43,6 +43,9 @@ typedef void (*PacketHandler)(Simply *simply, Packet *packet);
 SimplyMsg *simply_msg_create(Simply *simply);
 void simply_msg_destroy(SimplyMsg *self);
 bool simply_msg_has_communicated();
+//! True when the JS that last said it was ready replaced an earlier one, as
+//! the phone app does each time the watch reconnects to it
+bool simply_msg_js_restarted();
 void simply_msg_show_disconnected(SimplyMsg *self);
 
 bool simply_msg_send(uint8_t *buffer, size_t length);

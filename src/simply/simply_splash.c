@@ -400,9 +400,45 @@ void simply_splash_destroy(SimplySplash *self) {
 
   window_destroy(self->window);
 
-  self->simply->splash = NULL;
+  // A splash shown again while this one was on its way out is a new one
+  if (self->simply->splash == self) {
+    self->simply->splash = NULL;
+  }
 
   free(self);
+}
+
+// Whether JS has the splash up for reasons of its own, such as waiting for
+// Home Assistant, as opposed to the watch putting it up for a lost phone
+static bool s_js_wants_splash = true;
+
+//! The splash to put on screen: the current one, or a new one when the
+//! current one has already left and is only waiting to be destroyed
+static SimplySplash *prv_ensure(Simply *simply) {
+  if (simply->splash && simply->splash->destroying) {
+    simply->splash = NULL;
+  }
+  if (!simply->splash) {
+    simply->splash = simply_splash_create(simply);
+  }
+  if (!window_stack_contains_window(simply->splash->window)) {
+    window_stack_push(simply->splash->window, false);
+  }
+  return simply->splash;
+}
+
+static void prv_set_mode(SimplySplash *self, uint8_t mode) {
+  self->mode = mode;
+#if defined(SPLASH_FANCY)
+  if (self->mode == SplashModeConnecting) {
+    if (!self->timer) {
+      self->timer = app_timer_register(PULSE_TICK_MS, prv_timer_callback, self);
+    }
+  } else {
+    prv_stop_timer(self);
+  }
+#endif
+  layer_mark_dirty(window_get_root_layer(self->window));
 }
 
 //! Copy a string out of a packet, reading no further than the packet's end
@@ -434,14 +470,11 @@ bool simply_splash_is_covering(Simply *simply) {
 bool simply_splash_handle_packet(Simply *simply, Packet *packet) {
   switch (packet->type) {
     case CommandSplashShow:
-      if (!simply->splash) {
-        simply->splash = simply_splash_create(simply);
-      }
-      if (!window_stack_contains_window(simply->splash->window)) {
-        window_stack_push(simply->splash->window, false);
-      }
+      s_js_wants_splash = true;
+      prv_ensure(simply);
       return true;
     case CommandSplashHide:
+      s_js_wants_splash = false;
       if (simply->splash) {
         // disappear tears the splash down
         window_stack_remove(simply->splash->window, false);
@@ -452,20 +485,40 @@ bool simply_splash_handle_packet(Simply *simply, Packet *packet) {
       return true;
     case CommandSplashMode:
       if (simply->splash) {
-        SimplySplash *self = simply->splash;
-        self->mode = ((SplashModePacket *)packet)->mode;
-#if defined(SPLASH_FANCY)
-        if (self->mode == SplashModeConnecting) {
-          if (!self->timer) {
-            self->timer = app_timer_register(PULSE_TICK_MS, prv_timer_callback, self);
-          }
-        } else {
-          prv_stop_timer(self);
-        }
-#endif
-        layer_mark_dirty(window_get_root_layer(self->window));
+        prv_set_mode(simply->splash, ((SplashModePacket *)packet)->mode);
       }
       return true;
   }
   return false;
+}
+
+void simply_splash_show_phone_lost(Simply *simply, bool reconnected) {
+  SimplySplash *self = prv_ensure(simply);
+  strncpy(self->title, "Home Assistant", sizeof(self->title) - 1);
+  self->title[sizeof(self->title) - 1] = '\0';
+  if (reconnected) {
+    strncpy(self->status, "Reconnecting", sizeof(self->status) - 1);
+    self->body[0] = '\0';
+  } else {
+    strncpy(self->status, "Phone disconnected", sizeof(self->status) - 1);
+    strncpy(self->body, "Waiting for the Pebble app", sizeof(self->body) - 1);
+  }
+  self->status[sizeof(self->status) - 1] = '\0';
+  self->body[sizeof(self->body) - 1] = '\0';
+  prv_set_mode(self, reconnected ? SplashModeConnecting : SplashModeError);
+}
+
+void simply_splash_phone_back(Simply *simply) {
+  SimplySplash *self = simply->splash;
+  if (!self || self->destroying) { return; }
+  if (s_js_wants_splash) {
+    // What JS last said is lost under the watch's own words, and JS will
+    // only say more when something changes
+    strncpy(self->status, "Reconnecting", sizeof(self->status) - 1);
+    self->body[0] = '\0';
+    prv_set_mode(self, SplashModeConnecting);
+  } else {
+    // Revealing the page asks JS to draw it again
+    window_stack_remove(self->window, false);
+  }
 }
