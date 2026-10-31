@@ -226,6 +226,11 @@ struct SimplyAssist {
   //! Keep listening until the wearer presses select, rather than until Home
   //! Assistant hears them stop talking
   bool stream_manual;
+  //! Where the wearer was reading when they started to speak, to go back to
+  //! if the turn comes to nothing
+  int16_t resume_y;
+  bool resume_scrolled;
+  bool has_resume;
   //! How loud each band of the voice was in the phone's latest measure, and
   //! how tall its bar stands now on the way there, both 0 to 255
   uint8_t level_target[METER_BARS];
@@ -1511,6 +1516,26 @@ static void prv_cancel_listen_timer(SimplyAssist *self) {
   }
 }
 
+//! Put the view back where it was before the wearer started speaking, for a
+//! turn that came to nothing. Listening moves it down to the voice bars, and
+//! the turn's end would otherwise leave it on the newest message.
+static void prv_return_view(SimplyAssist *self) {
+  if (!self->has_resume) {
+    prv_reflow(self, AssistFocusMessage);
+    return;
+  }
+  self->has_resume = false;
+  prv_reflow(self, AssistFocusHold);
+  if (!self->window || !window_is_loaded(self->window)) { return; }
+  const int16_t page = layer_get_frame(scroll_layer_get_layer(self->scroll_layer)).size.h;
+  const int16_t last = scroll_layer_get_content_size(self->scroll_layer).h - page;
+  int16_t target = self->resume_y;
+  if (target > last) { target = last; }
+  if (target < 0) { target = 0; }
+  scroll_layer_set_content_offset(self->scroll_layer, GPoint(0, -target), true);
+  self->user_scrolled = self->resume_scrolled;
+}
+
 //! Close the microphone and forget the stream, without telling anyone. Every
 //! way a stream ends goes through here; the callers say what it meant.
 static void prv_end_stream(SimplyAssist *self) {
@@ -1532,7 +1557,7 @@ static void prv_dictate_now(void *data) {
 //! free of the stream that was meant to have it
 static void prv_dictate_instead(SimplyAssist *self) {
   prv_end_stream(self);
-  prv_reflow(self, AssistFocusMessage);
+  prv_return_view(self);
   if (!self->dictate_timer) {
     self->dictate_timer = app_timer_register(DICTATION_AFTER_STREAM_MS, prv_dictate_now, self);
   }
@@ -1557,7 +1582,7 @@ static void prv_cancel_stream(SimplyAssist *self) {
     prv_close(self);
     return;
   }
-  prv_reflow(self, AssistFocusMessage);
+  prv_return_view(self);
 }
 
 static void prv_stream_started(void *context) {
@@ -1619,6 +1644,9 @@ static void prv_start_listening(SimplyAssist *self) {
       simply_mic_stream_start(prv_stream_started, prv_stream_stopped, self) ==
           SimplyMicStreamStartOk) {
     self->listen = AssistListenAsking;
+    self->resume_y = -scroll_layer_get_content_offset(self->scroll_layer).y;
+    self->resume_scrolled = self->user_scrolled;
+    self->has_resume = true;
     self->user_scrolled = false;
     self->listen_timer = app_timer_register(STREAM_ANSWER_TIMEOUT_MS, prv_stream_no_answer, self);
     prv_send_action(AssistActionStreamRequested);
@@ -1783,7 +1811,7 @@ static void prv_confirm_back_click(ClickRecognizerRef recognizer, void *context)
   AssistConfirm *confirm = prv_confirm_pressed();
   SimplyAssist *self = confirm->assist;
   prv_confirm_dismiss(self);
-  prv_reflow(self, AssistFocusMessage);
+  prv_return_view(self);
 }
 
 //! Show each arrow only while the words can still scroll that way
@@ -2381,12 +2409,14 @@ static void prv_handle_message(Simply *simply, Packet *data) {
     // Heard, and waiting on the wearer rather than on Home Assistant
     prv_stop_thinking(self);
     self->ever_spoke = true;
-    prv_reflow(self, AssistFocusMessage);
     // Only over the conversation itself. With the settings menu up the
     // conversation is not on the stack to come back to, and the words are
     // dropped, the same as a turn backed out of.
     if (window_stack_get_top_window() == self->window) {
+      prv_reflow(self, AssistFocusMessage);
       prv_confirm_show(self, packet->text);
+    } else {
+      prv_return_view(self);
     }
     return;
   }
