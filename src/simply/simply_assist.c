@@ -1876,8 +1876,9 @@ static void prv_confirm_window_load(Window *window) {
                                 GSize(view_w, content_h > bounds.size.h ? content_h : bounds.size.h));
 
   confirm->action_bar = action_bar_layer_create();
-  action_bar_layer_set_background_color(confirm->action_bar,
-      PBL_IF_COLOR_ELSE(self->dark ? GColorDarkGray : GColorBlack, GColorBlack));
+  // Black in both themes: the icons are thin, and on dark gray they are hard
+  // to make out on a real screen
+  action_bar_layer_set_background_color(confirm->action_bar, GColorBlack);
   confirm->icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_CONFIRM);
   action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_SELECT, confirm->icon);
   confirm->up_icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_UP);
