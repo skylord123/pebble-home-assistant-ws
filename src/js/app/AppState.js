@@ -40,6 +40,10 @@ class AppState {
         // Home Assistant hears the wearer stop, 'manual' when they press select
         this.assist_stream_audio = true;
         this.assist_stream_end = 'auto';
+        // Seconds of quiet that end an 'auto' turn, judged on the phone. 0
+        // leaves it to Home Assistant, which ends the turn at its first short
+        // pause and never later than 15 seconds in.
+        this.assist_stream_pause = 0;
         // Vibration feedback during streaming replies
         this.assist_vibration_feedback = true;
         this.voice_agent = null;

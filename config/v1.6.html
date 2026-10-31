@@ -1070,7 +1070,21 @@
 							<option value="auto">When I stop talking</option>
 							<option value="manual">When I press Select</option>
 						</select>
-						<small class="form-text">For your voice sent to Home Assistant. When you stop talking, Home Assistant ends the turn itself after a short pause, and never later than 15 seconds in. When you press Select, it keeps listening for as long as you talk, which suits dictating long notes. Select ends a turn early either way.</small>
+						<small class="form-text">For your voice sent to Home Assistant. When you stop talking, the turn ends after a short pause. When you press Select, it keeps listening for as long as you talk, which suits dictating long notes. Select ends a turn early either way.</small>
+					</div>
+				</div>
+				<div class="component" id="assist-stream-pause-container">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-stream-pause">Stop After a Pause Of</label>
+						<select class="form-select" id="ha-assist-stream-pause">
+							<option value="0">Home Assistant's default</option>
+							<option value="1">1 second</option>
+							<option value="1.5">1.5 seconds</option>
+							<option value="2">2 seconds</option>
+							<option value="3">3 seconds</option>
+							<option value="5">5 seconds</option>
+						</select>
+						<small class="form-text">Home Assistant's default stops at your first short pause, and after 15 seconds at most. Pick a length to talk for as long as you like, with room to stop and think. The silence is then picked up by your phone instead of Home Assistant, which works best somewhere quiet.</small>
 					</div>
 				</div>
 				<div class="component">
@@ -1587,6 +1601,8 @@
 		assistStreamReply = $('ha-assist-stream-reply'),
 		assistStreamAudio = $('ha-assist-stream-audio'),
 		assistStreamEnd = $('ha-assist-stream-end'),
+		assistStreamPause = $('ha-assist-stream-pause'),
+		assistStreamPauseContainer = $('assist-stream-pause-container'),
 		assistStreamStatus = $('assist-stream-status'),
 		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
 		voiceFontSize = $('ha-voice-font-size'),
@@ -2224,6 +2240,12 @@
 
 	assistStreamAudio.addEventListener('change', renderStreamStatus);
 
+	// The pause only applies to turns that end when the wearer stops talking
+	function updateStreamPauseVisibility() {
+		show(assistStreamPauseContainer, assistStreamEnd.value !== 'manual');
+	}
+	assistStreamEnd.addEventListener('change', updateStreamPauseVisibility);
+
 	function currentPipeline() {
 		if (chosenPipeline !== null) { return chosenPipeline; }
 		return watch_config['selected_pipeline'] || '';
@@ -2278,6 +2300,7 @@
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
 			'assist_stream_audio': assistStreamAudio.checked,
 			'assist_stream_end': assistStreamEnd.value,
+			'assist_stream_pause': Number(assistStreamPause.value),
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
 			// While the dropdown is empty (not connected) the saved choice
 			// stands, rather than being wiped by a dropout
@@ -2372,6 +2395,9 @@
 		assistVibrationFeedback.checked = defaulted(watch_config['assist_vibration_feedback'], true);
 		assistStreamAudio.checked = defaulted(watch_config['assist_stream_audio'], true);
 		assistStreamEnd.value = watch_config['assist_stream_end'] === 'manual' ? 'manual' : 'auto';
+		assistStreamPause.value = String(watch_config['assist_stream_pause'] || 0);
+		if (assistStreamPause.selectedIndex < 0) { assistStreamPause.value = '0'; }
+		updateStreamPauseVisibility();
 		voiceFontSize.value = watch_config['voice_font_size'] ? String(watch_config['voice_font_size']) : '18';
 
 		chosenPipeline = null;

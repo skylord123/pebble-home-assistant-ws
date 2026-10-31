@@ -41,9 +41,14 @@ var NOISE_RISE_DB = 0.1;
 // band barely over it never stands as a full bar.
 var PEAK_FALL_DB = 0.5;
 var MIN_SPAN_DB = 20;
+// A chunk is voice when at least this many bands stand this far over their
+// gate. One band alone is as likely a clink or a fan as a word.
+var VOICE_DB = 4;
+var VOICE_BANDS = 2;
 
 var bandNoise = null;
 var peakDb = MIN_SPAN_DB;
+var lastVoiced = false;
 
 var hann = null;
 var cosTable = null;
@@ -117,6 +122,7 @@ function fft(re, im) {
 AudioLevels.reset = function() {
     bandNoise = null;
     peakDb = MIN_SPAN_DB;
+    lastVoiced = false;
 };
 
 /**
@@ -150,6 +156,7 @@ AudioLevels.analyze = function(buffer) {
     // How far each band stands above its noise
     var above = [];
     var loudest = 0;
+    var voicedBands = 0;
     if (!bandNoise) { bandNoise = []; }
     for (var b = 0; b < AudioLevels.BANDS; b++) {
         var sum = 0;
@@ -168,7 +175,9 @@ AudioLevels.analyze = function(buffer) {
         bandNoise[b] = noise;
         above.push(db - noise - bandGate[b]);
         if (above[b] > loudest) { loudest = above[b]; }
+        if (above[b] >= VOICE_DB) { voicedBands++; }
     }
+    lastVoiced = voicedBands >= VOICE_BANDS;
 
     peakDb = Math.max(loudest, peakDb - PEAK_FALL_DB, MIN_SPAN_DB);
     var levels = [];
@@ -177,6 +186,14 @@ AudioLevels.analyze = function(buffer) {
         levels.push(Math.round(level * 255));
     }
     return levels;
+};
+
+/**
+ * Whether the chunk last analyzed sounded like someone talking rather than
+ * the room, for the phone to tell when the wearer has stopped
+ */
+AudioLevels.voiced = function() {
+    return lastVoiced;
 };
 
 module.exports = AudioLevels;

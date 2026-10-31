@@ -268,11 +268,18 @@ function abandonRun() {
 var RUN_TIMEOUT_S = 120;
 
 // The cap covers the whole run, listening included. Home Assistant stops
-// listening by itself after 15 seconds, so that is all an automatic turn
-// adds; a turn the wearer ends themselves can go on for as long as they like,
-// and this is only there so a run nobody ever finishes is eventually let go.
+// listening by itself after 15 seconds, so that is all a turn it ends adds; a
+// turn the wearer or the phone ends can go on for as long as they like, and
+// this is only there so a run nobody ever finishes is eventually let go.
 var LISTEN_TIMEOUT_S = 15;
 var MANUAL_LISTEN_TIMEOUT_S = 3600;
+
+// When the phone listens for the wearer to stop, it counts them as talking
+// once they have kept it up this long, as Home Assistant does, so a cough
+// before they start does not set the pause going. Someone who never starts
+// is given up on as late as Home Assistant would.
+var SPEECH_MS = 300;
+var NO_SPEECH_MS = 15000;
 
 // After the wearer finishes, the phone still has the last fraction of a
 // second of audio to hand over, and says when it has. If it never does, the
@@ -347,12 +354,25 @@ function startListening() {
         queue: [],
         ended: false,
         endTimer: null,
-        sink: null
+        sink: null,
+        // Set when the phone, not Home Assistant, decides the wearer has
+        // stopped. Home Assistant cannot be asked to wait longer than its
+        // short pause, nor past 15 seconds, so a longer pause means doing
+        // without its listening altogether.
+        pauseMs: manual ? 0 : appState.assist_stream_pause * 1000,
+        voicedMs: 0,
+        quietMs: 0,
+        spoke: false
     };
     turn.sink = {
         audio: function(bytes) {
             if (turn.ended) { return; }
-            Assist.levels(AudioLevels.analyze(bytes));
+            var levels = AudioLevels.analyze(bytes);
+            Assist.levels(levels);
+            if (turn.pauseMs && levels) {
+                hearPause(turn, bytes.byteLength / 2 / AudioStream.SAMPLE_RATE * 1000);
+                if (turn.ended) { return; }
+            }
             if (turn.handlerId === null) {
                 turn.queue.push(bytes);
             } else {
@@ -368,13 +388,14 @@ function startListening() {
     AudioStream.attach(turn.sink);
 
     var input = { sample_rate: AudioStream.SAMPLE_RATE };
-    if (manual) {
+    if (manual || turn.pauseMs) {
         // Home Assistant would otherwise end the turn at the first pause, and
         // at 15 seconds whatever is happening
         input.no_vad = true;
     }
 
     helpers.log_message("Listening through Home Assistant" + (manual ? " until select" : "") +
+        (turn.pauseMs ? " until a " + (turn.pauseMs / 1000) + " s pause" : "") +
         (confirm ? ", to confirm" : ""));
     startRun({
         start_stage: "stt",
@@ -382,7 +403,7 @@ function startListening() {
         input: input,
         pipeline: appState.selected_pipeline,
         conversation_id: conversation_id,
-        timeout: RUN_TIMEOUT_S + (manual ? MANUAL_LISTEN_TIMEOUT_S : LISTEN_TIMEOUT_S)
+        timeout: RUN_TIMEOUT_S + (input.no_vad ? MANUAL_LISTEN_TIMEOUT_S : LISTEN_TIMEOUT_S)
     }, function(event) {
         if (gen !== runGeneration) { return; }
         var data = event.data || {};
@@ -423,6 +444,24 @@ function startListening() {
                 return;
         }
     });
+}
+
+//! Follow a chunk of the wearer's audio, and end the turn once they have
+//! been quiet for the pause they chose
+function hearPause(turn, ms) {
+    if (AudioLevels.voiced()) {
+        turn.voicedMs += ms;
+        turn.quietMs = 0;
+        if (turn.voicedMs >= SPEECH_MS) { turn.spoke = true; }
+    } else {
+        turn.voicedMs = 0;
+        turn.quietMs += ms;
+    }
+    if (turn.quietMs >= (turn.spoke ? turn.pauseMs : NO_SPEECH_MS)) {
+        // As if Home Assistant had heard them stop
+        endAudio(turn);
+        Assist.stopListening();
+    }
 }
 
 //! The wearer has said all they are going to, by pressing select or by

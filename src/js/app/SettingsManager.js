@@ -51,6 +51,8 @@ var SettingsManager = {
         // or off on the wearer's behalf, and a choice to turn it off stays.
         appState.assist_stream_audio = Settings.option('assist_stream_audio') !== false;
         appState.assist_stream_end = Settings.option('assist_stream_end') === 'manual' ? 'manual' : 'auto';
+        var pause = Number(Settings.option('assist_stream_pause'));
+        appState.assist_stream_pause = pause > 0 && pause <= 10 ? pause : 0;
         // The config page cannot see the watch or the phone app, so it is told
         // whether they could stream, to explain why dictation is used if not
         var streamWatch = !AudioStream.watchHasStreamPlatform() ? 'unsupported' :
