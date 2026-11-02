@@ -198,6 +198,16 @@
         "file": "images/icon_yes.png",
         "name": "IMAGE_ICON_YES",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_confirm.png",
+        "name": "IMAGE_ICON_CONFIRM",
+        "targetPlatforms": [
+          "emery",
+          "flint",
+          "gabbro"
+        ],
+        "type": "bitmap"
       }
     ]
   },

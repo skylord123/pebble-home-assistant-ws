@@ -9,6 +9,7 @@ var Vibe = require('ui/vibe');
 var BasePage = require('app/pages/BasePage');
 var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
+var AudioStream = require('app/AudioStream');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var InactivityTimer = require('app/InactivityTimer');
@@ -416,6 +417,30 @@ function showVoiceAssistantSettings(onClose) {
                 showVoicePipelineMenu();
             }
         });
+
+        // Who turns the wearer's voice into words. Only the watches that can
+        // stream have a choice to make.
+        if (AudioStream.watchHasStreamPlatform()) {
+            voiceSettingsMenu.item(0, menuIndex++, {
+                title: "Speech",
+                subtitle: AudioStream.describe(require('app/pages/AssistPage').pipelineHearsAudio()),
+                on_click: function(e) {
+                    appState.assist_stream_audio = !appState.assist_stream_audio;
+                    AudioStream.setEnabled(appState.assist_stream_audio);
+                    updateMenuItems();
+                }
+            });
+
+            voiceSettingsMenu.item(0, menuIndex++, {
+                title: "Stop Listening",
+                subtitle: appState.assist_stream_end === 'manual' ? "On SELECT" : "When I stop",
+                on_click: function(e) {
+                    appState.assist_stream_end = appState.assist_stream_end === 'manual' ? 'auto' : 'manual';
+                    Settings.option('assist_stream_end', appState.assist_stream_end);
+                    updateMenuItems();
+                }
+            });
+        }
 
         // Confirm Dictate setting
         voiceSettingsMenu.item(0, menuIndex++, {
