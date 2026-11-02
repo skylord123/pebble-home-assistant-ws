@@ -94,7 +94,7 @@ It is on by default and is used whenever it can be. To make it work:
 2. Open the assistant once. The Pebble app asks for permission to use the watch microphone; allow it, then reopen Home Assistant WS.
 3. Pick a pipeline that has a speech-to-text engine.
 
-While it is listening the screen shows a small meter. Home Assistant ends the turn when you stop talking (never later than 15 seconds in), or set **Stop Listening** to **On SELECT** in the assistant settings to keep talking as long as you like and press the middle button when you are done. Back drops what you were saying. Anywhere it cannot work, such as an older watch, another phone app or a pipeline without speech-to-text, the phone's dictation is used exactly as before, and you can turn it off under **Speech** in the assistant settings or on the settings page.
+While it is listening the screen shows bars that move with your voice. Home Assistant ends the turn when you stop talking (never later than 15 seconds in). For longer dictation, pick a length under **Stop After a Pause Of** on the settings page and your phone ends the turn once you have been quiet that long instead, or set **Stop Listening** to **On SELECT** in the assistant settings to keep talking as long as you like and press the middle button when you are done. Back drops what you were saying. Anywhere it cannot work, such as an older watch, another phone app or a pipeline without speech-to-text, the phone's dictation is used exactly as before, and you can turn it off under **Speech** in the assistant settings or on the settings page.
 
 ### Entity Control
 
