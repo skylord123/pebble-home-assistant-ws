@@ -31,6 +31,10 @@ var openers = {};
 var pending = null;
 var depth = 0;
 var restoring = false;
+// Nothing is saved until the app has decided where it starts. A new JS puts
+// its splash up before it knows it is taking over a running app, and saving
+// that would replace the pages it is about to open again with nothing.
+var started = false;
 var saveTimer = null;
 // Scrolling moves the highlight many times a second
 var SELECTION_SAVE_DELAY_MS = 1000;
@@ -49,7 +53,7 @@ function serialize(args) {
 
 function save() {
     saveTimer = null;
-    if (restoring) { return; }
+    if (restoring || !started) { return; }
     var routes = [];
     var items = WindowStack._items;
     for (var i = 0; i < items.length; i++) {
@@ -138,6 +142,15 @@ function load() {
     return null;
 }
 
+/**
+ * The app has opened as usual, not by reopening the remembered pages, and
+ * what it shows from here on is what to remember
+ */
+NavRoute.start = function() {
+    started = true;
+    scheduleSave();
+};
+
 /** Whether there is anything to open again. */
 NavRoute.available = function() {
     return !!load();
@@ -163,6 +176,7 @@ NavRoute.restore = function(done) {
     function finish() {
         stopWaiting();
         restoring = false;
+        started = true;
         pending = null;
         helpers.log_message('NavRoute: reopened ' + index + ' of ' + routes.length + ' pages');
         save();

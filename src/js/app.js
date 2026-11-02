@@ -398,6 +398,8 @@ function start_data_fetch() {
             return;
         }
 
+        NavRoute.start();
+
         var skipMainMenu = launchReason === 'quickLaunch' &&
             appState.quick_launch_behavior !== 'main_menu' &&
             appState.quick_launch_exit_on_back;
@@ -481,6 +483,7 @@ function start_data_fetch() {
             log('Skipping quick launch - app is restarting');
             ConnectionService.setIsRestarting(false);
             ConnectionService.clearReconnectState();
+            NavRoute.start();
             MainMenuPage.showMainMenu();
             loadingCard.hide();
         } else if (ConnectionService.shouldResumePreviousPage()) {
