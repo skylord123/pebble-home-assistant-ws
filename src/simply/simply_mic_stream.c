@@ -35,7 +35,9 @@ typedef void (*MicStreamStopFn)(void);
 //! The app's own header, which the build places at the very start of the app.
 //! The loader writes the address of the firmware's function table into it, at
 //! the offset its sym_table_addr field gives, which is the same slot every
-//! SDK function finds the table through.
+//! SDK function finds the table through. Despite the SDK header calling it the
+//! table's address, the field holds that offset; see prv_intialize_sdk_process
+//! in the firmware's process_loader_storage.c.
 extern const PebbleProcessInfo __pbl_app_info;
 
 static SimplyMicStreamStartedHandler s_started;
