@@ -236,7 +236,7 @@ var runGeneration = 0;
 var activeRun = null;
 
 // The turn whose audio is on its way to Home Assistant, while it is being
-// spoken. Audio arriving before the run has said where to send it waits here.
+// spoken. Audio arriving before Home Assistant is ready for it waits here.
 var listening = null;
 
 //! Stop taking audio for the turn being spoken, if there is one
@@ -336,7 +336,7 @@ function endAudio(turn) {
 /**
  * The watch is opening its microphone to Home Assistant. The run starts now,
  * so it is ready by the time the audio is, and any audio that beats it here
- * waits until the run says where to send it.
+ * waits until Home Assistant's speech-to-text has started.
  */
 function startListening() {
     var appState = AppState.getInstance();
@@ -351,6 +351,7 @@ function startListening() {
     var turn = {
         haws: appState.haws,
         handlerId: null,
+        pendingId: null,
         queue: [],
         ended: false,
         endTimer: null,
@@ -409,11 +410,14 @@ function startListening() {
         var data = event.data || {};
         switch (event.type) {
             case 'run-start':
-                turn.handlerId = data.runner_data ? data.runner_data.stt_binary_handler_id : null;
-                if (turn.handlerId === null || turn.handlerId === undefined) {
-                    turn.handlerId = null;
-                    return;
-                }
+                // Where the audio goes is known now, but Home Assistant asks
+                // for it only once speech-to-text has started, so it waits
+                // until then with the rest
+                turn.pendingId = data.runner_data ? data.runner_data.stt_binary_handler_id : null;
+                return;
+            case 'stt-start':
+                if (turn.pendingId === null || turn.pendingId === undefined) { return; }
+                turn.handlerId = turn.pendingId;
                 for (var i = 0; i < turn.queue.length; i++) {
                     turn.haws.sendAudio(turn.handlerId, turn.queue[i]);
                 }
