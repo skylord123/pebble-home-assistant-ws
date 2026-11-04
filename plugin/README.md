@@ -101,7 +101,7 @@ instance includes these properties:
 | `home/person` | person, device_tracker | `home`, `zone`, `since` (never coordinates) |
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
-| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, and the series below |
+| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below |
 
 Notes on the weather source:
 

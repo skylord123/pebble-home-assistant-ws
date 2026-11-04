@@ -78,20 +78,32 @@ var UNITS = { category: 'preferences', item: 'units' };
 //! '°C' or '°F' as the wearer has chosen, for this request; null if the
 //! phone did not say
 var wearerUnit = null;
+//! The wearer's wind speed unit, for this request
+var wearerWind = null;
+
+//! Metres a second in one of each of Home Assistant's wind speed units
+var WIND_MS = { 'm/s': 1, 'km/h': 1 / 3.6, 'mph': 0.44704, 'kn': 0.514444, 'knots': 0.514444, 'ft/s': 0.3048 };
 
 /**
- * The wearer's temperature unit, from the phone's preferences. Subscribing
- * has the phone run this source again when the wearer changes it.
+ * The wearer's units, from the phone's preferences. Subscribing has the
+ * phone run this source again when the wearer changes them.
  */
-function readWearerUnit() {
-    if (typeof Pebble.readSource !== 'function') { return Promise.resolve(null); }
+function readWearerUnits() {
+    if (typeof Pebble.readSource !== 'function') { return Promise.resolve({}); }
     if (typeof Pebble.subscribeSource === 'function') { Pebble.subscribeSource(UNITS); }
     return Pebble.readSource(UNITS).then(function(envelope) {
-        var props = envelope && envelope.instances && envelope.instances[0] &&
-            envelope.instances[0].properties;
-        var text = props && props.temperature && props.temperature.shortText && props.temperature.shortText.text;
-        return text === '°C' || text === '°F' ? text : null;
-    }).catch(function() { return null; });
+        var props = (envelope && envelope.instances && envelope.instances[0] &&
+            envelope.instances[0].properties) || {};
+        function text(name) {
+            return props[name] && props[name].shortText && props[name].shortText.text;
+        }
+        var temperature = text('temperature');
+        var wind = text('wind_speed');
+        return {
+            temperature: temperature === '°C' || temperature === '°F' ? temperature : null,
+            wind: WIND_MS[wind] ? wind : null
+        };
+    }).catch(function() { return {}; });
 }
 
 /**
@@ -346,6 +358,27 @@ function daySlots(daily) {
     }));
 }
 
+/**
+ * Wind speed in a unit the phone knows (m/s, km/h, mph or knots), with the
+ * text in the wearer's unit, or km/h when the phone did not say
+ */
+function windShapes(attrs) {
+    var speed = attrs.wind_speed;
+    var factor = WIND_MS[attrs.wind_speed_unit];
+    if (typeof speed !== 'number' || !factor) { return null; }
+    var unit = attrs.wind_speed_unit === 'kn' ? 'knots' : attrs.wind_speed_unit;
+    var value = speed;
+    if (unit === 'ft/s') {
+        value = speed * factor;
+        unit = 'm/s';
+    }
+    var shown = wearerWind || 'km/h';
+    return {
+        numericValue: S.numeric(value, unit),
+        shortText: S.shortText(Math.round(speed * factor / WIND_MS[shown]) + ' ' + shown)
+    };
+}
+
 function locationInstance(entity, days, hourly, request) {
     var attrs = entity.attributes || {};
     var unit = unitOf(entity);
@@ -389,6 +422,18 @@ function locationInstance(entity, days, hourly, request) {
         };
     }
 
+    if (typeof attrs.humidity === 'number') {
+        props.humidity = {
+            numericValue: S.numeric(attrs.humidity, '%', 0, 100),
+            shortText: S.shortText(Math.round(attrs.humidity) + '%')
+        };
+    }
+    var wind = windShapes(attrs);
+    if (wind) { props.wind_speed = wind; }
+    if (typeof attrs.wind_bearing === 'number') {
+        props.wind_direction = { numericValue: S.numeric(attrs.wind_bearing, '°', 0, 360) };
+    }
+
     var changed = S.timestamp(entity.last_changed);
     if (changed) { props.last_changed = { timestamp: changed }; }
 
@@ -418,8 +463,9 @@ function locationInstance(entity, days, hourly, request) {
 function location(conn, ids, request) {
     var needDaily = wants(request, ['high', 'low', 'uv_index', 'precipitation', 'daily_']);
     var needHourly = wants(request, ['hourly_']);
-    return readWearerUnit().then(function(unit) {
-        wearerUnit = unit;
+    return readWearerUnits().then(function(units) {
+        wearerUnit = units.temperature || null;
+        wearerWind = units.wind || null;
         return ha.getStates(conn, ids);
     }).then(function(states) {
         var present = ids.filter(function(id) { return states[id]; });
