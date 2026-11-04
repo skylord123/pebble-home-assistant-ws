@@ -121,6 +121,9 @@ Notes on the weather source:
   entity says it has. An entity with only twice-daily forecasts (the US
   National Weather Service) gets its high from the daytime half and its low
   from the night after.
+- Temperatures follow the wearer's choice in the Pebble app
+  (`preferences/units`) in their text. The `numericValue` stays in Home
+  Assistant's own unit, which its `unit` names.
 - `condition_code` uses the same words as the phone's own weather: `sun`,
   `partly_cloudy`, `light_rain` and so on.
 
