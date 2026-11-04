@@ -1,7 +1,9 @@
 /**
- * Home Assistant over its REST API. A plugin cannot open a WebSocket or keep
- * anything running between requests, so each request asks for what it needs
- * and gets out.
+ * Home Assistant over its REST API. A plugin cannot keep anything running
+ * between requests, and a WebSocket closes with the request that opened it,
+ * so each request asks for what it needs and gets out. REST reuses the
+ * phone's open connection where a WebSocket would log in again every time,
+ * so only the assistant, which REST cannot reach, goes over ws.js.
  *
  * Nothing here logs the address or the token: plugin logs go to the phone's
  * own log, which ends up in bug reports.
@@ -44,6 +46,11 @@ function tokenRefused(conn) {
         Date.now() - failed.at < AUTH_RETRY_MS);
 }
 
+/** Leave this token alone for a while */
+function markRefused(conn) {
+    store.set('auth_failed', { print: fingerprint(conn.token), at: Date.now() });
+}
+
 /** Try the token again on the next request, e.g. when the settings page asks */
 function forgetRefusal() {
     store.set('auth_failed', null);
@@ -65,7 +72,7 @@ function refused(conn, path) {
     });
     return verdict.then(function(tokenBad) {
         if (tokenBad) {
-            store.set('auth_failed', { print: fingerprint(conn.token), at: Date.now() });
+            markRefused(conn);
             throw new PluginError('AUTH_REQUIRED', REFUSED);
         }
         throw new PluginError('PERMISSION_DENIED',
@@ -258,7 +265,10 @@ function callServiceForResponse(conn, domain, service, data) {
 
 module.exports = {
     PluginError: PluginError,
+    REFUSED: REFUSED,
     request: request,
+    tokenRefused: tokenRefused,
+    markRefused: markRefused,
     forgetRefusal: forgetRefusal,
     forgetStates: forgetStates,
     getStates: getStates,

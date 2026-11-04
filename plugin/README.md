@@ -32,9 +32,14 @@ reads and for actions alike.
   `Bundled the plugin into build/…pbw as plugin.js`.
 - Phone apps that do not know about plugins ignore both.
 
-The phone starts a fresh JS engine for every request, so the plugin has no
-WebSocket and no timers. It reads the same `localStorage` as the watch app
-(same UUID):
+The phone starts a fresh JS engine for every request and stops it once the
+plugin answers, or after 20 seconds. There are no timers, and a WebSocket
+closes when the request that opened it ends, so nothing can stay connected to
+Home Assistant between requests. Everything goes over the REST API, which
+reuses the phone's open connection, except `ask_assistant`: REST cannot run a
+pipeline, so that opens a WebSocket, logs in, runs the pipeline and closes
+(`js/ws.js`). The plugin reads the same `localStorage` as the watch app (same
+UUID):
 
 | What it reads | Where it comes from |
 | --- | --- |
@@ -54,8 +59,9 @@ Everything the plugin caches is stored under a `plugin:` prefix:
     Home Assistant.
   - The token is tried again after 30 minutes, when it changes, or when the
     settings page checks the plugin.
-  - Only a 401 from `/api/` sets the marker. A 401 on a service call (an
-    admin-only service, for example) comes back as `PERMISSION_DENIED`.
+  - Only a 401 from `/api/`, or `auth_invalid` on the WebSocket, sets the
+    marker. A 401 on a service call (an admin-only service, for example)
+    comes back as `PERMISSION_DENIED`.
 
 On Android the Pebble app rewrites this `localStorage` from the watch app's
 own copy when the watch app's JS stops, so anything cached here while the
@@ -169,7 +175,8 @@ It is a list and not "anything in the domain" for these reasons:
 `floor_id`, `label_id`) from `data`.
 
 `ask_assistant` is off until the wearer turns on **Share with Apps** under
-Voice. It uses the pipeline chosen in the app, and it continues the same
+Voice. It runs the pipeline chosen in the app (or Home Assistant's preferred
+one), with that pipeline's agent and language, and it continues the same
 conversation if asked again within five minutes. Keep these in mind before
 turning it on:
 
