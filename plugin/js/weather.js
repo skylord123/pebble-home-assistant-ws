@@ -469,6 +469,9 @@ function location(conn, ids, request) {
         return ha.getStates(conn, ids);
     }).then(function(states) {
         var present = ids.filter(function(id) { return states[id]; });
+        // Faces show the first instance, so the home's own weather goes first
+        var home = present.indexOf('weather.home');
+        if (home > 0) { present.unshift(present.splice(home, 1)[0]); }
         return Promise.all([
             needDaily ? forecasts(conn, states, present, 'daily') : Promise.resolve({}),
             needHourly ? forecasts(conn, states, present, 'hourly') : Promise.resolve({})
