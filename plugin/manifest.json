@@ -1,10 +1,6 @@
 {
   "description": "Home Assistant entities shared from the Home Assistant WS watch app, and Home Assistant weather. Read their state and control them. Only the entities chosen in the watch app are served; weather is always shared.",
   "script": "plugin.js",
-  "usesPermissions": [
-    "LocalNetwork",
-    "Internet"
-  ],
   "sources": [
     {
       "category": "home",
