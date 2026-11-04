@@ -70,11 +70,14 @@ var PERCENT_CLASSES = { battery: true, humidity: true, moisture: true };
 
 function shortText(text) { return { text: String(text) }; }
 function longText(text) { return { text: String(text) }; }
+//! The Pebble app drops a numericValue whose range has only one end
 function numeric(value, unit, min, max) {
     var shape = { value: value };
     if (unit) { shape.unit = unit; }
-    if (typeof min === 'number') { shape.min = min; }
-    if (typeof max === 'number') { shape.max = max; }
+    if (isFinite(min) && isFinite(max) && typeof min === 'number' && typeof max === 'number') {
+        shape.min = min;
+        shape.max = max;
+    }
     return shape;
 }
 function bool(value) { return { value: !!value }; }
@@ -120,7 +123,10 @@ function numericState(entity) {
     if (isUnavailable(entity)) { return null; }
     // Strictly a number: timestamps and versions start with digits too
     var text = String(entity.state).trim();
-    return /^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text) ? Number(text) : null;
+    if (!/^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text)) { return null; }
+    // 1e400 is a number to the pattern and Infinity to JSON, which sends null
+    var value = Number(text);
+    return isFinite(value) ? value : null;
 }
 
 /** Whether the entity is on, in whatever sense its kind has one, or null */
@@ -327,8 +333,11 @@ var BUILDERS = {
         }
         if (typeof attrs.temperature === 'number') {
             var target = temperatureProperty(attrs.temperature, unit);
-            if (typeof attrs.min_temp === 'number') { target.numericValue.min = attrs.min_temp; }
-            if (typeof attrs.max_temp === 'number') { target.numericValue.max = attrs.max_temp; }
+            var range = numeric(attrs.temperature, null, attrs.min_temp, attrs.max_temp);
+            if ('min' in range) {
+                target.numericValue.min = range.min;
+                target.numericValue.max = range.max;
+            }
             props.target_temperature = target;
         }
         props.on = onProperty(entity);
