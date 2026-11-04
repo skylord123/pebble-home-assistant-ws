@@ -102,7 +102,8 @@ function forecastTypeFor(entity, wanted) {
  * weather.get_forecasts, asked one entity at a time: Home Assistant fails the
  * whole call if any one entity lacks the type. An entity without it, or an
  * older Home Assistant, gets an empty list, which is kept like any other
- * answer so it is not asked again every time.
+ * answer so it is not asked again every time. A call that failed for any
+ * other reason keeps the last list it had, and is asked again next time.
  * @returns {Promise<Object>} entity_id -> forecast list
  */
 function forecasts(conn, states, ids, kind) {
@@ -137,11 +138,18 @@ function forecasts(conn, states, ids, kind) {
                     : list;
             }, function(err) {
                 if (err && err.code === 'AUTH_REQUIRED') { throw err; }
-                return [];
+                // Home Assistant said no to the type itself
+                if (err && err.code === 'INVALID_ARGS') { return []; }
+                return null;
             });
     })).then(function(lists) {
         var stamp = Date.now();
         missing.forEach(function(id, index) {
+            if (lists[index] === null) {
+                var stale = entries[id];
+                out[id] = (stale && Array.isArray(stale.list)) ? stale.list : [];
+                return;
+            }
             out[id] = lists[index];
             entries[id] = { at: stamp, list: lists[index] };
         });
