@@ -119,7 +119,8 @@ Notes on the weather source:
   something comes from them.
 - Forecasts are asked for one entity at a time, and only for the types the
   entity says it has. An entity with only twice-daily forecasts (the US
-  National Weather Service) gets its high from the daytime half.
+  National Weather Service) gets its high from the daytime half and its low
+  from the night after.
 - `condition_code` uses the same words as the phone's own weather: `sun`,
   `partly_cloudy`, `light_rain` and so on.
 
