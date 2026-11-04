@@ -65,9 +65,7 @@ Pebble.registerSourceHandler(function(request, respond) {
     if (request.category === 'home' && entities.ITEMS.indexOf(request.item) !== -1) {
         work = homeSource(conn, opts, request.item);
     } else if (request.category === 'weather' && request.item === 'location') {
-        work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids); });
-    } else if (request.category === 'weather' && request.item === 'hour') {
-        work = weatherIds(conn, opts).then(function(ids) { return weather.hours(conn, ids); });
+        work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids, request); });
     } else {
         return respond.error('INVALID_REQUEST', 'unknown item ' + request.category + '/' + request.item);
     }
@@ -106,7 +104,7 @@ Pebble.registerConfigHandler(function(message, respond) {
     if (type === 'refresh') {
         // Asked for because something changed; a cached answer would hide it
         ha.forgetStates();
-        Pebble.refreshSources(['home/entity', 'weather/location', 'weather/hour']
+        Pebble.refreshSources(['home/entity', 'weather/location']
             .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
         return respond({ ok: true });
     }
