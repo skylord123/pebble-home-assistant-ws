@@ -108,9 +108,9 @@ Notes on the weather source:
 - `weather/location` has one instance per weather entity.
 - Like the phone's own weather, it also has series, each `{ start, stepSec,
   <shape>: { values: [...] } }` with `null` for a missing point:
-  - `hourly_temperature`, `hourly_condition`, `hourly_condition_code`: up to
-    48 hours, one a hour, starting at the hour of Home Assistant's first
-    hourly forecast (the phone's own starts at midnight, so read `start`);
+  - `hourly_temperature`, `hourly_condition`, `hourly_condition_code`: today's
+    and tomorrow's hours, one a hour, from today's local midnight. Hours
+    already gone are `null`, since Home Assistant only forecasts ahead;
   - `daily_high`, `daily_low`, `daily_condition`, `daily_condition_code`,
     `daily_precipitation`: up to 7 days, starting at today's local midnight.
 - Series are only built when the request asks for them by name in
