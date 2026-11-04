@@ -182,7 +182,8 @@ every permission mode. An app calling them declares it in its
 The **Apps Can Unlock** switch stays, because the Pebble app's own callers
 (Index and its assistant) are not asked for an action's permissions.
 
-None of these actions can be done another way:
+None of these actions can be done another way, short of asking the
+assistant (see `ask_assistant` below):
 
 - `toggle` never unlocks a lock.
 - A garage door, gate or door (a cover with that device class) never opens
@@ -210,8 +211,11 @@ conversation if asked again within five minutes. Keep these in mind before
 turning it on:
 
 - It can do whatever Home Assistant exposes to Assist (Settings → Voice
-  assistants → Expose), not only what is shared here.
-- It does not ask on the watch first.
+  assistants → Expose), not only what is shared here, unlocking an exposed
+  lock included.
+- It does not ask on the watch first. The Pebble app does ask the wearer
+  once for each app that wants it: `ask_assistant` needs the plugin's own
+  `Assistant` permission, which is `dangerous` like `Unlock`.
 - Every app that asks shares the one conversation, since the plugin cannot
   tell callers apart.
 
