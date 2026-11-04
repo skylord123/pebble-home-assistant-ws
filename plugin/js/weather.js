@@ -184,7 +184,7 @@ function slots(list, count, slotOf) {
     list.forEach(function(entry) {
         var at = Date.parse(entry.datetime);
         if (isNaN(at)) { return; }
-        var slot = slotOf(at);
+        var slot = slotOf(at, entry.datetime);
         if (slot >= 0 && slot < count && out[slot] === null) { out[slot] = entry; }
     });
     return out;
@@ -255,8 +255,7 @@ function hourlySeries(hourly, unit) {
 }
 
 /**
- * `daily_*`: from today's local midnight, one value a day. Each forecast goes
- * in the day it falls on here, whatever hour Home Assistant stamped it with.
+ * `daily_*`: from today's local midnight, one value a day.
  */
 function dailySeries(days, unit, midnight) {
     if (days.length === 0) { return {}; }
@@ -275,11 +274,19 @@ function dailySeries(days, unit, midnight) {
     };
 }
 
-function daySlots(daily, midnight) {
-    return lastFilled(slots(daily, MAX_DAYS, function(at) {
-        // Counted in local days rather than 24 hours, which a change of
-        // clocks would throw off
-        return Math.round((localMidnight(at) - midnight) / (DAY_S * 1000));
+/**
+ * Each daily forecast in the day it is for. That is the date written in its
+ * timestamp, not the day the instant falls on here: Open-Meteo stamps a day
+ * at midnight UTC, which in the Americas is the evening before.
+ */
+function daySlots(daily) {
+    var now = new Date();
+    var today = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate());
+    return lastFilled(slots(daily, MAX_DAYS, function(at, iso) {
+        var date = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(iso));
+        if (!date) { return -1; }
+        var day = Date.UTC(Number(date[1]), Number(date[2]) - 1, Number(date[3]));
+        return Math.round((day - today) / (DAY_S * 1000));
     }));
 }
 
@@ -360,9 +367,8 @@ function location(conn, ids, request) {
             needDaily ? forecasts(conn, states, present, 'daily') : Promise.resolve({}),
             needHourly ? forecasts(conn, states, present, 'hourly') : Promise.resolve({})
         ]).then(function(results) {
-            var midnight = localMidnight(Date.now());
             return present.map(function(id) {
-                var days = needDaily ? daySlots(results[0][id] || [], midnight) : null;
+                var days = needDaily ? daySlots(results[0][id] || []) : null;
                 var hourly = needHourly ? (results[1][id] || []) : null;
                 return locationInstance(states[id], days, hourly, request);
             });
