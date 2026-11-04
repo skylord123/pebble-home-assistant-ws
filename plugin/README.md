@@ -161,6 +161,18 @@ other apps unlock and open doors"):
 - `alarm_disarm`;
 - `open` on a lock or on a garage door, gate or door.
 
+The same three actions also need the plugin's own `Unlock` permission, which
+is `dangerous`: the Pebble app asks the wearer for each app that wants it, in
+every permission mode. An app calling them declares it in its
+`usesPermissions`:
+
+```json
+{ "name": "Unlock", "plugin": "61ae3254-ce00-49db-aad8-23143f649b90" }
+```
+
+The **Apps Can Unlock** switch stays, because the Pebble app's own callers
+(Index and its assistant) are not asked for an action's permissions.
+
 None of these actions can be done another way:
 
 - `toggle` never unlocks a lock.
