@@ -57,6 +57,11 @@ function homeSource(conn, opts, item) {
 }
 
 Pebble.registerSourceHandler(function(request, respond) {
+    return ha.loadRefusal().then(function() { return source(request, respond); })
+        .catch(function(err) { fail(respond, err); });
+});
+
+function source(request, respond) {
     var opts = options.read();
     var conn = options.connection(opts);
     if (!conn) { return notSetUp(respond); }
@@ -78,9 +83,14 @@ Pebble.registerSourceHandler(function(request, respond) {
     }, function(err) {
         fail(respond, err);
     });
-});
+}
 
 Pebble.registerActionHandler(function(request, respond) {
+    return ha.loadRefusal().then(function() { return action(request, respond); })
+        .catch(function(err) { fail(respond, err); });
+});
+
+function action(request, respond) {
     var opts = options.read();
     var conn = options.connection(opts);
     if (!conn) { return notSetUp(respond); }
@@ -90,7 +100,7 @@ Pebble.registerActionHandler(function(request, respond) {
     }, function(err) {
         fail(respond, err);
     });
-});
+}
 
 /**
  * The watch app's settings page talks to the plugin while it is open: to
