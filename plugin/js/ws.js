@@ -56,7 +56,7 @@ function run(conn, command, onMessage) {
         try {
             socket = new WebSocket(socketUrl(conn));
         } catch (e) {
-            reject(new PluginError('PLUGIN_UNAVAILABLE', 'Could not reach Home Assistant'));
+            reject(new PluginError('PLUGIN_UNAVAILABLE', ha.UNREACHABLE));
             return;
         }
 
@@ -103,7 +103,7 @@ function run(conn, command, onMessage) {
         socket.onerror = function() {};
         socket.onclose = function() {
             finish(new PluginError('PLUGIN_UNAVAILABLE', loggedIn ?
-                'Home Assistant closed the connection' : 'Could not reach Home Assistant'));
+                'Home Assistant closed the connection' : ha.UNREACHABLE));
         };
     });
 }

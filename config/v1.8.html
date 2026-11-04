@@ -2995,8 +2995,9 @@
 					reply.shared + (reply.shared === 1 ? ' entity' : ' entities') + ' shared, plus ' +
 					reply.weather + ' weather.');
 			} else {
+				// The plugin's own message already says what it could not do
 				var message = reply && reply.error && (reply.error.message || reply.error);
-				setPluginStatus('error', 'The plugin cannot reach Home Assistant' + (message ? ': ' + message : '.'));
+				setPluginStatus('error', message ? 'Plugin: ' + message : 'The plugin cannot reach Home Assistant.');
 			}
 		}, function() {
 			setPluginStatus('error', 'The plugin did not answer.');
