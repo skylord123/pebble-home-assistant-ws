@@ -98,6 +98,27 @@ function forecastTypeFor(entity, wanted) {
 }
 
 /**
+ * Twice-daily forecasts (the US National Weather Service) alternate day and
+ * night. Each day half stands in for its day, and the night after it gives
+ * that day's low, which the day half itself never has.
+ */
+function daysFromHalves(list) {
+    var days = [];
+    list.forEach(function(part, index) {
+        if (part.is_daytime === false) { return; }
+        var day = {};
+        Object.keys(part).forEach(function(key) { day[key] = part[key]; });
+        var night = list[index + 1];
+        if (typeof day.templow !== 'number' && night && night.is_daytime === false &&
+            typeof night.temperature === 'number') {
+            day.templow = night.temperature;
+        }
+        days.push(day);
+    });
+    return days;
+}
+
+/**
  * Forecasts of one kind ('daily' or 'hourly') for these entities, from
  * weather.get_forecasts, asked one entity at a time: Home Assistant fails the
  * whole call if any one entity lacks the type. An entity without it, or an
@@ -132,10 +153,7 @@ function forecasts(conn, states, ids, kind) {
             .then(function(response) {
                 var entry = response[id];
                 var list = (entry && Array.isArray(entry.forecast)) ? entry.forecast : [];
-                // Twice-daily alternates day and night; the day halves stand in for days
-                return type === 'twice_daily'
-                    ? list.filter(function(part) { return part.is_daytime !== false; })
-                    : list;
+                return type === 'twice_daily' ? daysFromHalves(list) : list;
             }, function(err) {
                 if (err && err.code === 'AUTH_REQUIRED') { throw err; }
                 // Home Assistant said no to the type itself
