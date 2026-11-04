@@ -17,6 +17,10 @@ var STATES_TTL_MS = 10000;
 var BULK_THRESHOLD = 15;
 //! How long a refused token is left alone before it is tried again
 var AUTH_RETRY_MS = 30 * 60 * 1000;
+//! How long an unreachable Home Assistant is not tried again. Every source
+//! is polled in turn, one at a time, and a host that never answers holds
+//! each of them for the phone's full 20 seconds.
+var UNREACHABLE_RETRY_MS = 30 * 1000;
 
 var REFUSED = 'Home Assistant refused the access token. Update it in the watch app\'s settings.';
 //! A host that is down and one the Pebble app has not allowed fail the same
@@ -76,9 +80,19 @@ function loadRefusal() {
 /** Try the token again on the next request, e.g. when the settings page asks */
 function forgetRefusal() {
     store.set('auth_failed', null);
+    store.set('unreachable', null);
     if (Pebble.secureStorage) {
         Pebble.secureStorage.removeItem('auth_failed').catch(function() {});
     }
+}
+
+function recentlyUnreachable() {
+    var at = store.get('unreachable');
+    return typeof at === 'number' && Date.now() - at < UNREACHABLE_RETRY_MS;
+}
+
+function markUnreachable() {
+    store.set('unreachable', Date.now());
 }
 
 //! The one check of the token for this request, however many of its calls
@@ -122,6 +136,9 @@ function request(conn, method, path, body) {
     if (tokenRefused(conn)) {
         return Promise.reject(new PluginError('AUTH_REQUIRED', REFUSED));
     }
+    if (recentlyUnreachable()) {
+        return Promise.reject(new PluginError('PLUGIN_UNAVAILABLE', UNREACHABLE));
+    }
 
     var init = {
         method: method,
@@ -135,6 +152,7 @@ function request(conn, method, path, body) {
     }
 
     return fetch(conn.url + path, init).then(function(response) {
+        if (store.get('unreachable')) { store.set('unreachable', null); }
         if (response.status === 401) {
             return refused(conn, path);
         }
@@ -160,6 +178,7 @@ function request(conn, method, path, body) {
         });
     }, function(err) {
         if (err instanceof PluginError) { throw err; }
+        markUnreachable();
         throw new PluginError('PLUGIN_UNAVAILABLE', UNREACHABLE);
     });
 }
@@ -314,6 +333,8 @@ module.exports = {
     tokenRefused: tokenRefused,
     markRefused: markRefused,
     loadRefusal: loadRefusal,
+    recentlyUnreachable: recentlyUnreachable,
+    markUnreachable: markUnreachable,
     forgetRefusal: forgetRefusal,
     forgetStates: forgetStates,
     getStates: getStates,

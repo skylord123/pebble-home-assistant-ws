@@ -64,6 +64,11 @@ Everything the plugin caches is stored under a `plugin:` prefix:
     comes back as `PERMISSION_DENIED`.
   - A poll that has to fetch several entities fetches one first, so a bad
     token is refused once and not once per entity.
+- a marker for a Home Assistant that could not be reached. For 30 seconds
+  after, the plugin answers `PLUGIN_UNAVAILABLE` without trying: the phone
+  runs one request at a time, and a host that never answers would hold each
+  poll, and any action behind them, for the full 20 seconds. The settings
+  page checking the plugin clears it.
 
 On Android the Pebble app rewrites this `localStorage` from the watch app's
 own copy when the watch app's JS stops, so anything cached here while the

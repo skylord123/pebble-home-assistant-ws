@@ -40,6 +40,9 @@ function run(conn, command, onMessage) {
     if (ha.tokenRefused(conn)) {
         return Promise.reject(new PluginError('AUTH_REQUIRED', ha.REFUSED));
     }
+    if (ha.recentlyUnreachable()) {
+        return Promise.reject(new PluginError('PLUGIN_UNAVAILABLE', ha.UNREACHABLE));
+    }
 
     return new Promise(function(resolve, reject) {
         var socket;
@@ -102,6 +105,7 @@ function run(conn, command, onMessage) {
         // A close always follows.
         socket.onerror = function() {};
         socket.onclose = function() {
+            if (!loggedIn) { ha.markUnreachable(); }
             finish(new PluginError('PLUGIN_UNAVAILABLE', loggedIn ?
                 'Home Assistant closed the connection' : ha.UNREACHABLE));
         };
