@@ -367,7 +367,8 @@ function locationInstance(entity, days, hourly, request) {
         Object.keys(hours).forEach(function(name) { extra[name] = hours[name]; });
     }
     Object.keys(extra).forEach(function(name) {
-        if (wants(request, [name])) { props[name] = extra[name]; }
+        var names = request && request.properties;
+        if (!Array.isArray(names) || names.indexOf(name) !== -1) { props[name] = extra[name]; }
     });
 
     return { instanceId: entity.entity_id, properties: props };
