@@ -16,6 +16,7 @@
   "companyName": "skylar.tech",
   "configPage": "config.html",
   "longName": "Home Assistant WS",
+  "manifestVersion": 2,
   "resources": {
     "media": [
       {
@@ -221,6 +222,13 @@
     "emery",
     "flint",
     "gabbro"
+  ],
+  "usesPermissions": [
+    "Internet",
+    "LocalNetwork",
+    "Location",
+    "Timeline",
+    "WatchMicrophone"
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
