@@ -1,6 +1,9 @@
 {
   "description": "Home Assistant entities shared from the Home Assistant WS watch app, and Home Assistant weather. Read their state and control them. Only the entities chosen in the watch app are served; weather is always shared.",
   "script": "plugin.js",
+  "definesPermissions": [
+    { "name": "Unlock", "label": "Unlock doors, open gates and disarm alarms in Home Assistant", "kind": "dangerous" }
+  ],
   "sources": [
     {
       "category": "home",
@@ -305,7 +308,8 @@
       },
       "targets": ["home/cover", "home/lock"],
       "destructive": true,
-      "requiresConfirmation": true
+      "requiresConfirmation": true,
+      "callerPermissions": ["Unlock"]
     },
     {
       "name": "close",
@@ -353,7 +357,8 @@
       },
       "targets": ["home/lock/locked"],
       "destructive": true,
-      "requiresConfirmation": true
+      "requiresConfirmation": true,
+      "callerPermissions": ["Unlock"]
     },
     {
       "name": "alarm_arm",
@@ -382,7 +387,8 @@
       },
       "targets": ["home/alarm/armed"],
       "destructive": true,
-      "requiresConfirmation": true
+      "requiresConfirmation": true,
+      "callerPermissions": ["Unlock"]
     },
     {
       "name": "set_playing",
