@@ -116,6 +116,11 @@ def bundle_plugin(ctx, script_path):
     """
     root = ctx.path.abspath()
     manifest_path = os.path.join(root, 'plugin', 'manifest.json')
+    # The Pebble app drops the plugin of any pbw below manifestVersion 2
+    # without a word, so the build refuses one rather than ship it dead
+    with io.open(os.path.join(root, 'appinfo.json'), encoding='utf-8') as appinfo_file:
+        if json.load(appinfo_file).get('manifestVersion', 1) < 2:
+            ctx.fatal('The plugin needs "manifestVersion": 2 in appinfo.json')
     if not os.path.exists(script_path):
         ctx.fatal('Plugin script %s was not built' % os.path.relpath(script_path, root))
     try:

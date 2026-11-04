@@ -2,8 +2,9 @@
 
 This is a proof of concept. It lets other watchfaces and apps read Home
 Assistant through this app, and control it, using the Core Devices plugin
-system. That system is experimental: the Pebble app only runs plugins from
-sideloaded pbws, and only with **Use experimental plugins** turned on.
+system. That system is a preview: the Pebble app only runs plugins with
+**Plugins / permissions preview** turned on (Settings → Plugins), and only
+from pbws whose `appinfo.json` has `"manifestVersion": 2`.
 
 The plugin serves two things:
 
@@ -21,6 +22,11 @@ reads and for actions alike.
   `build/plugin/plugin.js`.
 - `plugin/manifest.json` becomes the `plugin` block of the pbw's
   `appinfo.json`.
+- The permissions are those the whole app declares in `appinfo.json`
+  (`usesPermissions`), since the plugin shares the app's UUID. A
+  `usesPermissions` inside the plugin block is ignored. `Internet` is
+  declared without domains because the Home Assistant address is the
+  wearer's own; an address on the local network needs `LocalNetwork`.
 - `waftools/bundle_config_page.py` adds the script and the manifest to the pbw
   after `pebble build` has zipped it. The build log says
   `Bundled the plugin into build/…pbw as plugin.js`.
@@ -50,6 +56,11 @@ Everything the plugin caches is stored under a `plugin:` prefix:
     settings page checks the plugin.
   - Only a 401 from `/api/` sets the marker. A 401 on a service call (an
     admin-only service, for example) comes back as `PERMISSION_DENIED`.
+
+On Android the Pebble app rewrites this `localStorage` from the watch app's
+own copy when the watch app's JS stops, so anything cached here while the
+watch app was running can be lost. The caches only cost a fetch when that
+happens, and a lost marker means one more try of a refused token.
 
 The plugin never logs the URL or the token. It never uses the lock and alarm
 codes the watch app remembers; a code has to come from the caller.
@@ -90,9 +101,10 @@ Notes on the weather sources:
 - `condition_code` uses the same words as the phone's own weather: `sun`,
   `partly_cloudy`, `light_rain` and so on.
 
-The phone's built-in weather plugin also answers `weather/location` and
-`weather/hour`, and it is asked first. To get Home Assistant's weather, name
-this app's UUID in the request:
+The phone's built-in weather plugin also answers `weather/location`, and it
+is asked first unless the wearer picks this app under **Preferred sources**
+in the Pebble app. To get Home Assistant's weather either way, name this
+app's UUID in the request:
 
 ```js
 { category: 'weather', item: 'location', plugin: '61ae3254-ce00-49db-aad8-23143f649b90' }
@@ -126,7 +138,7 @@ Assistant answers 500, which would look like an outage.
 
 Three actions are marked `requiresConfirmation`: `unlock`, `alarm_disarm`
 and `open`. The Pebble app does not ask the wearer before them yet (as of
-1.14 the flag is read but not acted on). Until it does, the plugin refuses
+1.16 only its own assistant does). Until it does, the plugin refuses
 the following with `PERMISSION_DENIED` unless the wearer has turned on
 **Apps Can Unlock** (watch: Settings → Entity Settings; settings page: "Let
 other apps unlock and open doors"):
@@ -170,7 +182,8 @@ turning it on:
 ## Trying it
 
 1. Build and sideload the pbw.
-2. Turn on **Use experimental plugins** in the Pebble app.
+2. Turn on **Plugins / permissions preview** in the Pebble app (Settings →
+   Plugins), and allow the internet and local network when it asks.
 3. Open the settings page from the Pebble app and share a few entities. When
    the settings page can reach the plugin, the status line under
    **Shared with Other Apps** says so.
