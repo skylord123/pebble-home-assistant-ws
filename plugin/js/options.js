@@ -24,6 +24,12 @@ function read() {
     if (!data || typeof data !== 'object') {
         var backup = parse(localStorage.getItem(KEY + '.bak'));
         data = (backup && typeof backup === 'object') ? backup : {};
+        // The backup is the save before last, and on Android the main copy
+        // is also missing for a moment while the Pebble app rewrites
+        // localStorage. A switch the wearer just turned off must not come
+        // back on from it.
+        data.plugin_allow_unlock = false;
+        data.plugin_share_assistant = false;
     }
     return data;
 }
