@@ -525,6 +525,9 @@ function askAssistant(conn, opts, args) {
         if (response.response_type === 'error') {
             throw new PluginError('UNKNOWN', speech || 'The assistant could not answer');
         }
+        // The refresh below would otherwise be answered from the cache, with
+        // the states from before whatever the assistant did
+        ha.forgetStates();
         return {
             text: speech || (response.response_type === 'action_done' ? 'Done.' : 'The assistant gave no answer.'),
             // Whatever it did could have changed anything shared
