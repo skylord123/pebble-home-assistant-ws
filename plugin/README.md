@@ -136,7 +136,21 @@ app's UUID in the request:
 { category: 'weather', item: 'location', plugin: '61ae3254-ce00-49db-aad8-23143f649b90' }
 ```
 
+Picking this app under Preferred sources only changes what other apps get.
+The watch's own weather app and timeline cannot use it: they need instances
+named after the wearer's weather locations, and sunrise and sunset for each
+day, and the plugin serves Home Assistant's weather entities instead.
+
 ## Actions
+
+Because the plugin can send data off the phone, the Pebble app asks the
+wearer before any other app may call its actions at all. An app that calls
+them declares that it will in its `usesPermissions`, or its first call waits
+for the wearer and is refused until they answer:
+
+```json
+{ "name": "InvokeAction", "plugin": "61ae3254-ce00-49db-aad8-23143f649b90" }
+```
 
 Every entity action takes `instanceId`. Each action returns a line saying what
 happened, and asks the sources that show that entity to refresh.
@@ -182,6 +196,9 @@ every permission mode. An app calling them declares it in its
 { "name": "Unlock", "plugin": "61ae3254-ce00-49db-aad8-23143f649b90" }
 ```
 
+The permission goes with the action, so `open` needs it for a blind or a
+valve too. `set_on` and `set_position` open those without it.
+
 The **Apps Can Unlock** switch stays, because the Pebble app's own callers
 (Index and its assistant) are not asked for an action's permissions.
 
@@ -226,16 +243,21 @@ turning it on:
 
 1. Build and sideload the pbw.
 2. Turn on **Plugins / permissions preview** in the Pebble app (Settings →
-   Plugins), and allow the internet and local network when it asks.
+   Plugins). When the app is installed, the Pebble app asks to let it connect
+   to the internet and the local network, use the location, add timeline
+   pins, use the watch microphone and, with the Android companion app,
+   exchange messages with it. The plugin needs the internet and the local
+   network.
 3. Open the settings page from the Pebble app and share a few entities. When
    the settings page can reach the plugin, the status line under
    **Shared with Other Apps** says so.
 4. Any consumer can then read and control them, for example the Core Devices
    Dashboard demo.
 
-The phone keeps the manifest from when the app was installed. After changing
-`manifest.json`, bump `versionLabel` in `appinfo.json` so the phone reads it
-again.
+The phone registers the plugin's manifest when it starts, and again only when
+`versionLabel` changes. After changing `manifest.json`, bump `versionLabel`
+in `appinfo.json` so the phone reads it again; Core also keeps the old watch
+binary for a sideload of the same version.
 
 ## Settings page messages
 
