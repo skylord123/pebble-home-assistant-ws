@@ -1,11 +1,13 @@
 /**
  * Home Assistant weather under the same names and shapes as the phone's own
- * weather source (`weather/location`, `weather/hour`), so a watchface built
- * for that shows Home Assistant's weather when it asks for this plugin.
+ * weather source (`weather/location`, with its hours and days as series), so
+ * a watchface built for that shows Home Assistant's weather when it asks for
+ * this plugin.
  *
- * The phone's own weather is registered first, so a face that asks for
- * `weather/location` without naming a plugin still gets the phone's. Asking
- * with `plugin: <this app's uuid>` gets this one.
+ * The phone's own weather is asked first, so a face that asks for
+ * `weather/location` without naming a plugin gets the phone's unless the
+ * wearer picked this app under Preferred sources. Asking with
+ * `plugin: <this app's uuid>` gets this one.
  *
  * Instances are weather entities (id = entity_id). Icons and images are not
  * drawn; `condition_code` names the condition in the phone's own vocabulary,
@@ -19,8 +21,11 @@ var S = entities.shapes;
 
 //! Forecasts change slowly and cost a service call each, so they are kept a while
 var FORECAST_TTL_MS = 15 * 60 * 1000;
-//! As many hours ahead as the phone's own source gives
-var MAX_HOURS = 6;
+//! As far ahead as the phone's own source goes: two days of hours, a week of days
+var MAX_HOURS = 48;
+var MAX_DAYS = 7;
+var HOUR_S = 3600;
+var DAY_S = 86400;
 
 //! Home Assistant's conditions in the phone's icon vocabulary
 var CODE_BY_CONDITION = {
@@ -150,9 +155,138 @@ function unitOf(entity) {
     return unit ? String(unit) : '°';
 }
 
-function locationInstance(entity, today) {
+/**
+ * Whether the caller wants any property starting with one of `prefixes`. A
+ * caller that names no properties wants them all.
+ */
+function wants(request, prefixes) {
+    var names = request && request.properties;
+    if (!Array.isArray(names)) { return true; }
+    return names.some(function(name) {
+        return prefixes.some(function(prefix) { return String(name).indexOf(prefix) === 0; });
+    });
+}
+
+function localMidnight(ms) {
+    var day = new Date(ms);
+    day.setHours(0, 0, 0, 0);
+    return day.getTime();
+}
+
+/**
+ * Forecast entries laid out on a grid of `count` slots `stepS` apart from
+ * `startS`: a slot nothing falls in stays null, as the phone's series expect.
+ * `slotOf` says which slot an entry's time belongs in.
+ */
+function slots(list, count, slotOf) {
+    var out = [];
+    for (var i = 0; i < count; i++) { out.push(null); }
+    list.forEach(function(entry) {
+        var at = Date.parse(entry.datetime);
+        if (isNaN(at)) { return; }
+        var slot = slotOf(at);
+        if (slot >= 0 && slot < count && out[slot] === null) { out[slot] = entry; }
+    });
+    return out;
+}
+
+function lastFilled(list) {
+    for (var i = list.length - 1; i >= 0; i--) {
+        if (list[i] !== null) { return list.slice(0, i + 1); }
+    }
+    return [];
+}
+
+function series(startS, stepS, shapes) {
+    shapes.start = startS;
+    shapes.stepSec = stepS;
+    return { series: shapes };
+}
+
+function pluck(list, key) {
+    return list.map(function(entry) {
+        return entry && typeof entry[key] === 'number' ? entry[key] : null;
+    });
+}
+
+function temperatureSeries(startS, stepS, values, unit) {
+    return series(startS, stepS, {
+        numericValue: { values: values, unit: unit },
+        shortText: { values: values.map(function(v) { return v === null ? null : Math.round(v) + unit; }) }
+    });
+}
+
+function conditionSeries(startS, stepS, list) {
+    var conditions = list.map(function(entry) { return entry && entry.condition ? entry.condition : null; });
+    return {
+        text: series(startS, stepS, {
+            shortText: { values: conditions.map(function(c) { return c === null ? null : conditionLabel(c); }) },
+            longText: { values: conditions.map(function(c) { return c === null ? null : conditionLabel(c); }) }
+        }),
+        code: series(startS, stepS, {
+            longText: { values: conditions.map(function(c) { return c === null ? null : conditionCode(c); }) }
+        })
+    };
+}
+
+/**
+ * `hourly_*`: from the hour of the first forecast, one value an hour. Home
+ * Assistant gives hours from now on, where the phone's own source starts at
+ * midnight; `start` says which, so a face reads either the same way.
+ */
+function hourlySeries(hourly, unit) {
+    var first = null;
+    hourly.forEach(function(entry) {
+        var at = Date.parse(entry.datetime);
+        if (!isNaN(at) && (first === null || at < first)) { first = at; }
+    });
+    if (first === null) { return {}; }
+    var startS = Math.floor(first / 1000 / HOUR_S) * HOUR_S;
+    var hours = lastFilled(slots(hourly, MAX_HOURS, function(at) {
+        return Math.round((at / 1000 - startS) / HOUR_S);
+    }));
+    if (hours.length === 0) { return {}; }
+    var condition = conditionSeries(startS, HOUR_S, hours);
+    return {
+        hourly_temperature: temperatureSeries(startS, HOUR_S, pluck(hours, 'temperature'), unit),
+        hourly_condition: condition.text,
+        hourly_condition_code: condition.code
+    };
+}
+
+/**
+ * `daily_*`: from today's local midnight, one value a day. Each forecast goes
+ * in the day it falls on here, whatever hour Home Assistant stamped it with.
+ */
+function dailySeries(days, unit, midnight) {
+    if (days.length === 0) { return {}; }
+    var startS = Math.floor(midnight / 1000);
+    var condition = conditionSeries(startS, DAY_S, days);
+    var chances = pluck(days, 'precipitation_probability');
+    return {
+        daily_high: temperatureSeries(startS, DAY_S, pluck(days, 'temperature'), unit),
+        daily_low: temperatureSeries(startS, DAY_S, pluck(days, 'templow'), unit),
+        daily_condition: condition.text,
+        daily_condition_code: condition.code,
+        daily_precipitation: series(startS, DAY_S, {
+            numericValue: { values: chances, unit: '%', min: 0, max: 100 },
+            shortText: { values: chances.map(function(v) { return v === null ? null : Math.round(v) + '%'; }) }
+        })
+    };
+}
+
+function daySlots(daily, midnight) {
+    return lastFilled(slots(daily, MAX_DAYS, function(at) {
+        // Counted in local days rather than 24 hours, which a change of
+        // clocks would throw off
+        return Math.round((localMidnight(at) - midnight) / (DAY_S * 1000));
+    }));
+}
+
+function locationInstance(entity, days, hourly, request) {
     var attrs = entity.attributes || {};
     var unit = unitOf(entity);
+    var today = days ? days[0] : null;
     var props = {
         name: { shortText: S.shortText(entities.nameOf(entity)) }
     };
@@ -194,53 +328,43 @@ function locationInstance(entity, today) {
 
     var changed = S.timestamp(entity.last_changed);
     if (changed) { props.last_changed = { timestamp: changed }; }
+
+    // Series are only built for a caller that asked for them, as the
+    // phone's own source does
+    var extra = {};
+    if (days && wants(request, ['daily_'])) {
+        extra = dailySeries(days, unit, localMidnight(Date.now()));
+    }
+    if (hourly && wants(request, ['hourly_'])) {
+        var hours = hourlySeries(hourly, unit);
+        Object.keys(hours).forEach(function(name) { extra[name] = hours[name]; });
+    }
+    Object.keys(extra).forEach(function(name) {
+        if (wants(request, [name])) { props[name] = extra[name]; }
+    });
+
     return { instanceId: entity.entity_id, properties: props };
 }
 
-/** `weather/location`: one instance per weather entity */
-function location(conn, ids) {
+/**
+ * `weather/location`: one instance per weather entity. Forecasts cost a
+ * service call per entity, so each kind is only fetched when something the
+ * caller asked for comes from it.
+ */
+function location(conn, ids, request) {
+    var needDaily = wants(request, ['high', 'low', 'uv_index', 'precipitation', 'daily_']);
+    var needHourly = wants(request, ['hourly_']);
     return ha.getStates(conn, ids).then(function(states) {
         var present = ids.filter(function(id) { return states[id]; });
-        return forecasts(conn, states, present, 'daily').then(function(daily) {
+        return Promise.all([
+            needDaily ? forecasts(conn, states, present, 'daily') : Promise.resolve({}),
+            needHourly ? forecasts(conn, states, present, 'hourly') : Promise.resolve({})
+        ]).then(function(results) {
+            var midnight = localMidnight(Date.now());
             return present.map(function(id) {
-                var list = daily[id] || [];
-                return locationInstance(states[id], list[0] || null);
-            });
-        });
-    });
-}
-
-/**
- * `weather/hour`: the next few hours for the first weather entity, the way
- * the phone's source gives them for its first location. Hours have no id of
- * their own, so an instance is its position.
- */
-function hours(conn, ids) {
-    var id = ids.indexOf('weather.home') !== -1 ? 'weather.home' : ids[0];
-    if (!id) { return Promise.resolve([]); }
-    return ha.getStates(conn, [id]).then(function(states) {
-        var entity = states[id];
-        if (!entity) { return []; }
-        var unit = unitOf(entity);
-        return forecasts(conn, states, [id], 'hourly').then(function(hourly) {
-            var now = Date.now();
-            var ahead = (hourly[id] || []).filter(function(hour) {
-                return Date.parse(hour.datetime) > now;
-            }).slice(0, MAX_HOURS);
-            return ahead.map(function(hour, index) {
-                var props = {
-                    condition: { shortText: S.shortText(conditionLabel(hour.condition)) },
-                    condition_code: { longText: S.longText(conditionCode(hour.condition)) }
-                };
-                if (typeof hour.temperature === 'number') {
-                    props.temperature = {
-                        numericValue: S.numeric(hour.temperature, unit),
-                        shortText: S.shortText(Math.round(hour.temperature) + unit)
-                    };
-                }
-                var time = S.timestamp(hour.datetime);
-                if (time) { props.time = { timestamp: time }; }
-                return { instanceId: String(index), properties: props };
+                var days = needDaily ? daySlots(results[0][id] || [], midnight) : null;
+                var hourly = needHourly ? (results[1][id] || []) : null;
+                return locationInstance(states[id], days, hourly, request);
             });
         });
     });
@@ -248,6 +372,5 @@ function hours(conn, ids) {
 
 module.exports = {
     location: location,
-    hours: hours,
     conditionCode: conditionCode
 };

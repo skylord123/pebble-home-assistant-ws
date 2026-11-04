@@ -184,19 +184,15 @@
         "condition_code": ["longText"],
         "uv_index": ["numericValue", "shortText"],
         "precipitation": ["numericValue", "shortText"],
-        "last_changed": ["timestamp"]
-      },
-      "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 900
-    },
-    {
-      "category": "weather",
-      "items": ["hour"],
-      "properties": {
-        "temperature": ["numericValue", "shortText"],
-        "condition": ["shortText"],
-        "condition_code": ["longText"],
-        "time": ["timestamp"]
+        "last_changed": ["timestamp"],
+        "hourly_temperature": ["series.numericValue", "series.shortText"],
+        "hourly_condition": ["series.shortText", "series.longText"],
+        "hourly_condition_code": ["series.longText"],
+        "daily_high": ["series.numericValue", "series.shortText"],
+        "daily_low": ["series.numericValue", "series.shortText"],
+        "daily_condition": ["series.shortText", "series.longText"],
+        "daily_condition_code": ["series.longText"],
+        "daily_precipitation": ["series.numericValue", "series.shortText"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 900

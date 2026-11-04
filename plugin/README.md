@@ -93,14 +93,22 @@ instance includes these properties:
 | `home/person` | person, device_tracker | `home`, `zone`, `since` (never coordinates) |
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
-| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation` |
-| `weather/hour` | weather | `temperature`, `condition`, `condition_code`, `time` |
+| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, and the series below |
 
-Notes on the weather sources:
+Notes on the weather source:
 
 - `weather/location` has one instance per weather entity.
-- `weather/hour` has the next six hours of `weather.home`, or of the first
-  weather entity if there is no `weather.home`.
+- Like the phone's own weather, it also has series, each `{ start, stepSec,
+  <shape>: { values: [...] } }` with `null` for a missing point:
+  - `hourly_temperature`, `hourly_condition`, `hourly_condition_code`: up to
+    48 hours, one a hour, starting at the hour of Home Assistant's first
+    hourly forecast (the phone's own starts at midnight, so read `start`);
+  - `daily_high`, `daily_low`, `daily_condition`, `daily_condition_code`,
+    `daily_precipitation`: up to 7 days, starting at today's local midnight.
+- Series are only built when the request asks for them by name in
+  `properties`, or names no properties at all. Hourly forecasts are only
+  fetched when an `hourly_*` property is asked for, and daily ones only when
+  something comes from them.
 - Forecasts are asked for one entity at a time, and only for the types the
   entity says it has. An entity with only twice-daily forecasts (the US
   National Weather Service) gets its high from the daytime half.
