@@ -21,8 +21,9 @@ The build puts the current page there as `config.html`
 While the page is open it can talk to the watch app's JS, so it can test a
 connection, search entities and save without closing. The phone runs the page
 from a `data:` URL, so `localStorage` is unavailable and relative paths do not
-resolve. As of app 1.14 this only happens for sideloaded pbws with the
-experimental plugins flag on; store installs still get the hosted page.
+resolve. As of app 1.16 this only happens with **Plugins / permissions
+preview** turned on (Settings → Plugins); otherwise the phone opens the
+hosted page.
 
 The page decides which mode it is in by whether the phone injected a `Pebble`
 object with `sendMessage`. A phone app that does not know about bundled pages
