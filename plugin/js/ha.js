@@ -50,15 +50,40 @@ function tokenRefused(conn) {
         Date.now() - failed.at < AUTH_RETRY_MS);
 }
 
-/** Leave this token alone for a while */
+/**
+ * Leave this token alone for a while. The marker is also kept in secure
+ * storage: on Android the Pebble app rewrites localStorage from the watch
+ * app's copy whenever the watch app's JS stops, which would wipe it and let
+ * the next poll try the bad token again.
+ */
 function markRefused(conn) {
-    store.set('auth_failed', { print: fingerprint(conn.token), at: Date.now() });
+    var failed = { print: fingerprint(conn.token), at: Date.now() };
+    store.set('auth_failed', failed);
+    if (Pebble.secureStorage) {
+        Pebble.secureStorage.setItem('auth_failed', JSON.stringify(failed)).catch(function() {});
+    }
+}
+
+/** Put back a refusal marker the Android rewrite wiped. Settles either way. */
+function loadRefusal() {
+    if (store.get('auth_failed') || !Pebble.secureStorage) { return Promise.resolve(); }
+    return Pebble.secureStorage.getItem('auth_failed').then(function(saved) {
+        var failed = saved ? JSON.parse(saved) : null;
+        if (failed && typeof failed.at === 'number') { store.set('auth_failed', failed); }
+    }).catch(function() {});
 }
 
 /** Try the token again on the next request, e.g. when the settings page asks */
 function forgetRefusal() {
     store.set('auth_failed', null);
+    if (Pebble.secureStorage) {
+        Pebble.secureStorage.removeItem('auth_failed').catch(function() {});
+    }
 }
+
+//! The one check of the token for this request, however many of its calls
+//! were refused at once
+var checkingToken = null;
 
 /**
  * Home Assistant also answers 401 when the token is fine but its user may
@@ -66,6 +91,12 @@ function forgetRefusal() {
  * the API root means the token itself is bad.
  */
 function refused(conn, path) {
+    if (tokenRefused(conn)) {
+        return Promise.reject(new PluginError('AUTH_REQUIRED', REFUSED));
+    }
+    if (path !== '/api/' && checkingToken) {
+        return checkingToken;
+    }
     var verdict = path === '/api/' ? Promise.resolve(true) : fetch(conn.url + '/api/', {
         method: 'GET',
         headers: { 'Authorization': 'Bearer ' + conn.token }
@@ -74,7 +105,7 @@ function refused(conn, path) {
     }, function() {
         return false;
     });
-    return verdict.then(function(tokenBad) {
+    var outcome = verdict.then(function(tokenBad) {
         if (tokenBad) {
             markRefused(conn);
             throw new PluginError('AUTH_REQUIRED', REFUSED);
@@ -82,6 +113,8 @@ function refused(conn, path) {
         throw new PluginError('PERMISSION_DENIED',
             'Home Assistant does not let this token\'s user do that');
     });
+    if (path !== '/api/') { checkingToken = outcome; }
+    return outcome;
 }
 
 /** Make one request */
@@ -199,9 +232,15 @@ function getStates(conn, ids) {
             return (all || []).filter(function(state) { return wanted[state.entity_id]; });
         });
     } else {
-        fetched = Promise.all(missing.map(function(id) {
-            return request(conn, 'GET', '/api/states/' + encodeURIComponent(id));
-        })).then(function(states) {
+        // One first and the rest after: a bad token would otherwise be
+        // refused once for every entity, and each refusal counts towards
+        // Home Assistant's IP ban
+        var one = function(id) { return request(conn, 'GET', '/api/states/' + encodeURIComponent(id)); };
+        fetched = one(missing[0]).then(function(first) {
+            return Promise.all(missing.slice(1).map(one)).then(function(rest) {
+                return [first].concat(rest);
+            });
+        }).then(function(states) {
             return states.filter(function(state) { return state && state.entity_id; });
         });
     }
@@ -274,6 +313,7 @@ module.exports = {
     request: request,
     tokenRefused: tokenRefused,
     markRefused: markRefused,
+    loadRefusal: loadRefusal,
     forgetRefusal: forgetRefusal,
     forgetStates: forgetStates,
     getStates: getStates,

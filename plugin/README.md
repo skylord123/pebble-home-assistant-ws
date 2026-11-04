@@ -62,11 +62,14 @@ Everything the plugin caches is stored under a `plugin:` prefix:
   - Only a 401 from `/api/`, or `auth_invalid` on the WebSocket, sets the
     marker. A 401 on a service call (an admin-only service, for example)
     comes back as `PERMISSION_DENIED`.
+  - A poll that has to fetch several entities fetches one first, so a bad
+    token is refused once and not once per entity.
 
 On Android the Pebble app rewrites this `localStorage` from the watch app's
 own copy when the watch app's JS stops, so anything cached here while the
 watch app was running can be lost. The caches only cost a fetch when that
-happens, and a lost marker means one more try of a refused token.
+happens. The token marker is also kept in `Pebble.secureStorage`, which the
+rewrite does not touch, and put back from there.
 
 The plugin never logs the URL or the token. It never uses the lock and alarm
 codes the watch app remembers; a code has to come from the caller.
