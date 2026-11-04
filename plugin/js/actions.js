@@ -15,6 +15,7 @@
  * could disarm an alarm without knowing its code.
  */
 var ha = require('ha');
+var ws = require('ws');
 var store = require('store');
 var options = require('options');
 var entities = require('entities');
@@ -459,29 +460,27 @@ function runEntityAction(conn, opts, name, args) {
 }
 
 /**
- * The conversation agent the watch app would talk to: the one behind the
- * pipeline chosen there, or behind Home Assistant's preferred pipeline.
- * Pipelines themselves are only reachable over the WebSocket.
+ * The pipeline the watch app would talk to, or undefined for Home Assistant's
+ * preferred one. A pipeline the app no longer lists has been deleted, and
+ * gives way to the preferred one as it does in the app.
  */
-function agentFor(opts) {
+function pipelineFor(opts) {
+    var chosen = opts.selected_pipeline;
+    if (typeof chosen !== 'string' || !chosen) { return undefined; }
     var pipelines = Array.isArray(opts.available_pipelines) ? opts.available_pipelines : [];
-    var chosen = null;
+    if (pipelines.length === 0) { return chosen; }
     for (var i = 0; i < pipelines.length; i++) {
-        if (pipelines[i].id === opts.selected_pipeline) { chosen = pipelines[i]; }
+        if (pipelines[i] && pipelines[i].id === chosen) { return chosen; }
     }
-    if (!chosen) {
-        for (var j = 0; j < pipelines.length; j++) {
-            if (pipelines[j].preferred) { chosen = pipelines[j]; }
-        }
-    }
-    return chosen || {};
+    return undefined;
 }
 
 /**
- * Send text to Home Assistant's assistant and answer with what it said. The
- * conversation carries on across asks for a few minutes, since an action's
- * result has nowhere to hand its id back to the caller. Any app asking shares
- * the one conversation.
+ * Send text to Home Assistant's assistant and answer with what it said. It
+ * runs the pipeline chosen in the watch app, from the intent stage, so the
+ * agent and language are the pipeline's own. The conversation carries on
+ * across asks for a few minutes, since an action's result has nowhere to
+ * hand its id back to the caller. Any app asking shares the one conversation.
  */
 function askAssistant(conn, opts, args) {
     if (opts.plugin_share_assistant !== true) {
@@ -491,18 +490,36 @@ function askAssistant(conn, opts, args) {
     var text = typeof args.text === 'string' ? args.text.trim() : '';
     if (!text) { return Promise.reject(invalid('text is required')); }
 
-    var body = { text: text };
-    var agent = agentFor(opts);
-    if (agent.conversation_engine) { body.agent_id = agent.conversation_engine; }
-    if (agent.conversation_language) { body.language = agent.conversation_language; }
+    var command = {
+        type: 'assist_pipeline/run',
+        start_stage: 'intent',
+        end_stage: 'intent',
+        input: { text: text }
+    };
+    var pipeline = pipelineFor(opts);
+    if (pipeline) { command.pipeline = pipeline; }
     var previous = args.new_conversation === true ? null : store.fresh('conversation', CONVERSATION_IDLE_MS);
-    if (previous) { body.conversation_id = previous; }
+    if (previous) { command.conversation_id = previous; }
 
-    return ha.request(conn, 'POST', '/api/conversation/process', body).then(function(answer) {
-        var response = (answer && answer.response) || {};
-        if (answer && answer.conversation_id) {
+    return ws.run(conn, command, function(msg, settle) {
+        var event = msg.type === 'event' && msg.event;
+        if (!event) { return; }
+        if (event.type === 'error') {
+            throw new PluginError('UNKNOWN', (event.data && event.data.message) || 'The assistant could not answer');
+        }
+        if (event.type === 'intent-end') {
+            settle((event.data && event.data.intent_output) || {});
+        } else if (event.type === 'run-end') {
+            // Only reached when the run ended without an intent stage
+            settle({});
+        }
+    }).then(function(answer) {
+        var response = answer.response || {};
+        if (answer.conversation_id) {
             store.remember('conversation', answer.conversation_id);
         }
+        // Home Assistant always sends a speech key, but leaves it empty when
+        // the agent set none
         var speech = response.speech && response.speech.plain && response.speech.plain.speech;
         if (response.response_type === 'error') {
             throw new PluginError('UNKNOWN', speech || 'The assistant could not answer');

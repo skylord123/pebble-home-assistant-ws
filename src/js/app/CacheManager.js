@@ -162,10 +162,7 @@ var CacheManager = {
                             preferred: p.id === appState.preferred_pipeline,
                             // As AssistPage sets it, or the settings page
                             // cannot warn about a pipeline that cannot hear
-                            stt: !!p.stt_engine,
-                            // For the plugin, which can only reach the agent itself
-                            conversation_engine: p.conversation_engine || null,
-                            conversation_language: p.conversation_language || null
+                            stt: !!p.stt_engine
                         };
                     });
                     Settings.option('available_pipelines', pipelineOptions);
