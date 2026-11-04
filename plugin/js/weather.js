@@ -72,11 +72,47 @@ function conditionLabel(condition) {
     return LABEL_BY_CONDITION[condition] || entities.humanize(condition || 'unknown');
 }
 
+//! The phone's own setting for how temperatures are shown
+var UNITS = { category: 'preferences', item: 'units' };
+
+//! '°C' or '°F' as the wearer has chosen, for this request; null if the
+//! phone did not say
+var wearerUnit = null;
+
+/**
+ * The wearer's temperature unit, from the phone's preferences. Subscribing
+ * has the phone run this source again when the wearer changes it.
+ */
+function readWearerUnit() {
+    if (typeof Pebble.readSource !== 'function') { return Promise.resolve(null); }
+    if (typeof Pebble.subscribeSource === 'function') { Pebble.subscribeSource(UNITS); }
+    return Pebble.readSource(UNITS).then(function(envelope) {
+        var props = envelope && envelope.instances && envelope.instances[0] &&
+            envelope.instances[0].properties;
+        var text = props && props.temperature && props.temperature.shortText && props.temperature.shortText.text;
+        return text === '°C' || text === '°F' ? text : null;
+    }).catch(function() { return null; });
+}
+
+/**
+ * A temperature as the wearer reads it. The number itself stays in Home
+ * Assistant's unit, which `numericValue` names; only the text follows the
+ * wearer's choice.
+ */
+function temperatureText(value, unit) {
+    var shown = unit;
+    if (wearerUnit && unit !== wearerUnit && (unit === '°C' || unit === '°F')) {
+        value = wearerUnit === '°F' ? value * 9 / 5 + 32 : (value - 32) * 5 / 9;
+        shown = wearerUnit;
+    }
+    return Math.round(value) + shown;
+}
+
 function temperatureShapes(value, unit) {
-    var rounded = Math.round(value);
+    var text = temperatureText(value, unit);
     return {
-        shortText: S.shortText(rounded + unit),
-        longText: S.longText(rounded + unit),
+        shortText: S.shortText(text),
+        longText: S.longText(text),
         numericValue: S.numeric(value, unit)
     };
 }
@@ -238,7 +274,7 @@ function pluck(list, key) {
 function temperatureSeries(startS, stepS, values, unit) {
     return series(startS, stepS, {
         numericValue: { values: values, unit: unit },
-        shortText: { values: values.map(function(v) { return v === null ? null : Math.round(v) + unit; }) }
+        shortText: { values: values.map(function(v) { return v === null ? null : temperatureText(v, unit); }) }
     });
 }
 
@@ -382,7 +418,10 @@ function locationInstance(entity, days, hourly, request) {
 function location(conn, ids, request) {
     var needDaily = wants(request, ['high', 'low', 'uv_index', 'precipitation', 'daily_']);
     var needHourly = wants(request, ['hourly_']);
-    return ha.getStates(conn, ids).then(function(states) {
+    return readWearerUnit().then(function(unit) {
+        wearerUnit = unit;
+        return ha.getStates(conn, ids);
+    }).then(function(states) {
         var present = ids.filter(function(id) { return states[id]; });
         return Promise.all([
             needDaily ? forecasts(conn, states, present, 'daily') : Promise.resolve({}),
