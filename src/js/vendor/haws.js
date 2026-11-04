@@ -186,7 +186,26 @@ class HAWS {
             ws_url = this.ha_url.replace('http','ws').replace(/\/+$/, '') + '/api/websocket';
 
         this.connecting = true;
-        let socket = new WebSocket(ws_url);
+        let socket;
+        try {
+            socket = new WebSocket(ws_url);
+        } catch (err) {
+            this.connecting = false;
+            // The Core Devices Pebble app on Android throws, rather than
+            // failing the socket, for an address the app has not been allowed
+            // to reach, including while the wearer has yet to answer. No close
+            // would ever follow, so the retry is started here: allowing it
+            // later then connects without a restart.
+            if (err && err.name === 'SecurityError') {
+                this.ws = null;
+                this.trigger("blocked", {detail: {message: err.message}});
+                if (!this.selfDisconnect) {
+                    this.startAttemptingToEstablishConnection();
+                }
+                return false;
+            }
+            throw err;
+        }
         this.ws = socket;
 
         // Anything arriving from a socket we have already replaced is ignored
