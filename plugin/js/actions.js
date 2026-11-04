@@ -6,9 +6,10 @@
  * one entity named: `call_service` only calls the services listed below for
  * the entity's own domain, on that entity.
  *
- * Unlocking, disarming and opening a garage door, gate or door ask the
- * wearer first (the manifest marks those actions), and no other action does
- * the same thing without asking.
+ * Unlocking, disarming and opening a garage door, gate or door are marked
+ * requiresConfirmation in the manifest, but the Pebble app does not ask the
+ * wearer yet, so they are refused unless the wearer allowed them in the
+ * watch app. No other action does the same thing.
  *
  * Codes for locks and alarm panels come from the caller when needed. The
  * codes the watch app remembers are never used here, or any installed app
