@@ -159,7 +159,10 @@ var CacheManager = {
                         return {
                             id: p.id,
                             name: p.name,
-                            preferred: p.id === appState.preferred_pipeline
+                            preferred: p.id === appState.preferred_pipeline,
+                            // As AssistPage sets it, or the settings page
+                            // cannot warn about a pipeline that cannot hear
+                            stt: !!p.stt_engine
                         };
                     });
                     Settings.option('available_pipelines', pipelineOptions);
