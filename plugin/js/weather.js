@@ -230,18 +230,12 @@ function conditionSeries(startS, stepS, list) {
 }
 
 /**
- * `hourly_*`: from the hour of the first forecast, one value an hour. Home
- * Assistant gives hours from now on, where the phone's own source starts at
- * midnight; `start` says which, so a face reads either the same way.
+ * `hourly_*`: today's and tomorrow's hours from local midnight, as the
+ * phone's own source gives them. Home Assistant only forecasts from now on,
+ * so the hours already gone are null.
  */
 function hourlySeries(hourly, unit) {
-    var first = null;
-    hourly.forEach(function(entry) {
-        var at = Date.parse(entry.datetime);
-        if (!isNaN(at) && (first === null || at < first)) { first = at; }
-    });
-    if (first === null) { return {}; }
-    var startS = Math.floor(first / 1000 / HOUR_S) * HOUR_S;
+    var startS = Math.floor(localMidnight(Date.now()) / 1000);
     var hours = lastFilled(slots(hourly, MAX_HOURS, function(at) {
         return Math.round((at / 1000 - startS) / HOUR_S);
     }));
