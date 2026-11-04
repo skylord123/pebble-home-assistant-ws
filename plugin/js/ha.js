@@ -19,6 +19,10 @@ var BULK_THRESHOLD = 15;
 var AUTH_RETRY_MS = 30 * 60 * 1000;
 
 var REFUSED = 'Home Assistant refused the access token. Update it in the watch app\'s settings.';
+//! A host that is down and one the Pebble app has not allowed fail the same
+//! way, with nothing to tell them apart, so the message names both
+var UNREACHABLE = 'Could not reach Home Assistant. Check that it is up, and that the Pebble app ' +
+    'allows Home Assistant WS the internet and local network.';
 
 function PluginError(code, message) {
     this.code = code;
@@ -123,7 +127,7 @@ function request(conn, method, path, body) {
         });
     }, function(err) {
         if (err instanceof PluginError) { throw err; }
-        throw new PluginError('PLUGIN_UNAVAILABLE', 'Could not reach Home Assistant');
+        throw new PluginError('PLUGIN_UNAVAILABLE', UNREACHABLE);
     });
 }
 
@@ -266,6 +270,7 @@ function callServiceForResponse(conn, domain, service, data) {
 module.exports = {
     PluginError: PluginError,
     REFUSED: REFUSED,
+    UNREACHABLE: UNREACHABLE,
     request: request,
     tokenRefused: tokenRefused,
     markRefused: markRefused,
