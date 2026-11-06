@@ -85,6 +85,9 @@ codes the watch app remembers; a code has to come from the caller.
 
 ## Sources
 
+Every source requires `Location` of the app reading it, as explained under
+[The watch's own weather](#the-watchs-own-weather).
+
 Every entity is an instance whose `instanceId` is its `entity_id`. Every
 instance includes these properties:
 
@@ -106,11 +109,12 @@ instance includes these properties:
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
 | `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
-| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below |
+| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below; the wearer's locations also `sunrise`, `sunset` |
 
 Notes on the weather source:
 
-- `weather/location` has one instance per weather entity.
+- `weather/location` has one instance per weather entity, after one for each
+  of the wearer's weather locations near the home (see below).
 - Like the phone's own weather, it also has series, each `{ start, stepSec,
   <shape>: { values: [...] } }` with `null` for a missing point:
   - `hourly_temperature`, `hourly_condition`, `hourly_condition_code`: today's
@@ -147,19 +151,53 @@ app's UUID in the request:
 { category: 'weather', item: 'location', plugin: '61ae3254-ce00-49db-aad8-23143f649b90' }
 ```
 
-Picking this app under Preferred sources only changes what other apps get.
-The watch's own weather app and timeline cannot use it: they need instances
-named after the wearer's weather locations, and sunrise and sunset for each
-day, and the plugin serves Home Assistant's weather entities instead.
+### The watch's own weather
+
+The plugin can also be the watch's own weather provider, for its Weather
+app and timeline pins: pick this app under **Weather provider** in the
+watch's settings in the Pebble app (Settings → Weather). The watch then
+asks for an instance named after each of the wearer's weather locations.
+
+- The plugin reads the wearer's weather locations
+  (`preferences/weather_location`) and serves Home Assistant's weather for
+  those within 25 km of the home, as Home Assistant's own settings place
+  it. Anywhere further is left to the phone's own weather, so travelling
+  still shows the right place.
+- Each of those gets the weather of `weather.home`, or of the first weather
+  entity when there is none, under the location's id and name. They come
+  before the entities' own instances, as faces show the first instance.
+- Each also has `sunrise` and `sunset` for today, and `daily_sunrise` and
+  `daily_sunset`, worked out from the location's coordinates (`js/sun.js`),
+  since Home Assistant's forecasts have neither.
+- The watch takes nothing without a complete today and tomorrow. Where the
+  daily forecast leaves out today, its high, low and condition come from the
+  hours left in it and the current conditions.
+- Locations are only read once the wearer has allowed this app their
+  location, which the Pebble app asks at install. Until then, or on Pebble
+  apps before 1.17, the plugin serves only the entities.
+
+The Pebble app only lets a plugin read the wearer's locations if every one
+of its sources and actions requires `Location` of its callers in turn, so
+that nothing passes a location on to an app that was not allowed it. So
+every app that reads or controls anything through this plugin needs
+`Location` as well, and declares it in its `usesPermissions`:
+
+```json
+"Location"
+```
+
+The Pebble app's own callers (the watch's weather, Index) are not asked.
 
 ## Actions
 
 Because the plugin can send data off the phone, the Pebble app asks the
 wearer before any other app may call its actions at all. An app that calls
-them declares that it will in its `usesPermissions`, or its first call waits
-for the wearer and is refused until they answer:
+them declares that it will in its `usesPermissions`, along with `Location`
+(see [The watch's own weather](#the-watchs-own-weather)), or its first call
+waits for the wearer and is refused until they answer:
 
 ```json
+"Location",
 { "name": "InvokeAction", "plugin": "61ae3254-ce00-49db-aad8-23143f649b90" }
 ```
 

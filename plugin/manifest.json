@@ -18,7 +18,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -32,7 +33,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -45,7 +47,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -58,7 +61,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 60
+      "suggestedRefreshIntervalSec": 60,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -72,7 +76,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -89,7 +94,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 60
+      "suggestedRefreshIntervalSec": 60,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -103,7 +109,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -116,7 +123,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -133,7 +141,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -147,7 +156,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 120
+      "suggestedRefreshIntervalSec": 120,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -160,7 +170,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 120
+      "suggestedRefreshIntervalSec": 120,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "home",
@@ -173,7 +184,8 @@
         "last_updated": ["timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 30
+      "suggestedRefreshIntervalSec": 30,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "weather",
@@ -199,10 +211,15 @@
         "daily_low": ["series.numericValue", "series.shortText"],
         "daily_condition": ["series.shortText", "series.longText", "series.icon", "series.image"],
         "daily_condition_code": ["series.longText"],
-        "daily_precipitation": ["series.numericValue", "series.shortText"]
+        "daily_precipitation": ["series.numericValue", "series.shortText"],
+        "sunrise": ["timestamp"],
+        "sunset": ["timestamp"],
+        "daily_sunrise": ["series.timestamp"],
+        "daily_sunset": ["series.timestamp"]
       },
       "supportsMultiple": true,
-      "suggestedRefreshIntervalSec": 900
+      "suggestedRefreshIntervalSec": 900,
+      "callerPermissions": ["Location"]
     },
     {
       "category": "agent",
@@ -211,7 +228,8 @@
         "configured": ["boolean"],
         "name": ["shortText"]
       },
-      "suggestedRefreshIntervalSec": 300
+      "suggestedRefreshIntervalSec": 300,
+      "callerPermissions": ["Location"]
     }
   ],
   "actions": [
@@ -227,7 +245,8 @@
           "on": { "type": "boolean" }
         }
       },
-      "targets": ["home/light/on", "home/switch/on", "home/entity/on", "home/cover/open", "home/media_player/on", "home/climate/on"]
+      "targets": ["home/light/on", "home/switch/on", "home/entity/on", "home/cover/open", "home/media_player/on", "home/climate/on"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "toggle",
@@ -239,7 +258,8 @@
           "instanceId": { "type": "string", "description": "The entity_id, from any home/* source" }
         }
       },
-      "targets": ["home/entity", "home/light", "home/switch", "home/cover", "home/lock", "home/media_player", "home/climate", "home/scene"]
+      "targets": ["home/entity", "home/light", "home/switch", "home/cover", "home/lock", "home/media_player", "home/climate", "home/scene"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "activate",
@@ -251,7 +271,8 @@
           "instanceId": { "type": "string", "description": "The entity_id of a scene, script, button or automation" }
         }
       },
-      "targets": ["home/scene", "home/entity"]
+      "targets": ["home/scene", "home/entity"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "set_brightness",
@@ -265,7 +286,8 @@
           "percent": { "type": "integer", "minimum": 0, "maximum": 100 }
         }
       },
-      "targets": ["home/light/brightness"]
+      "targets": ["home/light/brightness"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "set_temperature",
@@ -280,7 +302,8 @@
           "target_temp_high": { "type": "number" }
         }
       },
-      "targets": ["home/climate/target_temperature"]
+      "targets": ["home/climate/target_temperature"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "set_hvac_mode",
@@ -293,7 +316,8 @@
           "hvac_mode": { "type": "string" }
         }
       },
-      "targets": ["home/climate/hvac_mode"]
+      "targets": ["home/climate/hvac_mode"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "set_position",
@@ -306,7 +330,8 @@
           "position": { "type": "integer", "minimum": 0, "maximum": 100 }
         }
       },
-      "targets": ["home/cover/position"]
+      "targets": ["home/cover/position"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "open",
@@ -322,7 +347,7 @@
       "targets": ["home/cover", "home/lock"],
       "destructive": true,
       "requiresConfirmation": true,
-      "callerPermissions": ["Unlock"]
+      "callerPermissions": ["Location", "Unlock"]
     },
     {
       "name": "close",
@@ -332,7 +357,8 @@
         "required": ["instanceId"],
         "properties": { "instanceId": { "type": "string" } }
       },
-      "targets": ["home/cover"]
+      "targets": ["home/cover"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "stop",
@@ -342,7 +368,8 @@
         "required": ["instanceId"],
         "properties": { "instanceId": { "type": "string" } }
       },
-      "targets": ["home/cover"]
+      "targets": ["home/cover"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "lock",
@@ -355,7 +382,8 @@
           "code": { "type": "string" }
         }
       },
-      "targets": ["home/lock/locked"]
+      "targets": ["home/lock/locked"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "unlock",
@@ -371,7 +399,7 @@
       "targets": ["home/lock/locked"],
       "destructive": true,
       "requiresConfirmation": true,
-      "callerPermissions": ["Unlock"]
+      "callerPermissions": ["Location", "Unlock"]
     },
     {
       "name": "alarm_arm",
@@ -385,7 +413,8 @@
           "code": { "type": "string" }
         }
       },
-      "targets": ["home/alarm/armed"]
+      "targets": ["home/alarm/armed"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "alarm_disarm",
@@ -401,7 +430,7 @@
       "targets": ["home/alarm/armed"],
       "destructive": true,
       "requiresConfirmation": true,
-      "callerPermissions": ["Unlock"]
+      "callerPermissions": ["Location", "Unlock"]
     },
     {
       "name": "set_playing",
@@ -414,7 +443,8 @@
           "playing": { "type": "boolean" }
         }
       },
-      "targets": ["home/media_player/playing"]
+      "targets": ["home/media_player/playing"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "next_track",
@@ -424,7 +454,8 @@
         "required": ["instanceId"],
         "properties": { "instanceId": { "type": "string" } }
       },
-      "targets": ["home/media_player"]
+      "targets": ["home/media_player"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "previous_track",
@@ -434,7 +465,8 @@
         "required": ["instanceId"],
         "properties": { "instanceId": { "type": "string" } }
       },
-      "targets": ["home/media_player"]
+      "targets": ["home/media_player"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "set_volume",
@@ -447,7 +479,8 @@
           "percent": { "type": "integer", "minimum": 0, "maximum": 100 }
         }
       },
-      "targets": ["home/media_player/volume"]
+      "targets": ["home/media_player/volume"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "call_service",
@@ -461,7 +494,8 @@
           "data": { "type": "object", "description": "Service data, without any target" }
         }
       },
-      "targets": ["home/entity"]
+      "targets": ["home/entity"],
+      "callerPermissions": ["Location"]
     },
     {
       "name": "ask_assistant",
@@ -475,7 +509,7 @@
         }
       },
       "targets": [],
-      "callerPermissions": ["Assistant"]
+      "callerPermissions": ["Location", "Assistant"]
     },
     {
       "name": "send_to_agent",
@@ -489,7 +523,7 @@
         }
       },
       "targets": [],
-      "callerPermissions": ["Assistant"]
+      "callerPermissions": ["Location", "Assistant"]
     }
   ]
 }
