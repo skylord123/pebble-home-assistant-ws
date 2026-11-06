@@ -23,10 +23,13 @@ var AUTH_RETRY_MS = 30 * 60 * 1000;
 var UNREACHABLE_RETRY_MS = 30 * 1000;
 
 var REFUSED = 'Home Assistant refused the access token. Update it in the watch app\'s settings.';
-//! A host that is down and one the Pebble app has not allowed fail the same
-//! way, with nothing to tell them apart, so the message names both
+//! Before Pebble app 1.17 a host that is down and one the Pebble app has not
+//! allowed fail the same way, with nothing to tell them apart, so the
+//! message names both
 var UNREACHABLE = 'Could not reach Home Assistant. Check that it is up, and that the Pebble app ' +
     'allows Home Assistant WS the internet and local network.';
+var NOT_ALLOWED = 'The Pebble app does not allow Home Assistant WS to connect to Home Assistant. ' +
+    'Allow it the internet and local network in the Pebble app.';
 
 function PluginError(code, message) {
     this.code = code;
@@ -178,6 +181,11 @@ function request(conn, method, path, body) {
         });
     }, function(err) {
         if (err instanceof PluginError) { throw err; }
+        // Newer Pebble apps say when the address was not allowed. That is
+        // answered at once, so there is nothing to wait out.
+        if (err && err.name === 'NotAllowedError') {
+            throw new PluginError('PERMISSION_DENIED', NOT_ALLOWED);
+        }
         markUnreachable();
         throw new PluginError('PLUGIN_UNAVAILABLE', UNREACHABLE);
     });
@@ -329,6 +337,7 @@ module.exports = {
     PluginError: PluginError,
     REFUSED: REFUSED,
     UNREACHABLE: UNREACHABLE,
+    NOT_ALLOWED: NOT_ALLOWED,
     request: request,
     tokenRefused: tokenRefused,
     markRefused: markRefused,
