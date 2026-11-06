@@ -16,6 +16,7 @@
 var ha = require('ha');
 var store = require('store');
 var entities = require('entities');
+var icons = require('icons');
 
 var S = entities.shapes;
 
@@ -290,13 +291,25 @@ function temperatureSeries(startS, stepS, values, unit) {
     });
 }
 
-function conditionSeries(startS, stepS, list) {
+/**
+ * A forecast's conditions as words, codes and, when the caller gave a size
+ * for them, pictures. An hour Home Assistant marks as night gets the moon.
+ */
+function conditionSeries(startS, stepS, list, pixelSize) {
     var conditions = list.map(function(entry) { return entry && entry.condition ? entry.condition : null; });
+    var text = {
+        shortText: { values: conditions.map(function(c) { return c === null ? null : conditionLabel(c); }) },
+        longText: { values: conditions.map(function(c) { return c === null ? null : conditionLabel(c); }) }
+    };
+    if (pixelSize) {
+        ['icon', 'image'].forEach(function(kind) {
+            text[kind] = { values: conditions.map(function(c, i) {
+                return c === null ? null : icons.shape(kind, c, pixelSize, list[i].is_daytime === false);
+            }) };
+        });
+    }
     return {
-        text: series(startS, stepS, {
-            shortText: { values: conditions.map(function(c) { return c === null ? null : conditionLabel(c); }) },
-            longText: { values: conditions.map(function(c) { return c === null ? null : conditionLabel(c); }) }
-        }),
+        text: series(startS, stepS, text),
         code: series(startS, stepS, {
             longText: { values: conditions.map(function(c) { return c === null ? null : conditionCode(c); }) }
         })
@@ -308,13 +321,13 @@ function conditionSeries(startS, stepS, list) {
  * phone's own source gives them. Home Assistant only forecasts from now on,
  * so the hours already gone are null.
  */
-function hourlySeries(hourly, unit) {
+function hourlySeries(hourly, unit, pixelSize) {
     var startS = Math.floor(localMidnight(Date.now()) / 1000);
     var hours = lastFilled(slots(hourly, MAX_HOURS, function(at) {
         return Math.round((at / 1000 - startS) / HOUR_S);
     }));
     if (hours.length === 0) { return {}; }
-    var condition = conditionSeries(startS, HOUR_S, hours);
+    var condition = conditionSeries(startS, HOUR_S, hours, pixelSize);
     return {
         hourly_temperature: temperatureSeries(startS, HOUR_S, pluck(hours, 'temperature'), unit),
         hourly_condition: condition.text,
@@ -325,10 +338,10 @@ function hourlySeries(hourly, unit) {
 /**
  * `daily_*`: from today's local midnight, one value a day.
  */
-function dailySeries(days, unit, midnight) {
+function dailySeries(days, unit, midnight, pixelSize) {
     if (days.length === 0) { return {}; }
     var startS = Math.floor(midnight / 1000);
-    var condition = conditionSeries(startS, DAY_S, days);
+    var condition = conditionSeries(startS, DAY_S, days, pixelSize);
     var chances = pluck(days, 'precipitation_probability');
     return {
         daily_high: temperatureSeries(startS, DAY_S, pluck(days, 'temperature'), unit),
@@ -405,6 +418,15 @@ function locationInstance(entity, days, hourly, request) {
         longText: S.longText(conditionLabel(entity.state))
     };
     props.condition_code = { longText: S.longText(conditionCode(entity.state)) };
+    // Pictures cost real work, so only for a caller that gave a size for
+    // them and wants the condition
+    var pixelSize = request && request.iconPixelSize &&
+        request.iconPixelSize.w > 0 && request.iconPixelSize.h > 0 ? request.iconPixelSize : null;
+    var asked = request && request.properties;
+    if (pixelSize && (!Array.isArray(asked) || asked.indexOf('condition') !== -1)) {
+        props.condition.icon = icons.shape('icon', entity.state, pixelSize, false);
+        props.condition.image = icons.shape('image', entity.state, pixelSize, false);
+    }
 
     var uv = typeof attrs.uv_index === 'number' ? attrs.uv_index
         : (today && typeof today.uv_index === 'number' ? today.uv_index : null);
@@ -441,10 +463,10 @@ function locationInstance(entity, days, hourly, request) {
     // phone's own source does
     var extra = {};
     if (days && wants(request, ['daily_'])) {
-        extra = dailySeries(days, unit, localMidnight(Date.now()));
+        extra = dailySeries(days, unit, localMidnight(Date.now()), pixelSize);
     }
     if (hourly && wants(request, ['hourly_'])) {
-        var hours = hourlySeries(hourly, unit);
+        var hours = hourlySeries(hourly, unit, pixelSize);
         Object.keys(hours).forEach(function(name) { extra[name] = hours[name]; });
     }
     Object.keys(extra).forEach(function(name) {

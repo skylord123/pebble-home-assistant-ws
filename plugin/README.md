@@ -127,6 +127,12 @@ Notes on the weather source:
   Assistant's own unit, which its `unit` names.
 - `condition_code` uses the same words as the phone's own weather: `sun`,
   `partly_cloudy`, `light_rain` and so on.
+- When the request gives an `iconPixelSize`, `condition` also comes as an
+  `icon` (a black picture on a transparent ground) and an `image` (a white
+  picture on a disc coloured for the weather), and `hourly_condition` and
+  `daily_condition` as series of them. They are square, as large as fits the
+  size asked for, and drawn by `js/icons.js`. A night hour gets the moon.
+  Without `iconPixelSize` nothing is drawn.
 
 The phone's built-in weather plugin also answers `weather/location`, and it
 is asked first unless the wearer picks this app under **Preferred sources**
