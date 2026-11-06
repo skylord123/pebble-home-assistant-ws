@@ -9,14 +9,19 @@
  * wearer picked this app under Preferred sources. Asking with
  * `plugin: <this app's uuid>` gets this one.
  *
- * Instances are weather entities (id = entity_id). Icons and images are not
- * drawn; `condition_code` names the condition in the phone's own vocabulary,
- * for a face to draw its own art from.
+ * Instances are weather entities (id = entity_id), and before them the
+ * wearer's own weather locations that are near the home (id = the
+ * location's id), with sunrise and sunset. Those are what the watch's own
+ * weather reads when the wearer picks this app as its provider; anywhere
+ * else is left to the phone's own weather. `condition_code` names the
+ * condition in the phone's own vocabulary, for a face to draw its own art
+ * from, and icons and images are drawn when asked for.
  */
 var ha = require('ha');
 var store = require('store');
 var entities = require('entities');
 var icons = require('icons');
+var sun = require('sun');
 
 var S = entities.shapes;
 
@@ -127,6 +132,97 @@ function temperatureShapes(value, unit) {
         shortText: S.shortText(text),
         longText: S.longText(text),
         numericValue: S.numeric(value, unit)
+    };
+}
+
+//! The wearer's weather locations, as the phone keeps them
+var PLACES = { category: 'preferences', item: 'weather_location', properties: ['name', 'latitude', 'longitude'] };
+//! A weather location this close to the home gets the home's weather
+var NEAR_KM = 25;
+//! How long the home's coordinates are kept
+var HOME_TTL_MS = 24 * 60 * 60 * 1000;
+
+/** The home's coordinates, from Home Assistant's own configuration */
+function homeCoordinates(conn) {
+    var known = store.fresh('home', HOME_TTL_MS);
+    if (known) { return Promise.resolve(known); }
+    return ha.request(conn, 'GET', '/api/config').then(function(config) {
+        if (!config || typeof config.latitude !== 'number' || typeof config.longitude !== 'number') { return null; }
+        var home = { latitude: config.latitude, longitude: config.longitude };
+        store.remember('home', home);
+        return home;
+    });
+}
+
+/**
+ * The wearer's weather locations near the home. Only read once the wearer
+ * has allowed this app their location: reading them would otherwise have
+ * the phone ask, and hold this request while it does.
+ * @returns {Promise<Array>} [{ id, name, latitude, longitude }], maybe empty
+ */
+function nearbyPlaces(conn) {
+    var permissions = Pebble.permissions;
+    if (!permissions || typeof permissions.query !== 'function' || typeof Pebble.readSource !== 'function') {
+        return Promise.resolve([]);
+    }
+    return permissions.query('Location').then(function(state) {
+        if (state !== 'granted') { return []; }
+        // So the watch's weather is asked again when a location is added
+        if (typeof Pebble.subscribeSource === 'function') { Pebble.subscribeSource(PLACES); }
+        return Promise.all([Pebble.readSource(PLACES), homeCoordinates(conn)]).then(function(found) {
+            var home = found[1];
+            if (!home) { return []; }
+            return ((found[0] && found[0].instances) || []).map(function(instance) {
+                var props = instance.properties || {};
+                function number(name) {
+                    var shape = props[name] && props[name].numericValue;
+                    return shape && typeof shape.value === 'number' ? shape.value : null;
+                }
+                var name = props.name && props.name.shortText && props.name.shortText.text;
+                return { id: instance.instanceId, name: name || '', latitude: number('latitude'), longitude: number('longitude') };
+            }).filter(function(place) {
+                return place.id && place.latitude !== null && place.longitude !== null &&
+                    sun.distanceKm(place.latitude, place.longitude, home.latitude, home.longitude) <= NEAR_KM;
+            });
+        });
+    }).catch(function() { return []; });
+}
+
+/**
+ * Today as the days' first slot, filled in from the hours and the current
+ * conditions where the daily forecast has none: providers that forecast
+ * from tomorrow, or after the day's peak, leave it out, and the watch's own
+ * weather takes nothing without today.
+ */
+function withToday(days, entity, hourly) {
+    var today = days[0] || {};
+    var attrs = entity.attributes || {};
+    var temps = typeof attrs.temperature === 'number' ? [attrs.temperature] : [];
+    var tomorrow = localMidnight(Date.now()) + DAY_S * 1000;
+    (hourly || []).forEach(function(hour) {
+        var at = Date.parse(hour.datetime);
+        if (at < tomorrow && typeof hour.temperature === 'number') { temps.push(hour.temperature); }
+    });
+    if (temps.length === 0) { return days; }
+    var filled = {
+        temperature: typeof today.temperature === 'number' ? today.temperature : Math.max.apply(null, temps),
+        templow: typeof today.templow === 'number' ? today.templow : Math.min.apply(null, temps),
+        condition: today.condition || entity.state,
+        precipitation_probability: today.precipitation_probability,
+        uv_index: today.uv_index
+    };
+    return [filled].concat(days.slice(1));
+}
+
+/** Sunrise and sunset, today's and as daily series, for a place */
+function sunShapes(place, count) {
+    var startS = Math.floor(localMidnight(Date.now()) / 1000);
+    var times = sun.days(startS, Math.max(1, count), place.latitude, place.longitude);
+    return {
+        sunrise: { timestamp: { value: times.rises[0] } },
+        sunset: { timestamp: { value: times.sets[0] } },
+        daily_sunrise: series(startS, DAY_S, { timestamp: { values: times.rises } }),
+        daily_sunset: series(startS, DAY_S, { timestamp: { values: times.sets } })
     };
 }
 
@@ -392,12 +488,19 @@ function windShapes(attrs) {
     };
 }
 
-function locationInstance(entity, days, hourly, request) {
+/**
+ * One instance of an entity's weather: under the entity's own id, or, given
+ * a `place`, under one of the wearer's weather locations with its sunrise
+ * and sunset.
+ */
+function locationInstance(entity, days, hourly, request, place) {
     var attrs = entity.attributes || {};
     var unit = unitOf(entity);
+    // The watch's own weather takes nothing without today
+    if (place && days) { days = withToday(days, entity, hourly); }
     var today = days ? days[0] : null;
     var props = {
-        name: { shortText: S.shortText(entities.nameOf(entity)) }
+        name: { shortText: S.shortText(place ? place.name || entities.nameOf(entity) : entities.nameOf(entity)) }
     };
 
     if (typeof attrs.temperature === 'number') {
@@ -469,12 +572,16 @@ function locationInstance(entity, days, hourly, request) {
         var hours = hourlySeries(hourly, unit, pixelSize);
         Object.keys(hours).forEach(function(name) { extra[name] = hours[name]; });
     }
+    if (place) {
+        var sunTimes = sunShapes(place, days ? days.length : 1);
+        Object.keys(sunTimes).forEach(function(name) { extra[name] = sunTimes[name]; });
+    }
     Object.keys(extra).forEach(function(name) {
         var names = request && request.properties;
         if (!Array.isArray(names) || names.indexOf(name) !== -1) { props[name] = extra[name]; }
     });
 
-    return { instanceId: entity.entity_id, properties: props };
+    return { instanceId: place ? place.id : entity.entity_id, properties: props };
 }
 
 /**
@@ -485,9 +592,13 @@ function locationInstance(entity, days, hourly, request) {
 function location(conn, ids, request) {
     var needDaily = wants(request, ['high', 'low', 'uv_index', 'precipitation', 'daily_']);
     var needHourly = wants(request, ['hourly_']);
-    return readWearerUnits().then(function(units) {
-        wearerUnit = units.temperature || null;
-        wearerWind = units.wind || null;
+    var places = [];
+    return Promise.all([readWearerUnits(), nearbyPlaces(conn)]).then(function(found) {
+        wearerUnit = found[0].temperature || null;
+        wearerWind = found[0].wind || null;
+        places = found[1];
+        // Today is filled in from the hours where the days leave it out
+        if (places.length > 0 && needDaily) { needHourly = true; }
         return ha.getStates(conn, ids);
     }).then(function(states) {
         var present = ids.filter(function(id) { return states[id]; });
@@ -498,11 +609,15 @@ function location(conn, ids, request) {
             needDaily ? forecasts(conn, states, present, 'daily') : Promise.resolve({}),
             needHourly ? forecasts(conn, states, present, 'hourly') : Promise.resolve({})
         ]).then(function(results) {
-            return present.map(function(id) {
+            function instance(id, place) {
                 var days = needDaily ? daySlots(results[0][id] || []) : null;
                 var hourly = needHourly ? (results[1][id] || []) : null;
-                return locationInstance(states[id], days, hourly, request);
-            });
+                return locationInstance(states[id], days, hourly, request, place);
+            }
+            // The wearer's locations first, as faces show the first
+            // instance; all of them get the home's own weather
+            var near = present.length > 0 ? places.map(function(place) { return instance(present[0], place); }) : [];
+            return near.concat(present.map(function(id) { return instance(id, null); }));
         });
     });
 }
