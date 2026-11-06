@@ -1,0 +1,341 @@
+# Plugin
+
+This is a proof of concept. It lets other watchfaces and apps read Home
+Assistant through this app, and control it, using the Core Devices plugin
+system. That system is a preview: the Pebble app only runs plugins with
+**Plugins / permissions preview** turned on (Settings → Plugins), and only
+from pbws whose `appinfo.json` has `"manifestVersion": 2`.
+
+The plugin serves two things:
+
+- the entities the wearer chooses to share, through **Expose to Plugins** on an
+  entity's page on the watch or **Shared with Other Apps** in the settings page;
+- every `weather.*` entity, which is always shared.
+
+Anything that has not been shared is refused with `PERMISSION_DENIED`, for
+reads and for actions alike.
+
+## How it is built
+
+- `plugin/js/` is a separate bundle. It is built with the same module loader as
+  the app (`wscript`, `concat_javascript`) and written to
+  `build/plugin/plugin.js`.
+- `plugin/manifest.json` becomes the `plugin` block of the pbw's
+  `appinfo.json`.
+- The permissions are those the whole app declares in `appinfo.json`
+  (`usesPermissions`), since the plugin shares the app's UUID. A
+  `usesPermissions` inside the plugin block is ignored. `Internet` is
+  declared without domains because the Home Assistant address is the
+  wearer's own; an address on the local network needs `LocalNetwork`.
+- `waftools/bundle_config_page.py` adds the script and the manifest to the pbw
+  after `pebble build` has zipped it. The build log says
+  `Bundled the plugin into build/…pbw as plugin.js`.
+- Phone apps that do not know about plugins ignore both.
+
+The phone starts a fresh JS engine for every request and stops it once the
+plugin answers, or after 20 seconds. There are no timers, and a WebSocket
+closes when the request that opened it ends, so nothing can stay connected to
+Home Assistant between requests. Everything goes over the REST API, which
+reuses the phone's open connection, except `ask_assistant`: REST cannot run a
+pipeline, so that opens a WebSocket, logs in, runs the pipeline and closes
+(`js/ws.js`). The plugin reads the same `localStorage` as the watch app (same
+UUID):
+
+| What it reads | Where it comes from |
+| --- | --- |
+| URL, token, shared list, assistant switch | the `options:<uuid>` object the settings page saves, through the watch app or, when it is not running, through the plugin |
+| Weather entity list | `plugin_weather_entities`, which the watch app writes once it has the states |
+
+Before the watch app has written the weather list, the plugin finds the
+weather entities itself and caches them for an hour.
+
+Everything the plugin caches is stored under a `plugin:` prefix:
+
+- entity states, for 10 s each;
+- forecasts, for 15 min, per weather entity;
+- a marker for a token Home Assistant refused, so a bad token is not retried
+  on every poll. Every refused attempt counts towards Home Assistant's IP ban.
+  - While the marker is set, the plugin answers `AUTH_REQUIRED` without asking
+    Home Assistant.
+  - The token is tried again after 30 minutes, when it changes, or when the
+    settings page checks the plugin.
+  - Only a 401 from `/api/`, or `auth_invalid` on the WebSocket, sets the
+    marker. A 401 on a service call (an admin-only service, for example)
+    comes back as `PERMISSION_DENIED`.
+  - A poll that has to fetch several entities fetches one first, so a bad
+    token is refused once and not once per entity.
+- a marker for a Home Assistant that could not be reached. For 30 seconds
+  after, the plugin answers `PLUGIN_UNAVAILABLE` without trying: the phone
+  runs one request at a time, and a host that never answers would hold each
+  poll, and any action behind them, for the full 20 seconds. The settings
+  page checking the plugin clears it.
+
+An address the wearer has not allowed is answered with `PERMISSION_DENIED`
+and a line saying to allow it, on Pebble apps from 1.17. Earlier ones fail
+it the same way as a host that is down, so `PLUGIN_UNAVAILABLE` names both.
+
+On Android the Pebble app rewrites this `localStorage` from the watch app's
+own copy when the watch app's JS stops, so anything cached here while the
+watch app was running can be lost. The caches only cost a fetch when that
+happens. The token marker is also kept in `Pebble.secureStorage`, which the
+rewrite does not touch, and put back from there.
+
+The plugin never logs the URL or the token. It never uses the lock and alarm
+codes the watch app remembers; a code has to come from the caller.
+
+## Sources
+
+Every source requires `Location` of the app reading it, as explained under
+[The watch's own weather](#the-watchs-own-weather).
+
+Every entity is an instance whose `instanceId` is its `entity_id`. Every
+instance includes these properties:
+
+- `name`;
+- `last_changed` and `last_updated`, as timestamps.
+
+| Source | Domains | Other properties |
+| --- | --- | --- |
+| `home/entity` | everything shared, plus weather | `state`, `on`, `domain` |
+| `home/light` | light | `on`, `brightness`, `color_temp` |
+| `home/switch` | switch, input_boolean, fan, automation, siren, humidifier, remote | `on`, `speed` |
+| `home/sensor` | sensor, number, input_number, counter | `value`, `device_class` |
+| `home/binary_sensor` | binary_sensor | `on`, `state` (e.g. Open/Closed by device class), `device_class` |
+| `home/climate` | climate, water_heater | `current_temperature`, `target_temperature`, `on`, `hvac_mode`, `hvac_action`, `summary` |
+| `home/cover` | cover, valve | `open`, `position`, `state` |
+| `home/lock` | lock | `locked`, `state` |
+| `home/media_player` | media_player | `on`, `playing`, `state`, `title`, `artist`, `volume` |
+| `home/person` | person, device_tracker | `home`, `zone`, `since` (never coordinates) |
+| `home/scene` | scene, script, button, input_button | `running`, `last_run` |
+| `home/alarm` | alarm_control_panel | `armed`, `state` |
+| `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
+| `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below; the wearer's locations also `sunrise`, `sunset` |
+
+Notes on the weather source:
+
+- `weather/location` has one instance per weather entity, after one for each
+  of the wearer's weather locations near the home (see below).
+- Like the phone's own weather, it also has series, each `{ start, stepSec,
+  <shape>: { values: [...] } }` with `null` for a missing point:
+  - `hourly_temperature`, `hourly_condition`, `hourly_condition_code`: today's
+    and tomorrow's hours, one a hour, from today's local midnight. Hours
+    already gone are `null`, since Home Assistant only forecasts ahead;
+  - `daily_high`, `daily_low`, `daily_condition`, `daily_condition_code`,
+    `daily_precipitation`: up to 7 days, starting at today's local midnight.
+- Series are only built when the request asks for them by name in
+  `properties`, or names no properties at all. Hourly forecasts are only
+  fetched when an `hourly_*` property is asked for, and daily ones only when
+  something comes from them.
+- Forecasts are asked for one entity at a time, and only for the types the
+  entity says it has. An entity with only twice-daily forecasts (the US
+  National Weather Service) gets its high from the daytime half and its low
+  from the night after.
+- Temperatures follow the wearer's choice in the Pebble app
+  (`preferences/units`) in their text. The `numericValue` stays in Home
+  Assistant's own unit, which its `unit` names.
+- `condition_code` uses the same words as the phone's own weather: `sun`,
+  `partly_cloudy`, `light_rain` and so on.
+- When the request gives an `iconPixelSize`, `condition` also comes as an
+  `icon` (a black picture on a transparent ground) and an `image` (a white
+  picture on a disc coloured for the weather), and `hourly_condition` and
+  `daily_condition` as series of them. They are square, as large as fits the
+  size asked for, and drawn by `js/icons.js`. A night hour gets the moon.
+  Without `iconPixelSize` nothing is drawn.
+
+The phone's built-in weather plugin also answers `weather/location`, and it
+is asked first unless the wearer picks this app under **Preferred sources**
+in the Pebble app. To get Home Assistant's weather either way, name this
+app's UUID in the request:
+
+```js
+{ category: 'weather', item: 'location', plugin: '61ae3254-ce00-49db-aad8-23143f649b90' }
+```
+
+### The watch's own weather
+
+The plugin can also be the watch's own weather provider, for its Weather
+app and timeline pins: pick this app under **Weather provider** in the
+watch's settings in the Pebble app (Settings → Weather). The watch then
+asks for an instance named after each of the wearer's weather locations.
+
+- The plugin reads the wearer's weather locations
+  (`preferences/weather_location`) and serves Home Assistant's weather for
+  those within 25 km of the home, as Home Assistant's own settings place
+  it. Anywhere further is left to the phone's own weather, so travelling
+  still shows the right place.
+- Each of those gets the weather of `weather.home`, or of the first weather
+  entity when there is none, under the location's id and name. They come
+  before the entities' own instances, as faces show the first instance.
+- Each also has `sunrise` and `sunset` for today, and `daily_sunrise` and
+  `daily_sunset`, worked out from the location's coordinates (`js/sun.js`),
+  since Home Assistant's forecasts have neither.
+- The watch takes nothing without a complete today and tomorrow. Where the
+  daily forecast leaves out today, its high, low and condition come from the
+  hours left in it and the current conditions.
+- Locations are only read once the wearer has allowed this app their
+  location, which the Pebble app asks at install. Until then, or on Pebble
+  apps before 1.17, the plugin serves only the entities.
+
+The Pebble app only lets a plugin read the wearer's locations if every one
+of its sources and actions requires `Location` of its callers in turn, so
+that nothing passes a location on to an app that was not allowed it. So
+every app that reads or controls anything through this plugin needs
+`Location` as well, and declares it in its `usesPermissions`:
+
+```json
+"Location"
+```
+
+The Pebble app's own callers (the watch's weather, Index) are not asked.
+
+## Actions
+
+Because the plugin can send data off the phone, the Pebble app asks the
+wearer before any other app may call its actions at all. An app that calls
+them declares that it will in its `usesPermissions`, along with `Location`
+(see [The watch's own weather](#the-watchs-own-weather)), or its first call
+waits for the wearer and is refused until they answer:
+
+```json
+"Location",
+{ "name": "InvokeAction", "plugin": "61ae3254-ce00-49db-aad8-23143f649b90" }
+```
+
+Every entity action takes `instanceId`. Each action returns a line saying what
+happened, and asks the sources that show that entity to refresh.
+
+| Action | Does |
+| --- | --- |
+| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them. Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
+| `toggle` | Toggles. A locked lock is refused (use `unlock`), and a closed garage door, gate or door is refused (use `open`). |
+| `activate` | Runs a scene or script, presses a button, or triggers an automation. |
+| `set_brightness` `{ percent }` | Sets a light's brightness. |
+| `set_temperature` `{ temperature }` or `{ target_temp_low, target_temp_high }` | Sets the target temperature, or the range for a thermostat that keeps one (heat_cool). |
+| `set_hvac_mode` `{ hvac_mode }` | Sets the heating or cooling mode. |
+| `set_position` `{ position }` | Sets a cover's position. A garage door, gate or door can only be closed (position 0). |
+| `open` `{ code? }`, `close`, `stop` | Covers and valves. `open` also unlatches a lock. |
+| `lock` `{ code? }`, `unlock` `{ code? }` | Locks and unlocks. |
+| `alarm_arm` `{ mode?, code? }`, `alarm_disarm` `{ code? }` | Alarm panels. `mode` is `home`, `away` (the default), `night`, `vacation` or `custom_bypass`. |
+| `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
+| `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
+| `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
+| `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
+
+Actions check the entity's `supported_features` first. Asking a window
+that cannot be positioned to move to 40%, or a player that cannot skip to
+skip, is refused with `INVALID_ARGS` and a line saying so. Otherwise Home
+Assistant answers 500, which would look like an outage.
+
+Three actions are marked `requiresConfirmation`: `unlock`, `alarm_disarm`
+and `open`. The Pebble app does not ask the wearer before them yet (as of
+1.16 only its own assistant does). Until it does, the plugin refuses
+the following with `PERMISSION_DENIED` unless the wearer has turned on
+**Apps Can Unlock** (watch: Settings → Entity Settings; settings page: "Let
+other apps unlock and open doors"):
+
+- `unlock`;
+- `alarm_disarm`;
+- `open` on a lock or on a garage door, gate or door.
+
+The same three actions also need the plugin's own `Unlock` permission, which
+is `dangerous`: the Pebble app asks the wearer for each app that wants it, in
+every permission mode. An app calling them declares it in its
+`usesPermissions`:
+
+```json
+{ "name": "Unlock", "plugin": "61ae3254-ce00-49db-aad8-23143f649b90" }
+```
+
+The permission goes with the action, so `open` needs it for a blind or a
+valve too. `set_on` and `set_position` open those without it.
+
+The **Apps Can Unlock** switch stays, because the Pebble app's own callers
+(Index and its assistant) are not asked for an action's permissions.
+
+None of these actions can be done another way, short of asking the
+assistant (see `ask_assistant` below):
+
+- `toggle` never unlocks a lock.
+- A garage door, gate or door (a cover with that device class) never opens
+  through `set_on`, `toggle`, `set_position` or `call_service`.
+- `call_service` refuses `lock.unlock`, `lock.open` and
+  `alarm_control_panel.alarm_disarm`.
+
+`call_service` only calls services from a list per domain (`CALLABLE` in
+`js/actions.js`): services that act on the entity they are given, such as
+`fan.set_percentage`, `input_select.select_option` and `vacuum.return_to_base`.
+It is a list and not "anything in the domain" for these reasons:
+
+- Every script is also a service of its own (`script.<name>`). Sharing one
+  script would otherwise run any of them.
+- Some services name other entities in their data, such as
+  `media_player.join`.
+
+`call_service` also drops any target (`entity_id`, `device_id`, `area_id`,
+`floor_id`, `label_id`) from `data`.
+
+`ask_assistant` is off until the wearer turns on **Share with Apps** under
+Voice. It runs the pipeline chosen in the app (or Home Assistant's preferred
+one), with that pipeline's agent and language, and it continues the same
+conversation if asked again within five minutes. Keep these in mind before
+turning it on:
+
+- It can do whatever Home Assistant exposes to Assist (Settings → Voice
+  assistants → Expose), not only what is shared here, unlocking an exposed
+  lock included.
+- It does not ask on the watch first. The Pebble app does ask the wearer
+  once for each app that wants it: `ask_assistant` needs the plugin's own
+  `Assistant` permission, which is `dangerous` like `Unlock`.
+- Every app that asks shares the one conversation, since the plugin cannot
+  tell callers apart.
+
+`send_to_agent` is `ask_assistant` under the name Index looks for. A plugin
+with that action and an `agent/configured` source is offered in Index as a
+destination for a ring gesture (Hold & Talk, Click & Hold) and for messages
+typed into the Index feed. `agent/configured` says `true` once Home Assistant
+is set up and **Share with Apps** is on, and Index only offers the assistant
+while it does. Index is not asked for the `Assistant` permission, as with
+any of the Pebble app's own callers, so **Share with Apps** is what keeps it
+out. Nothing on the watch goes through these destinations; watch apps call
+`ask_assistant` or `send_to_agent` directly.
+
+## Trying it
+
+1. Build and sideload the pbw.
+2. Turn on **Plugins / permissions preview** in the Pebble app (Settings →
+   Plugins). When the app is installed, the Pebble app asks to let it connect
+   to the internet and the local network, use the location, add timeline
+   pins, use the watch microphone and, with the Android companion app,
+   exchange messages with it. The plugin needs the internet and the local
+   network.
+3. Open the settings page from the Pebble app and share a few entities. When
+   the settings page can reach the plugin, the status line under
+   **Shared with Other Apps** says so.
+4. Any consumer can then read and control them, for example the Core Devices
+   Dashboard demo.
+
+The phone registers the plugin's manifest when it starts, and again only when
+`versionLabel` changes. After changing `manifest.json`, bump `versionLabel`
+in `appinfo.json` so the phone reads it again; Core also keeps the old watch
+binary for a sideload of the same version.
+
+## Settings page messages
+
+The settings page (v1.7 and later) sends messages to the plugin with
+`Pebble.sendMessage('plugin', …)`:
+
+| Request | Reply |
+| --- | --- |
+| `{ type: 'status' }` | `{ ok, shared, weather, assistant }`, or `{ ok: false, error: { code, message } }`. Checks that the plugin can reach Home Assistant. |
+| `{ type: 'refresh' }` | `{ ok }`. Asks every source to refresh. The page sends it after a save. |
+| `{ type: 'get_settings' }` | `{ ok, settings, status }`, as the watch app answers it. Then pushes `{ type: 'status', status, settings }` once the states, calendars and pipelines have been fetched. |
+| `{ type: 'save_settings', settings }` | `{ ok }`. Merges `settings` into the stored ones, keeping the previous copy as the backup, and asks every source to refresh. |
+| `{ type: 'connect', ha_url, token }` | `{ ok, ha_version }`. Saves the URL and token only once Home Assistant accepts them. |
+| `{ type: 'search_entities', query, limit }` | `{ ok, results, total }`, ranked as the watch app ranks them. |
+
+The last four are what the page sends the watch app's JS. It sends them
+here instead when the phone opened it with only the plugin behind it, from
+the Plugins tab for example, so the settings can be changed without the
+watch app running. The plugin only writes the settings then: the watch
+app's JS keeps them in memory while it runs and would write over them, but
+reads them afresh when it starts.

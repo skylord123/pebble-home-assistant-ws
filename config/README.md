@@ -1,7 +1,7 @@
 # Settings page
 
 The watch app's settings page lives in this folder, one file per version
-(`v1.6.html` is current; `src/js/app/Constants.js` names the version in
+(`v1.7.html` is current; `src/js/app/Constants.js` names the version in
 `confVersion`). Each file is self-contained: no scripts, stylesheets or images
 are loaded from anywhere else. That is what lets one file serve two very
 different homes.
@@ -21,8 +21,9 @@ The build puts the current page there as `config.html`
 While the page is open it can talk to the watch app's JS, so it can test a
 connection, search entities and save without closing. The phone runs the page
 from a `data:` URL, so `localStorage` is unavailable and relative paths do not
-resolve. As of app 1.14 this only happens for sideloaded pbws with the
-experimental plugins flag on; store installs still get the hosted page.
+resolve. As of app 1.16 this only happens with **Plugins / permissions
+preview** turned on (Settings → Plugins); otherwise the phone opens the
+hosted page.
 
 The page decides which mode it is in by whether the phone injected a `Pebble`
 object with `sendMessage`. A phone app that does not know about bundled pages
@@ -70,13 +71,30 @@ goes out whenever the connection changes state and when the states, pipelines
 and calendars have been fetched, so a page opened before the first connection
 fills its dropdowns as soon as Connect succeeds.
 
+From v1.7 the page also talks to the plugin (`plugin/`), when the phone has
+plugins turned on: `Pebble.sendMessage('plugin', { type: 'status' })` to show
+whether other apps can reach Home Assistant, and `{ type: 'refresh' }` after a
+save so they pick up a changed list of shared entities. The phone fires
+`ready` with `{ target: 'plugin' }` once the plugin can be reached. See
+`plugin/README.md`.
+
+The phone can also open the bundled page with no watch app behind it, from
+its Plugins tab or from an Index destination. `Pebble.targets()` then lists
+only `plugin`, and the page sends `get_settings`, `save_settings`, `connect`
+and `search_entities` to the plugin instead, which answers them from the
+stored settings and Home Assistant's REST API (`plugin/js/page.js`). The
+watch app reads the saved settings the next time it starts. The app log is
+the watch app's own, so it is hidden in this mode. If the watch app starts
+while the page is open, the page sends everything after that to the watch
+app.
+
 ## Working on the page
 
-Open `config/v1.6.html` in a browser with the settings in the hash to work on
+Open `config/v1.7.html` in a browser with the settings in the hash to work on
 the hosted mode, e.g.
 
 ```
-file:///…/config/v1.6.html#%7B%22ha_url%22%3A%22https%3A%2F%2Fha.example.com%22%7D
+file:///…/config/v1.7.html#%7B%22ha_url%22%3A%22https%3A%2F%2Fha.example.com%22%7D
 ```
 
 Save then navigates to `pebblejs://close#…`, which a browser cannot open;
