@@ -70,6 +70,10 @@ Everything the plugin caches is stored under a `plugin:` prefix:
   poll, and any action behind them, for the full 20 seconds. The settings
   page checking the plugin clears it.
 
+An address the wearer has not allowed is answered with `PERMISSION_DENIED`
+and a line saying to allow it, on Pebble apps from 1.17. Earlier ones fail
+it the same way as a host that is down, so `PLUGIN_UNAVAILABLE` names both.
+
 On Android the Pebble app rewrites this `localStorage` from the watch app's
 own copy when the watch app's JS stops, so anything cached here while the
 watch app was running can be lost. The caches only cost a fetch when that
