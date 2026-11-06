@@ -203,6 +203,15 @@
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 900
+    },
+    {
+      "category": "agent",
+      "items": ["configured"],
+      "properties": {
+        "configured": ["boolean"],
+        "name": ["shortText"]
+      },
+      "suggestedRefreshIntervalSec": 300
     }
   ],
   "actions": [
@@ -463,6 +472,20 @@
         "properties": {
           "text": { "type": "string" },
           "new_conversation": { "type": "boolean", "description": "Start afresh rather than continue the last conversation" }
+        }
+      },
+      "targets": [],
+      "callerPermissions": ["Assistant"]
+    },
+    {
+      "name": "send_to_agent",
+      "description": "The same as ask_assistant, under the name Index looks for, so Home Assistant's assistant can be picked as where a ring gesture or a typed message goes. Sends the message to the assistant and returns its reply as text, continuing the conversation of the last few minutes.",
+      "parameters": {
+        "type": "object",
+        "required": ["message"],
+        "properties": {
+          "message": { "type": "string" },
+          "chat_id": { "type": "string", "description": "Ignored: there is only the one conversation" }
         }
       },
       "targets": [],

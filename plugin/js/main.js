@@ -57,6 +57,24 @@ function homeSource(conn, opts, item) {
     });
 }
 
+/**
+ * Whether send_to_agent would work: Index only offers the assistant as a
+ * destination while this says so. It needs nothing from Home Assistant, so
+ * it answers even before the plugin is set up.
+ */
+function agentConfigured(conn, opts) {
+    return {
+        validUntilMs: Date.now() + 300000,
+        instances: [{
+            instanceId: 'assistant',
+            properties: {
+                configured: { boolean: { value: !!conn && opts.plugin_share_assistant === true } },
+                name: { shortText: { text: 'Assist' } }
+            }
+        }]
+    };
+}
+
 Pebble.registerSourceHandler(function(request, respond) {
     return ha.loadRefusal().then(function() { return source(request, respond); })
         .catch(function(err) { fail(respond, err); });
@@ -65,6 +83,9 @@ Pebble.registerSourceHandler(function(request, respond) {
 function source(request, respond) {
     var opts = options.read();
     var conn = options.connection(opts);
+    if (request.category === 'agent' && request.item === 'configured') {
+        return respond.data(agentConfigured(conn, opts));
+    }
     if (!conn) { return notSetUp(respond); }
 
     var work;

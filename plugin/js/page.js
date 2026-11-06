@@ -139,7 +139,7 @@ function search(query, limit) {
 /** Have whatever reads the shared entities read them again */
 function refreshSources() {
     ha.forgetStates();
-    Pebble.refreshSources(['home/entity', 'weather/location']
+    Pebble.refreshSources(['home/entity', 'weather/location', 'agent/configured']
         .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
 }
 

@@ -101,6 +101,7 @@ instance includes these properties:
 | `home/person` | person, device_tracker | `home`, `zone`, `since` (never coordinates) |
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
+| `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
 | `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below |
 
 Notes on the weather source:
@@ -170,6 +171,7 @@ happened, and asks the sources that show that entity to refresh.
 | `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
 | `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
 | `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
+| `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
 
 Actions check the entity's `supported_features` first. Asking a window
 that cannot be positioned to move to 40%, or a player that cannot skip to
@@ -238,6 +240,16 @@ turning it on:
   `Assistant` permission, which is `dangerous` like `Unlock`.
 - Every app that asks shares the one conversation, since the plugin cannot
   tell callers apart.
+
+`send_to_agent` is `ask_assistant` under the name Index looks for. A plugin
+with that action and an `agent/configured` source is offered in Index as a
+destination for a ring gesture (Hold & Talk, Click & Hold) and for messages
+typed into the Index feed. `agent/configured` says `true` once Home Assistant
+is set up and **Share with Apps** is on, and Index only offers the assistant
+while it does. Index is not asked for the `Assistant` permission, as with
+any of the Pebble app's own callers, so **Share with Apps** is what keeps it
+out. Nothing on the watch goes through these destinations; watch apps call
+`ask_assistant` or `send_to_agent` directly.
 
 ## Trying it
 
