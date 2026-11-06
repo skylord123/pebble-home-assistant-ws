@@ -167,6 +167,11 @@
 			display: block;
 		}
 
+		/* The watch app's own, when only the plugin is answering */
+		html.via-plugin .watch-only {
+			display: none;
+		}
+
 		/* Section (Card) Styles - Clay-like */
 		.section {
 			background: var(--color-section-bg);
@@ -991,7 +996,7 @@
 					</div>
 					<small class="form-text">Tries the URL and token, and only keeps them once Home Assistant has accepted them. Everything else on this page still needs Save.</small>
 				</div>
-				<div class="component bridge-only">
+				<div class="component bridge-only watch-only">
 					<div class="form-group">
 						<label class="form-label" for="view-log-btn">App Log</label>
 						<button type="button" class="btn btn-secondary btn-block" id="view-log-btn">
@@ -1568,10 +1573,18 @@
 		typeof Pebble.sendMessage === 'function' &&
 		typeof Pebble.addEventListener === 'function') ? Pebble : null;
 
+	// Who answers: the watch app's JS when it is running, or else the plugin
+	// in the same pbw, which the phone can start with no watch app at all
+	// (opened from its Plugins tab, say). Both take the same requests.
+	var via = 'pkjs';
+
+	function viaPlugin() { return via === 'plugin'; }
+
 	function request(message) {
-		return bridge.sendMessage('pkjs', message).then(function(reply) {
+		return bridge.sendMessage(via, message).then(function(reply) {
 			if (!reply || typeof reply !== 'object') {
-				return { ok: false, error: { code: 'bad_reply', message: 'No reply from the watch app' } };
+				return { ok: false, error: { code: 'bad_reply', message: viaPlugin()
+					? 'No reply from the plugin' : 'No reply from the watch app' } };
 			}
 			if (reply.ok === undefined && reply.error !== undefined) {
 				return { ok: false, error: { code: 'host', message: String(reply.error) } };
@@ -2543,7 +2556,9 @@
 			});
 			watch_config = values;
 			refreshPlugin();
-			display_alert('success', '<strong>Saved.</strong> The watch is applying your settings.');
+			display_alert('success', viaPlugin()
+				? '<strong>Saved.</strong> The watch app uses them the next time it opens.'
+				: '<strong>Saved.</strong> The watch is applying your settings.');
 			alertContainer.scrollIntoView({ behavior: 'smooth', block: 'center' });
 		});
 	}
@@ -2641,7 +2656,7 @@
 				(reply.ha_version ? ' to Home Assistant ' + reply.ha_version : '') + ' · loading entities…';
 			display_alert('success', '<strong>Connected' +
 				(reply.ha_version ? ' to Home Assistant ' + esc(reply.ha_version) : '') +
-				'.</strong> The URL and token have been saved to the watch.');
+				'.</strong> The URL and token have been saved' + (viaPlugin() ? '.' : ' to the watch.'));
 		});
 	});
 
@@ -2650,6 +2665,10 @@
 	var searchTimer = null;
 	var searchSeq = 0;
 	var pendingQuery = null;
+
+	function loadingEntitiesText() {
+		return viaPlugin() ? 'Loading entities from Home Assistant…' : 'Waiting for the watch to load entities…';
+	}
 
 	function statesReady() {
 		return !!(lastStatus && lastStatus.states_loaded);
@@ -2668,6 +2687,7 @@
 		} else if (!entitySearch.value.trim()) {
 			entitySearchMeta.textContent = lastStatus && lastStatus.phase === 'unconfigured'
 				? 'Connect to Home Assistant above to search its entities.'
+				: viaPlugin() ? 'Loading entities from Home Assistant…'
 				: 'Waiting for the watch to load entities from Home Assistant…';
 		}
 	}
@@ -2779,7 +2799,7 @@
 		}
 		if (!statesReady()) {
 			pendingQuery = query;
-			entitySearchMeta.textContent = 'Waiting for the watch to load entities…';
+			entitySearchMeta.textContent = loadingEntitiesText();
 			return;
 		}
 		entitySearchMeta.textContent = 'Searching…';
@@ -2789,7 +2809,7 @@
 			if (!reply.ok) {
 				if (reply.error.code === 'not_loaded') {
 					pendingQuery = query;
-					entitySearchMeta.textContent = 'Waiting for the watch to load entities…';
+					entitySearchMeta.textContent = loadingEntitiesText();
 				} else {
 					entitySearchMeta.textContent = 'Search failed: ' + reply.error.message;
 				}
@@ -2947,7 +2967,7 @@
 
 	function loadFromWatch(startedAt) {
 		startedAt = startedAt || Date.now();
-		display_alert('info', 'Loading your settings from the watch…');
+		display_alert('info', viaPlugin() ? 'Loading your settings…' : 'Loading your settings from the watch…');
 		request({ type: 'get_settings' }).then(function(reply) {
 			if (!reply.ok) {
 				var retryable = (reply.error.code === 'host' || reply.error.code === 'send_failed') &&
@@ -2956,9 +2976,12 @@
 					setTimeout(function() { loadFromWatch(startedAt); }, LOAD_RETRY_MS);
 					return;
 				}
-				display_alert('danger', '<strong>Could not reach the watch app.</strong> ' +
-					esc(reply.error.message) + '. Make sure the app is open on the watch. ' +
-					'<a href="#" id="retry-load">Try again</a>');
+				display_alert('danger', viaPlugin()
+					? '<strong>Could not load your settings.</strong> ' + esc(reply.error.message) + '. ' +
+						'<a href="#" id="retry-load">Try again</a>'
+					: '<strong>Could not reach the watch app.</strong> ' +
+						esc(reply.error.message) + '. Make sure the app is open on the watch. ' +
+						'<a href="#" id="retry-load">Try again</a>');
 				$('retry-load').addEventListener('click', function(e) {
 					e.preventDefault();
 					loadFromWatch();
@@ -3032,17 +3055,54 @@
 		});
 
 		var started = false;
-		bridge.addEventListener('ready', function(e) {
-			if (e.target !== 'pkjs' || started) { return; }
+		var withoutWatchApp = false;
+		function start(target) {
+			if (started) { return; }
 			started = true;
+			via = target;
+			document.documentElement.classList.toggle('via-plugin', viaPlugin());
 			loadFromWatch();
+		}
+
+		bridge.addEventListener('ready', function(e) {
+			if (e.target === 'pkjs') {
+				// Started after the page was loaded from the plugin: from
+				// here on it is the one holding the settings, and it has
+				// read the ones saved through the plugin as it started
+				if (started && viaPlugin()) {
+					via = 'pkjs';
+					document.documentElement.classList.remove('via-plugin');
+					return;
+				}
+				start('pkjs');
+			} else if (e.target === 'plugin' && withoutWatchApp) {
+				start('plugin');
+			}
 		});
+
+		// The phone opens the page with the watch app running when it was
+		// opened from the app; otherwise only the plugin is behind it
+		var targets = typeof bridge.targets === 'function' ? bridge.targets() : Promise.resolve(null);
+		targets.then(function(list) {
+			if (!Array.isArray(list)) { return; }
+			var ids = list.map(function(target) { return target && target.id; });
+			if (ids.indexOf('pkjs') === -1 && ids.indexOf('plugin') !== -1) {
+				withoutWatchApp = true;
+				if (typeof bridge.readyTargets === 'function' &&
+					bridge.readyTargets().indexOf('plugin') !== -1) {
+					start('plugin');
+				} else {
+					display_alert('info', 'Starting the plugin…');
+				}
+			}
+		}, function() {});
 
 		// The phone only says the watch app is ready once it is running
 		setTimeout(function() {
 			if (!started) {
-				display_alert('warning', '<strong>Still waiting for the watch app.</strong> ' +
-					'Make sure Home Assistant WS is open on the watch.');
+				display_alert('warning', withoutWatchApp
+					? '<strong>The plugin has not started.</strong> Check that plugins are turned on in the Pebble app.'
+					: '<strong>Still waiting for the watch app.</strong> Make sure Home Assistant WS is open on the watch.');
 			}
 		}, 15000);
 	}

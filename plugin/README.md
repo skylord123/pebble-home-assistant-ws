@@ -43,7 +43,7 @@ UUID):
 
 | What it reads | Where it comes from |
 | --- | --- |
-| URL, token, shared list, assistant switch | the `options:<uuid>` object the settings page saves |
+| URL, token, shared list, assistant switch | the `options:<uuid>` object the settings page saves, through the watch app or, when it is not running, through the plugin |
 | Weather entity list | `plugin_weather_entities`, which the watch app writes once it has the states |
 
 Before the watch app has written the weather list, the plugin finds the
@@ -268,3 +268,14 @@ The settings page (v1.8 and later) sends messages to the plugin with
 | --- | --- |
 | `{ type: 'status' }` | `{ ok, shared, weather, assistant }`, or `{ ok: false, error: { code, message } }`. Checks that the plugin can reach Home Assistant. |
 | `{ type: 'refresh' }` | `{ ok }`. Asks every source to refresh. The page sends it after a save. |
+| `{ type: 'get_settings' }` | `{ ok, settings, status }`, as the watch app answers it. Then pushes `{ type: 'status', status, settings }` once the states, calendars and pipelines have been fetched. |
+| `{ type: 'save_settings', settings }` | `{ ok }`. Merges `settings` into the stored ones, keeping the previous copy as the backup, and asks every source to refresh. |
+| `{ type: 'connect', ha_url, token }` | `{ ok, ha_version }`. Saves the URL and token only once Home Assistant accepts them. |
+| `{ type: 'search_entities', query, limit }` | `{ ok, results, total }`, ranked as the watch app ranks them. |
+
+The last four are what the page sends the watch app's JS. It sends them
+here instead when the phone opened it with only the plugin behind it, from
+the Plugins tab for example, so the settings can be changed without the
+watch app running. The plugin only writes the settings then: the watch
+app's JS keeps them in memory while it runs and would write over them, but
+reads them afresh when it starts.
