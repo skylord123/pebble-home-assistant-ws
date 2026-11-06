@@ -1,7 +1,9 @@
 /**
  * The watch app's settings, read from the localStorage this plugin shares
- * with the app's own JS. Read only: the app keeps its own copy of these in
- * memory and would write over anything changed here on its next save.
+ * with the app's own JS. Only written by the settings page while the watch
+ * app's JS is not running: the app keeps its own copy of these in memory and
+ * would write over anything changed here on its next save, but it reads them
+ * afresh whenever it starts.
  *
  * Mirrors src/js/settings/settings.js, including falling back to the backup
  * copy when a write was torn half way.
@@ -31,6 +33,24 @@ function read() {
         data.plugin_allow_unlock = false;
         data.plugin_share_assistant = false;
     }
+    return data;
+}
+
+/**
+ * Merge `changes` into the settings, as Settings.option(object) does in the
+ * watch app: the copy being replaced becomes the backup first, so a write
+ * torn half way still leaves one that parses.
+ * @returns {Object} the settings as saved
+ */
+function save(changes) {
+    var data = read();
+    Object.keys(changes).forEach(function(key) { data[key] = changes[key]; });
+    var serialized = JSON.stringify(data);
+    var previous = localStorage.getItem(KEY);
+    if (previous && previous !== serialized && parse(previous)) {
+        localStorage.setItem(KEY + '.bak', previous);
+    }
+    localStorage.setItem(KEY, serialized);
     return data;
 }
 
@@ -67,6 +87,7 @@ function weatherIds(options) {
 
 module.exports = {
     read: read,
+    save: save,
     connection: connection,
     exposedIds: exposedIds,
     weatherIds: weatherIds

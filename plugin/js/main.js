@@ -11,6 +11,7 @@ var ha = require('ha');
 var entities = require('entities');
 var weather = require('weather');
 var actions = require('actions');
+var page = require('page');
 
 function fail(respond, err) {
     if (err instanceof ha.PluginError) {
@@ -103,9 +104,11 @@ function action(request, respond) {
 }
 
 /**
- * The watch app's settings page talks to the plugin while it is open: to
- * check the plugin can reach Home Assistant, and to have whatever reads the
- * shared entities read them again once the list has changed.
+ * The settings page talks to the plugin while it is open: to check the
+ * plugin can reach Home Assistant, and to have whatever reads the shared
+ * entities read them again once the list has changed. When the watch app's
+ * JS is not running, the page also loads and saves the settings here; see
+ * page.js.
  */
 Pebble.registerConfigHandler(function(message, respond) {
     var type = message && message.type;
@@ -113,9 +116,7 @@ Pebble.registerConfigHandler(function(message, respond) {
 
     if (type === 'refresh') {
         // Asked for because something changed; a cached answer would hide it
-        ha.forgetStates();
-        Pebble.refreshSources(['home/entity', 'weather/location']
-            .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
+        page.refreshSources();
         return respond({ ok: true });
     }
 
@@ -135,6 +136,13 @@ Pebble.registerConfigHandler(function(message, respond) {
             });
         }, function(err) {
             respond({ ok: false, error: { code: err.code || 'UNKNOWN', message: err.message || String(err) } });
+        });
+    }
+
+    var handler = page.handlerFor(type);
+    if (handler) {
+        return Promise.resolve(handler(message, respond)).catch(function(err) {
+            respond(page.failure(err));
         });
     }
 

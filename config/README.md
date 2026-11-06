@@ -78,6 +78,16 @@ save so they pick up a changed list of shared entities. The phone fires
 `ready` with `{ target: 'plugin' }` once the plugin can be reached. See
 `plugin/README.md`.
 
+The phone can also open the bundled page with no watch app behind it, from
+its Plugins tab or from an Index destination. `Pebble.targets()` then lists
+only `plugin`, and the page sends `get_settings`, `save_settings`, `connect`
+and `search_entities` to the plugin instead, which answers them from the
+stored settings and Home Assistant's REST API (`plugin/js/page.js`). The
+watch app reads the saved settings the next time it starts. The app log is
+the watch app's own, so it is hidden in this mode. If the watch app starts
+while the page is open, the page sends everything after that to the watch
+app.
+
 ## Working on the page
 
 Open `config/v1.7.html` in a browser with the settings in the hash to work on
