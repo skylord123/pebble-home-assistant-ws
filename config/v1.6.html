@@ -1057,6 +1057,38 @@
 				</div>
 				<div class="component">
 					<div class="form-switch">
+						<label class="form-check-label" for="ha-assist-stream-audio">Send your voice to Home Assistant</label>
+						<input class="form-check-input" type="checkbox" id="ha-assist-stream-audio" checked>
+					</div>
+					<small class="form-text">Your pipeline's own speech-to-text hears you instead of the phone's dictation, and there is no limit on how long you can talk. Needs a Pebble Time 2, Core 2 Duo or Core Time Round on firmware 4.43 or newer, and the Core Devices Pebble app with its Plugins preview turned on and the watch microphone allowed for this app. Anywhere it cannot work, dictation is used as before.</small>
+					<div id="assist-stream-status" class="alert alert-warning mt-2 hidden" role="alert"></div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-stream-end">Stop Listening</label>
+						<select class="form-select" id="ha-assist-stream-end">
+							<option value="auto">When I stop talking</option>
+							<option value="manual">When I press Select</option>
+						</select>
+						<small class="form-text">For your voice sent to Home Assistant. When you stop talking, the turn ends after a short pause. When you press Select, it keeps listening for as long as you talk, which suits dictating long notes. Select ends a turn early either way.</small>
+					</div>
+				</div>
+				<div class="component" id="assist-stream-pause-container">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-stream-pause">Stop After a Pause Of</label>
+						<select class="form-select" id="ha-assist-stream-pause">
+							<option value="0">Home Assistant's default</option>
+							<option value="1">1 second</option>
+							<option value="1.5">1.5 seconds</option>
+							<option value="2">2 seconds</option>
+							<option value="3">3 seconds</option>
+							<option value="5">5 seconds</option>
+						</select>
+						<small class="form-text">Home Assistant's default stops at your first short pause, and after 15 seconds at most. Pick a length to talk for as long as you like, with room to stop and think. The silence is then picked up by your phone instead of Home Assistant, which works best somewhere quiet.</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-switch">
 						<label class="form-check-label" for="ha-assist-vibration-feedback">Vibration feedback</label>
 						<input class="form-check-input" type="checkbox" id="ha-assist-vibration-feedback" checked>
 					</div>
@@ -1104,7 +1136,7 @@
 		<details class="section">
 			<summary class="section-header">
 				<span class="section-title">Display Settings</span>
-				<span class="section-hint">Menu background, scrolling, touch, and the inactivity timeout</span>
+				<span class="section-hint">Menu background, text size, scrolling, touch, and the inactivity timeout</span>
 			</summary>
 			<div class="section-body">
 				<div class="component">
@@ -1116,6 +1148,17 @@
 							<option value="sun">Follow the sun</option>
 						</select>
 						<small class="form-text">Menus are white on black by default. White inverts them to black text on white, and following the sun uses white while the sun is up where you are and black once it has set. The sun is worked out on your phone from its location.</small>
+					</div>
+				</div>
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-menu-text-size">Text Size</label>
+						<select class="form-select" id="ha-menu-text-size">
+							<option value="smaller">Smaller</option>
+							<option value="default">Default</option>
+							<option value="larger">Larger</option>
+						</select>
+						<small class="form-text">Changes the size of the text in the app's menus, in the same steps as the watch's own Text Size setting. Also configurable on the watch under Settings, Display. Not available on the original Pebble and Pebble Steel.</small>
 					</div>
 				</div>
 				<div class="component">
@@ -1556,6 +1599,11 @@
 		voiceBacklightTrigger = $('ha-voice-backlight-trigger'),
 		voiceBacklightHold = $('ha-voice-backlight-hold'),
 		assistStreamReply = $('ha-assist-stream-reply'),
+		assistStreamAudio = $('ha-assist-stream-audio'),
+		assistStreamEnd = $('ha-assist-stream-end'),
+		assistStreamPause = $('ha-assist-stream-pause'),
+		assistStreamPauseContainer = $('assist-stream-pause-container'),
+		assistStreamStatus = $('assist-stream-status'),
 		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
 		voiceFontSize = $('ha-voice-font-size'),
 		pipelineSelect = $('ha-pipeline-select'),
@@ -1580,6 +1628,7 @@
 		quickLaunchExitOnBack = $('ha-quick-launch-exit-on-back'),
 		menuBackground = $('ha-menu-background'),
 		assistBackground = $('ha-assist-background'),
+		menuTextSize = $('ha-menu-text-size'),
 		menuScrollWrap = $('ha-menu-scroll-wrap'),
 		touchEnabled = $('ha-touch-enabled'),
 		touchLongPress = $('ha-touch-long-press'),
@@ -2149,7 +2198,53 @@
 
 	pipelineSelect.addEventListener('change', function() {
 		chosenPipeline = pipelineSelect.value;
+		renderStreamStatus();
 	});
+
+	// Why a voice sent to Home Assistant would go to dictation instead, as
+	// far as the page can tell from what the watch app last saw
+	function streamStatusText() {
+		if (!assistStreamAudio.checked) { return ''; }
+		var watch = watch_config['assist_stream_watch'];
+		if (watch === 'unsupported') {
+			return 'This watch cannot send its microphone to Home Assistant, so the phone\'s dictation is used.';
+		}
+		if (watch === 'firmware') {
+			return 'Update the watch to firmware 4.43 or newer to send your voice to Home Assistant. Until then the phone\'s dictation is used.';
+		}
+		if (watch === 'phone') {
+			return 'Your phone app cannot take the watch microphone, so the phone\'s dictation is used. Core\'s Pebble app can from version 1.16.0.1.';
+		}
+		var pipelines = watch_config['available_pipelines'] || [];
+		var selected = pipelineSelect.disabled ? currentPipeline() : pipelineSelect.value;
+		for (var i = 0; i < pipelines.length; i++) {
+			if (pipelines[i].id === selected && pipelines[i].stt === false) {
+				return 'This pipeline has no speech-to-text engine, so the phone\'s dictation is used with it. Give it one in Home Assistant under Settings, Voice assistants, or pick another pipeline.';
+			}
+		}
+		var last = watch_config['assist_stream_status'];
+		if (last && last.result === 'refused') {
+			return 'The Pebble app refused the microphone the last time the watch asked. Turn on the Plugins preview in the Pebble app\'s settings, open the assistant once, and allow the watch microphone when the Pebble app asks (or on this app\'s page in the Pebble app). It is asked again the next time the app opens.';
+		}
+		if (last && last.result === 'noanswer') {
+			return 'Your phone app did not answer when the watch asked to send its microphone, so it probably does not support it yet and the phone\'s dictation is used. It is asked again in two weeks, or after you turn this off, save, and turn it back on.';
+		}
+		return '';
+	}
+
+	function renderStreamStatus() {
+		var text = streamStatusText();
+		assistStreamStatus.textContent = text;
+		show(assistStreamStatus, !!text);
+	}
+
+	assistStreamAudio.addEventListener('change', renderStreamStatus);
+
+	// The pause only applies to turns that end when the wearer stops talking
+	function updateStreamPauseVisibility() {
+		show(assistStreamPauseContainer, assistStreamEnd.value !== 'manual');
+	}
+	assistStreamEnd.addEventListener('change', updateStreamPauseVisibility);
 
 	function currentPipeline() {
 		if (chosenPipeline !== null) { return chosenPipeline; }
@@ -2186,6 +2281,7 @@
 			pipelineSelect.appendChild(none);
 			show(pipelineWarning, true);
 		}
+		renderStreamStatus();
 	}
 
 	// ===== Form <-> config ==================================================
@@ -2202,6 +2298,9 @@
 			'voice_backlight_hold': voiceBacklightHold.checked,
 			'assist_stream_reply': assistStreamReply.checked,
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
+			'assist_stream_audio': assistStreamAudio.checked,
+			'assist_stream_end': assistStreamEnd.value,
+			'assist_stream_pause': Number(assistStreamPause.value),
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
 			// While the dropdown is empty (not connected) the saved choice
 			// stands, rather than being wiped by a dropout
@@ -2211,6 +2310,7 @@
 			'quick_launch_exit_on_back': quickLaunchExitOnBack.checked,
 			'menu_background_mode': menuBackground.value,
 			'assist_background_mode': assistBackground.value,
+			'menu_text_size': menuTextSize.value,
 			'menu_scroll_wrap': menuScrollWrap.checked,
 			'touch_enabled': touchEnabled.checked,
 			'touch_long_press': touchLongPress.checked,
@@ -2241,6 +2341,13 @@
 				: null,
 			'hidden_calendars': getHiddenCalendarIds()
 		};
+
+		// Turning it back on asks the phone afresh, rather than holding on to
+		// whatever it said last time: the wearer may have just allowed the
+		// microphone or updated the app
+		if (assistStreamAudio.checked && watch_config['assist_stream_audio'] === false) {
+			values.assist_stream_status = null;
+		}
 
 		// Preserve timeline_token if it exists
 		if (watch_config && watch_config.timeline_token) {
@@ -2286,6 +2393,11 @@
 		voiceBacklightHold.checked = watch_config['voice_backlight_hold'] === true;
 		assistStreamReply.checked = defaulted(watch_config['assist_stream_reply'], true);
 		assistVibrationFeedback.checked = defaulted(watch_config['assist_vibration_feedback'], true);
+		assistStreamAudio.checked = defaulted(watch_config['assist_stream_audio'], true);
+		assistStreamEnd.value = watch_config['assist_stream_end'] === 'manual' ? 'manual' : 'auto';
+		assistStreamPause.value = String(watch_config['assist_stream_pause'] || 0);
+		if (assistStreamPause.selectedIndex < 0) { assistStreamPause.value = '0'; }
+		updateStreamPauseVisibility();
 		voiceFontSize.value = watch_config['voice_font_size'] ? String(watch_config['voice_font_size']) : '18';
 
 		chosenPipeline = null;
@@ -2297,6 +2409,11 @@
 		// Background colours, black unless they have been changed
 		menuBackground.value = watch_config['menu_background_mode'] || 'black';
 		assistBackground.value = watch_config['assist_background_mode'] || 'black';
+
+		// Anything but the three sizes, a missing setting included, shows as
+		// Default, which is also how the watch reads it
+		var textSize = watch_config['menu_text_size'];
+		menuTextSize.value = (textSize === 'smaller' || textSize === 'larger') ? textSize : 'default';
 
 		menuScrollWrap.checked = defaulted(watch_config['menu_scroll_wrap'], true);
 		touchEnabled.checked = defaulted(watch_config['touch_enabled'], true);

@@ -363,6 +363,18 @@ static void window_disappear(Window *window) {
   app_timer_register(0, prv_destroy_later, self);
 }
 
+// Back leaves the app from the splash, as it does at launch when there is
+// nothing under it. Popping only the splash would uncover a page that JS
+// cannot serve while it waits for a connection, and that page would then
+// hold the wearer, since every button on it waits for JS.
+static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
+  window_stack_pop_all(false);
+}
+
+static void prv_click_config_provider(void *context) {
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_back_click);
+}
+
 SimplySplash *simply_splash_create(Simply *simply) {
   SimplySplash *self = malloc(sizeof(*self));
   *self = (SimplySplash) { .simply = simply };
@@ -378,6 +390,7 @@ SimplySplash *simply_splash_create(Simply *simply) {
     .appear = window_appear,
     .disappear = window_disappear,
   });
+  window_set_click_config_provider(self->window, prv_click_config_provider);
 
   return self;
 }
@@ -387,9 +400,45 @@ void simply_splash_destroy(SimplySplash *self) {
 
   window_destroy(self->window);
 
-  self->simply->splash = NULL;
+  // A splash shown again while this one was on its way out is a new one
+  if (self->simply->splash == self) {
+    self->simply->splash = NULL;
+  }
 
   free(self);
+}
+
+// Whether JS has the splash up for reasons of its own, such as waiting for
+// Home Assistant, as opposed to the watch putting it up for a lost phone
+static bool s_js_wants_splash = true;
+
+//! The splash to put on screen: the current one, or a new one when the
+//! current one has already left and is only waiting to be destroyed
+static SimplySplash *prv_ensure(Simply *simply) {
+  if (simply->splash && simply->splash->destroying) {
+    simply->splash = NULL;
+  }
+  if (!simply->splash) {
+    simply->splash = simply_splash_create(simply);
+  }
+  if (!window_stack_contains_window(simply->splash->window)) {
+    window_stack_push(simply->splash->window, false);
+  }
+  return simply->splash;
+}
+
+static void prv_set_mode(SimplySplash *self, uint8_t mode) {
+  self->mode = mode;
+#if defined(SPLASH_FANCY)
+  if (self->mode == SplashModeConnecting) {
+    if (!self->timer) {
+      self->timer = app_timer_register(PULSE_TICK_MS, prv_timer_callback, self);
+    }
+  } else {
+    prv_stop_timer(self);
+  }
+#endif
+  layer_mark_dirty(window_get_root_layer(self->window));
 }
 
 //! Copy a string out of a packet, reading no further than the packet's end
@@ -421,14 +470,11 @@ bool simply_splash_is_covering(Simply *simply) {
 bool simply_splash_handle_packet(Simply *simply, Packet *packet) {
   switch (packet->type) {
     case CommandSplashShow:
-      if (!simply->splash) {
-        simply->splash = simply_splash_create(simply);
-      }
-      if (!window_stack_contains_window(simply->splash->window)) {
-        window_stack_push(simply->splash->window, false);
-      }
+      s_js_wants_splash = true;
+      prv_ensure(simply);
       return true;
     case CommandSplashHide:
+      s_js_wants_splash = false;
       if (simply->splash) {
         // disappear tears the splash down
         window_stack_remove(simply->splash->window, false);
@@ -439,20 +485,39 @@ bool simply_splash_handle_packet(Simply *simply, Packet *packet) {
       return true;
     case CommandSplashMode:
       if (simply->splash) {
-        SimplySplash *self = simply->splash;
-        self->mode = ((SplashModePacket *)packet)->mode;
-#if defined(SPLASH_FANCY)
-        if (self->mode == SplashModeConnecting) {
-          if (!self->timer) {
-            self->timer = app_timer_register(PULSE_TICK_MS, prv_timer_callback, self);
-          }
-        } else {
-          prv_stop_timer(self);
-        }
-#endif
-        layer_mark_dirty(window_get_root_layer(self->window));
+        prv_set_mode(simply->splash, ((SplashModePacket *)packet)->mode);
       }
       return true;
   }
   return false;
+}
+
+//! Put the watch's own words on the splash. They are all short enough to fit.
+static void prv_say(SimplySplash *self, const char *status, const char *body, uint8_t mode) {
+  strcpy(self->status, status);
+  strcpy(self->body, body);
+  prv_set_mode(self, mode);
+}
+
+void simply_splash_show_phone_lost(Simply *simply, bool reconnected) {
+  SimplySplash *self = prv_ensure(simply);
+  strcpy(self->title, "Home Assistant");
+  if (reconnected) {
+    prv_say(self, "Reconnecting", "", SplashModeConnecting);
+  } else {
+    prv_say(self, "Phone disconnected", "Waiting for the Pebble app", SplashModeError);
+  }
+}
+
+void simply_splash_phone_back(Simply *simply) {
+  SimplySplash *self = simply->splash;
+  if (!self || self->destroying) { return; }
+  if (s_js_wants_splash) {
+    // What JS last said is lost under the watch's own words, and JS will
+    // only say more when something changes
+    prv_say(self, "Reconnecting", "", SplashModeConnecting);
+  } else {
+    // Revealing the page asks JS to draw it again
+    window_stack_remove(self->window, false);
+  }
 }

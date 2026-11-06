@@ -9,6 +9,7 @@ var EntityService = require('app/EntityService');
 var EntityListPage = require('app/pages/EntityListPage');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
 var helpers = require('app/helpers');
+var NavRoute = require('app/NavRoute');
 var Settings = require('settings');
 
 // Lazy imports to avoid circular dependencies
@@ -332,10 +333,7 @@ class MainMenuPage extends BasePage {
                     id: 'people',
                     title: "People",
                     on_click: function(e) {
-                        var personEntities = Object.keys(self.appState.ha_state_dict || {}).filter(function(entity_id) {
-                            return entity_id.indexOf('person.') === 0;
-                        });
-                        EntityListPage.showEntityList("People", personEntities, true, true, true);
+                        showPeople();
                     }
                 };
             case 'all_entities':
@@ -343,20 +341,7 @@ class MainMenuPage extends BasePage {
                     id: 'all_entities',
                     title: "All Entities",
                     on_click: function(e) {
-                        var entityKeys = Object.keys(self.appState.ha_state_dict || {});
-                        var shouldShowDomains = helpers.shouldShowDomainMenu(
-                            entityKeys,
-                            self.appState.domain_menu_all_entities,
-                            {
-                                minEntities: self.appState.domain_menu_min_entities,
-                                minDomains: self.appState.domain_menu_min_domains
-                            }
-                        );
-                        if (shouldShowDomains) {
-                            EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
-                        } else {
-                            EntityListPage.showEntityList("All Entities", entityKeys, true, true, true);
-                        }
+                        showAllEntities();
                     }
                 };
             case 'settings':
@@ -458,6 +443,38 @@ class MainMenuPage extends BasePage {
     }
 }
 
+/**
+ * Everyone Home Assistant tracks
+ */
+function showPeople() {
+    var appState = AppState.getInstance();
+    var personEntities = Object.keys(appState.ha_state_dict || {}).filter(function(entity_id) {
+        return entity_id.indexOf('person.') === 0;
+    });
+    EntityListPage.showEntityList("People", personEntities, true, true, true);
+}
+
+/**
+ * Every entity, by domain when there are enough of them
+ */
+function showAllEntities() {
+    var appState = AppState.getInstance();
+    var entityKeys = Object.keys(appState.ha_state_dict || {});
+    var shouldShowDomains = helpers.shouldShowDomainMenu(
+        entityKeys,
+        appState.domain_menu_all_entities,
+        {
+            minEntities: appState.domain_menu_min_entities,
+            minDomains: appState.domain_menu_min_domains
+        }
+    );
+    if (shouldShowDomains) {
+        EntityListPage.showEntityDomainsFromList(entityKeys, "All Entities");
+    } else {
+        EntityListPage.showEntityList("All Entities", entityKeys, true, true, true);
+    }
+}
+
 // Singleton instance
 var mainMenuPageInstance = null;
 
@@ -487,6 +504,12 @@ function refreshIfVisible() {
     }
 }
 
+
+showMainMenu = NavRoute.wrap('main', showMainMenu);
+showPeople = NavRoute.wrap('people', showPeople);
+showAllEntities = NavRoute.wrap('allEntities', showAllEntities);
+
 module.exports = MainMenuPage;
 module.exports.showMainMenu = showMainMenu;
 module.exports.refreshIfVisible = refreshIfVisible;
+module.exports.showPeople = showPeople;

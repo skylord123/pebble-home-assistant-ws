@@ -7,6 +7,7 @@ var Menu = require('ui/menu');
 var InactivityTimer = require('app/InactivityTimer');
 var Touch = require('ui/touch');
 var AppState = require('app/AppState');
+var AudioStream = require('app/AudioStream');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -45,6 +46,21 @@ var SettingsManager = {
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
         appState.voice_backlight_hold = Settings.option('voice_backlight_hold') === true;
         appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
+        // On unless the wearer has turned it off. Where it cannot work the
+        // watch dictates as it always has, so nothing ever needs to turn it on
+        // or off on the wearer's behalf, and a choice to turn it off stays.
+        appState.assist_stream_audio = Settings.option('assist_stream_audio') !== false;
+        appState.assist_stream_end = Settings.option('assist_stream_end') === 'manual' ? 'manual' : 'auto';
+        var pause = Number(Settings.option('assist_stream_pause'));
+        appState.assist_stream_pause = pause > 0 && pause <= 10 ? pause : 0;
+        // The config page cannot see the watch or the phone app, so it is told
+        // whether they could stream, to explain why dictation is used if not
+        var streamWatch = !AudioStream.watchHasStreamPlatform() ? 'unsupported' :
+            !AudioStream.watchCanStream() ? 'firmware' :
+            !AudioStream.phoneCanStream() ? 'phone' : 'ready';
+        if (Settings.option('assist_stream_watch') !== streamWatch) {
+            Settings.option('assist_stream_watch', streamWatch);
+        }
         appState.assist_vibration_feedback = Settings.option('assist_vibration_feedback') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 
@@ -149,6 +165,13 @@ var SettingsManager = {
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
+
+        // Menu text size (default 'default'). Setting it here covers both
+        // startup and a change made on the config page, and redraws the menu
+        // on screen if the size changed.
+        appState.menu_text_size = Menu.normalizeTextSize(Settings.option('menu_text_size'));
+        Menu.setTextSize(appState.menu_text_size);
+        log('Menu text size: ' + appState.menu_text_size);
 
         // Background colour, black unless it has been changed. Applying it here
         // covers both startup and a change made on the config page.

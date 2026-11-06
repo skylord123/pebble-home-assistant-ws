@@ -79,5 +79,7 @@ enum Command {
   CommandAssistMessage,
   CommandAssistTranscript,
   CommandAssistAction,
+  CommandAssistListen,
+  CommandAssistLevels,
   NumCommands,
 };

@@ -4,9 +4,12 @@
 var UI = require('ui');
 var Settings = require('settings');
 var Feature = require('platform/feature');
+var Platform = require('platform');
 var Vibe = require('ui/vibe');
 var BasePage = require('app/pages/BasePage');
+var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
+var AudioStream = require('app/AudioStream');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var InactivityTimer = require('app/InactivityTimer');
@@ -29,16 +32,28 @@ class SettingsMenuPage extends BasePage {
         });
     }
 
-    onShow() {
-        var self = this;
-        var appState = this.appState;
-        this.menu.items(0, []);
+    /**
+     * The rows are filled in before the menu goes up as well as each time it
+     * comes back, and replaced in one go rather than cleared and added back one
+     * at a time, so the watch never has to place the selection among rows that
+     * are not there yet.
+     */
+    show() {
+        if (!this.menu) {
+            this.menu = this.createMenu();
+            this.setupEventHandlers();
+        }
+        this.buildMenuItems();
+        super.show();
+    }
 
-        var i = 0;
+    buildMenuItems() {
+        var appState = this.appState;
+        var items = [];
 
         // Only show Assistant settings if we have microphone support
         if (Feature.microphone(true, false)) {
-            this.menu.item(0, i++, {
+            items.push({
                 title: "Assistant",
                 on_click: function(e) {
                     showVoiceAssistantSettings();
@@ -46,28 +61,39 @@ class SettingsMenuPage extends BasePage {
             });
         }
 
-        this.menu.item(0, i++, {
+        items.push({
             title: "Entity Settings",
             on_click: function(e) {
                 showEntitySettings();
             }
         });
 
-        this.menu.item(0, i++, {
+        items.push({
             title: "Domain Filters",
             on_click: function(e) {
                 showDomainFilterSettings();
             }
         });
 
-        this.menu.item(0, i++, {
+        items.push({
             title: "Quick Launch",
             on_click: function(e) {
                 showQuickLaunchSettings();
             }
         });
 
-        this.menu.item(0, i++, {
+        // Aplite draws its menus at the one size the firmware gives them, so
+        // it has no Display settings to offer
+        if (Platform.version() !== 'aplite') {
+            items.push({
+                title: "Display",
+                on_click: function(e) {
+                    showDisplaySettings();
+                }
+            });
+        }
+
+        items.push({
             title: "Menu Background",
             subtitle: Theme.describe(appState.menu_background_mode),
             on_click: function(e) {
@@ -75,7 +101,7 @@ class SettingsMenuPage extends BasePage {
             }
         });
 
-        this.menu.item(0, i++, {
+        items.push({
             title: "Inactivity Timeout",
             subtitle: formatInactivityTimeout(appState.inactivity_timeout),
             on_click: function(e) {
@@ -85,7 +111,7 @@ class SettingsMenuPage extends BasePage {
 
         // Only show touch settings on watches with a touchscreen
         if (Touch.supported()) {
-            this.menu.item(0, i++, {
+            items.push({
                 title: "Touch",
                 subtitle: appState.touch_enabled ? 'Enabled' : 'Disabled',
                 on_click: function(e) {
@@ -93,6 +119,8 @@ class SettingsMenuPage extends BasePage {
                 }
             });
         }
+
+        this.menu.items(0, items);
     }
 
     onSelect(e) {
@@ -150,6 +178,97 @@ function showBackgroundMenu(title, key) {
     });
 
     backgroundMenu.show();
+}
+
+var TEXT_SIZES = ['smaller', 'default', 'larger'];
+
+var TEXT_SIZE_LABELS = {
+    smaller: 'Smaller',
+    default: 'Default',
+    larger: 'Larger'
+};
+
+/**
+ * Show the Display settings menu.
+ */
+function showDisplaySettings() {
+    var appState = AppState.getInstance();
+
+    var displayMenu = new UI.Menu({
+        status: false,
+        sections: [{
+            title: 'Display'
+        }]
+    });
+
+    // Rebuilt each time it comes back so the subtitle is current after the
+    // picker has closed
+    function updateMenuItems() {
+        displayMenu.items(0, [{
+            title: 'Text Size',
+            subtitle: TEXT_SIZE_LABELS[appState.menu_text_size] || TEXT_SIZE_LABELS['default']
+        }]);
+    }
+
+    displayMenu.on('show', updateMenuItems);
+
+    displayMenu.on('select', function(e) {
+        showTextSizeMenu();
+    });
+
+    updateMenuItems();
+    displayMenu.show();
+}
+
+/**
+ * Show the text size picker for the app's menus.
+ *
+ * Like the background picker, the choice applies the moment it is made, so
+ * the picker itself is redrawn at the new size and the wearer can see what
+ * they picked before it closes.
+ */
+function showTextSizeMenu() {
+    var appState = AppState.getInstance();
+
+    var textSizeMenu = new UI.Menu({
+        status: false,
+        sections: [{
+            title: 'Text Size'
+        }]
+    });
+
+    function updateMenuItems() {
+        var items = [];
+
+        for (var i = 0; i < TEXT_SIZES.length; i++) {
+            items.push({
+                title: TEXT_SIZE_LABELS[TEXT_SIZES[i]],
+                subtitle: appState.menu_text_size === TEXT_SIZES[i] ? 'Current' : '',
+                value: TEXT_SIZES[i]
+            });
+        }
+
+        textSizeMenu.items(0, items);
+    }
+
+    textSizeMenu.on('show', updateMenuItems);
+
+    textSizeMenu.on('select', function(e) {
+        appState.menu_text_size = e.item.value;
+        Settings.option('menu_text_size', e.item.value);
+        UI.Menu.setTextSize(e.item.value);
+        updateMenuItems();
+        setTimeout(function() {
+            textSizeMenu.hide();
+        }, 500);
+    });
+
+    // Filled in and opened on the size in use, the way the watch's own picker
+    // opens, before it goes up, so the watch never places the selection
+    // among rows that have not arrived yet
+    updateMenuItems();
+    textSizeMenu.selection(0, Math.max(0, TEXT_SIZES.indexOf(appState.menu_text_size)));
+    textSizeMenu.show();
 }
 
 /**
@@ -298,6 +417,30 @@ function showVoiceAssistantSettings(onClose) {
                 showVoicePipelineMenu();
             }
         });
+
+        // Who turns the wearer's voice into words. Only the watches that can
+        // stream have a choice to make.
+        if (AudioStream.watchHasStreamPlatform()) {
+            voiceSettingsMenu.item(0, menuIndex++, {
+                title: "Speech",
+                subtitle: AudioStream.describe(require('app/pages/AssistPage').pipelineHearsAudio()),
+                on_click: function(e) {
+                    appState.assist_stream_audio = !appState.assist_stream_audio;
+                    AudioStream.setEnabled(appState.assist_stream_audio);
+                    updateMenuItems();
+                }
+            });
+
+            voiceSettingsMenu.item(0, menuIndex++, {
+                title: "Stop Listening",
+                subtitle: appState.assist_stream_end === 'manual' ? "On SELECT" : "When I stop",
+                on_click: function(e) {
+                    appState.assist_stream_end = appState.assist_stream_end === 'manual' ? 'auto' : 'manual';
+                    Settings.option('assist_stream_end', appState.assist_stream_end);
+                    updateMenuItems();
+                }
+            });
+        }
 
         // Confirm Dictate setting
         voiceSettingsMenu.item(0, menuIndex++, {
@@ -1086,6 +1229,8 @@ function showSettingsMenu() {
     var page = new SettingsMenuPage();
     page.show();
 }
+
+showSettingsMenu = NavRoute.wrap('settings', showSettingsMenu);
 
 module.exports = SettingsMenuPage;
 module.exports.showSettingsMenu = showSettingsMenu;

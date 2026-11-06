@@ -62,6 +62,8 @@ and a **Find Entities** search for adding favorites and pinned entities. Other
 phone apps open the same page from GitHub Pages and save the classic way; see
 [config/README.md](config/README.md).
 
+With the Plugins preview turned on, the Core Devices Pebble app asks you to allow what the app uses when you install it: the internet and your local network (to reach Home Assistant wherever it is), your location (for sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
+
 ### Home Assistant Setup Requirements
 
 - Enable the [Conversation integration](https://www.home-assistant.io/integrations/conversation/) for voice control
@@ -83,6 +85,18 @@ phone apps open the same page from GitHub Pages and save the classic way; see
 3. Speak your command (e.g., "Turn on the kitchen lights" or "What's the temperature outside?")
 4. View the response and scroll if needed using up/down buttons
 5. Long-press the middle button to change conversation agents
+
+#### Sending your voice to Home Assistant
+
+On a Pebble Time 2, Core 2 Duo or Core Time Round running firmware 4.43 or newer, the watch can send your voice straight to Home Assistant instead of using the phone's dictation. Your pipeline's own speech-to-text (Whisper, Home Assistant Cloud, Speech-to-Phrase and so on) hears you, and there is no limit on how long you can talk.
+
+It is on by default and is used whenever it can be. To make it work:
+
+1. Use the Core Devices Pebble app and turn on its Plugins preview in the app's settings.
+2. Allow the watch microphone when the Pebble app asks. If you said no, allow it for Home Assistant WS in the Pebble app and reopen the app.
+3. Pick a pipeline that has a speech-to-text engine.
+
+While it is listening the screen shows bars that move with your voice. Home Assistant ends the turn when you stop talking (never later than 15 seconds in). For longer dictation, pick a length under **Stop After a Pause Of** on the settings page and your phone ends the turn once you have been quiet that long instead, or set **Stop Listening** to **On SELECT** in the assistant settings to keep talking as long as you like and press the middle button when you are done. Back drops what you were saying. Anywhere it cannot work, such as an older watch, another phone app or a pipeline without speech-to-text, the phone's dictation is used exactly as before, and you can turn it off under **Speech** in the assistant settings or on the settings page.
 
 ### Entity Control
 

@@ -84,6 +84,16 @@ static SimplyMsg *s_msg = NULL;
 
 static bool s_has_communicated = false;
 
+// The phone app runs a new copy of the JS every time the watch reconnects to
+// it, and the old copy is gone along with every window it knew about. Set once
+// a JS has said it is ready, so the next one to say so is known to be a new
+// one taking over a running app.
+static bool s_js_seen = false;
+static bool s_js_restarted = false;
+
+// The phone went away and has not yet sent a new JS
+static bool s_phone_lost = false;
+
 typedef struct CommandHandlerEntry CommandHandlerEntry;
 
 struct CommandHandlerEntry {
@@ -96,6 +106,47 @@ static void handle_packet(Simply *simply, Packet *packet);
 
 bool simply_msg_has_communicated() {
   return s_has_communicated;
+}
+
+bool simply_msg_js_restarted() {
+  return s_js_restarted;
+}
+
+static void drop_send_queue(SimplyMsg *self);
+
+static void prv_handle_ready(SimplyMsg *self) {
+  s_js_restarted = s_js_seen;
+  s_js_seen = true;
+  s_phone_lost = false;
+  if (s_js_restarted) {
+    // Its windows reuse the old ones' ids, so the windows still on screen
+    // must stop answering to them
+    drop_send_queue(self);
+    simply_window_stack_forget(self->simply);
+  }
+}
+
+static void prv_phone_lost(SimplyMsg *self) {
+  s_has_communicated = false;
+  s_phone_lost = true;
+  // Whatever was waiting to go out was meant for the JS that just went, and
+  // the next one would take a stale back press or window event as its own
+  drop_send_queue(self);
+  simply_splash_show_phone_lost(self->simply, false);
+}
+
+static void prv_app_connection_handler(bool connected) {
+  SimplyMsg *self = s_msg;
+  if (!self) { return; }
+  if (!connected) {
+    prv_phone_lost(self);
+  } else if (s_phone_lost && simply_splash_is_covering(self->simply)) {
+    simply_splash_show_phone_lost(self->simply, true);
+    // The phone app may have kept the JS rather than started a new one, and
+    // such a JS has no reason to say anything. Asking it to draw its page
+    // again gets an answer from it; a new JS says it is ready instead.
+    simply_splash_send_reveal();
+  }
 }
 
 static void destroy_packet(SimplyMsg *self, SimplyPacket *packet) {
@@ -223,6 +274,10 @@ static void handle_light_packet(Simply *simply, Packet *data) {
 
 static bool simply_base_handle_packet(Simply *simply, Packet *packet) {
   switch (packet->type) {
+    case CommandReady:
+      prv_handle_ready(simply->msg);
+      // The launch reason goes back from the wakeup handler
+      return false;
     case CommandSegment:
       handle_segment_packet(simply, packet);
       return true;
@@ -240,6 +295,12 @@ static bool simply_base_handle_packet(Simply *simply, Packet *packet) {
 }
 
 static void handle_packet(Simply *simply, Packet *packet) {
+  // Anything but a ready from a JS the watch had given up on means it was
+  // still there after all, and it is still the one that knows the windows
+  if (s_phone_lost && packet->type != CommandReady) {
+    s_phone_lost = false;
+    simply_splash_phone_back(simply);
+  }
   if (simply_base_handle_packet(simply, packet)) { return; }
   if (simply_wakeup_handle_packet(simply, packet)) { return; }
   if (simply_window_stack_handle_packet(simply, packet)) { return; }
@@ -298,25 +359,17 @@ static void failed_callback(DictionaryIterator *iter, AppMessageResult reason, v
   Simply *simply = context;
 
   if (reason == APP_MSG_NOT_CONNECTED) {
-    s_has_communicated = false;
-
     simply_msg_show_disconnected(simply->msg);
   }
 }
 
+// This used to write the message into whichever card JS had last shown and
+// push it over the page. JS never heard about it, so once the phone was back
+// the wearer was left on a card that belonged to no one, whose Back asked JS
+// about a window it did not have. The splash stands in front of the page
+// instead, takes nothing away from it, and Back on it leaves the app.
 void simply_msg_show_disconnected(SimplyMsg *self) {
-  Simply *simply = self->simply;
-  SimplyUi *ui = simply->ui;
-
-  simply_ui_clear(ui, ~0);
-  simply_ui_set_text(ui, UiSubtitle, "Disconnected");
-  simply_ui_set_text(ui, UiBody, "Run the Pebble Phone App");
-
-  if (window_stack_get_top_window() != ui->window.window) {
-    bool was_broadcast = simply_window_stack_set_broadcast(false);
-    simply_window_stack_show(simply->window_stack, &ui->window, true);
-    simply_window_stack_set_broadcast(was_broadcast);
-  }
+  prv_phone_lost(self);
 }
 
 SimplyMsg *simply_msg_create(Simply *simply) {
@@ -339,6 +392,10 @@ SimplyMsg *simply_msg_create(Simply *simply) {
   app_message_register_outbox_sent(sent_callback);
   app_message_register_outbox_failed(failed_callback);
 
+  connection_service_subscribe((ConnectionHandlers) {
+    .pebble_app_connection_handler = prv_app_connection_handler,
+  });
+
   return self;
 }
 
@@ -348,10 +405,27 @@ void simply_msg_destroy(SimplyMsg *self) {
   }
 
   app_message_deregister_callbacks();
+  connection_service_unsubscribe();
 
   self->simply->msg = NULL;
 
   free(self);
+}
+
+static void drop_send_queue(SimplyMsg *self) {
+  if (self->send_timer) {
+    app_timer_cancel(self->send_timer);
+    self->send_timer = NULL;
+  }
+  free(self->send_buffer);
+  self->send_buffer = NULL;
+  self->send_length = 0;
+  self->send_delay_ms = SEND_DELAY_MS;
+  while (self->send_queue) {
+    SimplyPacket *node = (SimplyPacket*) self->send_queue;
+    list1_remove(&self->send_queue, &node->node);
+    destroy_packet(self, node);
+  }
 }
 
 static bool send_msg(uint8_t *buffer, size_t length) {

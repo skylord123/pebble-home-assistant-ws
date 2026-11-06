@@ -6,6 +6,7 @@ var BasePage = require('app/pages/BasePage');
 var AppState = require('app/AppState');
 var RegistryService = require('app/RegistryService');
 var EntityListPage = require('app/pages/EntityListPage');
+var NavRoute = require('app/NavRoute');
 var helpers = require('app/helpers');
 
 class LabelMenuPage extends BasePage {
@@ -117,6 +118,9 @@ function showLabelMenu() {
     var page = new LabelMenuPage();
     page.show();
 }
+
+showLabelMenu = NavRoute.wrap('labels', showLabelMenu);
+showEntitiesForLabel = NavRoute.wrap('label', showEntitiesForLabel);
 
 module.exports = LabelMenuPage;
 module.exports.showLabelMenu = showLabelMenu;

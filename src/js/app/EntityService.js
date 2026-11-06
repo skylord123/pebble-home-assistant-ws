@@ -5,6 +5,7 @@ var Settings = require('settings');
 var Vibe = require('ui/vibe');
 var AppState = require('app/AppState');
 var helpers = require('app/helpers');
+var NavRoute = require('app/NavRoute');
 
 /**
  * Whether a button has ever been pressed. Its state is an ISO timestamp of
@@ -961,5 +962,7 @@ var EntityService = {
         return wasPinned;
     }
 };
+
+EntityService.show = NavRoute.wrap('entity', EntityService.show);
 
 module.exports = EntityService;
