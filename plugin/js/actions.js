@@ -540,6 +540,15 @@ function run(conn, opts, name, args) {
     if (name === 'ask_assistant') {
         return askAssistant(conn, opts, args);
     }
+    // What Index calls to make the assistant a destination for ring
+    // gestures and typed messages. Its chat_id names one of the chats an
+    // agent/chats source would list; there is only the one conversation.
+    if (name === 'send_to_agent') {
+        if (typeof args.message !== 'string' || !args.message.trim()) {
+            return Promise.reject(invalid('message is required'));
+        }
+        return askAssistant(conn, opts, { text: args.message });
+    }
     if (!ENTITY_ACTIONS.hasOwnProperty(name)) {
         return Promise.reject(new PluginError('INVALID_REQUEST', 'unknown action ' + name));
     }
@@ -548,5 +557,5 @@ function run(conn, opts, name, args) {
 
 module.exports = {
     run: run,
-    names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant'])
+    names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant', 'send_to_agent'])
 };
