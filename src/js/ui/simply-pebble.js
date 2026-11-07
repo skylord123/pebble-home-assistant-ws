@@ -1805,8 +1805,8 @@ SimplyPebble.speakerPlay = function(clip, rate, prebuffer, total) {
     .prebuffer(prebuffer).total(total));
 };
 
-SimplyPebble.speakerData = function(clip, offset, bytes, last) {
-  SimplyPebble.sendPacket(SpeakerDataPacket.clip(clip).flags(last ? 1 : 0)
+SimplyPebble.speakerData = function(clip, offset, bytes, flags) {
+  SimplyPebble.sendPacket(SpeakerDataPacket.clip(clip).flags(flags)
     .offset(offset).audio(bytes));
 };
 

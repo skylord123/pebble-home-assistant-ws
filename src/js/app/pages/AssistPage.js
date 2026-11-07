@@ -533,6 +533,11 @@ function startRun(body, onEvent) {
     var haws = appState.haws;
     var finished = false;
     Assist.beginReply();
+    // Read out as it is written, when it is to be read out at all. A run that
+    // only transcribes has nothing to say.
+    if (body.end_stage !== 'stt' && Speech.wanted()) {
+        Speech.begin(speechProblems(gen));
+    }
 
     var streaming = appState.assist_stream_reply !== false &&
         supportsStreaming(appState.ha_version);
@@ -550,7 +555,10 @@ function startRun(body, onEvent) {
         streamText += piece;
         if (!streamTimer) {
             streamTimer = setTimeout(function() {
-                if (gen === runGeneration) { flushStream(); }
+                if (gen === runGeneration) {
+                    flushStream();
+                    Speech.write(streamText);
+                }
             }, STREAM_COALESCE_MS);
         }
     } : null;
@@ -572,6 +580,7 @@ function startRun(body, onEvent) {
 
             if (!data.success) {
                 cancelStream();
+                Speech.stop();
                 Assist.error('Request failed');
                 ConnectionService.showPendingReconnectDialog();
                 return;
@@ -602,6 +611,7 @@ function startRun(body, onEvent) {
                     // limit from the model. Drawn as an answer it is
                     // indistinguishable from one.
                     cancelStream();
+                    Speech.stop();
                     Assist.error(speech || 'The assistant could not answer');
                     ConnectionService.showPendingReconnectDialog();
                     return;
@@ -629,8 +639,14 @@ function startRun(body, onEvent) {
                 // on it settles any last piece and stops the dots. Nothing
                 // streamed and it goes down whole, exactly as it used to.
                 Assist.endReply(speech);
+                // Read out a sentence at a time, what streamed in is already
+                // being said and the rest goes now. This waits until the answer
+                // is on screen, since a reason it cannot be heard goes under it.
+                if (Speech.wanted()) {
+                    Speech.write(streamText);
+                    Speech.end(spoken, speechProblems(gen));
+                }
                 cancelStream();
-                speak(spoken, gen);
                 ConnectionService.showPendingReconnectDialog();
 
                 // An agent that has asked something back, such as "which
@@ -643,6 +659,7 @@ function startRun(body, onEvent) {
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
                 cancelStream();
+                Speech.stop();
                 Assist.error('Invalid response from Home Assistant');
                 ConnectionService.showPendingReconnectDialog();
             }
@@ -654,6 +671,7 @@ function startRun(body, onEvent) {
             stopKeepAlive();
             helpers.log_message("assist_pipeline/run error: " + JSON.stringify(error));
             cancelStream();
+            Speech.stop();
             var heldTurn = listening;
             stopListening();
             var detail = (error && error.error && typeof error.error === 'object') ? error.error : error;
@@ -677,13 +695,12 @@ function startRun(body, onEvent) {
 }
 
 /**
- * Read an answer out on the watch's speaker, for the wearer who wants that.
+ * What to do when an answer cannot be read out on the watch's speaker.
  * Anything that stops it being heard, other than the wearer silencing it or
  * a muted speaker, is said under the answer.
  */
-function speak(text, gen) {
-    if (!Speech.wanted() || !text) { return; }
-    Speech.speak(text, function(problem) {
+function speechProblems(gen) {
+    return function(problem) {
         // Only for the answer it belongs to, and never while the wearer is
         // talking: a message closes the microphone on the watch
         if (gen !== runGeneration || Assist.isDictating() || problem === lastSpeechProblem) {
@@ -691,7 +708,7 @@ function speak(text, gen) {
         }
         lastSpeechProblem = problem;
         Assist.error(problem);
-    });
+    };
 }
 
 /**

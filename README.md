@@ -102,7 +102,7 @@ While it is listening the screen shows bars that move with your voice. Home Assi
 
 A Pebble Time 2 or Core 2 Duo can read the assistant's reply out loud through its speaker, in the voice your pipeline's text-to-speech engine uses (Piper, Home Assistant Cloud and so on), so you can hear the answer without looking at the watch. Turn on **Read Aloud** in the assistant settings, or **Read replies aloud** on the settings page. The pipeline needs a text-to-speech engine.
 
-The reply still shows on screen as it always has, and the watch starts speaking once Home Assistant has said it. Back stops the reply and leaves you in the conversation, and pressing the middle button stops it and listens for what you say next. Nothing plays while the watch speaker is muted or during Quiet Time, and the watch's own speaker volume applies. When a reply cannot be read out, such as a pipeline without a voice, the conversation says why under it.
+The reply still shows on screen as it always has. The watch starts speaking as soon as the first sentence is written and keeps going while the rest of the reply is still on its way, so a long answer from an AI agent does not keep you waiting. Back stops the reply and leaves you in the conversation, and pressing the middle button stops it and listens for what you say next. Nothing plays while the watch speaker is muted or during Quiet Time, and the watch's own speaker volume applies. When a reply cannot be read out, such as a pipeline without a voice, the conversation says why under it.
 
 ### Entity Control
 

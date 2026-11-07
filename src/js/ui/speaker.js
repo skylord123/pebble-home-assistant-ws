@@ -17,6 +17,10 @@ var Speaker = {};
 Speaker.RATE_8K = 0;
 Speaker.RATE_16K = 1;
 
+// Must match DataFlag in simply_speaker.c
+Speaker.FLAG_LAST = 1;
+Speaker.FLAG_PHRASE = 2;
+
 // Must match SpeakerState in simply_speaker.c
 Speaker.BUFFERING = 0;
 Speaker.PLAYING = 1;
@@ -37,8 +41,9 @@ Speaker.play = function(clip, rate, prebuffer, total) {
   simply.impl.speakerPlay(clip, rate, prebuffer, total);
 };
 
-Speaker.data = function(clip, offset, bytes, last) {
-  simply.impl.speakerData(clip, offset, bytes, last);
+/** `flags` are FLAG_LAST and FLAG_PHRASE, or 0 for neither. */
+Speaker.data = function(clip, offset, bytes, flags) {
+  simply.impl.speakerData(clip, offset, bytes, flags);
 };
 
 Speaker.stop = function(clip) {

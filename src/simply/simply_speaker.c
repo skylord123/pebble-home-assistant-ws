@@ -40,6 +40,8 @@
 
 // The phone has stopped sending, with the clip unfinished. Most likely it has
 // gone away; the speaker would otherwise play silence until the app closed.
+// While it waits for the next sentence it sends empty pieces to say it is
+// still there.
 #define STALL_MS 10000
 
 // Draining the speaker's buffer after the last sample takes a fraction of a
@@ -99,6 +101,9 @@ enum {
 enum {
   //! The last piece of the clip
   DataFlagLast = 1,
+  //! The last piece of a sentence. Everything up to here can be played
+  //! without running dry in the middle of a word.
+  DataFlagPhrase = 2,
 };
 
 //! Must match the states in src/js/ui/speaker.js
@@ -143,6 +148,8 @@ typedef struct Speaker {
   //! `played` as the phone was last told it
   uint32_t reported;
   uint32_t prebuffer;
+  //! Where the last whole sentence received ends
+  uint32_t phrase_end;
   AppTimer *timer;
   uint32_t last_data_ms;
   //! When the speaker was first asked for, or when the last sample went in
@@ -300,6 +307,11 @@ static uint32_t prv_buffered(void) {
   return s_speaker.received - s_speaker.played;
 }
 
+//! A whole sentence is in hand, which can be played through without a gap
+static bool prv_phrase_ready(void) {
+  return s_speaker.phrase_end > s_speaker.played;
+}
+
 static void prv_tick(void *data) {
   s_speaker.timer = NULL;
   if (!s_speaker.active) { return; }
@@ -325,7 +337,7 @@ static void prv_tick(void *data) {
 
   if (!s_speaker.open) {
     // Waiting until enough is in hand that the rest will arrive in time
-    if (s_speaker.final || prv_buffered() >= s_speaker.prebuffer) {
+    if (s_speaker.final || prv_buffered() >= s_speaker.prebuffer || prv_phrase_ready()) {
       // since_ms has been following the clock until now, so it marks the
       // first time the speaker was asked for
       if (!prv_open() && now - s_speaker.since_ms > OPEN_RETRY_MS) {
@@ -336,12 +348,13 @@ static void prv_tick(void *data) {
       s_speaker.since_ms = now;
     }
   } else if (s_speaker.starved) {
-    // Ran dry part way. The speaker plays silence meanwhile, and starting
-    // again on the first scrap to arrive would only stutter, so it waits to
-    // have a decent run in hand again.
+    // Ran dry part way, which between sentences is only a pause while the
+    // phone gets the next one. The speaker plays silence meanwhile, and
+    // starting again on the first scrap to arrive would only stutter, so it
+    // waits for the whole sentence or a decent run of it.
     const uint32_t resume = s_speaker.prebuffer < s_speaker.capacity / 2 ?
         s_speaker.prebuffer : s_speaker.capacity / 2;
-    if (s_speaker.final || prv_buffered() >= resume) {
+    if (s_speaker.final || prv_buffered() >= resume || prv_phrase_ready()) {
       s_speaker.starved = false;
     }
   }
@@ -427,8 +440,11 @@ static void prv_handle_data(SpeakerDataPacket *packet) {
     return;
   }
   const uint32_t length = packet->packet.length - sizeof(*packet);
+  // Anything at all for this clip says the phone is still there, an empty
+  // piece included
+  s_speaker.last_data_ms = prv_now_ms();
   // A message the phone sent again because the watch's answer to it went
-  // missing. Its audio is already here.
+  // missing, whose audio is already here, or an empty one to keep in touch
   if (packet->offset + length <= s_speaker.received && !(packet->flags & DataFlagLast)) {
     return;
   }
@@ -444,7 +460,9 @@ static void prv_handle_data(SpeakerDataPacket *packet) {
   }
   s_speaker.received += length;
   s_speaker.final = (packet->flags & DataFlagLast);
-  s_speaker.last_data_ms = prv_now_ms();
+  if (packet->flags & DataFlagPhrase) {
+    s_speaker.phrase_end = s_speaker.received;
+  }
 }
 
 static void prv_handle_stop(SpeakerStopPacket *packet) {
