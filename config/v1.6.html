@@ -1060,8 +1060,20 @@
 						<label class="form-check-label" for="ha-assist-speak">Read replies aloud</label>
 						<input class="form-check-input" type="checkbox" id="ha-assist-speak">
 					</div>
-					<small class="form-text">Play the assistant's reply through the watch speaker, in your pipeline's own text-to-speech voice. Needs a Pebble Time 2 or Core 2 Duo. Nothing plays while the watch speaker is muted or during Quiet Time, and the watch's own speaker volume applies. Press Back to stop a reply, or Select to say something else.</small>
+					<small class="form-text">Play the assistant's reply through the watch speaker, in your pipeline's own text-to-speech voice. Needs a Pebble Time 2 or Core 2 Duo. Nothing plays while the watch speaker is muted or during Quiet Time. Press Back to stop a reply, or Select to say something else.</small>
 					<div id="assist-speak-status" class="alert alert-warning mt-2 hidden" role="alert"></div>
+				</div>
+				<div class="component" id="assist-speak-volume-container">
+					<div class="form-group">
+						<label class="form-label" for="ha-assist-speak-volume">Reply Volume</label>
+						<select class="form-select" id="ha-assist-speak-volume">
+							<option value="25">25%</option>
+							<option value="50">50%</option>
+							<option value="75">75%</option>
+							<option value="100">100%</option>
+						</select>
+						<small class="form-text">How loud replies are read aloud, as a share of the watch's own speaker volume.</small>
+					</div>
 				</div>
 				<div class="component">
 					<div class="form-switch">
@@ -1615,6 +1627,8 @@
 		assistSpeak = $('ha-assist-speak'),
 		assistSpeakContainer = $('assist-speak-container'),
 		assistSpeakStatus = $('assist-speak-status'),
+		assistSpeakVolume = $('ha-assist-speak-volume'),
+		assistSpeakVolumeContainer = $('assist-speak-volume-container'),
 		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
 		voiceFontSize = $('ha-voice-font-size'),
 		pipelineSelect = $('ha-pipeline-select'),
@@ -2330,6 +2344,7 @@
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
 			'assist_stream_audio': assistStreamAudio.checked,
 			'assist_speak': assistSpeak.checked,
+			'assist_speak_volume': Number(assistSpeakVolume.value),
 			'assist_stream_end': assistStreamEnd.value,
 			'assist_stream_pause': Number(assistStreamPause.value),
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
@@ -2429,6 +2444,9 @@
 		// Only a watch with a speaker has anything to read aloud with. A watch
 		// that has not said yet keeps the switch, rather than hiding it.
 		show(assistSpeakContainer, watch_config['assist_speak_watch'] !== false);
+		show(assistSpeakVolumeContainer, watch_config['assist_speak_watch'] !== false);
+		assistSpeakVolume.value = String(watch_config['assist_speak_volume'] || 50);
+		if (assistSpeakVolume.selectedIndex < 0) { assistSpeakVolume.value = '50'; }
 		assistStreamEnd.value = watch_config['assist_stream_end'] === 'manual' ? 'manual' : 'auto';
 		assistStreamPause.value = String(watch_config['assist_stream_pause'] || 0);
 		if (assistStreamPause.selectedIndex < 0) { assistStreamPause.value = '0'; }

@@ -37,8 +37,9 @@ var idleHandler = null;
 Speaker.onStatus = function(fn) { statusHandler = fn; };
 Speaker.onIdle = function(fn) { idleHandler = fn; };
 
-Speaker.play = function(clip, rate, prebuffer, total) {
-  simply.impl.speakerPlay(clip, rate, prebuffer, total);
+/** `volume` is 0 to 100, a share of the watch's own speaker volume. */
+Speaker.play = function(clip, rate, prebuffer, total, volume) {
+  simply.impl.speakerPlay(clip, rate, prebuffer, total, volume);
 };
 
 /** `flags` are FLAG_LAST and FLAG_PHRASE, or 0 for neither. */

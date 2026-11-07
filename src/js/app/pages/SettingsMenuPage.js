@@ -457,6 +457,19 @@ function showVoiceAssistantSettings(onClose) {
                     updateMenuItems();
                 }
             });
+
+            if (Speech.enabled()) {
+                voiceSettingsMenu.item(0, menuIndex++, {
+                    title: "Volume",
+                    subtitle: Speech.volume() + "%",
+                    on_click: function(e) {
+                        var volumes = Speech.VOLUMES;
+                        var next = volumes[(volumes.indexOf(Speech.volume()) + 1) % volumes.length];
+                        Settings.option('assist_speak_volume', next);
+                        updateMenuItems();
+                    }
+                });
+            }
         }
 
         // Confirm Dictate setting

@@ -1800,8 +1800,8 @@ SimplyPebble.assistHide = function() {
   SimplyPebble.sendPacket(AssistHidePacket);
 };
 
-SimplyPebble.speakerPlay = function(clip, rate, prebuffer, total) {
-  SimplyPebble.sendPacket(SpeakerPlayPacket.clip(clip).rate(rate).volume(100).flags(0)
+SimplyPebble.speakerPlay = function(clip, rate, prebuffer, total, volume) {
+  SimplyPebble.sendPacket(SpeakerPlayPacket.clip(clip).rate(rate).volume(volume).flags(0)
     .prebuffer(prebuffer).total(total));
 };
 

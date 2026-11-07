@@ -149,6 +149,18 @@ Speech.pipelineSpeaks = function() {
     return !!(pipeline && pipeline.tts_engine);
 };
 
+// How loud, as a share of the watch's own speaker volume, which is the most
+// an app can play at. The voice is already brought up to near full scale, so
+// all the way up is loud.
+Speech.VOLUMES = [25, 50, 75, 100];
+var DEFAULT_VOLUME = 50;
+
+/** The volume the wearer picked, from Speech.VOLUMES. */
+Speech.volume = function() {
+    var volume = Number(Settings.option('assist_speak_volume'));
+    return Speech.VOLUMES.indexOf(volume) !== -1 ? volume : DEFAULT_VOLUME;
+};
+
 /** Sentence by sentence, unless the setting says otherwise. */
 Speech.mode = function() {
     var mode = Settings.option('assist_speak_mode');
@@ -672,7 +684,7 @@ function startPlaying(clip) {
 
     helpers.log_message('Speech: ' + rate.hz + ' Hz, ' +
         (total ? total + ' bytes' : 'more to come') + ', starting after ' + prebuffer);
-    Speaker.play(clip.id, rate.code, prebuffer, total);
+    Speaker.play(clip.id, rate.code, prebuffer, total, Speech.volume());
     clip.playSent = true;
     clip.keepAlive = setInterval(function() {
         if (clip !== current || clip.lastSent || clip.awaitingIdle || !Speaker.isIdle() ||
