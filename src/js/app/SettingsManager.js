@@ -8,6 +8,7 @@ var InactivityTimer = require('app/InactivityTimer');
 var Touch = require('ui/touch');
 var AppState = require('app/AppState');
 var AudioStream = require('app/AudioStream');
+var Speech = require('app/Speech');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -60,6 +61,12 @@ var SettingsManager = {
             !AudioStream.phoneCanStream() ? 'phone' : 'ready';
         if (Settings.option('assist_stream_watch') !== streamWatch) {
             Settings.option('assist_stream_watch', streamWatch);
+        }
+        // The config page cannot see the watch either, and only shows the
+        // switch for reading replies aloud on a watch with a speaker
+        var speakWatch = Speech.watchHasSpeaker();
+        if (Settings.option('assist_speak_watch') !== speakWatch) {
+            Settings.option('assist_speak_watch', speakWatch);
         }
         appState.assist_vibration_feedback = Settings.option('assist_vibration_feedback') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;

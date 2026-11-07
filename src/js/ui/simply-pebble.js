@@ -11,6 +11,7 @@ var Touch = require('ui/touch');
 var Voice = require('ui/voice');
 var NumberField = require('ui/numberfield');
 var Assist = require('ui/assist');
+var Speaker = require('ui/speaker');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
 var Window = require('ui/window');
@@ -908,6 +909,38 @@ var AssistLevelsPacket = new struct([
   ['data', 'levels'],
 ]);
 
+// Speech for the watch's speaker. See simply_speaker.c.
+var SpeakerPlayPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+  ['uint8', 'rate'],
+  ['uint8', 'volume'],
+  ['uint8', 'flags'],
+  ['uint32', 'prebuffer'],
+  ['uint32', 'total'],
+]);
+
+var SpeakerDataPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+  ['uint8', 'flags'],
+  ['uint32', 'offset'],
+  ['data', 'audio'],
+]);
+
+var SpeakerStopPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+]);
+
+var SpeakerStatusPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+  ['uint8', 'state'],
+  ['uint32', 'played'],
+  ['uint32', 'capacity'],
+]);
+
 var CommandPackets = [
   Packet,
   SegmentPacket,
@@ -988,6 +1021,10 @@ var CommandPackets = [
   AssistActionPacket,
   AssistListenPacket,
   AssistLevelsPacket,
+  SpeakerPlayPacket,
+  SpeakerDataPacket,
+  SpeakerStopPacket,
+  SpeakerStatusPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1040,6 +1077,7 @@ SimplyPebble.init = function() {
   state.packetQueue = new PacketQueue();
   state.messageQueue.onIdle = function() {
     flushLevels();
+    Speaker.emitIdle();
   };
 
   // Signal the Pebble that the Phone's app message is ready
@@ -1762,6 +1800,26 @@ SimplyPebble.assistHide = function() {
   SimplyPebble.sendPacket(AssistHidePacket);
 };
 
+SimplyPebble.speakerPlay = function(clip, rate, prebuffer, total) {
+  SimplyPebble.sendPacket(SpeakerPlayPacket.clip(clip).rate(rate).volume(100).flags(0)
+    .prebuffer(prebuffer).total(total));
+};
+
+SimplyPebble.speakerData = function(clip, offset, bytes, last) {
+  SimplyPebble.sendPacket(SpeakerDataPacket.clip(clip).flags(last ? 1 : 0)
+    .offset(offset).audio(bytes));
+};
+
+SimplyPebble.speakerStop = function(clip) {
+  SimplyPebble.sendPacket(SpeakerStopPacket.clip(clip));
+};
+
+//! Whether nothing is waiting to go to the watch, so a piece of speech can go
+//! without holding up anything the wearer is looking at
+SimplyPebble.isIdle = function() {
+  return !state.messageQueue._sending;
+};
+
 SimplyPebble.assistMessage = function(role, text, flags) {
   AssistMessagePacket.role(role).flags(flags || 0).text(text);
   SimplyPebble.sendPacket(AssistMessagePacket);
@@ -1934,6 +1992,9 @@ SimplyPebble.onPacket = function(buffer, offset) {
       break;
     case AssistActionPacket:
       Assist.emitAction(packet.action());
+      break;
+    case SpeakerStatusPacket:
+      Speaker.emitStatus(packet.clip(), packet.state(), packet.played(), packet.capacity());
       break;
     case SplashRevealPacket:
       // The watch put the splash up itself while the phone was away and is

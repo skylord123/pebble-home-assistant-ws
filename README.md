@@ -98,6 +98,12 @@ It is on by default and is used whenever it can be. To make it work:
 
 While it is listening the screen shows bars that move with your voice. Home Assistant ends the turn when you stop talking (never later than 15 seconds in). For longer dictation, pick a length under **Stop After a Pause Of** on the settings page and your phone ends the turn once you have been quiet that long instead, or set **Stop Listening** to **On SELECT** in the assistant settings to keep talking as long as you like and press the middle button when you are done. Back drops what you were saying. Anywhere it cannot work, such as an older watch, another phone app or a pipeline without speech-to-text, the phone's dictation is used exactly as before, and you can turn it off under **Speech** in the assistant settings or on the settings page.
 
+#### Hearing the reply
+
+A Pebble Time 2 or Core 2 Duo can read the assistant's reply out loud through its speaker, in the voice your pipeline's text-to-speech engine uses (Piper, Home Assistant Cloud and so on), so you can hear the answer without looking at the watch. Turn on **Read Aloud** in the assistant settings, or **Read replies aloud** on the settings page. The pipeline needs a text-to-speech engine.
+
+The reply still shows on screen as it always has, and the watch starts speaking once Home Assistant has said it. Back stops the reply and leaves you in the conversation, and pressing the middle button stops it and listens for what you say next. Nothing plays while the watch speaker is muted or during Quiet Time, and the watch's own speaker volume applies. When a reply cannot be read out, such as a pipeline without a voice, the conversation says why under it.
+
 ### Entity Control
 
 - **Short press** on an entity to view its details and controls

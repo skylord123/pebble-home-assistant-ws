@@ -1055,6 +1055,14 @@
 					</div>
 					<small class="form-text">Show the assistant's reply building up as it is written, rather than waiting for the whole of it. Needs Home Assistant 2025.3 or newer; older versions always wait.</small>
 				</div>
+				<div class="component" id="assist-speak-container">
+					<div class="form-switch">
+						<label class="form-check-label" for="ha-assist-speak">Read replies aloud</label>
+						<input class="form-check-input" type="checkbox" id="ha-assist-speak">
+					</div>
+					<small class="form-text">Play the assistant's reply through the watch speaker, in your pipeline's own text-to-speech voice. Needs a Pebble Time 2 or Core 2 Duo. Nothing plays while the watch speaker is muted or during Quiet Time, and the watch's own speaker volume applies. Press Back to stop a reply, or Select to say something else.</small>
+					<div id="assist-speak-status" class="alert alert-warning mt-2 hidden" role="alert"></div>
+				</div>
 				<div class="component">
 					<div class="form-switch">
 						<label class="form-check-label" for="ha-assist-stream-audio">Send your voice to Home Assistant</label>
@@ -1604,6 +1612,9 @@
 		assistStreamPause = $('ha-assist-stream-pause'),
 		assistStreamPauseContainer = $('assist-stream-pause-container'),
 		assistStreamStatus = $('assist-stream-status'),
+		assistSpeak = $('ha-assist-speak'),
+		assistSpeakContainer = $('assist-speak-container'),
+		assistSpeakStatus = $('assist-speak-status'),
 		assistVibrationFeedback = $('ha-assist-vibration-feedback'),
 		voiceFontSize = $('ha-voice-font-size'),
 		pipelineSelect = $('ha-pipeline-select'),
@@ -2236,9 +2247,28 @@
 		var text = streamStatusText();
 		assistStreamStatus.textContent = text;
 		show(assistStreamStatus, !!text);
+		renderSpeakStatus();
 	}
 
 	assistStreamAudio.addEventListener('change', renderStreamStatus);
+
+	// A pipeline with no voice cannot read anything out
+	function renderSpeakStatus() {
+		var text = '';
+		if (assistSpeak.checked) {
+			var pipelines = watch_config['available_pipelines'] || [];
+			var selected = pipelineSelect.disabled ? currentPipeline() : pipelineSelect.value;
+			for (var i = 0; i < pipelines.length; i++) {
+				if (pipelines[i].id === selected && pipelines[i].tts === false) {
+					text = 'This pipeline has no text-to-speech engine, so its replies cannot be read aloud. Give it one in Home Assistant under Settings, Voice assistants, or pick another pipeline.';
+				}
+			}
+		}
+		assistSpeakStatus.textContent = text;
+		show(assistSpeakStatus, !!text);
+	}
+
+	assistSpeak.addEventListener('change', renderSpeakStatus);
 
 	// The pause only applies to turns that end when the wearer stops talking
 	function updateStreamPauseVisibility() {
@@ -2299,6 +2329,7 @@
 			'assist_stream_reply': assistStreamReply.checked,
 			'assist_vibration_feedback': assistVibrationFeedback.checked,
 			'assist_stream_audio': assistStreamAudio.checked,
+			'assist_speak': assistSpeak.checked,
 			'assist_stream_end': assistStreamEnd.value,
 			'assist_stream_pause': Number(assistStreamPause.value),
 			'voice_font_size': parseInt(voiceFontSize.value, 10),
@@ -2394,6 +2425,10 @@
 		assistStreamReply.checked = defaulted(watch_config['assist_stream_reply'], true);
 		assistVibrationFeedback.checked = defaulted(watch_config['assist_vibration_feedback'], true);
 		assistStreamAudio.checked = defaulted(watch_config['assist_stream_audio'], true);
+		assistSpeak.checked = watch_config['assist_speak'] === true;
+		// Only a watch with a speaker has anything to read aloud with. A watch
+		// that has not said yet keeps the switch, rather than hiding it.
+		show(assistSpeakContainer, watch_config['assist_speak_watch'] !== false);
 		assistStreamEnd.value = watch_config['assist_stream_end'] === 'manual' ? 'manual' : 'auto';
 		assistStreamPause.value = String(watch_config['assist_stream_pause'] || 0);
 		if (assistStreamPause.selectedIndex < 0) { assistStreamPause.value = '0'; }

@@ -3,6 +3,7 @@
 #include "simply_splash.h"
 #include "simply_number.h"
 #include "simply_assist.h"
+#include "simply_speaker.h"
 
 #include "simply_accel.h"
 #include "simply_touch.h"
@@ -308,6 +309,7 @@ static void handle_packet(Simply *simply, Packet *packet) {
   if (simply_splash_handle_packet(simply, packet)) { return; }
   if (simply_number_handle_packet(simply, packet)) { return; }
   if (simply_assist_handle_packet(simply, packet)) { return; }
+  if (simply_speaker_handle_packet(simply, packet)) { return; }
   if (simply_ui_handle_packet(simply, packet)) { return; }
   if (simply_accel_handle_packet(simply, packet)) { return; }
   if (simply_touch_handle_packet(simply, packet)) { return; }

@@ -25,6 +25,8 @@ var simply = require('ui/simply');
  *                        Assist.streamReply() and Assist.endReply(); the watch
  *                        is already showing its thinking animation and keeps
  *                        it running until the answer is finished.
+ *   onListen()         - the microphone opened for a new turn, by dictation
+ *                        or as a stream, which ends any answer being read out
  *   onSettings()       - the wearer held select, or a finger on the screen, to
  *                        change the assist settings. The watch has stepped
  *                        aside so a JS window can be pushed, and is still
@@ -319,6 +321,7 @@ Assist.show = function(opts) {
   state.onSettings = opts.onSettings;
   state.onClose = opts.onClose;
   state.onDictationEnd = opts.onDictationEnd;
+  state.onListen = opts.onListen;
   state.dark = !!opts.dark;
   // Track if dictation is actively in progress
   state.isDictating = opts.listen !== false;
@@ -605,6 +608,10 @@ Assist.isDictating = function() {
 };
 
 Assist.emitAction = function(action) {
+  // The wearer has started to say something, whichever way it is heard
+  if ((action === ActionDictationStarted || action === ActionStreamRequested) && state.onListen) {
+    state.onListen();
+  }
   if (streamEvents[action]) {
     // The microphone is open from the moment it is asked for until the wearer
     // finishes or drops the turn. A refused stream goes on to dictation, which
@@ -645,6 +652,7 @@ Assist.emitAction = function(action) {
     state.onSettings = null;
     state.onClose = null;
     state.onDictationEnd = null;
+    state.onListen = null;
     if (onClose) {
       onClose();
     }

@@ -5,6 +5,7 @@
 #include "simply_mic_stream.h"
 #include "simply_msg.h"
 #include "simply_scrollbar.h"
+#include "simply_speaker.h"
 #include "simply_voice.h"
 
 #include "util/graphics_text.h"
@@ -1495,6 +1496,9 @@ static void prv_send_action(uint8_t action) {
 
 static void prv_start_dictation(SimplyAssist *self) {
   if (self->thinking) { return; }
+  // The answer being read out is over once the wearer has something to say,
+  // and the microphone would only hear it
+  simply_speaker_stop();
   if (simply_voice_start(self->simply, self->dictation_confirm, true)) {
     prv_send_action(AssistActionDictationStarted);
   }
@@ -1639,6 +1643,7 @@ static void prv_stream_no_answer(void *data) {
 //! allowed it and this firmware can, and to dictation everywhere else
 static void prv_start_listening(SimplyAssist *self) {
   if (self->thinking || prv_listening(self) || self->dictate_timer) { return; }
+  simply_speaker_stop();
   if (self->stream_allowed && !simply_voice_dictation_in_progress() &&
       simply_mic_stream_available() &&
       simply_mic_stream_start(prv_stream_started, prv_stream_stopped, self) ==
@@ -1969,10 +1974,16 @@ static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
 }
 
 //! Back leaves the conversation, except while it is listening, when it only
-//! drops what is being said. Leaving takes the window off the stack exactly as
+//! drops what is being said, or reading an answer out, when it only stops
+//! that. Leaving takes the window off the stack exactly as
 //! the system's own back would, and disappear does the rest.
 static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
   SimplyAssist *self = context;
+  // Reading the answer out loud: back silences it, and the next back leaves
+  if (simply_speaker_is_active()) {
+    simply_speaker_stop();
+    return;
+  }
   if (prv_listening(self)) {
     prv_cancel_stream(self);
     return;
@@ -2208,6 +2219,7 @@ static void prv_close(SimplyAssist *self) {
   if (self->destroying) { return; }
   self->destroying = true;
   prv_stop_thinking(self);
+  simply_speaker_stop();
   // The microphone closes with the conversation. The phone hears about it
   // through the close, which drops whatever turn was in flight.
   prv_end_stream(self);
@@ -2274,6 +2286,7 @@ static SimplyAssist *prv_create(Simply *simply) {
 //! Throw the conversation away, leaving the screen itself alone
 static void prv_clear_conversation(SimplyAssist *self) {
   prv_stop_thinking(self);
+  simply_speaker_stop();
   prv_end_stream(self);
   self->count = 0;
   self->arena_used = 0;
@@ -2743,9 +2756,11 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
 
       // Swipe right leaves, the same as the back button and the same as
       // everywhere else on the watch, and the same as back it only drops the
-      // turn while the microphone is open
+      // turn while the microphone is open, or silences an answer being read
       if (adx >= TOUCH_SWIPE_MIN && adx > ady && dx > 0) {
-        if (prv_listening(self)) {
+        if (simply_speaker_is_active()) {
+          simply_speaker_stop();
+        } else if (prv_listening(self)) {
           prv_cancel_stream(self);
         } else {
           window_stack_remove(self->window, false);

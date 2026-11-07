@@ -10,6 +10,7 @@ var BasePage = require('app/pages/BasePage');
 var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
 var AudioStream = require('app/AudioStream');
+var Speech = require('app/Speech');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var InactivityTimer = require('app/InactivityTimer');
@@ -437,6 +438,22 @@ function showVoiceAssistantSettings(onClose) {
                 on_click: function(e) {
                     appState.assist_stream_end = appState.assist_stream_end === 'manual' ? 'auto' : 'manual';
                     Settings.option('assist_stream_end', appState.assist_stream_end);
+                    updateMenuItems();
+                }
+            });
+        }
+
+        // The answer out loud as well as on screen, on the watches with a
+        // speaker to say it with
+        if (Speech.watchHasSpeaker()) {
+            voiceSettingsMenu.item(0, menuIndex++, {
+                title: "Read Aloud",
+                subtitle: !Speech.enabled() ? "Off" :
+                    (Speech.pipelineSpeaks() ? "On" : "On, no voice"),
+                on_click: function(e) {
+                    var on = !Speech.enabled();
+                    Settings.option('assist_speak', on);
+                    if (!on) { Speech.stop(); }
                     updateMenuItems();
                 }
             });

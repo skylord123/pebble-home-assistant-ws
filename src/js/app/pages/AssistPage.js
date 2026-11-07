@@ -19,6 +19,7 @@ var Settings = require('settings');
 var AppState = require('app/AppState');
 var AudioStream = require('app/AudioStream');
 var AudioLevels = require('app/AudioLevels');
+var Speech = require('app/Speech');
 var ConnectionService = require('app/ConnectionService');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -28,6 +29,10 @@ var conversation_id = null;
 
 // The settings menu is up in place of the conversation
 var inSettings = false;
+
+// Why the last answer was not read out, so a conversation that keeps failing
+// the same way says so once rather than under every answer
+var lastSpeechProblem = null;
 
 // A conversation open when the sun goes down turns dark around the words
 // already in it. Nothing happens unless the screen is up.
@@ -61,7 +66,10 @@ function loadAssistPipelines(callback) {
                     preferred: p.id === appState.preferred_pipeline,
                     // Only a pipeline with a speech-to-text engine can be
                     // sent audio
-                    stt: !!p.stt_engine
+                    stt: !!p.stt_engine,
+                    // ...and only one with a text-to-speech engine can
+                    // answer out loud
+                    tts: !!p.tts_engine
                 };
             });
             Settings.option('available_pipelines', pipelineOptions);
@@ -252,6 +260,7 @@ function stopListening() {
 //! Forget the turn in flight, and tell Home Assistant to stop working on it
 function abandonRun() {
     runGeneration++;
+    Speech.stop();
     stopListening();
     if (activeRun) {
         activeRun.haws.unsubscribe(activeRun.id);
@@ -611,11 +620,17 @@ function startRun(body, onEvent) {
                         'Done' : 'The assistant gave no answer';
                 }
 
+                // The speech is what the agent finished on. With nothing there
+                // the whole of what streamed in is the answer, and it has to be
+                // taken before cancelStream clears it.
+                var spoken = speech || streamText;
+
                 // Whatever was streamed came from this same answer, so ending
                 // on it settles any last piece and stops the dots. Nothing
                 // streamed and it goes down whole, exactly as it used to.
                 Assist.endReply(speech);
                 cancelStream();
+                speak(spoken, gen);
                 ConnectionService.showPendingReconnectDialog();
 
                 // An agent that has asked something back, such as "which
@@ -662,6 +677,24 @@ function startRun(body, onEvent) {
 }
 
 /**
+ * Read an answer out on the watch's speaker, for the wearer who wants that.
+ * Anything that stops it being heard, other than the wearer silencing it or
+ * a muted speaker, is said under the answer.
+ */
+function speak(text, gen) {
+    if (!Speech.wanted() || !text) { return; }
+    Speech.speak(text, function(problem) {
+        // Only for the answer it belongs to, and never while the wearer is
+        // talking: a message closes the microphone on the watch
+        if (gen !== runGeneration || Assist.isDictating() || problem === lastSpeechProblem) {
+            return;
+        }
+        lastSpeechProblem = problem;
+        Assist.error(problem);
+    });
+}
+
+/**
  * Put the conversation on screen with the settings as they stand.
  *
  * `listen` opens the microphone, which is what starting a conversation means.
@@ -696,6 +729,11 @@ function openAssist(listen, reset) {
         // anything was heard
         onDictationEnd: function() {
             ConnectionService.showPendingReconnectDialog();
+        },
+        // The watch has already silenced its speaker for the new turn. What is
+        // still on its way to it, or still being made, is not wanted either.
+        onListen: function() {
+            Speech.stop();
         },
         onSettings: function() {
             // Imported inline to avoid a circular dependency
@@ -747,6 +785,7 @@ function showAssistMenu() {
     // always been; the watch throws its own transcript away at the same time
     conversation_id = null;
     inSettings = false;
+    lastSpeechProblem = null;
     abandonRun();
     openAssist(true);
 }
