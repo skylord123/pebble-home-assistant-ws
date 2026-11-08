@@ -422,7 +422,7 @@ var EntityService = {
         } else {
             // Default click handler
             menuItem.on_click = function(e) {
-                self.show(entity.entity_id);
+                self.press(entity.entity_id);
             };
         }
 
@@ -542,24 +542,82 @@ var EntityService = {
     },
 
     /**
-     * Handle long-press action on an entity
+     * Whether a press on an entity in a list does its quick action, rather
+     * than opening its details. The other press does the other.
+     */
+    pressDoesAction: function() {
+        return AppState.getInstance().entity_press === 'action';
+    },
+
+    /**
+     * A press on an entity in a list: its details, or its quick action when
+     * the wearer has swapped the two
+     * @param {string} entity_id - The entity ID that was pressed
+     */
+    press: function(entity_id) {
+        if (this.pressDoesAction()) {
+            this.actOrShow(entity_id);
+        } else {
+            this.show(entity_id);
+        }
+    },
+
+    /**
+     * A long press on an entity in a list: the other of the two
      * @param {string} entity_id - The entity ID that was long-pressed
      */
-    handleLongPress: function(entity_id) {
+    longPress: function(entity_id) {
+        if (this.pressDoesAction()) {
+            this.show(entity_id);
+        } else {
+            this.actOrShow(entity_id);
+        }
+    },
+
+    /**
+     * The quick action, or the details for an entity that has none just now
+     * (a sensor, a cover that can neither open nor close, a lock that is
+     * unavailable), so the button for it is never a dead one
+     * @param {string} entity_id - The entity ID to act on
+     */
+    actOrShow: function(entity_id) {
+        if (!this.quickAction(entity_id)) {
+            this.show(entity_id);
+        }
+    },
+
+    /**
+     * Do an entity's quick action: toggle it, run it, press it, or open the
+     * one control it is usually wanted for
+     * @param {string} entity_id - The entity ID to act on
+     * @returns {boolean} false when it has no quick action, or none in the
+     *     state it is in, and nothing was done
+     */
+    quickAction: function(entity_id) {
         if (!entity_id) {
-            helpers.log_message('handleEntityLongPress: No entity_id provided');
-            return;
+            helpers.log_message('quickAction: No entity_id provided');
+            return false;
         }
 
         var appState = AppState.getInstance();
         var log = helpers.log_message;
 
-        log('handleEntityLongPress: ' + entity_id);
+        log('quickAction: ' + entity_id);
         var domain = entity_id.split('.')[0];
+
+        // Every quick action reads the entity's state, and one that is not in
+        // the state dict yet (or is gone from Home Assistant) has nothing to
+        // read. Home Assistant quietly ignores a service call to an
+        // unavailable entity, which would buzz as if it had worked.
+        var current = appState.getEntity(entity_id);
+        if (!current || current.state === 'unavailable') {
+            log('quickAction: ' + entity_id + ' is ' + (current ? 'unavailable' : 'not in the state dict'));
+            return false;
+        }
 
         if (domain === "automation") {
             var service = appState.automation_longpress_action === 'trigger' ? 'trigger' : 'toggle';
-            log('Automation long-press: calling ' + service + ' for ' + entity_id);
+            log('Automation quick action: calling ' + service + ' for ' + entity_id);
             appState.haws.callService(
                 domain,
                 service,
@@ -584,9 +642,8 @@ var EntityService = {
             domain === "humidifier"
         ) {
             var toggleService = 'toggle';
-            var toggled = appState.ha_state_dict ? appState.ha_state_dict[entity_id] : null;
-            var toggleFeatures = toggled ? toggled.attributes.supported_features || 0 : 0;
-            if (toggled && domain === "cover") {
+            var toggleFeatures = current.attributes.supported_features || 0;
+            if (domain === "cover") {
                 // cover.toggle needs OPEN and CLOSE; a cover that only
                 // does one (a gate opener) gets that one
                 if ((toggleFeatures & 3) === 1) {
@@ -596,14 +653,13 @@ var EntityService = {
                 } else if ((toggleFeatures & 3) === 0) {
                     toggleService = null;
                 }
-            } else if (toggled && domain === "fan" && !(toggleFeatures & (16 | 32))) {
+            } else if (domain === "fan" && !(toggleFeatures & (16 | 32))) {
                 // fan.toggle needs TURN_OFF or TURN_ON
                 toggleService = null;
             }
             if (!toggleService) {
-                log('handleEntityLongPress: ' + entity_id + ' supports no toggle - no action taken');
-                Vibe.vibrate('double');
-                return;
+                log('quickAction: ' + entity_id + ' supports no toggle - no action taken');
+                return false;
             }
             appState.haws.callService(
                 domain,
@@ -621,7 +677,7 @@ var EntityService = {
             );
         } else if (domain === "lock") {
             // Locks at once, but asks before unlocking, and handles any code
-            require('app/pages/entity/LockPage').quickAction(entity_id);
+            return require('app/pages/entity/LockPage').quickAction(entity_id);
         } else if (domain === "scene") {
             appState.haws.callService(
                 domain,
@@ -638,13 +694,8 @@ var EntityService = {
                 }
             );
         } else if (domain === "vacuum") {
-            var entity = appState.ha_state_dict[entity_id];
-            if (!entity) {
-                log('handleEntityLongPress: entity ' + entity_id + ' not found in state dict');
-                return;
-            }
-            var state = entity.state;
-            var vacuumFeatures = entity.attributes.supported_features || 0;
+            var state = current.state;
+            var vacuumFeatures = current.attributes.supported_features || 0;
             var service = null;
 
             // Determine which service to call based on state, using only
@@ -682,48 +733,44 @@ var EntityService = {
                 );
             } else {
                 log('Vacuum ' + entity_id + ' in state ' + state + ' - no action taken');
+                return false;
             }
         } else if (domain === "alarm_control_panel") {
             // Disarm when armed, arm when disarmed; the page module owns the
             // state logic and any code prompt
-            require('app/pages/entity/AlarmPanelPage').quickAction(entity_id);
+            return require('app/pages/entity/AlarmPanelPage').quickAction(entity_id);
         } else if (domain === "number" || domain === "input_number") {
             // Jump straight to the value editor
             require('app/pages/entity/NumberPage').showValueEditor(entity_id);
         } else if (domain === "timer") {
             // Start when idle or paused, pause when running
-            require('app/pages/entity/TimerPage').quickAction(entity_id);
+            return require('app/pages/entity/TimerPage').quickAction(entity_id);
         } else if (domain === "input_datetime" || domain === "datetime" ||
                    domain === "date" || domain === "time") {
             // Straight into the editor
-            require('app/pages/entity/DateTimePage').editValue(entity_id);
+            return require('app/pages/entity/DateTimePage').editValue(entity_id);
         } else if (domain === "text" || domain === "input_text") {
             // Straight to dictation, the only way to type on a watch
-            require('app/pages/entity/TextPage').dictateValue(entity_id);
+            return require('app/pages/entity/TextPage').dictateValue(entity_id);
         } else if (domain === "remote") {
-            require('app/pages/entity/RemotePage').quickAction(entity_id);
+            return require('app/pages/entity/RemotePage').quickAction(entity_id);
         } else if (domain === "lawn_mower") {
             // Stop a mower that is moving, set a stopped one going
-            require('app/pages/entity/LawnMowerPage').quickAction(entity_id);
+            return require('app/pages/entity/LawnMowerPage').quickAction(entity_id);
         } else if (domain === "counter") {
             // Counting up is what a counter is usually for
-            require('app/pages/entity/CounterPage').quickAction(entity_id);
+            return require('app/pages/entity/CounterPage').quickAction(entity_id);
         } else if (domain === "water_heater") {
             // No toggle service exists, so the direction comes from the state
-            require('app/pages/entity/WaterHeaterPage').quickAction(entity_id);
+            return require('app/pages/entity/WaterHeaterPage').quickAction(entity_id);
         } else if (domain === "valve") {
             // Toggle where the valve does both, otherwise its one direction
-            require('app/pages/entity/ValvePage').quickAction(entity_id);
+            return require('app/pages/entity/ValvePage').quickAction(entity_id);
         } else if (domain === "siren") {
             // Home Assistant gates each of these on its own feature bit, and
             // only offers toggle when the siren can do both, so a siren that
             // cannot be turned off remotely still gets its panic action
-            var siren = appState.ha_state_dict[entity_id];
-            if (!siren) {
-                log('handleEntityLongPress: entity ' + entity_id + ' not found in state dict');
-                return;
-            }
-            var sirenFeatures = siren.attributes.supported_features || 0;
+            var sirenFeatures = current.attributes.supported_features || 0;
             var sirenService = null;
             if ((sirenFeatures & 1) && (sirenFeatures & 2)) {
                 sirenService = 'toggle';
@@ -734,7 +781,7 @@ var EntityService = {
             }
             if (!sirenService) {
                 log('Siren ' + entity_id + ' supports no on/off services - no action taken');
-                return;
+                return false;
             }
             appState.haws.callService(
                 domain,
@@ -781,7 +828,10 @@ var EntityService = {
                     Vibe.vibrate('double');
                 }
             );
+        } else {
+            return false;
         }
+        return true;
     },
 
     /**

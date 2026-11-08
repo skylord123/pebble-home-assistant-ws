@@ -57,20 +57,22 @@ function callCounterService(entity_id, service, data) {
 }
 
 /**
- * Long press counts up, which is what a counter is usually for
+ * Quick action: count up, which is what a counter is usually for.
+ * Returns false when there was nothing to do.
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     if (getCounterData(entity).unavailable) {
         helpers.log_message('Counter ' + entity_id + ' in state ' + entity.state + ' - no action taken');
-        return;
+        return false;
     }
     callCounterService(entity_id, 'increment');
+    return true;
 }
 
 function showValuePicker(entity_id) {

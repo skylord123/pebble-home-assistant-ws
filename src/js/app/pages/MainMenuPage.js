@@ -125,7 +125,7 @@ class MainMenuPage extends BasePage {
 
     onLongSelect(e) {
         if (e.item && e.item.entity_id) {
-            EntityService.handleLongPress(e.item.entity_id);
+            EntityService.longPress(e.item.entity_id);
         }
     }
 
@@ -219,7 +219,7 @@ class MainMenuPage extends BasePage {
             subtitle: 'Loading',
             entity_id: entityId,
             on_click: function() {
-                EntityService.show(entityId);
+                EntityService.press(entityId);
             }
         };
     }

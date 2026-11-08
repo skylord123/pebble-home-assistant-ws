@@ -1333,9 +1333,19 @@
 		<details class="section">
 			<summary class="section-header">
 				<span class="section-title">Entity Settings</span>
-				<span class="section-hint">How entities are sorted, and what happens to unavailable ones</span>
+				<span class="section-hint">What pressing an entity does, how entities are sorted, and what happens to unavailable ones</span>
 			</summary>
 			<div class="section-body">
+				<div class="component">
+					<div class="form-group">
+						<label class="form-label" for="ha-entity-press">Pressing an Entity</label>
+						<select class="form-select" id="ha-entity-press">
+							<option value="details">Opens its details</option>
+							<option value="action">Does its quick action</option>
+						</select>
+						<small class="form-text" id="ha-entity-press-help"></small>
+					</div>
+				</div>
 				<div class="component">
 					<div class="row">
 						<div class="col-6">
@@ -1385,12 +1395,12 @@
 				</div>
 				<div class="component">
 					<div class="form-group">
-						<label class="form-label" for="ha-automation-longpress">Automation Long-Press</label>
+						<label class="form-label" for="ha-automation-longpress">Automation Action</label>
 						<select class="form-select" id="ha-automation-longpress">
 							<option value="toggle">Toggle</option>
 							<option value="trigger">Trigger</option>
 						</select>
-						<small class="form-text">Action when long-pressing an automation</small>
+						<small class="form-text">What the quick action does for an automation: turn it on or off, or run its actions now</small>
 					</div>
 				</div>
 			</div>
@@ -1662,6 +1672,8 @@
 		unavailableHandling = $('ha-unavailable-handling'),
 		unknownHandling = $('ha-unknown-handling'),
 		automationLongpress = $('ha-automation-longpress'),
+		entityPress = $('ha-entity-press'),
+		entityPressHelp = $('ha-entity-press-help'),
 		mainMenuCustomOrderEnabled = $('main-menu-custom-order-enabled'),
 		mainMenuOrderContainer = $('main-menu-order-container'),
 		mainMenuSortable = $('main-menu-sortable'),
@@ -2284,6 +2296,17 @@
 
 	assistSpeak.addEventListener('change', renderSpeakStatus);
 
+	// Says what each press does with the choice as it stands, since the
+	// other press always does the other thing
+	function renderEntityPressHelp() {
+		entityPressHelp.textContent = (entityPress.value === 'action' ?
+			'Press an entity to do its quick action, such as toggling a light, running a script or pressing a button. Long press it to open its details.' :
+			'Press an entity to open its details. Long press it to do its quick action, such as toggling a light, running a script or pressing a button.') +
+			' An entity with no quick action, such as a sensor, opens its details either way.';
+	}
+	entityPress.addEventListener('change', renderEntityPressHelp);
+	renderEntityPressHelp();
+
 	// The pause only applies to turns that end when the wearer stops talking
 	function updateStreamPauseVisibility() {
 		show(assistStreamPauseContainer, assistStreamEnd.value !== 'manual');
@@ -2376,6 +2399,7 @@
 			'unknown_entity_handling': unknownHandling.value,
 			// Automation long-press action
 			'automation_longpress_action': automationLongpress.value,
+			'entity_press': entityPress.value,
 			// Main menu order settings
 			'main_menu_custom_order_enabled': mainMenuCustomOrderEnabled.checked,
 			'main_menu_order': listItems(mainMenuSortable).map(function(li) { return li.dataset.itemId; }),
@@ -2495,6 +2519,8 @@
 		unavailableHandling.value = watch_config['unavailable_entity_handling'] || 'sort_to_end';
 		unknownHandling.value = watch_config['unknown_entity_handling'] || 'sort_normally';
 		automationLongpress.value = watch_config['automation_longpress_action'] || 'toggle';
+		entityPress.value = watch_config['entity_press'] === 'action' ? 'action' : 'details';
+		renderEntityPressHelp();
 
 		renderFavorites(watch_config['favorite_entities']);
 		quickLaunchFavoriteEntity.value = watch_config['quick_launch_favorite_entity'] || '';

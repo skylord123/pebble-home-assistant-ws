@@ -66,12 +66,12 @@ class EntityListPage extends BasePage {
                 return;
             }
             helpers.log_message('Entity ' + entity_id + ' was short pressed! Index: ' + e.itemIndex);
-            EntityService.show(entity_id);
+            EntityService.press(entity_id);
         });
 
         this.menu.on('longSelect', function(e) {
             if (e.item && e.item.entity_id) {
-                EntityService.handleLongPress(e.item.entity_id);
+                EntityService.longPress(e.item.entity_id);
             }
         });
 

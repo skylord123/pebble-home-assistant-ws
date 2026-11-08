@@ -138,11 +138,15 @@ var SettingsManager = {
             ? appState.unknown_entity_handling
             : 'sort_normally';
 
-        // Automation long-press action setting
+        // What the quick action does for an automation
         appState.automation_longpress_action = Settings.option('automation_longpress_action');
         appState.automation_longpress_action = appState.automation_longpress_action !== undefined
             ? appState.automation_longpress_action
             : 'toggle';
+
+        // What a press on an entity in a list does. A long press does the
+        // other: its quick action by default, or its details when swapped.
+        appState.entity_press = Settings.option('entity_press') === 'action' ? 'action' : 'details';
 
         // Whether to remember alarm panel codes after a successful entry
         // (toggleable from the alarm page's Code menu)
@@ -150,7 +154,8 @@ var SettingsManager = {
 
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
-        log('Automation long-press action: ' + appState.automation_longpress_action);
+        log('Automation quick action: ' + appState.automation_longpress_action);
+        log('Entity press: ' + appState.entity_press);
 
         // Inactivity timeout in seconds (0 = disabled). Configuring it also
         // (re)starts the countdown, so a settings change applies immediately.

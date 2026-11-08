@@ -107,7 +107,8 @@ The reply still shows on screen as it always has. The watch starts speaking as s
 ### Entity Control
 
 - **Short press** on an entity to view its details and controls
-- **Long press** on compatible entities (lights, switches, etc.) to toggle them directly
+- **Long press** on an entity to do its quick action, such as toggling a light or switch, running a script or scene, or pressing a button. An entity with no quick action, such as a sensor, opens its details instead.
+- To swap the two, so a press does the quick action and a long press opens the details, set **Entity Press** to **Does quick action** under Entity Settings on the watch, or **Pressing an Entity** on the settings page
 - For media players, use the dedicated control screen with volume and playback controls
 - Add frequently used entities to favorites for quicker access
 

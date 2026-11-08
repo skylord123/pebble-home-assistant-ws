@@ -584,6 +584,10 @@ function showEntitySettings() {
         }
     }
 
+    function getEntityPressText(value) {
+        return value === 'action' ? 'Does quick action' : 'Opens details';
+    }
+
     var entitySettingsMenu = new UI.Menu({
         status: false,
         sections: [{
@@ -602,7 +606,24 @@ function showEntitySettings() {
             orderByText = "Last Updated";
         }
 
+        // What a press on an entity in a list does, with long press doing
+        // the other
         entitySettingsMenu.item(0, 0, {
+            title: "Entity Press",
+            subtitle: getEntityPressText(appState.entity_press),
+            on_click: function(e) {
+                appState.entity_press = appState.entity_press === 'action' ? 'details' : 'action';
+                Settings.option('entity_press', appState.entity_press);
+
+                entitySettingsMenu.item(0, 0, {
+                    title: "Entity Press",
+                    subtitle: getEntityPressText(appState.entity_press),
+                    on_click: e.item.on_click
+                });
+            }
+        });
+
+        entitySettingsMenu.item(0, 1, {
             title: "Order By",
             subtitle: orderByText,
             on_click: function(e) {
@@ -611,14 +632,14 @@ function showEntitySettings() {
         });
 
         // Order Direction setting
-        entitySettingsMenu.item(0, 1, {
+        entitySettingsMenu.item(0, 2, {
             title: "Order Direction",
             subtitle: appState.ha_order_dir === "desc" ? "Descending" : "Ascending",
             on_click: function(e) {
                 appState.ha_order_dir = appState.ha_order_dir === "desc" ? "asc" : "desc";
                 Settings.option('order_dir', appState.ha_order_dir);
 
-                entitySettingsMenu.item(0, 1, {
+                entitySettingsMenu.item(0, 2, {
                     title: "Order Direction",
                     subtitle: appState.ha_order_dir === "desc" ? "Descending" : "Ascending",
                     on_click: e.item.on_click
@@ -627,7 +648,7 @@ function showEntitySettings() {
         });
 
         // Unavailable Entities setting
-        entitySettingsMenu.item(0, 2, {
+        entitySettingsMenu.item(0, 3, {
             title: "Unavailable Entities",
             subtitle: getEntityHandlingText(appState.unavailable_entity_handling),
             on_click: function(e) {
@@ -636,7 +657,7 @@ function showEntitySettings() {
         });
 
         // Unknown Entities setting
-        entitySettingsMenu.item(0, 3, {
+        entitySettingsMenu.item(0, 4, {
             title: "Unknown Entities",
             subtitle: getEntityHandlingText(appState.unknown_entity_handling),
             on_click: function(e) {
@@ -644,9 +665,9 @@ function showEntitySettings() {
             }
         });
 
-        // Automation Long-Press setting
-        entitySettingsMenu.item(0, 4, {
-            title: "Automation Long-Press",
+        // What the quick action does for an automation
+        entitySettingsMenu.item(0, 5, {
+            title: "Automation Action",
             subtitle: getAutomationLongpressText(appState.automation_longpress_action),
             on_click: function(e) {
                 showAutomationLongpressMenu();
@@ -798,7 +819,7 @@ function showAutomationLongpressMenu() {
     var automationMenu = new UI.Menu({
         status: false,
         sections: [{
-            title: 'Automation Long-Press'
+            title: 'Automation Action'
         }]
     });
 

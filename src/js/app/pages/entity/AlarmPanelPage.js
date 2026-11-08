@@ -33,7 +33,7 @@ var AlarmEntityFeature = {
     ARM_VACATION: 32
 };
 
-// Arm modes in display order (away first: it doubles as the long-press
+// Arm modes in display order (away first: it doubles as the quick action
 // fallback order)
 var ARM_MODES = [
     { service: 'alarm_arm_away', title: 'Arm Away', feature: AlarmEntityFeature.ARM_AWAY, state: 'armed_away' },
@@ -101,21 +101,22 @@ function performAction(entity_id, service) {
 }
 
 /**
- * Long-press quick action: disarm when armed (or pending/triggered), arm
+ * Quick action: disarm when armed (or pending/triggered), arm
  * when disarmed using the first supported mode (away preferred).
+ * Returns false when there was nothing to do.
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
 
     var state = entity.state;
     if (state === 'unavailable' || state === 'unknown') {
         helpers.log_message('Alarm ' + entity_id + ' in state ' + state + ' - no action taken');
-        return;
+        return false;
     }
 
     if (state === 'disarmed') {
@@ -123,14 +124,15 @@ function quickAction(entity_id) {
         for (var i = 0; i < ARM_MODES.length; i++) {
             if (supported & ARM_MODES[i].feature) {
                 performAction(entity_id, ARM_MODES[i].service);
-                return;
+                return true;
             }
         }
         helpers.log_message('Alarm ' + entity_id + ' supports no arm modes - no action taken');
-        return;
+        return false;
     }
 
     performAction(entity_id, 'alarm_disarm');
+    return true;
 }
 
 function showAlarmEntity(entity_id) {
