@@ -15,7 +15,8 @@
         "on": ["boolean"],
         "domain": ["shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -29,8 +30,10 @@
         "on": ["boolean", "shortText"],
         "brightness": ["numericValue", "shortText"],
         "color_temp": ["numericValue", "shortText"],
+        "color_modes": ["longText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -44,7 +47,8 @@
         "on": ["boolean", "shortText"],
         "speed": ["numericValue", "shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -58,7 +62,8 @@
         "value": ["shortText", "longText", "numericValue", "timestamp"],
         "device_class": ["shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 60,
@@ -73,7 +78,8 @@
         "state": ["shortText", "longText"],
         "device_class": ["shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -90,8 +96,13 @@
         "hvac_mode": ["shortText"],
         "hvac_action": ["shortText"],
         "summary": ["shortText", "longText"],
+        "target_temp_low": ["numericValue", "shortText"],
+        "target_temp_high": ["numericValue", "shortText"],
+        "temperature_step": ["numericValue"],
+        "hvac_modes": ["longText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 60,
@@ -106,7 +117,8 @@
         "position": ["numericValue", "shortText"],
         "state": ["shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -120,7 +132,8 @@
         "locked": ["boolean", "shortText"],
         "state": ["shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -138,7 +151,8 @@
         "artist": ["shortText", "longText"],
         "volume": ["numericValue", "shortText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
@@ -153,7 +167,8 @@
         "zone": ["shortText", "longText"],
         "since": ["timestamp"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 120,
@@ -167,7 +182,8 @@
         "running": ["boolean"],
         "last_run": ["timestamp"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 120,
@@ -181,7 +197,8 @@
         "armed": ["boolean", "shortText"],
         "state": ["shortText", "longText"],
         "last_changed": ["timestamp"],
-        "last_updated": ["timestamp"]
+        "last_updated": ["timestamp"],
+        "supported_features": ["numericValue"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,

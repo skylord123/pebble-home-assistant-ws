@@ -92,16 +92,18 @@ Every entity is an instance whose `instanceId` is its `entity_id`. Every
 instance includes these properties:
 
 - `name`;
-- `last_changed` and `last_updated`, as timestamps.
+- `last_changed` and `last_updated`, as timestamps;
+- `supported_features`, Home Assistant's own bits for what the entity can do
+  (for a cover, 1 open, 2 close, 4 set position, 8 stop), when it has them.
 
 | Source | Domains | Other properties |
 | --- | --- | --- |
 | `home/entity` | everything shared, plus weather | `state`, `on`, `domain` |
-| `home/light` | light | `on`, `brightness`, `color_temp` |
+| `home/light` | light | `on`, `brightness`, `color_temp`, `color_modes` (comma separated; `onoff` alone means it cannot dim) |
 | `home/switch` | switch, input_boolean, fan, automation, siren, humidifier, remote | `on`, `speed` |
 | `home/sensor` | sensor, number, input_number, counter | `value`, `device_class` |
 | `home/binary_sensor` | binary_sensor | `on`, `state` (e.g. Open/Closed by device class), `device_class` |
-| `home/climate` | climate, water_heater | `current_temperature`, `target_temperature`, `on`, `hvac_mode`, `hvac_action`, `summary` |
+| `home/climate` | climate, water_heater | `current_temperature`, `target_temperature`, `target_temp_low` and `target_temp_high` (heat_cool), `temperature_step`, `on`, `hvac_mode`, `hvac_modes` (comma separated, as Home Assistant names them), `hvac_action`, `summary` |
 | `home/cover` | cover, valve | `open`, `position`, `state` |
 | `home/lock` | lock | `locked`, `state` |
 | `home/media_player` | media_player | `on`, `playing`, `state`, `title`, `artist`, `volume` |

@@ -250,6 +250,12 @@ function common(entity) {
     if (changed) { props.last_changed = { timestamp: changed }; }
     var updated = timestamp(entity.last_updated);
     if (updated) { props.last_updated = { timestamp: updated }; }
+    // Home Assistant's own bits for what this kind of entity can do, so a
+    // caller can leave out a control the entity would refuse
+    var features = (entity.attributes || {}).supported_features;
+    if (typeof features === 'number' && isFinite(features)) {
+        props.supported_features = { numericValue: numeric(features) };
+    }
     return props;
 }
 
@@ -296,6 +302,11 @@ var BUILDERS = {
                     attrs.min_color_temp_kelvin, attrs.max_color_temp_kelvin),
                 shortText: shortText(attrs.color_temp_kelvin + 'K')
             };
+        }
+        // What it can do: onoff alone means no dimming, color_temp a white
+        // that can be set
+        if (Array.isArray(attrs.supported_color_modes) && attrs.supported_color_modes.length) {
+            props.color_modes = { longText: longText(attrs.supported_color_modes.join(',')) };
         }
     },
 
@@ -344,6 +355,25 @@ var BUILDERS = {
         props.hvac_mode = { shortText: shortText(humanize(entity.state)) };
         if (attrs.hvac_action) {
             props.hvac_action = { shortText: shortText(humanize(attrs.hvac_action)) };
+        }
+        // The two ends a heat_cool thermostat keeps to
+        ['target_temp_low', 'target_temp_high'].forEach(function(name) {
+            if (typeof attrs[name] === 'number') {
+                var end = temperatureProperty(attrs[name], unit);
+                var span = numeric(attrs[name], null, attrs.min_temp, attrs.max_temp);
+                if ('min' in span) {
+                    end.numericValue.min = span.min;
+                    end.numericValue.max = span.max;
+                }
+                props[name] = end;
+            }
+        });
+        if (typeof attrs.target_temp_step === 'number') {
+            props.temperature_step = { numericValue: numeric(attrs.target_temp_step, unit || '°') };
+        }
+        // The modes this one offers, as Home Assistant names them, comma separated
+        if (Array.isArray(attrs.hvac_modes) && attrs.hvac_modes.length) {
+            props.hvac_modes = { longText: longText(attrs.hvac_modes.join(',')) };
         }
         props.summary = { shortText: shortText(climateSummary(entity)), longText: longText(climateSummary(entity)) };
     },
