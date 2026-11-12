@@ -145,12 +145,12 @@ function request(conn, method, path, body) {
 
     var init = {
         method: method,
-        headers: {
-            'Authorization': 'Bearer ' + conn.token,
-            'Content-Type': 'application/json'
-        }
+        headers: { 'Authorization': 'Bearer ' + conn.token }
     };
+    // Only with a body: Core's fetch sends a Content-Type of its own on a
+    // request without one, and Home Assistant refuses a request that has two
     if (body !== undefined) {
+        init.headers['Content-Type'] = 'application/json';
         init.body = JSON.stringify(body);
     }
 
