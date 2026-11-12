@@ -1,12 +1,15 @@
 # Workflow for deploying static content to GitHub Pages
-# - config/* is deployed from the triggering branch (all branches)
-# - docs/* is deployed from master branch only (when push is to master)
+# - docs/* and config/* come from master, which is what users have installed
+# - config/* pages that master does not have yet come from dev, so test builds
+#   of the next release can open theirs. A page master already has is never
+#   taken from dev, since released apps open it by name.
 name: Deploy static content to Pages
 
 on:
-  # Runs on pushes to any branch
+  # Every run rebuilds the whole site from both branches, so only pushes to
+  # them need to redeploy it
   push:
-    branches: ['**']
+    branches: [master, dev]
 
   # Allows you to run this workflow manually from the Actions tab
   workflow_dispatch:
@@ -30,42 +33,44 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout current branch
-        uses: actions/checkout@v4
-        with:
-          path: current-branch
-
-      - name: Checkout master branch (for docs)
-        if: github.ref == 'refs/heads/master'
+      - name: Checkout master branch
         uses: actions/checkout@v4
         with:
           ref: master
           path: master-branch
 
+      - name: Checkout dev branch
+        uses: actions/checkout@v4
+        with:
+          ref: dev
+          path: dev-branch
+
       - name: Prepare deployment directory
         run: |
-          mkdir -p deploy
+          mkdir -p deploy/config
 
-          # Always copy config from the current branch
-          if [ -d "current-branch/config" ]; then
-            cp -r current-branch/config deploy/
-            echo "✓ Copied config/ from current branch (${{ github.ref_name }})"
-          else
-            echo "⚠ No config/ directory found in current branch"
-          fi
+          # The docs site lives at the root
+          cp -r master-branch/docs/. deploy/
+          echo "✓ Copied docs/ from master"
 
-          # Only copy docs from master when we're on master branch
-          if [ "${{ github.ref }}" == "refs/heads/master" ]; then
-            if [ -d "master-branch/docs" ]; then
-              # Copy docs contents to root of deploy directory
-              cp -r master-branch/docs/* deploy/ 2>/dev/null || echo "⚠ docs/ directory is empty"
-              echo "✓ Copied docs/ contents to root (master branch)"
-            else
-              echo "⚠ No docs/ directory found in master branch"
+          # Released settings pages
+          cp -r master-branch/config/. deploy/config/
+          echo "✓ Copied config/ from master"
+
+          # Pages only dev has yet. --update=none keeps master's copy of every
+          # file that exists in both.
+          cp -r --update=none dev-branch/config/. deploy/config/
+          echo "✓ Added config/ files that only dev has"
+
+          # A released page changed on dev would never reach anyone, and
+          # changing it in place is what showed unreleased options to
+          # released apps (#104). New options belong in a new page version.
+          for f in master-branch/config/v*.html; do
+            name=$(basename "$f")
+            if [ -f "dev-branch/config/$name" ] && ! cmp -s "$f" "dev-branch/config/$name"; then
+              echo "::warning file=config/$name::config/$name differs on dev, but released pages are only deployed from master. Put the changes in a new page version."
             fi
-          else
-            echo "ℹ Skipping docs/ deployment (not on master branch)"
-          fi
+          done
 
           echo ""
           echo "=== Deployment directory contents ==="

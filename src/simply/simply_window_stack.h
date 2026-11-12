@@ -30,6 +30,10 @@ void simply_window_stack_show(SimplyWindowStack *self, SimplyWindow *window, boo
 void simply_window_stack_pop(SimplyWindowStack *self, SimplyWindow *window);
 void simply_window_stack_back(SimplyWindowStack *self, SimplyWindow *window);
 
+//! A new JS has taken over: the windows on screen belong to the one before
+//! it, whose window ids the new one is about to hand out again
+void simply_window_stack_forget(Simply *simply);
+
 void simply_window_stack_send_show(SimplyWindowStack *self, SimplyWindow *window);
 void simply_window_stack_send_hide(SimplyWindowStack *self, SimplyWindow *window);
 

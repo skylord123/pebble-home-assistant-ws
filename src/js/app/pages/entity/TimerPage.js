@@ -118,15 +118,16 @@ function callTimerService(entity_id, service, data) {
 }
 
 /**
- * Long press quick action: start an idle timer, pause a running one, and
+ * Quick action: start an idle timer, pause a running one, and
  * resume a paused one.
+ * Returns false when there was nothing to do.
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     if (entity.state === 'active') {
         callTimerService(entity_id, 'pause');
@@ -134,7 +135,9 @@ function quickAction(entity_id) {
         callTimerService(entity_id, 'start');
     } else {
         helpers.log_message('Timer ' + entity_id + ' in state ' + entity.state + ' - no action taken');
+        return false;
     }
+    return true;
 }
 
 /**

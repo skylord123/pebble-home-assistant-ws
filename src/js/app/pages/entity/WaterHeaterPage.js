@@ -108,22 +108,24 @@ function callWaterHeaterService(entity_id, service, data) {
 }
 
 /**
- * Long press: there is no toggle service, so pick the direction from the
+ * Quick action: there is no toggle service, so pick the direction from the
  * current state. Water heaters without on/off are left alone.
+ * Returns false when there was nothing to do.
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     var data = getWaterHeaterData(entity);
     if (data.unavailable || !data.can_turn_on_off) {
         helpers.log_message('Water heater ' + entity_id + ' cannot be turned on or off - no action taken');
-        return;
+        return false;
     }
     callWaterHeaterService(entity_id, data.is_off ? 'turn_on' : 'turn_off');
+    return true;
 }
 
 function showTemperaturePicker(entity_id) {

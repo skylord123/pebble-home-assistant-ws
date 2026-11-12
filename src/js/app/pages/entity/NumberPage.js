@@ -144,7 +144,7 @@ function showNumberEntity(entity_id) {
 
 // Native number selector (simply_number.c): all adjustment runs on the
 // watch with hold-to-repeat, only the final value comes back. Also opened
-// directly by a long press on a number entity in any list.
+// directly by the quick action on a number entity in any list.
 function showValueEditor(entity_id) {
     var appState = AppState.getInstance();
     var domain = entity_id.split('.')[0];

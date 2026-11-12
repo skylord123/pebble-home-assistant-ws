@@ -47,16 +47,48 @@
 // any future large-screen platform through the display height automatically.
 #if defined(PBL_PLATFORM_EMERY) || (defined(PBL_DISPLAY_HEIGHT) && PBL_DISPLAY_HEIGHT >= 200)
 #define MENU_CONTENT_SIZE_LARGE 1
-//! The firmware's row height at the Large content size
-#define MENU_LARGE_CELL_HEIGHT 61
 #endif
 
-// Menu row fonts, matching what menu_cell_basic_draw uses for the platform's
-// content size so the custom-drawn scrolling selected row is identical to the
-// firmware-drawn static rows. Large content size (Pebble Time 2) means 61px
-// cells with Gothic 24 Bold titles and Gothic 24 subtitles (per Core Devices'
-// PebbleOS system theme); the other platforms use Medium (44px cells,
-// Gothic 24 Bold / Gothic 18).
+// ---- Text size ---------------------------------------------------------------
+//
+// The wearer's Text Size setting works the way PebbleOS's own does under
+// Settings > Display: Default is the content size the firmware picks for the
+// display, and Smaller and Larger are one step either side of it. A 144px
+// watch therefore goes Small, Medium, Large, and a watch 200px or taller goes
+// Medium, Large, Extra Large. The fonts and row heights of each step are the
+// firmware's own, from shell/system_theme.c and applib/ui/menu_layer_system_cells.c
+// for the ordinary rows and apps/system/launcher/default/menu_layer.c for the
+// launcher style ones.
+//
+// The firmware only lets its own apps follow that setting: menu_cell_basic_draw
+// always draws an app's rows at the platform default. So at Default the rows
+// are left to it exactly as before, and at any other size every row is drawn
+// here, with the same layout the firmware would give it at that size.
+//
+// Aplite has none of it. Its app memory is too tight to spare for a second way
+// of drawing rows, so its menus stay at the one size the firmware draws.
+
+//! How the phone asks for the rows to be sized, as it arrives in the props packet
+typedef enum MenuTextSize {
+  MenuTextSizeDefault = 0,
+  MenuTextSizeSmaller = 1,
+  MenuTextSizeLarger = 2,
+} MenuTextSize;
+
+//! PebbleOS's PreferredContentSize, in the same order so a step is one apart
+typedef enum MenuContentSize {
+  MenuContentSizeSmall,
+  MenuContentSizeMedium,
+  MenuContentSizeLarge,
+  MenuContentSizeExtraLarge,
+  MenuContentSizeCount,
+} MenuContentSize;
+
+#if defined(MENU_CONTENT_SIZE_LARGE)
+#define MENU_DEFAULT_CONTENT_SIZE MenuContentSizeLarge
+#else
+#define MENU_DEFAULT_CONTENT_SIZE MenuContentSizeMedium
+#endif
 
 // A section title on a round display has to live with a line width that
 // changes as the band moves up and down the circle, and it sits among cells
@@ -75,41 +107,13 @@
 // Chalk is left alone: the launcher there is drawn to a different set of
 // numbers again, and its menus keep the centred layout they have always had.
 #define MENU_ROUND_LAUNCHER_STYLE 1
-#define MENU_ROUND_ROW_FOCUSED 55
-#define MENU_ROUND_ROW_UNFOCUSED 45
 #define MENU_ROUND_ICON_BOX 25
 #define MENU_ROUND_ICON_MARGIN 9
 //! The margin a row keeps from the glass once it has followed the curve in
 #define MENU_ROUND_BASE_INSET 10
-#define MENU_ROUND_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
-#define MENU_ROUND_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_18
-#define MENU_ROUND_TITLE_HEIGHT 24
-#define MENU_ROUND_SUBTITLE_HEIGHT 18
 #endif
 
 #if defined(PBL_ROUND)
-//! Gap between the title and the subtitle under it on a round row
-#define MENU_ROUND_TEXT_GAP 2
-
-//! menu_cell_basic_draw pulls its text up by the title font's cap offset, and
-//! the app SDK exposes no way to ask a font for one. These are the differences
-//! measured against a row the firmware drew, on the same list on the same
-//! watch, so a row that has to marquee lands on the same pixels as one that
-//! does not. Each is measured from where the block would naturally sit, so
-//! moving one does not drag the other along with it.
-#define MENU_ROUND_ICON_NUDGE 1
-#define MENU_ROUND_TEXT_NUDGE (-4)
-
-// One pair of names for the row heights this round platform actually uses, so
-// the cell callback, the touch hit test, the scroll range and the settle can
-// never disagree about them
-#if defined(MENU_ROUND_LAUNCHER_STYLE)
-#define MENU_ROUND_FOCUSED_HEIGHT MENU_ROUND_ROW_FOCUSED
-#define MENU_ROUND_UNFOCUSED_HEIGHT MENU_ROUND_ROW_UNFOCUSED
-#else
-#define MENU_ROUND_FOCUSED_HEIGHT MENU_CELL_ROUND_FOCUSED_TALL_CELL_HEIGHT
-#define MENU_ROUND_UNFOCUSED_HEIGHT MENU_CELL_ROUND_UNFOCUSED_SHORT_CELL_HEIGHT
-#endif
 
 //! menu_cell_basic_draw insets a round row before it lays anything out in it,
 //! 16px either side of the focused row and 34 either side of the rest
@@ -146,25 +150,61 @@
 #define MENU_HEADER_TEXT_INSET 4
 #endif
 
-#if defined(MENU_CONTENT_SIZE_LARGE)
-#define MENU_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
-#define MENU_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_24
-#define MENU_TITLE_FONT_HEIGHT 24
-#define MENU_SUBTITLE_FONT_HEIGHT 24
+#if !defined(PBL_PLATFORM_APLITE)
+//! The fonts and row geometry of one content size. Every row of a menu, and
+//! everything that has to agree with where the rows are (the cell height
+//! callback, the touch hit test, the scroll range), asks the menu's current
+//! style rather than a constant, so none of them can disagree about it.
+typedef struct MenuTextStyle {
+  const char *title_font_key;
+  const char *subtitle_font_key;
+#if defined(MENU_ROUND_LAUNCHER_STYLE)
+  int16_t focused_cell_height;
+  int16_t unfocused_cell_height;
+#elif !defined(PBL_ROUND)
+  int16_t cell_height;
+  //! Margin either side of the row's contents
+  int16_t horizontal_inset;
+  //! Where the text starts beside an icon, measured from the inset
+  int16_t title_subtitle_left_margin;
+#endif
+} MenuTextStyle;
+
+#if defined(MENU_ROUND_LAUNCHER_STYLE)
+// The launcher's LauncherMenuLayerStyle. Small is never reached from a large
+// display's default, and is the firmware's copy of Medium anyway.
+static const MenuTextStyle s_text_styles[MenuContentSizeCount] = {
+  [MenuContentSizeSmall] = { FONT_KEY_GOTHIC_18_BOLD, FONT_KEY_GOTHIC_14, 52, 38 },
+  [MenuContentSizeMedium] = { FONT_KEY_GOTHIC_18_BOLD, FONT_KEY_GOTHIC_14, 52, 38 },
+  [MenuContentSizeLarge] = { FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_18, 55, 45 },
+  [MenuContentSizeExtraLarge] = { FONT_KEY_GOTHIC_28_BOLD, FONT_KEY_GOTHIC_24, 66, 56 },
+};
+#elif defined(PBL_ROUND)
+// The system theme's menu cell fonts. A round menu keeps the same row heights
+// at every size, as the firmware's own round menus do, and only its fonts
+// change; Extra Large is never reached from chalk's Medium default.
+static const MenuTextStyle s_text_styles[MenuContentSizeCount] = {
+  [MenuContentSizeSmall] = { FONT_KEY_GOTHIC_18_BOLD, FONT_KEY_GOTHIC_18 },
+  [MenuContentSizeMedium] = { FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_18 },
+  [MenuContentSizeLarge] = { FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_24 },
+  [MenuContentSizeExtraLarge] = { FONT_KEY_GOTHIC_28_BOLD, FONT_KEY_GOTHIC_28 },
+};
 #else
-#define MENU_TITLE_FONT_KEY FONT_KEY_GOTHIC_24_BOLD
-#define MENU_SUBTITLE_FONT_KEY FONT_KEY_GOTHIC_18
-#define MENU_TITLE_FONT_HEIGHT 24
-#define MENU_SUBTITLE_FONT_HEIGHT 18
+// The system theme's menu cell fonts and menu_layer_system_cells.c's
+// MenuCellDimensions. Small keeps Medium's geometry, as it does in the firmware.
+static const MenuTextStyle s_text_styles[MenuContentSizeCount] = {
+  [MenuContentSizeSmall] = { FONT_KEY_GOTHIC_18_BOLD, FONT_KEY_GOTHIC_18, 44, 5, 30 },
+  [MenuContentSizeMedium] = { FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_18, 44, 5, 30 },
+  [MenuContentSizeLarge] = { FONT_KEY_GOTHIC_24_BOLD, FONT_KEY_GOTHIC_24, 61, 10, 34 },
+  [MenuContentSizeExtraLarge] = { FONT_KEY_GOTHIC_28_BOLD, FONT_KEY_GOTHIC_28, 85, 10, 34 },
+};
+#endif
 #endif
 
-//! The subtitle font a marquee row is measured with, which has to be the one
-//! it is drawn with: launcher-style round rows keep Gothic 18 even on a large
-//! display
-#if defined(MENU_ROUND_LAUNCHER_STYLE)
-#define MENU_MEASURE_SUBTITLE_FONT_KEY MENU_ROUND_SUBTITLE_FONT_KEY
-#else
-#define MENU_MEASURE_SUBTITLE_FONT_KEY MENU_SUBTITLE_FONT_KEY
+#if defined(PBL_ROUND) && !defined(MENU_ROUND_LAUNCHER_STYLE)
+//! A round menu's row heights, the same at every text size
+#define MENU_ROUND_FOCUSED_HEIGHT MENU_CELL_ROUND_FOCUSED_TALL_CELL_HEIGHT
+#define MENU_ROUND_UNFOCUSED_HEIGHT MENU_CELL_ROUND_UNFOCUSED_SHORT_CELL_HEIGHT
 #endif
 
 typedef Packet MenuClearPacket;
@@ -186,6 +226,8 @@ struct __attribute__((__packed__)) MenuPropsPacket {
   GColor8 highlight_background_color;
   GColor8 highlight_text_color;
   bool scroll_wrap;
+  //! MenuTextSize
+  uint8_t text_size;
 };
 
 typedef struct MenuSectionPacket MenuSectionPacket;
@@ -855,17 +897,89 @@ static int16_t prv_menu_get_header_height_callback(MenuLayer *menu_layer, uint16
   return prv_header_height(data, section_index);
 }
 
-__attribute__((unused)) static int16_t prv_menu_get_cell_height_callback(
-    MenuLayer *menu_layer, MenuIndex *cell_index, void *context) {
-#if defined(PBL_ROUND)
-  const bool is_selected = menu_layer_is_index_selected(menu_layer, cell_index);
-  return is_selected ? MENU_ROUND_FOCUSED_HEIGHT : MENU_ROUND_UNFOCUSED_HEIGHT;
-#elif defined(MENU_CONTENT_SIZE_LARGE)
-  return MENU_LARGE_CELL_HEIGHT;
-#else
-  return MENU_CELL_BASIC_CELL_HEIGHT;
+#if !defined(PBL_PLATFORM_APLITE)
+//! The style of the menu's current text size
+static const MenuTextStyle *prv_style(SimplyMenu *self) {
+  return &s_text_styles[self->menu_layer.content_size];
+}
+
+//! A font's line height, which is also the height the firmware's text layout
+//! gives one line of it (fonts_get_font_height)
+static int16_t prv_font_line_height(GFont font) {
+  return graphics_text_layout_get_content_size("A", font, GRect(0, 0, 100, 100),
+                                               GTextOverflowModeFill, GTextAlignmentLeft).h;
+}
+
+#if defined(PBL_ROUND) && !defined(MENU_ROUND_LAUNCHER_STYLE)
+//! The distance menu_cell_basic_draw pulls a line of text up by, which is how
+//! PebbleOS's fonts_get_font_cap_offset works it out for every font
+static int16_t prv_cap_offset(int16_t font_height) {
+  return font_height * 22 / 100;
+}
+#endif
+
+//! Switch the rows to a Text Size. Nothing is drawn at the new size until the
+//! layer has been told the rows have changed height, and a marquee measured in
+//! the old fonts starts again in the new ones.
+static void prv_set_text_size(SimplyMenu *self, uint8_t text_size) {
+  int content_size = MENU_DEFAULT_CONTENT_SIZE;
+  if (text_size == MenuTextSizeSmaller) {
+    content_size -= 1;
+  } else if (text_size == MenuTextSizeLarger) {
+    content_size += 1;
+  } else {
+    text_size = MenuTextSizeDefault;
+  }
+  if (content_size < 0) { content_size = 0; }
+  if (content_size >= MenuContentSizeCount) { content_size = MenuContentSizeCount - 1; }
+
+  SimplyMenuLayer *menu_layer = &self->menu_layer;
+  const bool changed = (menu_layer->text_size != text_size) || !menu_layer->title_height;
+  menu_layer->text_size = text_size;
+  menu_layer->content_size = content_size;
+  if (!changed) { return; }
+
+  const MenuTextStyle *style = prv_style(self);
+  menu_layer->title_height = prv_font_line_height(fonts_get_system_font(style->title_font_key));
+  menu_layer->subtitle_height =
+      prv_font_line_height(fonts_get_system_font(style->subtitle_font_key));
+
+  if (!menu_layer->menu_layer) { return; }
+  const MenuIndex selected = menu_layer_get_selected_index(menu_layer->menu_layer);
+  prv_reload_data(self);
+  // The rows above the selection have changed height, so the list is scrolled
+  // back to where it holds the selection rather than left where the old rows
+  // put it
+  menu_layer_set_selected_index(menu_layer->menu_layer, selected, MenuRowAlignCenter, false);
+#if !defined(PBL_PLATFORM_APLITE)
+#ifdef SIMPLY_HAS_TOUCH
+  // The marquee goes back to the selection, which the list now holds in view
+  self->scroll_index_pinned = false;
+#endif
+  start_scroll_timer(self, selected);
 #endif
 }
+
+//! The height of a row. The layer callback, the touch hit test and the round
+//! scroll range all ask this, so they cannot disagree about where a row is.
+static int16_t prv_cell_height(SimplyMenu *self, bool is_selected) {
+#if defined(MENU_ROUND_LAUNCHER_STYLE)
+  return is_selected ? prv_style(self)->focused_cell_height :
+                       prv_style(self)->unfocused_cell_height;
+#elif defined(PBL_ROUND)
+  (void) self;
+  return is_selected ? MENU_ROUND_FOCUSED_HEIGHT : MENU_ROUND_UNFOCUSED_HEIGHT;
+#else
+  (void) is_selected;
+  return prv_style(self)->cell_height;
+#endif
+}
+
+static int16_t prv_menu_get_cell_height_callback(MenuLayer *menu_layer, MenuIndex *cell_index,
+                                                 void *context) {
+  return prv_cell_height(context, menu_layer_is_index_selected(menu_layer, cell_index));
+}
+#endif
 
 #if !defined(PBL_PLATFORM_APLITE)
 static void prv_menu_selection_changed_callback(MenuLayer *menu_layer, MenuIndex new_index,
@@ -1006,6 +1120,156 @@ static int16_t prv_round_row_inset(SimplyMenu *self, const Layer *cell_layer) {
 }
 #endif
 
+#if !defined(PBL_PLATFORM_APLITE)
+//! Paint a custom-drawn row's background and pick its text colour, the same
+//! colours the MenuLayer would have used for a row it drew itself
+static void prv_prepare_row(SimplyMenu *self, GContext *ctx, const Layer *cell_layer) {
+  const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
+  const SimplyMenuLayer *menu_layer = &self->menu_layer;
+  const GColor8 bg_color = is_highlighted ? menu_layer->highlight_background :
+                                            menu_layer->normal_background;
+  graphics_context_set_fill_color(
+      ctx, gcolor8_get_or(bg_color, is_highlighted ? GColorBlack : GColorWhite));
+  graphics_fill_rect(ctx, layer_get_bounds(cell_layer), 0, GCornerNone);
+
+  const GColor8 text_color = is_highlighted ? menu_layer->highlight_foreground :
+                                              menu_layer->normal_foreground;
+  graphics_context_set_text_color(
+      ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
+}
+
+#if !defined(PBL_ROUND)
+//! Where a rectangular row's text starts: beside the icon's column when there
+//! is an icon, at the row's inset when there is not
+static int16_t prv_rect_text_x(SimplyMenu *self, GBitmap *icon) {
+  const MenuTextStyle *style = prv_style(self);
+  return icon ? (style->horizontal_inset + style->title_subtitle_left_margin) :
+                style->horizontal_inset;
+}
+
+//! Draw a rectangular row the way menu_cell_basic_draw lays one out
+//! (prv_menu_cell_basic_draw_custom_rect in PebbleOS), in the menu's current
+//! fonts. A marquee slides the icon and the text left together by
+//! `scroll_offset`, and the text box grows by as much so the line is only cut
+//! off at the edge of the screen.
+static void prv_draw_rect_row(SimplyMenu *self, GContext *ctx, const Layer *cell_layer,
+                              const SimplyMenuItem *item, GBitmap *icon, int16_t scroll_offset) {
+  const MenuTextStyle *style = prv_style(self);
+  const GRect bounds = layer_get_bounds(cell_layer);
+  const int16_t title_height = self->menu_layer.title_height;
+  const int16_t subtitle_height = item->subtitle ? self->menu_layer.subtitle_height : 0;
+  // The title, the subtitle under it and 10px of padding make a block centred
+  // down the row. The block can be taller than the row, which only moves the
+  // text up; nothing clips it.
+  const int16_t vertical_margin = (bounds.size.h - (title_height + subtitle_height + 10)) / 2;
+  const int16_t inset = style->horizontal_inset;
+
+  if (icon) {
+    // The icon is centred down the text block and pinned to the inset
+    const GRect container = GRect(inset, vertical_margin, bounds.size.w - 2 * inset,
+                                  bounds.size.h - 2 * vertical_margin);
+    GSize icon_size = gbitmap_get_bounds(icon).size;
+    if (icon_size.w > container.size.w) { icon_size.w = container.size.w; }
+    if (icon_size.h > container.size.h) { icon_size.h = container.size.h; }
+    graphics_context_set_compositing_mode(ctx, GCompOpSet);
+    graphics_draw_bitmap_in_rect(
+        ctx, icon, GRect(container.origin.x - scroll_offset,
+                         container.origin.y + (container.size.h - icon_size.h) / 2,
+                         icon_size.w, icon_size.h));
+  }
+
+  const int16_t text_x = prv_rect_text_x(self, icon) - scroll_offset;
+  const int16_t text_w = bounds.size.w - text_x;
+  graphics_draw_text(ctx, item->title,
+                     fonts_get_system_font(style->title_font_key),
+                     GRect(text_x, vertical_margin, text_w, title_height + 4),
+                     GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+  if (item->subtitle) {
+    graphics_draw_text(ctx, item->subtitle,
+                       fonts_get_system_font(style->subtitle_font_key),
+                       GRect(text_x, vertical_margin + title_height, text_w, subtitle_height + 4),
+                       GTextOverflowModeFill, GTextAlignmentLeft, NULL);
+  }
+}
+#endif
+#endif
+
+#if defined(PBL_ROUND) && !defined(MENU_ROUND_LAUNCHER_STYLE)
+//! Where the parts of a round row go
+typedef struct RoundRowLayout {
+  //! Top of the icon, and whether there was room for it
+  int16_t icon_y;
+  bool show_icon;
+  //! Whether there was room for the subtitle, which is only ever shown on the
+  //! focused row
+  bool show_subtitle;
+  //! The title's text box, already pulled up by its cap offset
+  int16_t title_y;
+  int16_t title_h;
+  //! Top of the subtitle's text box
+  int16_t subtitle_y;
+} RoundRowLayout;
+
+//! Lay a round row out the way menu_cell_basic_draw does
+//! (prv_menu_cell_basic_draw_custom_one_column_round in PebbleOS): the icon,
+//! the title and the subtitle make one block centred in the row, with the icon
+//! on top, and whatever does not fit is dropped, the icon first, then the
+//! subtitle. A title with nothing else to share the row gets two lines, unless
+//! `one_line` says it is going to be drawn on a single line of its own.
+static RoundRowLayout prv_round_row_layout(SimplyMenu *self, const GRect *inner,
+                                           const SimplyMenuItem *item, GBitmap *icon,
+                                           bool is_focused, bool one_line) {
+  const int16_t font_height = self->menu_layer.title_height;
+  const int16_t row_height = inner->size.h;
+  const bool render_subtitle = is_focused && item->subtitle;
+  int16_t subtitle_height = render_subtitle ? self->menu_layer.subtitle_height : 0;
+  int16_t icon_height = icon ? gbitmap_get_bounds(icon).size.h : 0;
+
+  const bool two_lines = !(render_subtitle || icon) && !one_line;
+  int16_t title_height = two_lines ? 2 * font_height : font_height;
+
+  int16_t container = title_height + subtitle_height + icon_height;
+  if (container > row_height) {
+    container -= icon_height;
+    if (container > row_height) {
+      container = title_height + icon_height;
+      if (container > row_height) {
+        container = 2 * font_height;
+        title_height = (container > row_height || one_line) ? font_height : container;
+        subtitle_height = 0;
+        icon_height = 0;
+      } else {
+        subtitle_height = 0;
+      }
+    } else {
+      icon_height = 0;
+    }
+  }
+
+  // Only as many lines as the title actually takes up
+  if (!one_line) {
+    title_height = graphics_text_layout_get_content_size(
+        item->title, fonts_get_system_font(prv_style(self)->title_font_key),
+        GRect(0, 0, inner->size.w, title_height), GTextOverflowModeFill,
+        GTextAlignmentCenter).h;
+  }
+
+  container = title_height + subtitle_height + icon_height;
+  if (container > row_height) { container = row_height; }
+  const int16_t top = inner->origin.y + (row_height - container) / 2;
+  const int16_t title_top = top + icon_height;
+
+  return (RoundRowLayout) {
+    .icon_y = top,
+    .show_icon = (icon_height != 0),
+    .show_subtitle = (subtitle_height != 0),
+    .title_y = title_top - prv_cap_offset(font_height),
+    .title_h = title_height,
+    .subtitle_y = title_top + title_height - prv_cap_offset(self->menu_layer.subtitle_height),
+  };
+}
+#endif
+
 static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
                                        MenuIndex *cell_index, void *data) {
   SimplyMenu *self = data;
@@ -1038,6 +1302,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 #if !defined(PBL_PLATFORM_APLITE) // disable icons on APLITE as it causes crash
   image = simply_res_get_image(self->window.simply->res, item->icon);
 #endif
+  GBitmap *icon = (image && image->bitmap) ? image->bitmap : NULL;
   // Icons are drawn light, for the dark rows the app has always had. Invert
   // them on a light row so they stay visible, whether that is the highlight
   // under the selection or every row of a menu the wearer has turned white.
@@ -1057,7 +1322,16 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
   graphics_context_set_alpha_blended(ctx, true);
 
+#if !defined(MENU_ROUND_LAUNCHER_STYLE) && !defined(PBL_PLATFORM_APLITE)
+  // At the default size the firmware draws every row that fits as it is. At
+  // any other size it would still draw them at the default size, so every row
+  // is drawn here instead.
+  const bool custom_size = (self->menu_layer.text_size != MenuTextSizeDefault);
+#endif
+
 #if !defined(PBL_PLATFORM_APLITE)
+  const MenuTextStyle *style = prv_style(self);
+
   // Check if this is the selected item
   MenuIndex current_selection = menu_layer_get_selected_index(self->menu_layer.menu_layer);
   const bool is_selected = (cell_index->section == current_selection.section &&
@@ -1090,20 +1364,9 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     int16_t available_width = bounds.size.w;
 
 #if !defined(PBL_ROUND)
-#if defined(MENU_CONTENT_SIZE_LARGE)
-    // RECTANGULAR DISPLAY (Large content size): menu_cell_basic_draw uses a
-    // fixed 44px left text margin when an icon is present (10px inset plus
-    // 34px title/subtitle margin), 10px without
-    available_width -= (image && image->bitmap) ? 44 : 10;
-    available_width -= 10; // right margin
-#else
-    // RECTANGULAR DISPLAY: Account for icon width
-    if (image && image->bitmap) {
-      GRect icon_rect = gbitmap_get_bounds(image->bitmap);
-      available_width -= (icon_rect.size.w + 8); // icon width + margins
-    }
-    available_width -= 10; // text margins
-#endif
+    // RECTANGULAR DISPLAY: the text box runs from where the text starts to the
+    // edge of the screen, so a line that fits it is shown whole where it stands
+    available_width -= prv_rect_text_x(self, icon);
 #else
 #if defined(MENU_ROUND_LAUNCHER_STYLE)
     // ROUND, LAUNCHER STYLE: the same width the row is actually drawn into, so
@@ -1112,7 +1375,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     {
       const int16_t row_inset = prv_round_row_inset(self, cell_layer);
       available_width -= 2 * row_inset;
-      if (image && image->bitmap) {
+      if (icon) {
         available_width -= MENU_ROUND_ICON_BOX + MENU_ROUND_ICON_MARGIN;
       }
     }
@@ -1126,7 +1389,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 #endif
 
     // Measure title text with the same fonts the row is drawn with
-    const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
+    const GFont title_font = fonts_get_system_font(style->title_font_key);
     GSize title_size = graphics_text_layout_get_content_size(
         item->title, title_font,
         GRect(0, 0, 1000, 100),
@@ -1147,18 +1410,14 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     // menu_cell_basic_draw gives a round title two lines to itself when the row
     // has neither an icon nor a subtitle to share the cell with, so a title
     // that wraps into those two lines is laid out fine as it is, and is left to
-    // the firmware to draw.
-    if (title_overflows_cell && !item->subtitle && !(image && image->bitmap)) {
+    // the firmware's layout.
+    if (title_overflows_cell && !item->subtitle && !icon) {
       const GSize wrapped = graphics_text_layout_get_content_size(
           item->title, title_font,
           GRect(0, 0, available_width, 1000),
           GTextOverflowModeWordWrap,
           GTextAlignmentCenter);
-      const int16_t line_height = graphics_text_layout_get_content_size(
-          "A", title_font,
-          GRect(0, 0, available_width, 100),
-          GTextOverflowModeFill,
-          GTextAlignmentLeft).h;
+      const int16_t line_height = self->menu_layer.title_height;
       title_overflows_cell = (wrapped.w > available_width) ||
                              (wrapped.h > 2 * line_height + line_height / 2);
     }
@@ -1182,7 +1441,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     bool subtitle_needs_scroll = false;
     int16_t subtitle_width = 0;
     if (item->subtitle) {
-      const GFont subtitle_font = fonts_get_system_font(MENU_MEASURE_SUBTITLE_FONT_KEY);
+      const GFont subtitle_font = fonts_get_system_font(style->subtitle_font_key);
       GSize subtitle_size = graphics_text_layout_get_content_size(
           item->subtitle, subtitle_font,
           GRect(0, 0, 1000, 100),
@@ -1203,23 +1462,6 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     // For round displays: track independent scroll needs for title and subtitle
     self->title_needs_scroll = title_needs_scroll;
     self->subtitle_needs_scroll = subtitle_needs_scroll;
-
-    // Cache font heights to avoid expensive measurements during drawing
-    const GFont title_font_for_height = fonts_get_system_font(MENU_TITLE_FONT_KEY);
-    GSize title_height_size = graphics_text_layout_get_content_size(
-        "A", title_font_for_height, GRect(0, 0, 100, 100),
-        GTextOverflowModeFill, GTextAlignmentLeft);
-    self->title_height = title_height_size.h;
-
-    if (item->subtitle) {
-      const GFont subtitle_font_for_height = fonts_get_system_font(MENU_MEASURE_SUBTITLE_FONT_KEY);
-      GSize subtitle_height_size = graphics_text_layout_get_content_size(
-          "A", subtitle_font_for_height, GRect(0, 0, 100, 100),
-          GTextOverflowModeFill, GTextAlignmentLeft);
-      self->subtitle_height = subtitle_height_size.h;
-    } else {
-      self->subtitle_height = 0;
-    }
 
     // How far the text has to travel is measured against the width it is
     // actually drawn into, which for a row drawn here is the screen less the
@@ -1265,74 +1507,21 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
   // A launcher style round list draws every row itself, so the whole list is
   // laid out the way the system app menu lays its own out. Everywhere else the
-  // custom path is only for a selected row whose text has to be marqueed.
+  // firmware draws a row unless it is at another text size or it marquees.
 #if defined(MENU_ROUND_LAUNCHER_STYLE)
   if (true) {
 #else
-  if (is_marquee_row && self->needs_scrolling) {
+  // The row this is drawing is the one whose text has outgrown the firmware's
+  // layout, so it is drawn here to be moved along or, on a round display,
+  // centred across the whole width of the glass
+  const bool marquee = is_marquee_row && self->needs_scrolling;
+  if (custom_size || marquee) {
 #endif
-    // Manual drawing with scroll offset
-    GRect bounds = layer_get_bounds(cell_layer);
-    const bool is_highlighted = menu_cell_layer_is_highlighted(cell_layer);
-
-    // Background - use configured highlight/normal colors
-    GColor8 bg_color = is_highlighted ?
-        self->menu_layer.highlight_background :
-        self->menu_layer.normal_background;
-    graphics_context_set_fill_color(ctx, gcolor8_get_or(bg_color, is_highlighted ? GColorBlack : GColorWhite));
-    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
+    prv_prepare_row(self, ctx, cell_layer);
 
 #if !defined(PBL_ROUND)
     // ===== RECTANGULAR DISPLAY: Scroll icon and text together =====
-#if defined(MENU_CONTENT_SIZE_LARGE)
-    // Large content size margins from menu_cell_basic_draw: icon inset 10px,
-    // text at a fixed 44px when an icon is present, 10px otherwise
-    const int16_t icon_x = 10;
-    const int16_t text_x = (image && image->bitmap) ? 44 : 10;
-#else
-    const int16_t icon_x = 4;
-    const int16_t text_x = (image && image->bitmap)
-        ? (int16_t)(4 + gbitmap_get_bounds(image->bitmap).size.w + 4) : 4;
-#endif
-    if (image && image->bitmap) {
-      GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
-      graphics_context_set_compositing_mode(ctx, GCompOpSet);
-      // Scroll the icon along with the text
-      graphics_draw_bitmap_in_rect(ctx, image->bitmap,
-                                   GRect(icon_x - self->scroll_offset,
-                                         (bounds.size.h - icon_bounds.size.h) / 2,
-                                         icon_bounds.size.w, icon_bounds.size.h));
-    }
-
-    // Text color - use configured highlight/normal colors
-    GColor8 text_color = is_highlighted ?
-        self->menu_layer.highlight_foreground :
-        self->menu_layer.normal_foreground;
-    graphics_context_set_text_color(ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
-
-    // Text with scroll offset
-    const int16_t scroll_x = text_x - self->scroll_offset;
-    const int16_t text_w = bounds.size.w - text_x + self->scroll_offset;
-
-    // Lay the text out exactly the way menu_cell_basic_draw does: the block of
-    // title + subtitle + 10px padding is vertically centered in the cell, the
-    // title box is font height + 4, and the subtitle starts one title height
-    // below the title. This keeps the custom-drawn scrolling row identical to
-    // the firmware-drawn static rows on every rectangular platform.
-    const int16_t subtitle_font_height = item->subtitle ? MENU_SUBTITLE_FONT_HEIGHT : 0;
-    const int16_t vertical_margin = (int16_t)
-        ((bounds.size.h - (MENU_TITLE_FONT_HEIGHT + subtitle_font_height + 10)) / 2);
-    graphics_draw_text(ctx, item->title,
-                      fonts_get_system_font(MENU_TITLE_FONT_KEY),
-                      GRect(scroll_x, vertical_margin, text_w, MENU_TITLE_FONT_HEIGHT + 4),
-                      GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    if (item->subtitle) {
-      graphics_draw_text(ctx, item->subtitle,
-                        fonts_get_system_font(MENU_SUBTITLE_FONT_KEY),
-                        GRect(scroll_x, vertical_margin + MENU_TITLE_FONT_HEIGHT, text_w,
-                              MENU_SUBTITLE_FONT_HEIGHT + 4),
-                        GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-    }
+    prv_draw_rect_row(self, ctx, cell_layer, item, icon, marquee ? self->scroll_offset : 0);
 
 #elif defined(MENU_ROUND_LAUNCHER_STYLE)
     // ===== ROUND, LAUNCHER STYLE: PebbleOS's own app menu row =====
@@ -1340,17 +1529,7 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     // and beside it the title with the subtitle under it, the two of them
     // centred against the row as a group. Left aligned, and the selection is
     // the band of colour behind the row rather than a change of layout.
-    GColor8 row_color = is_highlighted ?
-        self->menu_layer.highlight_background :
-        self->menu_layer.normal_background;
-    graphics_context_set_fill_color(
-        ctx, gcolor8_get_or(row_color, is_highlighted ? GColorBlack : GColorWhite));
-    graphics_fill_rect(ctx, bounds, 0, GCornerNone);
-
-    GColor8 text_color = is_highlighted ?
-        self->menu_layer.highlight_foreground :
-        self->menu_layer.normal_foreground;
-    graphics_context_set_text_color(ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
+    const GRect bounds = layer_get_bounds(cell_layer);
 
     // Only the selected row marquees a title too long to fit; the rest of the
     // list ends in an ellipsis so it is not a wall of moving text
@@ -1365,37 +1544,34 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     // centred in the room the curve leaves rather than pushed against the left
     // of an empty column.
     const int16_t inset = prv_round_row_inset(self, cell_layer);
-    const bool has_icon = (image && image->bitmap);
     const int16_t icon_x = inset;
     const int16_t text_x =
-        has_icon ? (inset + MENU_ROUND_ICON_BOX + MENU_ROUND_ICON_MARGIN) : inset;
+        icon ? (inset + MENU_ROUND_ICON_BOX + MENU_ROUND_ICON_MARGIN) : inset;
     int16_t text_width = bounds.size.w - inset - text_x;
     if (text_width < 1) { text_width = 1; }
 
-    const int16_t subtitle_block =
-        item->subtitle ? MENU_ROUND_SUBTITLE_HEIGHT : 0;
+    const int16_t title_height = self->menu_layer.title_height;
+    const int16_t subtitle_block = item->subtitle ? self->menu_layer.subtitle_height : 0;
     // The launcher lifts the title a pixel off the centre of the pair
-    const int16_t text_y =
-        (bounds.size.h - (MENU_ROUND_TITLE_HEIGHT + subtitle_block)) / 2 - 1;
+    const int16_t text_y = (bounds.size.h - (title_height + subtitle_block)) / 2 - 1;
 
     // A marqueeing line is positioned by its own offset, so it is drawn from
     // the left whatever the row's alignment would otherwise be
-    const GTextAlignment align =
-        has_icon ? GTextAlignmentLeft : GTextAlignmentCenter;
+    const GTextAlignment align = icon ? GTextAlignmentLeft : GTextAlignmentCenter;
 
-    graphics_draw_text(ctx, item->title, fonts_get_system_font(MENU_ROUND_TITLE_FONT_KEY),
+    graphics_draw_text(ctx, item->title, fonts_get_system_font(style->title_font_key),
                        GRect(text_x - (marquee_title ? self->title_scroll_offset : 0), text_y,
-                             marquee_title ? 2000 : text_width, MENU_ROUND_TITLE_HEIGHT + 4),
+                             marquee_title ? 2000 : text_width, title_height + 4),
                        GTextOverflowModeTrailingEllipsis,
                        marquee_title ? GTextAlignmentLeft : align, NULL);
 
     if (item->subtitle) {
       graphics_draw_text(ctx, item->subtitle,
-                         fonts_get_system_font(MENU_ROUND_SUBTITLE_FONT_KEY),
+                         fonts_get_system_font(style->subtitle_font_key),
                          GRect(text_x - (marquee_subtitle ? self->subtitle_scroll_offset : 0),
-                               text_y + MENU_ROUND_TITLE_HEIGHT,
+                               text_y + title_height,
                                marquee_subtitle ? 2000 : text_width,
-                               MENU_ROUND_SUBTITLE_HEIGHT + 4),
+                               subtitle_block + 4),
                          GTextOverflowModeTrailingEllipsis,
                          marquee_subtitle ? GTextAlignmentLeft : align, NULL);
     }
@@ -1403,16 +1579,16 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
     // Marqueed text runs left past where it started, which is straight through
     // the icon. There is no clip rectangle to draw text into, so the icon box
     // is painted back over in the row's own colour before the icon goes down.
-    if (has_icon && (marquee_title || marquee_subtitle)) {
+    if (icon && (marquee_title || marquee_subtitle)) {
       graphics_fill_rect(ctx, GRect(0, 0, text_x - MENU_ROUND_ICON_MARGIN, bounds.size.h),
                          0, GCornerNone);
     }
 
-    if (has_icon) {
-      const GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
+    if (icon) {
+      const GRect icon_bounds = gbitmap_get_bounds(icon);
       graphics_context_set_compositing_mode(ctx, GCompOpSet);
       graphics_draw_bitmap_in_rect(
-          ctx, image->bitmap,
+          ctx, icon,
           GRect(icon_x + (MENU_ROUND_ICON_BOX - icon_bounds.size.w) / 2,
                 (bounds.size.h - icon_bounds.size.h) / 2,
                 icon_bounds.size.w, icon_bounds.size.h));
@@ -1420,110 +1596,71 @@ static void prv_menu_draw_row_callback(GContext *ctx, const Layer *cell_layer,
 
 #else
     // ===== ROUND DISPLAY: Keep icon static, scroll text independently =====
-    // Text color - use configured highlight/normal colors
-    GColor8 text_color = is_highlighted ?
-        self->menu_layer.highlight_foreground :
-        self->menu_layer.normal_foreground;
-    graphics_context_set_text_color(ctx, gcolor8_get_or(text_color, is_highlighted ? GColorWhite : GColorBlack));
+    // Everything is placed where menu_cell_basic_draw would place it, inside
+    // the inset it gives a focused or an unfocused row, so a row drawn here
+    // lands on the same pixels as one the firmware drew. A row whose text runs
+    // past that inset is the exception: its lines are drawn across the whole
+    // width of the glass, centred when they fit it and moving when they do not.
+    const GRect bounds = layer_get_bounds(cell_layer);
+    const bool is_focused = menu_cell_layer_is_highlighted(cell_layer);
+    GRect inner = bounds;
+    const int16_t inset = is_focused ? MENU_ROUND_CELL_FOCUSED_INSET :
+                                       MENU_ROUND_CELL_UNFOCUSED_INSET;
+    inner.origin.x += inset;
+    inner.size.w -= 2 * inset;
+    const RoundRowLayout layout =
+        prv_round_row_layout(self, &inner, item, icon, is_focused, marquee);
 
-    // The icon, the title and the subtitle are one block centred in the cell,
-    // with the title directly under the icon. That is what menu_cell_basic_draw
-    // does on a round display, and this row has to match it: the firmware draws
-    // every row that fits, and only a row whose title has to marquee comes
-    // through here, so a layout of our own would move the icon up and the text
-    // down as the selection passed between one kind of row and the other.
-    const int16_t icon_height =
-        (image && image->bitmap) ? gbitmap_get_bounds(image->bitmap).size.h : 0;
-    const int16_t block_text_height = item->subtitle ?
-        (self->title_height + self->subtitle_height + MENU_ROUND_TEXT_GAP) : self->title_height;
-    const int16_t block_top = (bounds.size.h - (icon_height + block_text_height)) / 2;
-
-    int16_t icon_y = block_top + MENU_ROUND_ICON_NUDGE;
-    if (image && image->bitmap) {
-      GRect icon_bounds = gbitmap_get_bounds(image->bitmap);
+    if (icon && layout.show_icon) {
+      const GRect icon_bounds = gbitmap_get_bounds(icon);
       graphics_context_set_compositing_mode(ctx, GCompOpSet);
-      int16_t icon_x = (bounds.size.w - icon_bounds.size.w) / 2;
-      graphics_draw_bitmap_in_rect(ctx, image->bitmap,
-                                   GRect(icon_x, icon_y, icon_bounds.size.w, icon_bounds.size.h));
-      icon_y += icon_bounds.size.h;
+      graphics_draw_bitmap_in_rect(ctx, icon,
+                                   GRect(inner.origin.x + (inner.size.w - icon_bounds.size.w) / 2,
+                                         layout.icon_y, icon_bounds.size.w, icon_bounds.size.h));
     }
 
-    // For round display scrolling, we need to draw text in a much wider rect
-    // so that when we apply scroll offset, the text moves through the visible area
-    const int16_t text_rect_width = 2000; // very wide rect for scrolling
+    // A line too wide for the screen is drawn from the margin the marquee
+    // starts at in a box wide enough never to cut it short
+    const int16_t text_rect_width = 2000;
     const int16_t left_margin = MENU_ROUND_TEXT_EDGE_INSET;
 
-    if (item->subtitle) {
-      // Two lines of text
-      const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
-      const GFont subtitle_font = fonts_get_system_font(MENU_SUBTITLE_FONT_KEY);
+    GRect title_box = GRect(inner.origin.x, layout.title_y, inner.size.w, layout.title_h);
+    GTextAlignment title_align = GTextAlignmentCenter;
+    if (marquee && self->title_needs_scroll) {
+      title_box.origin.x = left_margin - self->title_scroll_offset;
+      title_box.size.w = text_rect_width;
+      title_align = GTextAlignmentLeft;
+    } else if (marquee) {
+      title_box.origin.x = bounds.origin.x;
+      title_box.size.w = bounds.size.w;
+    }
+    graphics_draw_text(ctx, item->title, fonts_get_system_font(style->title_font_key),
+                       title_box, GTextOverflowModeFill, title_align, NULL);
 
-      // Use cached font heights (measured once during measurement phase, not every frame)
-      const int16_t title_height = self->title_height;
-      const int16_t subtitle_height = self->subtitle_height;
-      const int16_t text_start_y = block_top + icon_height + MENU_ROUND_TEXT_NUDGE;
-
-      // Draw title - either centered (if fits) or scrolling (if too long)
-      if (self->title_needs_scroll) {
-        // Title is too long - scroll it with left margin
-        graphics_draw_text(ctx, item->title,
-                          title_font,
-                          GRect(bounds.origin.x + left_margin - self->title_scroll_offset, text_start_y, text_rect_width, title_height),
-                          GTextOverflowModeFill, GTextAlignmentLeft, NULL);
-      } else {
-        // Title fits - draw it centered
-        graphics_draw_text(ctx, item->title,
-                          title_font,
-                          GRect(bounds.origin.x, text_start_y, bounds.size.w, title_height),
-                          GTextOverflowModeFill, GTextAlignmentCenter, NULL);
+    if (layout.show_subtitle) {
+      GRect subtitle_box = GRect(inner.origin.x, layout.subtitle_y, inner.size.w,
+                                 self->menu_layer.subtitle_height);
+      GTextAlignment subtitle_align = GTextAlignmentCenter;
+      if (marquee && self->subtitle_needs_scroll) {
+        subtitle_box.origin.x = left_margin - self->subtitle_scroll_offset;
+        subtitle_box.size.w = text_rect_width;
+        subtitle_align = GTextAlignmentLeft;
+      } else if (marquee) {
+        subtitle_box.origin.x = bounds.origin.x;
+        subtitle_box.size.w = bounds.size.w;
       }
-
-      // Draw subtitle - either centered (if fits) or scrolling (if too long)
-      if (self->subtitle_needs_scroll) {
-        // Subtitle is too long - scroll it with left margin
-        graphics_draw_text(ctx, item->subtitle,
-                          subtitle_font,
-                          GRect(bounds.origin.x + left_margin - self->subtitle_scroll_offset, text_start_y + title_height + MENU_ROUND_TEXT_GAP, text_rect_width, subtitle_height),
-                          GTextOverflowModeFill, GTextAlignmentLeft, NULL);
-      } else {
-        // Subtitle fits - draw it centered
-        graphics_draw_text(ctx, item->subtitle,
-                          subtitle_font,
-                          GRect(bounds.origin.x, text_start_y + title_height + MENU_ROUND_TEXT_GAP, bounds.size.w, subtitle_height),
-                          GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-      }
-    } else {
-      // Single line of text
-      const GFont title_font = fonts_get_system_font(MENU_TITLE_FONT_KEY);
-
-      // Use cached font height (measured once during measurement phase, not every frame)
-      const int16_t text_height = self->title_height;
-      const int16_t text_start_y = block_top + icon_height + MENU_ROUND_TEXT_NUDGE;
-
-      // Draw title - either centered (if fits) or scrolling (if too long)
-      if (self->title_needs_scroll) {
-        // Title is too long - scroll it with left margin
-        graphics_draw_text(ctx, item->title,
-                          title_font,
-                          GRect(bounds.origin.x + left_margin - self->title_scroll_offset, text_start_y, text_rect_width, text_height),
-                          GTextOverflowModeFill, GTextAlignmentLeft, NULL);
-      } else {
-        // Title fits - draw it centered
-        graphics_draw_text(ctx, item->title,
-                          title_font,
-                          GRect(bounds.origin.x, text_start_y, bounds.size.w, text_height),
-                          GTextOverflowModeFill, GTextAlignmentCenter, NULL);
-      }
+      graphics_draw_text(ctx, item->subtitle, fonts_get_system_font(style->subtitle_font_key),
+                         subtitle_box, GTextOverflowModeFill, subtitle_align, NULL);
     }
 #endif
   } else {
     // Standard drawing - no scrolling
-    menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
+    menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, icon);
   }
 
 #else
   // On aplite, always use standard drawing (no scrolling)
-  menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, image ? image->bitmap : NULL);
+  menu_cell_basic_draw(ctx, cell_layer, item->title, item->subtitle, icon);
 #endif
 
   if (palette_inverted) {
@@ -1551,20 +1688,11 @@ static void prv_menu_select_click_callback(MenuLayer *menu_layer, MenuIndex *cel
 
 #ifdef SIMPLY_HAS_TOUCH
 
-// Cell metrics must mirror exactly what the MenuLayer uses: round platforms
-// get our get_cell_height callback (the focused row is taller), large content
-// size platforms (Pebble Time 2) get it too at a fixed 61px, everything else
-// the classic 44px
+// Cell metrics must mirror exactly what the MenuLayer uses, which is what
+// the cell height callback gives it: the focused row is taller on a round
+// display, and every row follows the menu's text size
 static int16_t prv_touch_cell_height(SimplyMenu *self, MenuIndex index) {
-#if defined(PBL_ROUND)
-  const bool is_selected =
-      menu_layer_is_index_selected(self->menu_layer.menu_layer, &index);
-  return is_selected ? MENU_ROUND_FOCUSED_HEIGHT : MENU_ROUND_UNFOCUSED_HEIGHT;
-#elif defined(MENU_CONTENT_SIZE_LARGE)
-  return MENU_LARGE_CELL_HEIGHT;
-#else
-  return MENU_CELL_BASIC_CELL_HEIGHT;
-#endif
+  return prv_cell_height(self, menu_layer_is_index_selected(self->menu_layer.menu_layer, &index));
 }
 
 //! How many rows a section holds, from the counts the phone reported if they
@@ -1634,8 +1762,8 @@ static bool prv_touch_hit_test(SimplyMenu *self, int16_t x, int16_t y,
 //! fraction of a list the buttons walked from end to end.
 static void prv_round_scroll_limits(SimplyMenu *self, int16_t frame_height,
                                     int *min_out, int *max_out) {
-  const int focused = MENU_ROUND_FOCUSED_HEIGHT;
-  const int unfocused = MENU_ROUND_UNFOCUSED_HEIGHT;
+  const int focused = prv_cell_height(self, true);
+  const int unfocused = prv_cell_height(self, false);
   const int middle = frame_height / 2;
 
   int headers = 0;
@@ -1934,9 +2062,9 @@ static void prv_menu_window_load(Window *window) {
     .get_num_sections = prv_menu_get_num_sections_callback,
     .get_num_rows = prv_menu_get_num_rows_callback,
     .get_header_height = prv_menu_get_header_height_callback,
-#if defined(PBL_ROUND) || (defined(SIMPLY_HAS_TOUCH) && defined(MENU_CONTENT_SIZE_LARGE))
-    // Touch finds rows by these heights, so the layer must not be left to a
-    // default that follows the system text size
+#if !defined(PBL_PLATFORM_APLITE)
+    // Rows follow the menu's own text size, and touch finds them by the same
+    // heights, so the layer is never left to its default
     .get_cell_height = prv_menu_get_cell_height_callback,
 #endif
     .draw_header = prv_menu_draw_header_callback,
@@ -2075,6 +2203,9 @@ static void prv_handle_menu_props_packet(Simply *simply, Packet *data) {
 
   self->menu_layer.scroll_wrap = packet->scroll_wrap;
   simply_menu_set_num_sections(self, packet->num_sections);
+#if !defined(PBL_PLATFORM_APLITE)
+  prv_set_text_size(self, packet->text_size);
+#endif
 
   if (!self->window.window) { return; }
 
@@ -2206,8 +2337,6 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .subtitle_max_scroll_offset = 0,
     .subtitle_needs_scroll = false,
     .subtitle_scrolling_active = false,
-    .title_height = 0,
-    .subtitle_height = 0,
 #endif
 #endif
   };
@@ -2219,6 +2348,10 @@ SimplyMenu *simply_menu_create(Simply *simply) {
     .unload = prv_menu_window_unload,
   };
   self->window.window_handlers = &s_window_handlers;
+
+#if !defined(PBL_PLATFORM_APLITE)
+  prv_set_text_size(self, MenuTextSizeDefault);
+#endif
 
   simply_window_init(&self->window, simply);
   simply_window_set_background_color(&self->window, GColor8White);

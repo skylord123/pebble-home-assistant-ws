@@ -2,8 +2,10 @@
 
 #include "simply.h"
 
+#include "simply_mic_stream.h"
 #include "simply_msg.h"
 #include "simply_scrollbar.h"
+#include "simply_speaker.h"
 #include "simply_voice.h"
 
 #include "util/graphics_text.h"
@@ -44,6 +46,25 @@
 // phone never comes back (the websocket died, the app was killed) the dots
 // would otherwise pulse forever, so the watch gives up on its own and says so.
 #define THINK_TIMEOUT_MS 45000
+
+// The voice bars move this often while the wearer talks. The phone sends new
+// levels ten times a second; the frames between ease the bars toward them, so
+// they rise and fall rather than jump.
+#define METER_TICK_MS 40
+
+// One bar per frequency band the phone measures, the lowest in the middle
+#define METER_BARS 9
+
+// How long the phone has to take the microphone stream before the turn goes
+// to dictation instead. A phone app that knows about streams answers at once,
+// yes or no; one that does not never answers at all, and the firmware's own
+// wait for it runs eight seconds, which is a long time to stare at a watch
+// that says it is listening.
+#define STREAM_ANSWER_TIMEOUT_MS 5000
+
+// The microphone takes a moment to come free after a stream ends, and
+// dictation asked for before then is refused as busy
+#define DICTATION_AFTER_STREAM_MS 300
 
 // How often the screen is asked to stay lit while words are landing on it, for
 // the wearer who has turned that on. Only while they are actually landing: an
@@ -166,6 +187,12 @@ struct SimplyAssist {
   //! Ticks while an answer is streaming in, keeping the screen lit. See
   //! BACKLIGHT_HOLD_TICK_MS.
   AppTimer *backlight_timer;
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  //! Waiting on the phone to answer a request to stream the microphone
+  AppTimer *listen_timer;
+  //! Dictation about to take over from a stream the phone would not take
+  AppTimer *dictate_timer;
+#endif
   char *arena;
   uint16_t arena_used;
   //! Content y of the last message, so a new one can be scrolled to its own
@@ -191,6 +218,31 @@ struct SimplyAssist {
   //! has to leave the stack for it, but the conversation is not over.
   bool awaiting_settings;
   bool dictation_confirm;
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  //! Where the microphone goes when the wearer speaks. See AssistListen.
+  uint8_t listen;
+  //! The phone has said the microphone may go to Home Assistant rather than to
+  //! dictation, for as long as the watch and the phone both turn out able to
+  bool stream_allowed;
+  //! Keep listening until the wearer presses select, rather than until Home
+  //! Assistant hears them stop talking
+  bool stream_manual;
+  //! Where the wearer was reading when they started to speak, to go back to
+  //! if the turn comes to nothing
+  int16_t resume_y;
+  bool resume_scrolled;
+  bool has_resume;
+  //! How loud each band of the voice was in the phone's latest measure, and
+  //! how tall its bar stands now on the way there, both 0 to 255
+  uint8_t level_target[METER_BARS];
+  uint8_t level_shown[METER_BARS];
+  //! Meter frames since the phone last sent levels. Past a few, the voice is
+  //! taken to have gone quiet and the bars settle back down.
+  uint8_t level_age;
+  //! What Home Assistant heard, up on its own screen for the wearer to accept
+  //! or throw away. See AssistConfirm.
+  struct AssistConfirm *confirm;
+#endif
   bool backlight;
   //! Keep the screen lit for as long as an answer is streaming in, and light
   //! it once more as the last of it lands, rather than only flashing it up
@@ -213,6 +265,8 @@ struct __attribute__((__packed__)) AssistShowPacket {
   Packet packet;
   uint8_t font_size;
   uint8_t flags;
+  //! StreamFlag values. The first byte of flags is full.
+  uint8_t stream_flags;
 };
 
 //! What a show packet is asking for. ShowFlagThemeOnly means the conversation
@@ -231,6 +285,13 @@ enum {
   ShowFlagReset = 32,
   ShowFlagBacklightHold = 64,
   ShowFlagVibrationFeedback = 128,
+};
+
+//! How the wearer is heard, from the show packet. Without StreamFlagAllowed
+//! every turn uses dictation, exactly as before streaming existed.
+enum {
+  StreamFlagAllowed = 1,
+  StreamFlagManual = 2,
 };
 
 typedef struct AssistMessagePacket AssistMessagePacket;
@@ -254,7 +315,56 @@ enum {
   //! for the whole of its answer, and a slow one would be declared dead while
   //! it was still being written.
   MessageFlagKeepAlive = 4,
+  //! What Home Assistant heard the wearer say, from audio streamed to it. It
+  //! goes up as the wearer's turn, and the wait for the answer starts there.
+  MessageFlagTranscript = 8,
+  //! What Home Assistant heard, held back for the wearer to accept before it
+  //! goes to the agent, as Confirm Dictation does for dictation
+  MessageFlagConfirm = 16,
 };
+
+typedef struct AssistLevelsPacket AssistLevelsPacket;
+
+//! How loud each band of the wearer's voice is, lowest band first
+struct __attribute__((__packed__)) AssistLevelsPacket {
+  Packet packet;
+  uint8_t count;
+  uint8_t levels[METER_BARS];
+};
+
+typedef struct AssistListenPacket AssistListenPacket;
+
+//! The phone steering a stream it is in the middle of
+struct __attribute__((__packed__)) AssistListenPacket {
+  Packet packet;
+  uint8_t op;
+};
+
+enum {
+  //! Home Assistant has heard the wearer stop talking, so the microphone can
+  //! close and the wait for the transcript begins
+  ListenOpStop = 0,
+  //! Home Assistant cannot take audio after all, such as a pipeline with no
+  //! speech-to-text: close the microphone and dictate this turn instead
+  ListenOpDictate = 1,
+};
+
+//! Where the microphone is, when it is not with the system's dictation
+typedef enum AssistListen {
+  AssistListenIdle = 0,
+  //! Asked the phone to take a stream and waiting to hear whether it will
+  AssistListenAsking,
+  //! The wearer is talking, and every word is on its way to Home Assistant
+  AssistListenStreaming,
+} AssistListen;
+
+//! Whether the microphone is open to Home Assistant, or about to be. Never,
+//! on a watch that cannot stream, which then carries none of it.
+#if defined(SIMPLY_HAS_MIC_STREAM)
+#define prv_listening(self) ((self)->listen != AssistListenIdle)
+#else
+#define prv_listening(self) ((void)(self), false)
+#endif
 
 typedef struct AssistTranscriptPacket AssistTranscriptPacket;
 
@@ -284,6 +394,21 @@ typedef enum AssistAction {
   //! closed, so the phone knows when not to push a dialog over it
   AssistActionDictationStarted = 2,
   AssistActionDictationEnded = 3,
+  //! A turn is going to Home Assistant as audio: the phone should start a
+  //! pipeline run for it, which is ready by the time the audio is flowing
+  AssistActionStreamRequested = 4,
+  //! The phone took the stream and the wearer is being heard
+  AssistActionStreamStarted = 5,
+  //! The wearer finished, by pressing select or by something taking the
+  //! screen or the microphone: whatever was said so far is the turn
+  AssistActionStreamFinished = 6,
+  //! The wearer backed out, so the turn is dropped
+  AssistActionStreamCancelled = 7,
+  //! The phone refused the stream, and the turn went to dictation
+  AssistActionStreamRefused = 8,
+  //! The phone never answered, which is a phone app that does not know about
+  //! streams, and the turn went to dictation
+  AssistActionStreamNoAnswer = 9,
 } AssistAction;
 
 //! What the view should be looking at after the conversation changes
@@ -529,6 +654,28 @@ struct Wrapper {
 //! 144 pixel Pebble as it does on a 260 pixel one
 static int16_t prv_dot_size(GRect frame) {
   return frame.size.w / 40 < 4 ? 4 : frame.size.w / 40;
+}
+
+#if defined(SIMPLY_HAS_MIC_STREAM)
+//! The line under the voice bars saying what the microphone is doing
+#define LISTEN_CAPTION_HEIGHT 20
+
+//! Height of the voice bars, which stand where the wearer's words will be
+static int16_t prv_meter_height(GRect frame) {
+  const int16_t tall = frame.size.h / 3;
+  return tall > 4 * prv_dot_size(frame) ? tall : 4 * prv_dot_size(frame);
+}
+#endif
+
+//! How much room the animation layer needs: the dots, or the meter and its
+//! caption while the wearer is talking
+static int16_t prv_indicator_height(SimplyAssist *self, GRect frame) {
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (prv_listening(self)) {
+    return prv_meter_height(frame) + LISTEN_CAPTION_HEIGHT;
+  }
+#endif
+  return 2 * prv_dot_size(frame);
 }
 
 #if defined(PBL_ROUND)
@@ -830,7 +977,7 @@ static int16_t prv_wrap_body(SimplyAssist *self, GContext *ctx, char *text,
 static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
 
-  if (self->count == 0 && !self->thinking) {
+  if (self->count == 0 && !self->thinking && !prv_listening(self)) {
     // Nothing said yet: an invitation rather than an empty screen. This is
     // what the wearer sees when the microphone could not be opened at all.
     if (ctx) {
@@ -926,7 +1073,36 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
     y += MESSAGE_GAP;
   }
 
-  if (self->thinking) {
+  if (prv_listening(self)) {
+    // The wearer's turn, still being spoken. It takes the place their words
+    // will fill once Home Assistant says what it heard: the label they will
+    // sit under, and a meter where the text will go.
+    const int16_t needed = label_h + LABEL_GAP + prv_indicator_height(self, frame);
+    if (self->count == 0) {
+      // The first thing said in the conversation has the screen to itself,
+      // the way dictation's own screen would have had it
+      const int16_t centered = (frame.size.h - needed) / 2;
+      if (centered > y) { y = centered; }
+    }
+#if defined(PBL_ROUND)
+    const int16_t page = frame.size.h;
+    const int16_t used = y % page;
+    if (used > 0 && page - used < needed) {
+      y += page - used;
+    }
+#endif
+    self->last_message_y = y;
+    if (ctx) {
+      graphics_context_set_text_color(ctx, prv_role_color(self, AssistRoleUser));
+      graphics_draw_text(ctx, prv_role_label(AssistRoleUser), label_font,
+                         GRect(margin, y, width, label_h),
+                         GTextOverflowModeTrailingEllipsis, align, NULL);
+    }
+    self->thinking_y = y + label_h + LABEL_GAP;
+    y += needed;
+    bottom = y;
+    y += MESSAGE_GAP;
+  } else if (self->thinking) {
     // The dots themselves live in their own layer, so that the animation can
     // repaint ten times a second without measuring the conversation's words
     // again. All that happens here is reserving the room
@@ -962,10 +1138,60 @@ static int32_t prv_layout(SimplyAssist *self, GContext *ctx) {
   return PBL_IF_ROUND_ELSE(bottom, bottom + CONTENT_MARGIN_BOTTOM);
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
+//! Which bar a band stands in: the lowest in the middle, where most of a voice
+//! is, and the rest alternating outward, right then left, as they rise
+static int16_t prv_meter_slot(int16_t band) {
+  const int16_t middle = METER_BARS / 2;
+  if (band == 0) { return middle; }
+  return (band & 1) ? middle + (band + 1) / 2 : middle - band / 2;
+}
+
+//! The microphone open to Home Assistant: a bar for each band of the voice,
+//! growing up and down from the middle with how loud that band is, and a line
+//! saying how the turn ends. Until the phone takes the stream the bars are
+//! grey dots: nothing is being heard yet, and moving them would say otherwise.
+static void prv_draw_listening(SimplyAssist *self, Layer *layer, GContext *ctx) {
+  const GRect bounds = layer_get_bounds(layer);
+  const GRect frame = layer_get_frame(scroll_layer_get_layer(self->scroll_layer));
+  const int16_t meter_h = prv_meter_height(frame);
+  const int16_t bar_w = frame.size.w / 26 < 4 ? 4 : frame.size.w / 26;
+  const int16_t gap = bar_w;
+  const int16_t left = (bounds.size.w - (METER_BARS * bar_w + (METER_BARS - 1) * gap)) / 2;
+  const bool asking = (self->listen == AssistListenAsking);
+
+  graphics_context_set_fill_color(ctx, asking ?
+      PBL_IF_COLOR_ELSE(GColorDarkGray, prv_foreground(self)) : prv_accent(self));
+  for (int16_t band = 0; band < METER_BARS; ++band) {
+    const int16_t level = asking ? 0 : self->level_shown[band];
+    const int16_t h = bar_w + (meter_h - bar_w) * level / 255;
+    const int16_t x = left + prv_meter_slot(band) * (bar_w + gap);
+    graphics_fill_rect(ctx, GRect(x, (meter_h - h) / 2, bar_w, h), bar_w / 2, GCornersAll);
+  }
+
+  // The watch says it is recording by itself once the stream is running, so
+  // only what it does not say is worth a line here
+  const char *caption = asking ? "Starting microphone" :
+      (self->stream_manual ? "SELECT when done" : NULL);
+  if (!caption) { return; }
+  graphics_context_set_text_color(ctx, prv_foreground(self));
+  graphics_draw_text(ctx, caption, fonts_get_system_font(FONT_KEY_GOTHIC_14),
+                     GRect(0, meter_h, bounds.size.w, LISTEN_CAPTION_HEIGHT),
+                     GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+}
+#endif
+
 //! The waiting animation, on its own layer above the conversation
 static void prv_dots_update(Layer *layer, GContext *ctx) {
   SimplyAssist *self = window_get_user_data(layer_get_window(layer));
-  if (!self || !self->thinking) { return; }
+  if (!self) { return; }
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (prv_listening(self)) {
+    prv_draw_listening(self, layer, ctx);
+    return;
+  }
+#endif
+  if (!self->thinking) { return; }
 
   // Three dots breathing in a wave. The wearer is watching this while the
   // phone works, so it is the one moment on this screen worth animating.
@@ -1031,10 +1257,10 @@ static void prv_reflow(SimplyAssist *self, AssistFocus want) {
   layer_set_frame(self->content_layer, GRect(0, 0, frame.size.w, content_h));
   scroll_layer_set_content_size(self->scroll_layer, GSize(frame.size.w, content_h));
 
-  const int16_t dot_max = prv_dot_size(frame);
   layer_set_frame(self->dots_layer,
-                  GRect(0, self->thinking_y, frame.size.w, 2 * dot_max));
-  layer_set_hidden(self->dots_layer, !self->thinking);
+                  GRect(0, self->thinking_y, frame.size.w, prv_indicator_height(self, frame)));
+  layer_set_hidden(self->dots_layer, !self->thinking && !prv_listening(self));
+  layer_mark_dirty(self->dots_layer);
 
   // Text landing below the bottom of the screen changes nothing anyone can
   // see, and redrawing for it would place the words of every visible line
@@ -1100,16 +1326,64 @@ static const VibePattern s_stream_vibe = {
 
 // MARK: - Thinking state
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
+//! Ease each voice bar one frame toward its level: quickly up, so a sound
+//! shows as it is made, and more gently down. Returns whether any bar moved.
+static bool prv_meter_step(SimplyAssist *self) {
+  // The phone stopped sending, so whatever it last measured has passed
+  const bool quiet = self->level_age > 4;
+  if (self->level_age < UINT8_MAX) {
+    self->level_age++;
+  }
+  bool moved = false;
+  for (int16_t band = 0; band < METER_BARS; ++band) {
+    if (quiet) {
+      self->level_target[band] = self->level_target[band] * 3 / 4;
+    }
+    const int16_t target = self->level_target[band];
+    const int16_t shown = self->level_shown[band];
+    int16_t next = shown;
+    if (target > shown) {
+      next = shown + (target - shown + 1) / 2;
+    } else if (target < shown) {
+      const int16_t fall = (shown - target) / 4;
+      next = shown - (fall > 6 ? fall : (shown - target < 6 ? shown - target : 6));
+    }
+    if (next != shown) {
+      self->level_shown[band] = next;
+      moved = true;
+    }
+  }
+  return moved;
+}
+
+static void prv_meter_clear(SimplyAssist *self) {
+  memset(self->level_target, 0, sizeof(self->level_target));
+  memset(self->level_shown, 0, sizeof(self->level_shown));
+  self->level_age = 0;
+}
+#endif
+
 static void prv_think_tick(void *data) {
   SimplyAssist *self = data;
   self->think_timer = NULL;
   // The layers are gone while the settings menu has the screen, but the
   // answer being waited on is not; the animation picks up again on the way
   // back in rather than being torn down and restarted
-  if (!self->thinking || !self->dots_layer) { return; }
-  // Wrapped to the wave's own length, so the phase cannot jump when a plain
-  // counter would have rolled over
-  self->tick = (self->tick + 1) % 6;
+  if ((!self->thinking && !prv_listening(self)) || !self->dots_layer) { return; }
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (self->listen == AssistListenStreaming) {
+    // The bars follow the voice, and only need drawing when they move
+    if (prv_meter_step(self)) {
+      layer_mark_dirty(self->dots_layer);
+    }
+    self->think_timer = app_timer_register(METER_TICK_MS, prv_think_tick, self);
+    return;
+  }
+#endif
+  // Wrapped so the dots' six steps never jump when a plain counter would
+  // have rolled over
+  self->tick = (self->tick + 1) % 24;
   layer_mark_dirty(self->dots_layer);
   self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
 }
@@ -1222,10 +1496,202 @@ static void prv_send_action(uint8_t action) {
 
 static void prv_start_dictation(SimplyAssist *self) {
   if (self->thinking) { return; }
+  // The answer being read out is over once the wearer has something to say,
+  // and the microphone would only hear it
+  simply_speaker_stop();
   if (simply_voice_start(self->simply, self->dictation_confirm, true)) {
     prv_send_action(AssistActionDictationStarted);
   }
 }
+
+//! Keep the animation running. Listening and thinking share it: it is the
+//! dots while the phone works, and the voice bars while the wearer talks.
+static void prv_start_ticking(SimplyAssist *self) {
+  if (!self->think_timer) {
+    self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
+  }
+}
+
+#if defined(SIMPLY_HAS_MIC_STREAM)
+static void prv_cancel_listen_timer(SimplyAssist *self) {
+  if (self->listen_timer) {
+    app_timer_cancel(self->listen_timer);
+    self->listen_timer = NULL;
+  }
+}
+
+//! Put the view back where it was before the wearer started speaking, for a
+//! turn that came to nothing. Listening moves it down to the voice bars, and
+//! the turn's end would otherwise leave it on the newest message.
+static void prv_return_view(SimplyAssist *self) {
+  if (!self->has_resume) {
+    prv_reflow(self, AssistFocusMessage);
+    return;
+  }
+  self->has_resume = false;
+  prv_reflow(self, AssistFocusHold);
+  if (!self->window || !window_is_loaded(self->window)) { return; }
+  const int16_t page = layer_get_frame(scroll_layer_get_layer(self->scroll_layer)).size.h;
+  const int16_t last = scroll_layer_get_content_size(self->scroll_layer).h - page;
+  int16_t target = self->resume_y;
+  if (target > last) { target = last; }
+  if (target < 0) { target = 0; }
+  scroll_layer_set_content_offset(self->scroll_layer, GPoint(0, -target), true);
+  self->user_scrolled = self->resume_scrolled;
+}
+
+//! Close the microphone and forget the stream, without telling anyone. Every
+//! way a stream ends goes through here; the callers say what it meant.
+static void prv_end_stream(SimplyAssist *self) {
+  prv_cancel_listen_timer(self);
+  if (self->listen != AssistListenIdle) {
+    simply_mic_stream_stop();
+    self->listen = AssistListenIdle;
+  }
+}
+
+static void prv_dictate_now(void *data) {
+  SimplyAssist *self = data;
+  self->dictate_timer = NULL;
+  if (self->destroying) { return; }
+  prv_start_dictation(self);
+}
+
+//! Hand this turn to dictation, once the microphone has had a moment to come
+//! free of the stream that was meant to have it
+static void prv_dictate_instead(SimplyAssist *self) {
+  prv_end_stream(self);
+  prv_return_view(self);
+  if (!self->dictate_timer) {
+    self->dictate_timer = app_timer_register(DICTATION_AFTER_STREAM_MS, prv_dictate_now, self);
+  }
+}
+
+//! The wearer has said all they are going to. The audio already sent is the
+//! turn, and the dots stand in for it until Home Assistant says what it heard.
+static void prv_finish_stream(SimplyAssist *self) {
+  prv_end_stream(self);
+  self->ever_spoke = true;
+  self->user_scrolled = false;
+  prv_start_thinking(self);
+  prv_reflow(self, AssistFocusThinking);
+}
+
+//! Back out of a turn that is listening. With nothing said yet this leaves
+//! the screen, the same as backing out of dictation.
+static void prv_cancel_stream(SimplyAssist *self) {
+  prv_end_stream(self);
+  prv_send_action(AssistActionStreamCancelled);
+  if (!self->ever_spoke) {
+    prv_close(self);
+    return;
+  }
+  prv_return_view(self);
+}
+
+static void prv_stream_started(void *context) {
+  SimplyAssist *self = context;
+  if (self->listen != AssistListenAsking) { return; }
+  prv_cancel_listen_timer(self);
+  self->listen = AssistListenStreaming;
+  prv_meter_clear(self);
+  prv_send_action(AssistActionStreamStarted);
+  if (self->dots_layer) {
+    layer_mark_dirty(self->dots_layer);
+  }
+  // There is no system screen to say the microphone is open, only a banner
+  // sliding in at the bottom, so it is said here as well
+  if (self->vibration_feedback) {
+    vibes_short_pulse();
+  }
+}
+
+static void prv_stream_stopped(SimplyMicStreamStop reason, void *context) {
+  SimplyAssist *self = context;
+  if (self->listen == AssistListenAsking) {
+    // The phone said no, or never said anything and the firmware stopped
+    // waiting. Either way the wearer is still waiting to talk.
+    prv_cancel_listen_timer(self);
+    self->listen = AssistListenIdle;
+    // The answer will not change before the next turn, so the rest of this
+    // conversation goes straight to dictation rather than asking again
+    self->stream_allowed = false;
+    prv_send_action(AssistActionStreamRefused);
+    prv_dictate_instead(self);
+    return;
+  }
+  if (self->listen == AssistListenStreaming) {
+    // A notification, the system taking the microphone or the phone going
+    // away. What was said up to here is still the wearer's turn.
+    self->listen = AssistListenIdle;
+    prv_send_action(AssistActionStreamFinished);
+    prv_finish_stream(self);
+  }
+}
+
+static void prv_stream_no_answer(void *data) {
+  SimplyAssist *self = data;
+  self->listen_timer = NULL;
+  if (self->listen != AssistListenAsking) { return; }
+  prv_end_stream(self);
+  self->stream_allowed = false;
+  prv_send_action(AssistActionStreamNoAnswer);
+  prv_dictate_instead(self);
+}
+
+//! Open the microphone for a new turn: to Home Assistant where the phone has
+//! allowed it and this firmware can, and to dictation everywhere else
+static void prv_start_listening(SimplyAssist *self) {
+  if (self->thinking || prv_listening(self) || self->dictate_timer) { return; }
+  simply_speaker_stop();
+  if (self->stream_allowed && !simply_voice_dictation_in_progress() &&
+      simply_mic_stream_available() &&
+      simply_mic_stream_start(prv_stream_started, prv_stream_stopped, self) ==
+          SimplyMicStreamStartOk) {
+    self->listen = AssistListenAsking;
+    self->resume_y = -scroll_layer_get_content_offset(self->scroll_layer).y;
+    self->resume_scrolled = self->user_scrolled;
+    self->has_resume = true;
+    self->user_scrolled = false;
+    self->listen_timer = app_timer_register(STREAM_ANSWER_TIMEOUT_MS, prv_stream_no_answer, self);
+    prv_send_action(AssistActionStreamRequested);
+    prv_start_ticking(self);
+    prv_reflow(self, AssistFocusThinking);
+    return;
+  }
+  // Busy, no phone, an older watch: dictation is what always happened before
+  prv_start_dictation(self);
+}
+
+//! Select, or a tap: start talking, or say that talking is done
+static void prv_speak(SimplyAssist *self) {
+  switch (self->listen) {
+    case AssistListenStreaming:
+      prv_send_action(AssistActionStreamFinished);
+      prv_finish_stream(self);
+      return;
+    case AssistListenAsking:
+      // Nothing has been heard yet, so there is nothing to finish
+      return;
+    default:
+      prv_start_listening(self);
+      return;
+  }
+}
+
+#else
+
+// A watch that cannot stream always dictates, and has no stream to end
+static inline void prv_end_stream(SimplyAssist *self) {}
+static inline void prv_cancel_stream(SimplyAssist *self) {}
+
+static void prv_speak(SimplyAssist *self) {
+  prv_start_dictation(self);
+}
+
+#define prv_start_listening(self) prv_start_dictation(self)
+
+#endif
 
 bool simply_assist_handle_dictation(Simply *simply, int status, const char *transcription) {
   SimplyAssist *self = simply->assist;
@@ -1274,10 +1740,255 @@ bool simply_assist_handle_dictation(Simply *simply, int status, const char *tran
   return true;
 }
 
+#if defined(SIMPLY_HAS_MIC_STREAM)
+// MARK: - Confirming what was heard
+
+//! Confirm Dictation for a turn streamed to Home Assistant. The system's own
+//! confirmation only ever follows its own dictation, so this stands in for it
+//! and works the same way: the words on a screen over the conversation, up
+//! and down to read them, select to send them and back to throw them away.
+typedef struct AssistConfirm AssistConfirm;
+
+struct AssistConfirm {
+  SimplyAssist *assist;
+  Window *window;
+  ScrollLayer *scroll_layer;
+  TextLayer *text_layer;
+  ActionBarLayer *action_bar;
+  GBitmap *icon;
+  //! Up and down on the action bar while there is more to read that way,
+  //! the same as the system's dictation screen shows them
+  GBitmap *up_icon;
+  GBitmap *down_icon;
+  AppTimer *arrows_timer;
+  char text[];
+};
+
+#define CONFIRM_MARGIN 6
+
+static void prv_confirm_free(AssistConfirm *confirm) {
+  window_stack_remove(confirm->window, false);
+  window_destroy(confirm->window);
+  free(confirm);
+}
+
+static void prv_confirm_free_later(void *data) {
+  prv_confirm_free(data);
+}
+
+//! Take the screen down. It goes on the next pass of the event loop, since
+//! this is usually called from one of its own buttons.
+static void prv_confirm_dismiss(SimplyAssist *self) {
+  AssistConfirm *confirm = self->confirm;
+  if (!confirm) { return; }
+  self->confirm = NULL;
+  window_stack_remove(confirm->window, false);
+  app_timer_register(0, prv_confirm_free_later, confirm);
+}
+
+//! The words are the wearer's turn, exactly as if dictation had returned them
+static void prv_confirm_send(SimplyAssist *self, const char *text) {
+  self->ever_spoke = true;
+  self->user_scrolled = false;
+  self->stream_chunk_count = 0;
+  prv_append(self, AssistRoleUser, text);
+  prv_start_thinking(self);
+  prv_reflow(self, AssistFocusThinking);
+  prv_send_transcript(text);
+}
+
+//! The screen whose button was pressed. The scroll layer hands its click
+//! handlers a context of its own, so this one is found from its window, which
+//! is the one on top while its buttons are being pressed.
+static AssistConfirm *prv_confirm_pressed(void) {
+  return window_get_user_data(window_stack_get_top_window());
+}
+
+static void prv_confirm_select_click(ClickRecognizerRef recognizer, void *context) {
+  AssistConfirm *confirm = prv_confirm_pressed();
+  SimplyAssist *self = confirm->assist;
+  prv_confirm_send(self, confirm->text);
+  prv_confirm_dismiss(self);
+}
+
+//! Back to the conversation, where select starts the turn over
+static void prv_confirm_back_click(ClickRecognizerRef recognizer, void *context) {
+  AssistConfirm *confirm = prv_confirm_pressed();
+  SimplyAssist *self = confirm->assist;
+  prv_confirm_dismiss(self);
+  prv_return_view(self);
+}
+
+//! Show each arrow only while the words can still scroll that way
+static void prv_confirm_update_arrows(AssistConfirm *confirm) {
+  const GPoint offset = scroll_layer_get_content_offset(confirm->scroll_layer);
+  const GSize content_size = scroll_layer_get_content_size(confirm->scroll_layer);
+  const int16_t frame_h = layer_get_frame(scroll_layer_get_layer(confirm->scroll_layer)).size.h;
+  if (offset.y < 0) {
+    action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_UP, confirm->up_icon);
+  } else {
+    action_bar_layer_clear_icon(confirm->action_bar, BUTTON_ID_UP);
+  }
+  if (content_size.h + offset.y > frame_h) {
+    action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_DOWN, confirm->down_icon);
+  } else {
+    action_bar_layer_clear_icon(confirm->action_bar, BUTTON_ID_DOWN);
+  }
+}
+
+static void prv_confirm_arrows_timer(void *data) {
+  AssistConfirm *confirm = data;
+  confirm->arrows_timer = NULL;
+  prv_confirm_update_arrows(confirm);
+}
+
+//! The offset moves throughout a scroll's animation, and can change in the
+//! middle of drawing, so the action bar is updated after it rather than here
+static void prv_confirm_offset_changed(ScrollLayer *scroll_layer, void *context) {
+  AssistConfirm *confirm = context;
+  if (!confirm->arrows_timer) {
+    confirm->arrows_timer = app_timer_register(0, prv_confirm_arrows_timer, confirm);
+  }
+}
+
+static void prv_confirm_click_config_provider(void *context) {
+  window_single_click_subscribe(BUTTON_ID_SELECT, prv_confirm_select_click);
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_confirm_back_click);
+}
+
+static void prv_confirm_window_load(Window *window) {
+  AssistConfirm *confirm = window_get_user_data(window);
+  SimplyAssist *self = confirm->assist;
+  Layer *root_layer = window_get_root_layer(window);
+  const GRect bounds = layer_get_bounds(root_layer);
+  window_set_background_color(window, self->dark ? GColorBlack : GColorWhite);
+
+  // Round starts the words in from the curve, where text flow takes over, and
+  // rectangular screens need only a little room at the edges
+  const int16_t inset_x = PBL_IF_ROUND_ELSE(bounds.size.w / 10, CONFIRM_MARGIN);
+  const int16_t inset_y = PBL_IF_ROUND_ELSE(bounds.size.h / 8, CONFIRM_MARGIN);
+  const int16_t view_w = bounds.size.w - ACTION_BAR_WIDTH;
+  const int16_t text_w = view_w - inset_x - CONFIRM_MARGIN;
+
+  confirm->scroll_layer = scroll_layer_create(GRect(0, 0, view_w, bounds.size.h));
+  scroll_layer_set_shadow_hidden(confirm->scroll_layer, true);
+  scroll_layer_set_context(confirm->scroll_layer, confirm);
+  scroll_layer_set_callbacks(confirm->scroll_layer, (ScrollLayerCallbacks) {
+    .click_config_provider = prv_confirm_click_config_provider,
+    .content_offset_changed_handler = prv_confirm_offset_changed,
+  });
+
+  confirm->text_layer = text_layer_create(GRect(inset_x, 0, text_w, 2000));
+  text_layer_set_text(confirm->text_layer, confirm->text);
+  text_layer_set_font(confirm->text_layer, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD));
+  text_layer_set_text_color(confirm->text_layer, prv_foreground(self));
+  text_layer_set_background_color(confirm->text_layer, GColorClear);
+  text_layer_set_overflow_mode(confirm->text_layer, GTextOverflowModeWordWrap);
+  text_layer_set_text_alignment(confirm->text_layer,
+                                PBL_IF_ROUND_ELSE(GTextAlignmentCenter, GTextAlignmentLeft));
+
+  scroll_layer_add_child(confirm->scroll_layer, text_layer_get_layer(confirm->text_layer));
+  layer_add_child(root_layer, scroll_layer_get_layer(confirm->scroll_layer));
+#if defined(PBL_ROUND)
+  // Each line is fitted inside the circle and the words turn a page at a
+  // time, as round dictation shows them. It needs the layer on the window.
+  text_layer_enable_screen_text_flow_and_paging(confirm->text_layer, CONFIRM_MARGIN);
+  scroll_layer_set_paging(confirm->scroll_layer, true);
+#endif
+
+  // A few words stand in the middle, the way the system shows them. More
+  // than a screen's worth starts at the top and scrolls.
+  const int16_t text_h = text_layer_get_content_size(confirm->text_layer).h + 4;
+  const bool fits = (text_h + 2 * inset_y <= bounds.size.h);
+  // Round pages only line up with text that starts at the top of a page; the
+  // flow keeps the first lines clear of the curve by itself
+  const int16_t top = fits ? (bounds.size.h - text_h) / 2 : PBL_IF_ROUND_ELSE(0, inset_y);
+  const int16_t content_h = text_h + (fits ? 0 : 2 * top);
+  layer_set_frame(text_layer_get_layer(confirm->text_layer), GRect(inset_x, top, text_w, text_h));
+  scroll_layer_set_content_size(confirm->scroll_layer,
+                                GSize(view_w, content_h > bounds.size.h ? content_h : bounds.size.h));
+
+  confirm->action_bar = action_bar_layer_create();
+  // Black in both themes: the icons are thin, and on dark gray they are hard
+  // to make out on a real screen
+  action_bar_layer_set_background_color(confirm->action_bar, GColorBlack);
+  confirm->icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ICON_CONFIRM);
+  action_bar_layer_set_icon(confirm->action_bar, BUTTON_ID_SELECT, confirm->icon);
+  confirm->up_icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_UP);
+  confirm->down_icon = gbitmap_create_with_resource(RESOURCE_ID_IMAGE_ACTION_DOWN);
+  prv_confirm_update_arrows(confirm);
+  action_bar_layer_add_to_window(confirm->action_bar, window);
+  // After the action bar, which takes the window's buttons for its own when
+  // it is added. Up and down scroll the words; select and back come from
+  // prv_confirm_click_config_provider on top of that.
+  scroll_layer_set_click_config_onto_window(confirm->scroll_layer, window);
+}
+
+static void prv_confirm_window_unload(Window *window) {
+  AssistConfirm *confirm = window_get_user_data(window);
+  if (confirm->arrows_timer) {
+    app_timer_cancel(confirm->arrows_timer);
+    confirm->arrows_timer = NULL;
+  }
+  action_bar_layer_destroy(confirm->action_bar);
+  gbitmap_destroy(confirm->icon);
+  gbitmap_destroy(confirm->up_icon);
+  gbitmap_destroy(confirm->down_icon);
+  text_layer_destroy(confirm->text_layer);
+  scroll_layer_destroy(confirm->scroll_layer);
+}
+
+//! Put what was heard up for the wearer to accept, over the conversation
+static void prv_confirm_show(SimplyAssist *self, const char *text) {
+  if (self->confirm) {
+    prv_confirm_free(self->confirm);
+    self->confirm = NULL;
+  }
+  const size_t text_length = strlen(text) + 1;
+  AssistConfirm *confirm = malloc(sizeof(*confirm) + text_length);
+  Window *window = confirm ? window_create() : NULL;
+  if (!window) {
+    // Short of memory, sending the words is better than losing them
+    free(confirm);
+    prv_confirm_send(self, text);
+    return;
+  }
+  *confirm = (AssistConfirm) { .assist = self, .window = window };
+  memcpy(confirm->text, text, text_length);
+  window_set_user_data(window, confirm);
+  window_set_window_handlers(window, (WindowHandlers) {
+    .load = prv_confirm_window_load,
+    .unload = prv_confirm_window_unload,
+  });
+  // Set first: the conversation underneath disappears as this goes up, and
+  // must know it is only being covered
+  self->confirm = confirm;
+  window_stack_push(window, true);
+}
+#endif
+
 // MARK: - Buttons
 
 static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
-  prv_start_dictation(context);
+  prv_speak(context);
+}
+
+//! Back leaves the conversation, except while it is listening, when it only
+//! drops what is being said, or reading an answer out, when it only stops
+//! that. Leaving takes the window off the stack exactly as
+//! the system's own back would, and disappear does the rest.
+static void prv_back_click(ClickRecognizerRef recognizer, void *context) {
+  SimplyAssist *self = context;
+  // Reading the answer out loud: back silences it, and the next back leaves
+  if (simply_speaker_is_active()) {
+    simply_speaker_stop();
+    return;
+  }
+  if (prv_listening(self)) {
+    prv_cancel_stream(self);
+    return;
+  }
+  window_stack_remove(self->window, true);
 }
 
 //! Hand the screen to the settings menu. That menu is drawn by JS, and a JS
@@ -1292,6 +2003,9 @@ static void prv_open_settings(SimplyAssist *self) {
 }
 
 static void prv_select_long_click(ClickRecognizerRef recognizer, void *context) {
+  // The microphone is open, and the settings would take the screen from under
+  // it. Holding select is far more likely the wearer pressing to finish.
+  if (prv_listening((SimplyAssist *)context)) { return; }
   prv_open_settings(context);
 }
 
@@ -1328,6 +2042,7 @@ static void prv_click_config_provider(void *context) {
   window_set_click_context(BUTTON_ID_UP, self);
   window_set_click_context(BUTTON_ID_DOWN, self);
   window_set_click_context(BUTTON_ID_SELECT, self);
+  window_set_click_context(BUTTON_ID_BACK, self);
   // Repeating, so holding a button keeps going the way it does everywhere
   // else on the watch, rather than needing a press per line
   window_single_repeating_click_subscribe(BUTTON_ID_UP, SCROLL_REPEAT_MS,
@@ -1336,6 +2051,7 @@ static void prv_click_config_provider(void *context) {
                                           prv_scroll_down_click);
   window_single_click_subscribe(BUTTON_ID_SELECT, prv_select_click);
   window_long_click_subscribe(BUTTON_ID_SELECT, 0, prv_select_long_click, NULL);
+  window_single_click_subscribe(BUTTON_ID_BACK, prv_back_click);
 }
 
 // MARK: - Window
@@ -1407,8 +2123,8 @@ static void prv_window_load(Window *window) {
 
   // Coming back to an answer that is still being written: the dots pick up
   // where they left off
-  if (self->thinking && !self->think_timer) {
-    self->think_timer = app_timer_register(THINK_TICK_MS, prv_think_tick, self);
+  if (self->thinking || prv_listening(self)) {
+    prv_start_ticking(self);
   }
 
 #if defined(PBL_ROUND)
@@ -1472,6 +2188,17 @@ static void prv_destroy(SimplyAssist *self) {
   prv_cancel_long_press();
 #endif
   prv_stop_thinking(self);
+  prv_end_stream(self);
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (self->dictate_timer) {
+    app_timer_cancel(self->dictate_timer);
+    self->dictate_timer = NULL;
+  }
+  if (self->confirm) {
+    prv_confirm_free(self->confirm);
+    self->confirm = NULL;
+  }
+#endif
   window_destroy(self->window);
   self->simply->assist = NULL;
   free(self->arena);
@@ -1492,6 +2219,10 @@ static void prv_close(SimplyAssist *self) {
   if (self->destroying) { return; }
   self->destroying = true;
   prv_stop_thinking(self);
+  simply_speaker_stop();
+  // The microphone closes with the conversation. The phone hears about it
+  // through the close, which drops whatever turn was in flight.
+  prv_end_stream(self);
   prv_send_action(AssistActionClosed);
   // Defer the teardown: destroying a window from inside its own disappear
   // handler is unsafe while the window stack is mid-transition. This also
@@ -1510,6 +2241,10 @@ static void prv_window_disappear(Window *window) {
   // That is not the conversation ending, so hold everything and wait for it
   // to come back.
   if (simply_voice_dictation_in_progress()) { return; }
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  // Nor is the confirmation of what Home Assistant heard
+  if (self->confirm) { return; }
+#endif
   // Nor is stepping aside for the settings menu
   if (self->awaiting_settings) {
     self->awaiting_settings = false;
@@ -1551,6 +2286,8 @@ static SimplyAssist *prv_create(Simply *simply) {
 //! Throw the conversation away, leaving the screen itself alone
 static void prv_clear_conversation(SimplyAssist *self) {
   prv_stop_thinking(self);
+  simply_speaker_stop();
+  prv_end_stream(self);
   self->count = 0;
   self->arena_used = 0;
   self->last_message_y = 0;
@@ -1560,6 +2297,39 @@ static void prv_clear_conversation(SimplyAssist *self) {
   self->ever_spoke = false;
   self->stream_chunk_count = 0;
 }
+
+#if defined(SIMPLY_HAS_MIC_STREAM)
+//! The phone's measure of the voice it is being streamed
+static void prv_handle_levels(Simply *simply, Packet *data) {
+  SimplyAssist *self = simply->assist;
+  if (!self || self->destroying || self->listen != AssistListenStreaming) { return; }
+  AssistLevelsPacket *packet = (AssistLevelsPacket *)data;
+  if (packet->count != METER_BARS || packet->packet.length < sizeof(AssistLevelsPacket)) {
+    return;
+  }
+  memcpy(self->level_target, packet->levels, sizeof(self->level_target));
+  self->level_age = 0;
+}
+
+//! The phone steering a stream it is in the middle of
+static void prv_handle_listen(Simply *simply, Packet *data) {
+  SimplyAssist *self = simply->assist;
+  if (!self || self->destroying) { return; }
+  AssistListenPacket *packet = (AssistListenPacket *)data;
+  switch (packet->op) {
+    case ListenOpStop:
+      if (prv_listening(self)) {
+        prv_finish_stream(self);
+      }
+      return;
+    case ListenOpDictate:
+      if (prv_listening(self)) {
+        prv_dictate_instead(self);
+      }
+      return;
+  }
+}
+#endif
 
 static void prv_handle_show(Simply *simply, Packet *data) {
   AssistShowPacket *packet = (AssistShowPacket *)data;
@@ -1594,9 +2364,13 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   self->backlight_hold = (packet->flags & ShowFlagBacklightHold);
   self->vibration_feedback = (packet->flags & ShowFlagVibrationFeedback);
   self->dark = (packet->flags & ShowFlagDark);
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  self->stream_allowed = (packet->stream_flags & StreamFlagAllowed);
+  self->stream_manual = (packet->stream_flags & StreamFlagManual);
+#endif
   //! Whether to open the microphone straight away. Coming back from the
   //! settings menu should land on the conversation, not on the dictation UI.
-  const bool listen = (packet->flags & ShowFlagListen);
+  const bool open_mic = (packet->flags & ShowFlagListen);
   if (packet->flags & ShowFlagReset) {
     prv_clear_conversation(self);
   }
@@ -1615,8 +2389,8 @@ static void prv_handle_show(Simply *simply, Packet *data) {
   prv_reflow(self, AssistFocusMessage);
   // Opening Assist means the wearer wants to say something, so go straight to
   // the microphone rather than making them press select first
-  if (listen) {
-    prv_start_dictation(self);
+  if (open_mic) {
+    prv_start_listening(self);
   }
 }
 
@@ -1636,6 +2410,40 @@ static void prv_handle_message(Simply *simply, Packet *data) {
     if (self->thinking) {
       prv_keep_thinking(self);
     }
+    return;
+  }
+
+  // Anything else that arrives settles the turn, so a microphone still open
+  // for it closes. An error part way through a stream is the usual case.
+  prv_end_stream(self);
+
+#if defined(SIMPLY_HAS_MIC_STREAM)
+  if (packet->flags & MessageFlagConfirm) {
+    // Heard, and waiting on the wearer rather than on Home Assistant
+    prv_stop_thinking(self);
+    self->ever_spoke = true;
+    // Only over the conversation itself. With the settings menu up the
+    // conversation is not on the stack to come back to, and the words are
+    // dropped, the same as a turn backed out of.
+    if (window_stack_get_top_window() == self->window) {
+      prv_reflow(self, AssistFocusMessage);
+      prv_confirm_show(self, packet->text);
+    } else {
+      prv_return_view(self);
+    }
+    return;
+  }
+#endif
+
+  if (packet->flags & MessageFlagTranscript) {
+    // What Home Assistant heard. It is the wearer's turn, shown as if they had
+    // dictated it, and the answer is still to come.
+    self->ever_spoke = true;
+    self->user_scrolled = false;
+    self->stream_chunk_count = 0;
+    prv_append(self, AssistRoleUser, packet->text);
+    prv_start_thinking(self);
+    prv_reflow(self, AssistFocusThinking);
     return;
   }
 
@@ -1732,6 +2540,14 @@ bool simply_assist_handle_packet(Simply *simply, Packet *packet) {
     case CommandAssistMessage:
       prv_handle_message(simply, packet);
       return true;
+#if defined(SIMPLY_HAS_MIC_STREAM)
+    case CommandAssistListen:
+      prv_handle_listen(simply, packet);
+      return true;
+    case CommandAssistLevels:
+      prv_handle_levels(simply, packet);
+      return true;
+#endif
   }
   return false;
 }
@@ -1837,6 +2653,7 @@ static void prv_long_press_timeout(void *data) {
   // a swipe: the same thing holding select does
   if (s_touch_mode != AssistTouchPending) { return; }
   s_touch_mode = AssistTouchIdle;
+  if (prv_listening(self)) { return; }
   prv_open_settings(self);
 }
 
@@ -1933,14 +2750,21 @@ bool simply_assist_handle_touch(Simply *simply, const TouchEvent *event) {
       }
 
       if (adx < TOUCH_TAP_SLOP && ady < TOUCH_TAP_SLOP) {
-        prv_start_dictation(self);
+        prv_speak(self);
         return true;
       }
 
       // Swipe right leaves, the same as the back button and the same as
-      // everywhere else on the watch
+      // everywhere else on the watch, and the same as back it only drops the
+      // turn while the microphone is open, or silences an answer being read
       if (adx >= TOUCH_SWIPE_MIN && adx > ady && dx > 0) {
-        window_stack_remove(self->window, false);
+        if (simply_speaker_is_active()) {
+          simply_speaker_stop();
+        } else if (prv_listening(self)) {
+          prv_cancel_stream(self);
+        } else {
+          window_stack_remove(self->window, false);
+        }
         return true;
       }
 

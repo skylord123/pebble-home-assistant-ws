@@ -1,16 +1,16 @@
 # Settings page
 
 The watch app's settings page lives in this folder, one file per version
-(`v1.6.html` is current; `src/js/app/Constants.js` names the version in
+(`v1.7.html` is current; `src/js/app/Constants.js` names the version in
 `confVersion`). Each file is self-contained: no scripts, stylesheets or images
 are loaded from anywhere else. That is what lets one file serve two very
 different homes.
 
 ## Two ways the page is opened
 
-**Hosted.** Every push deploys this folder to GitHub Pages, and the classic
-Pebble/Rebble phone apps open the page from there when the gear icon is tapped
-(`Constants.configPageUrl`). The settings arrive in the URL hash as a JSON
+**Hosted.** Pushes to `master` and `dev` deploy this folder to GitHub Pages,
+and the classic Pebble/Rebble phone apps open the page from there when the gear
+icon is tapped (`Constants.configPageUrl`). The settings arrive in the URL hash as a JSON
 object, and Save hands the edited object back through `pebblejs://close#…`,
 which closes the page. Nothing about this flow changed with v1.6.
 
@@ -70,13 +70,23 @@ goes out whenever the connection changes state and when the states, pipelines
 and calendars have been fetched, so a page opened before the first connection
 fills its dropdowns as soon as Connect succeeds.
 
+## Releasing a new version
+
+GitHub Pages serves every page that is on `master` from `master`, and takes
+only the pages `master` does not have yet from `dev`. Once a page has shipped
+it is frozen, because every installed copy of that release keeps opening it by
+name: an option added to it would show up for apps that cannot use it (#104).
+So the first change to the page after a release copies it to the next version,
+points `confVersion` and `configPageUrl` at the new file, and makes the changes
+there. The deploy warns when a released page differs on `dev`.
+
 ## Working on the page
 
-Open `config/v1.6.html` in a browser with the settings in the hash to work on
+Open `config/v1.7.html` in a browser with the settings in the hash to work on
 the hosted mode, e.g.
 
 ```
-file:///…/config/v1.6.html#%7B%22ha_url%22%3A%22https%3A%2F%2Fha.example.com%22%7D
+file:///…/config/v1.7.html#%7B%22ha_url%22%3A%22https%3A%2F%2Fha.example.com%22%7D
 ```
 
 Save then navigates to `pebblejs://close#…`, which a browser cannot open;

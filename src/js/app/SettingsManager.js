@@ -7,6 +7,8 @@ var Menu = require('ui/menu');
 var InactivityTimer = require('app/InactivityTimer');
 var Touch = require('ui/touch');
 var AppState = require('app/AppState');
+var AudioStream = require('app/AudioStream');
+var Speech = require('app/Speech');
 var Constants = require('app/Constants');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -45,6 +47,27 @@ var SettingsManager = {
         appState.voice_backlight_trigger = Settings.option('voice_backlight_trigger') !== false;
         appState.voice_backlight_hold = Settings.option('voice_backlight_hold') === true;
         appState.assist_stream_reply = Settings.option('assist_stream_reply') !== false;
+        // On unless the wearer has turned it off. Where it cannot work the
+        // watch dictates as it always has, so nothing ever needs to turn it on
+        // or off on the wearer's behalf, and a choice to turn it off stays.
+        appState.assist_stream_audio = Settings.option('assist_stream_audio') !== false;
+        appState.assist_stream_end = Settings.option('assist_stream_end') === 'manual' ? 'manual' : 'auto';
+        var pause = Number(Settings.option('assist_stream_pause'));
+        appState.assist_stream_pause = pause > 0 && pause <= 10 ? pause : 0;
+        // The config page cannot see the watch or the phone app, so it is told
+        // whether they could stream, to explain why dictation is used if not
+        var streamWatch = !AudioStream.watchHasStreamPlatform() ? 'unsupported' :
+            !AudioStream.watchCanStream() ? 'firmware' :
+            !AudioStream.phoneCanStream() ? 'phone' : 'ready';
+        if (Settings.option('assist_stream_watch') !== streamWatch) {
+            Settings.option('assist_stream_watch', streamWatch);
+        }
+        // The config page cannot see the watch either, and only shows the
+        // switch for reading replies aloud on a watch with a speaker
+        var speakWatch = Speech.watchHasSpeaker();
+        if (Settings.option('assist_speak_watch') !== speakWatch) {
+            Settings.option('assist_speak_watch', speakWatch);
+        }
         appState.assist_vibration_feedback = Settings.option('assist_vibration_feedback') !== false;
         appState.voice_agent = Settings.option('voice_agent') ? Settings.option('voice_agent') : null;
 
@@ -115,11 +138,15 @@ var SettingsManager = {
             ? appState.unknown_entity_handling
             : 'sort_normally';
 
-        // Automation long-press action setting
+        // What the quick action does for an automation
         appState.automation_longpress_action = Settings.option('automation_longpress_action');
         appState.automation_longpress_action = appState.automation_longpress_action !== undefined
             ? appState.automation_longpress_action
             : 'toggle';
+
+        // What a press on an entity in a list does. A long press does the
+        // other: its quick action by default, or its details when swapped.
+        appState.entity_press = Settings.option('entity_press') === 'action' ? 'action' : 'details';
 
         // Whether to remember alarm panel codes after a successful entry
         // (toggleable from the alarm page's Code menu)
@@ -127,7 +154,8 @@ var SettingsManager = {
 
         log('Entity handling - unavailable: ' + appState.unavailable_entity_handling +
             ', unknown: ' + appState.unknown_entity_handling);
-        log('Automation long-press action: ' + appState.automation_longpress_action);
+        log('Automation quick action: ' + appState.automation_longpress_action);
+        log('Entity press: ' + appState.entity_press);
 
         // Inactivity timeout in seconds (0 = disabled). Configuring it also
         // (re)starts the countdown, so a settings change applies immediately.
@@ -149,6 +177,13 @@ var SettingsManager = {
         appState.menu_scroll_wrap = Settings.option('menu_scroll_wrap') !== false;
         Menu.setScrollWrapDefault(appState.menu_scroll_wrap);
         log('Menu scroll wrap-around: ' + appState.menu_scroll_wrap);
+
+        // Menu text size (default 'default'). Setting it here covers both
+        // startup and a change made on the config page, and redraws the menu
+        // on screen if the size changed.
+        appState.menu_text_size = Menu.normalizeTextSize(Settings.option('menu_text_size'));
+        Menu.setTextSize(appState.menu_text_size);
+        log('Menu text size: ' + appState.menu_text_size);
 
         // Background colour, black unless it has been changed. Applying it here
         // covers both startup and a change made on the config page.

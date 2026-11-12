@@ -72,6 +72,12 @@ def configure_platform(ctx, platform=None):
                    '-Wno-missing-field-initializers'])
 
     ctx.env.CFLAGS = cflags
+    # Aplite's app code and heap share 24 KB, and optimizing across files
+    # saves about a kilobyte. Nothing in the code refers to the app's header,
+    # so the linker has to be told to keep it.
+    if platform == 'aplite':
+        ctx.env.CFLAGS += ['-flto']
+        ctx.env.LINKFLAGS += ['-flto', '-Wl,--undefined=__pbl_app_info']
 
 
 @conf

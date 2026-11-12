@@ -7,7 +7,7 @@
  *   getting somewhere, unless its state is only assumed
  * - Code entry through CodeEntry whenever code_format is set and HA holds
  *   no default code, with remembered and "never ask" codes (AlarmCodeStore)
- * - Open, and unlocking from a long press, behind a confirmation card
+ * - Open, and unlocking from the quick action, behind a confirmation card
  * - Real-time state subscription
  */
 var UI = require('ui');
@@ -92,26 +92,28 @@ function confirmAction(entity_id, service, title, body) {
 }
 
 /**
- * Long-press quick action: lock straight away, but unlocking asks first,
- * since a stray long press in a list should never open a door
+ * Quick action: lock straight away, but unlocking asks first,
+ * since a stray press in a list should never open a door.
+ * Returns false when there was nothing to do.
  */
 function quickAction(entity_id) {
     var entity = AppState.getInstance().getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     var state = entity.state;
     if (state === 'unavailable' || isWaiting(state)) {
         helpers.log_message('Lock ' + entity_id + ' in state ' + state + ' - no action taken');
-        return;
+        return false;
     }
     if (state === 'locked') {
         confirmAction(entity_id, 'unlock', 'Unlock?',
             (entity.attributes.friendly_name || entity_id) + '\n\nPress SELECT to unlock.');
-        return;
+        return true;
     }
     performAction(entity_id, 'lock');
+    return true;
 }
 
 function showLockEntity(entity_id) {

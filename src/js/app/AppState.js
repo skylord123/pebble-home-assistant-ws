@@ -35,6 +35,15 @@ class AppState {
         // Show the assistant's reply building up as it is written, rather
         // than waiting for the whole of it
         this.assist_stream_reply = true;
+        // Send the microphone to Home Assistant's own speech-to-text where the
+        // watch and phone can, and how a turn heard that way ends: 'auto' when
+        // Home Assistant hears the wearer stop, 'manual' when they press select
+        this.assist_stream_audio = true;
+        this.assist_stream_end = 'auto';
+        // Seconds of quiet that end an 'auto' turn, judged on the phone. 0
+        // leaves it to Home Assistant, which ends the turn at its first short
+        // pause and never later than 15 seconds in.
+        this.assist_stream_pause = 0;
         // Vibration feedback during streaming replies
         this.assist_vibration_feedback = true;
         this.voice_agent = null;
@@ -42,6 +51,9 @@ class AppState {
         // set separately, so the conversation can stay dark in a white app
         this.menu_background_mode = 'black';
         this.assist_background_mode = 'black';
+        // 'smaller', 'default' or 'larger', the same steps as the watch's own
+        // Text Size setting, applied to the app's menus
+        this.menu_text_size = 'default';
         this.quick_launch_behavior = 'main_menu';
         this.quick_launch_favorite_entity = null;
         this.quick_launch_exit_on_back = false;
@@ -59,6 +71,8 @@ class AppState {
         this.unavailable_entity_handling = 'sort_to_end';
         this.unknown_entity_handling = 'sort_normally';
         this.automation_longpress_action = 'toggle';
+        // 'details' or 'action': what a press on an entity in a list does
+        this.entity_press = 'details';
         this.main_menu_custom_order_enabled = false;
         this.main_menu_order = null;
         this.timeline_token = null;

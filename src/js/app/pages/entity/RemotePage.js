@@ -94,18 +94,23 @@ function callRemoteService(entity_id, service, data, onDone) {
     );
 }
 
+/**
+ * Quick action: turn the remote on or off.
+ * Returns false when there was nothing to do.
+ */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     if (getRemoteData(entity).unavailable) {
         helpers.log_message('Remote ' + entity_id + ' in state ' + entity.state + ' - no action taken');
-        return;
+        return false;
     }
     callRemoteService(entity_id, 'toggle');
+    return true;
 }
 
 /**

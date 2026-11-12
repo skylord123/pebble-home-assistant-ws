@@ -16,6 +16,7 @@
   "companyName": "skylar.tech",
   "configPage": "config.html",
   "longName": "Home Assistant WS",
+  "manifestVersion": 2,
   "resources": {
     "media": [
       {
@@ -198,6 +199,16 @@
         "file": "images/icon_yes.png",
         "name": "IMAGE_ICON_YES",
         "type": "bitmap"
+      },
+      {
+        "file": "images/icon_confirm.png",
+        "name": "IMAGE_ICON_CONFIRM",
+        "targetPlatforms": [
+          "emery",
+          "flint",
+          "gabbro"
+        ],
+        "type": "bitmap"
       }
     ]
   },
@@ -212,9 +223,16 @@
     "flint",
     "gabbro"
   ],
+  "usesPermissions": [
+    "Internet",
+    "LocalNetwork",
+    "Location",
+    "Timeline",
+    "WatchMicrophone"
+  ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,
-  "versionLabel": "4.0",
+  "versionLabel": "5.0",
   "watchapp": {
     "hiddenApp": false,
     "watchface": false

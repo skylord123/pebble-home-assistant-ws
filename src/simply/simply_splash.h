@@ -40,3 +40,13 @@ bool simply_splash_consume_reveal(void);
 
 //! Ask JS to re-render its top window after the splash revealed it
 bool simply_splash_send_reveal(void);
+
+//! Put the splash up over everything, from the watch's side, for a phone that
+//! has gone away and taken the JS with it: every button on a JS window waits
+//! for an answer from there. Once the phone is back but the new JS has not
+//! yet spoken, `reconnected` says so.
+void simply_splash_show_phone_lost(Simply *simply, bool reconnected);
+
+//! The JS the watch gave up on turned out to be alive: take the splash down
+//! again unless JS has it up itself
+void simply_splash_phone_back(Simply *simply);

@@ -7,12 +7,19 @@
  * keeps the half that has to live on the phone: loading the available assist
  * pipelines, running the transcript through assist_pipeline/run over the
  * websocket, and sending the answer back down as text.
+ *
+ * Where the watch can, a turn skips dictation altogether: the microphone is
+ * streamed here and passed straight on to the pipeline, whose own
+ * speech-to-text says what was heard (see AudioStream).
  */
 var UI = require('ui');
 var Assist = require('ui/assist');
 var Settings = require('settings');
 
 var AppState = require('app/AppState');
+var AudioStream = require('app/AudioStream');
+var AudioLevels = require('app/AudioLevels');
+var Speech = require('app/Speech');
 var ConnectionService = require('app/ConnectionService');
 var helpers = require('app/helpers');
 var Theme = require('app/ui/Theme');
@@ -22,6 +29,10 @@ var conversation_id = null;
 
 // The settings menu is up in place of the conversation
 var inSettings = false;
+
+// Why the last answer was not read out, so a conversation that keeps failing
+// the same way says so once rather than under every answer
+var lastSpeechProblem = null;
 
 // A conversation open when the sun goes down turns dark around the words
 // already in it. Nothing happens unless the screen is up.
@@ -52,7 +63,13 @@ function loadAssistPipelines(callback) {
                 return {
                     id: p.id,
                     name: p.name,
-                    preferred: p.id === appState.preferred_pipeline
+                    preferred: p.id === appState.preferred_pipeline,
+                    // Only a pipeline with a speech-to-text engine can be
+                    // sent audio
+                    stt: !!p.stt_engine,
+                    // ...and only one with a text-to-speech engine can
+                    // answer out loud
+                    tts: !!p.tts_engine
                 };
             });
             Settings.option('available_pipelines', pipelineOptions);
@@ -130,7 +147,7 @@ function describeError(error) {
         case 'stt-provider-missing': return 'Speech-to-text provider not available';
         case 'stt-provider-unsupported-metadata': return 'Unsupported audio format';
         case 'stt-stream-failed': return 'Speech-to-text failed';
-        case 'stt-no-text-recognized': return 'No speech detected';
+        case 'stt-no-text-recognized': return 'Nothing heard';
         case 'cloud-auth-failed': return 'Home Assistant Cloud is not logged in';
         case 'intent-not-supported': return 'Conversation agent not available';
         case 'intent-failed': return 'The assistant hit an error. Check the Home Assistant log';
@@ -143,6 +160,7 @@ function describeError(error) {
         case 'intent-agent-not-found': return 'Conversation agent not found';
         case 'unauthorized': return 'This user may not use the assistant';
         case 'connection_lost': return 'Lost the connection to Home Assistant';
+        case 'not_connected': return 'Not connected to Home Assistant';
         default: return message || 'Connection error';
     }
 }
@@ -225,9 +243,25 @@ function flushStream() {
 var runGeneration = 0;
 var activeRun = null;
 
+// The turn whose audio is on its way to Home Assistant, while it is being
+// spoken. Audio arriving before Home Assistant is ready for it waits here.
+var listening = null;
+
+//! Stop taking audio for the turn being spoken, if there is one
+function stopListening() {
+    if (!listening) { return; }
+    AudioStream.detach(listening.sink);
+    if (listening.endTimer) {
+        clearTimeout(listening.endTimer);
+    }
+    listening = null;
+}
+
 //! Forget the turn in flight, and tell Home Assistant to stop working on it
 function abandonRun() {
     runGeneration++;
+    Speech.stop();
+    stopListening();
     if (activeRun) {
         activeRun.haws.unsubscribe(activeRun.id);
         activeRun = null;
@@ -235,13 +269,41 @@ function abandonRun() {
     cancelStream();
 }
 
+// Home Assistant's own default is 300 seconds. The watch gives up after 45 of
+// silence, but it restarts that clock on every streamed piece, so it will
+// happily wait out a long answer that is still arriving. The server's cap has
+// to sit above the watch's, not below it: at 30 an agent working through a few
+// tool calls was being cut off mid-answer.
+var RUN_TIMEOUT_S = 120;
+
+// The cap covers the whole run, listening included. Home Assistant stops
+// listening by itself after 15 seconds, so that is all a turn it ends adds; a
+// turn the wearer or the phone ends can go on for as long as they like, and
+// this is only there so a run nobody ever finishes is eventually let go.
+var LISTEN_TIMEOUT_S = 15;
+var MANUAL_LISTEN_TIMEOUT_S = 3600;
+
+// When the phone listens for the wearer to stop, it counts them as talking
+// once they have kept it up this long, as Home Assistant does, so a cough
+// before they start does not set the pause going. Someone who never starts
+// is given up on as late as Home Assistant would.
+var SPEECH_MS = 300;
+var NO_SPEECH_MS = 15000;
+
+// After the wearer finishes, the phone still has the last fraction of a
+// second of audio to hand over, and says when it has. If it never does, the
+// audio is ended anyway after this long.
+var AUDIO_DRAIN_MS = 1500;
+
 /**
- * Run one turn of the conversation through Home Assistant
+ * Run one turn of the conversation through Home Assistant, from what the
+ * watch's dictation heard
  */
 function runPipeline(transcription) {
     var appState = AppState.getInstance();
 
-    var body = {
+    abandonRun();
+    startRun({
         start_stage: "intent",
         end_stage: "intent",
         input: {
@@ -249,20 +311,233 @@ function runPipeline(transcription) {
         },
         pipeline: appState.selected_pipeline,
         conversation_id: conversation_id,
-        // Home Assistant's own default is 300 seconds. The watch gives up
-        // after 45 of silence, but it restarts that clock on every streamed
-        // piece, so it will happily wait out a long answer that is still
-        // arriving. The server's cap has to sit above the watch's, not below
-        // it: at 30 an agent working through a few tool calls was being cut
-        // off mid-answer.
-        timeout: 120
-    };
+        timeout: RUN_TIMEOUT_S
+    });
+}
+
+//! Whether the pipeline in use has a speech-to-text engine to send audio to
+function pipelineHearsAudio() {
+    var appState = AppState.getInstance();
+    var pipelines = appState.ha_pipelines || [];
+    for (var i = 0; i < pipelines.length; i++) {
+        if (pipelines[i].id === appState.selected_pipeline) {
+            return !!pipelines[i].stt_engine;
+        }
+    }
+    return false;
+}
+
+//! The audio of this turn is all sent. Home Assistant reads a frame holding
+//! nothing but the handler id as the end of it.
+function endAudio(turn) {
+    if (turn.ended) { return; }
+    turn.ended = true;
+    if (turn.endTimer) {
+        clearTimeout(turn.endTimer);
+        turn.endTimer = null;
+    }
+    AudioStream.detach(turn.sink);
+    if (turn.handlerId !== null) {
+        turn.haws.sendAudio(turn.handlerId);
+    }
+}
+
+/**
+ * The watch is opening its microphone to Home Assistant. The run starts now,
+ * so it is ready by the time the audio is, and any audio that beats it here
+ * waits until Home Assistant's speech-to-text has started.
+ */
+function startListening() {
+    var appState = AppState.getInstance();
+    var manual = appState.assist_stream_end === 'manual';
+    // The wearer wants to see what was heard before it goes to the agent, so
+    // Home Assistant only transcribes, and the words come back here to be
+    // confirmed on the watch. Accepting sends them on as a typed turn would.
+    var confirm = !!appState.voice_confirm;
 
     abandonRun();
+    var gen = runGeneration;
+    var turn = {
+        haws: appState.haws,
+        handlerId: null,
+        pendingId: null,
+        queue: [],
+        ended: false,
+        endTimer: null,
+        sink: null,
+        // Set when the phone, not Home Assistant, decides the wearer has
+        // stopped. Home Assistant cannot be asked to wait longer than its
+        // short pause, nor past 15 seconds, so a longer pause means doing
+        // without its listening altogether.
+        pauseMs: manual ? 0 : appState.assist_stream_pause * 1000,
+        voicedMs: 0,
+        quietMs: 0,
+        spoke: false
+    };
+    turn.sink = {
+        audio: function(bytes) {
+            if (turn.ended) { return; }
+            var levels = AudioLevels.analyze(bytes);
+            Assist.levels(levels);
+            if (turn.pauseMs && levels) {
+                hearPause(turn, bytes.byteLength / 2 / AudioStream.SAMPLE_RATE * 1000);
+                if (turn.ended) { return; }
+            }
+            if (turn.handlerId === null) {
+                turn.queue.push(bytes);
+            } else {
+                turn.haws.sendAudio(turn.handlerId, bytes);
+            }
+        },
+        end: function() {
+            endAudio(turn);
+        }
+    };
+    listening = turn;
+    AudioLevels.reset();
+    AudioStream.attach(turn.sink);
+
+    var input = { sample_rate: AudioStream.SAMPLE_RATE };
+    if (manual || turn.pauseMs) {
+        // Home Assistant would otherwise end the turn at the first pause, and
+        // at 15 seconds whatever is happening
+        input.no_vad = true;
+    }
+
+    helpers.log_message("Listening through Home Assistant" + (manual ? " until select" : "") +
+        (turn.pauseMs ? " until a " + (turn.pauseMs / 1000) + " s pause" : "") +
+        (confirm ? ", to confirm" : ""));
+    startRun({
+        start_stage: "stt",
+        end_stage: confirm ? "stt" : "intent",
+        input: input,
+        pipeline: appState.selected_pipeline,
+        conversation_id: conversation_id,
+        timeout: RUN_TIMEOUT_S + (input.no_vad ? MANUAL_LISTEN_TIMEOUT_S : LISTEN_TIMEOUT_S)
+    }, function(event) {
+        if (gen !== runGeneration) { return; }
+        var data = event.data || {};
+        switch (event.type) {
+            case 'run-start':
+                // Where the audio goes is known now, but Home Assistant asks
+                // for it only once speech-to-text has started, so it waits
+                // until then with the rest
+                turn.pendingId = data.runner_data ? data.runner_data.stt_binary_handler_id : null;
+                return;
+            case 'stt-start':
+                if (turn.pendingId === null || turn.pendingId === undefined) { return; }
+                turn.handlerId = turn.pendingId;
+                for (var i = 0; i < turn.queue.length; i++) {
+                    turn.haws.sendAudio(turn.handlerId, turn.queue[i]);
+                }
+                turn.queue = [];
+                if (turn.ended) {
+                    turn.haws.sendAudio(turn.handlerId);
+                }
+                return;
+            case 'stt-vad-end':
+                // Home Assistant heard the wearer stop and has stopped
+                // listening, so the microphone can close
+                endAudio(turn);
+                Assist.stopListening();
+                return;
+            case 'stt-end':
+                endAudio(turn);
+                if (listening === turn) {
+                    listening = null;
+                }
+                var heard = data.stt_output && typeof data.stt_output.text === 'string' ?
+                    data.stt_output.text.trim() : '';
+                // Nothing heard is reported as its own error straight after
+                if (heard && confirm) {
+                    Assist.confirmTranscript(heard);
+                } else if (heard) {
+                    Assist.transcript(heard);
+                }
+                return;
+        }
+    });
+}
+
+//! Follow a chunk of the wearer's audio, and end the turn once they have
+//! been quiet for the pause they chose
+function hearPause(turn, ms) {
+    if (AudioLevels.voiced()) {
+        turn.voicedMs += ms;
+        turn.quietMs = 0;
+        if (turn.voicedMs >= SPEECH_MS) { turn.spoke = true; }
+    } else {
+        turn.voicedMs = 0;
+        turn.quietMs += ms;
+    }
+    if (turn.quietMs >= (turn.spoke ? turn.pauseMs : NO_SPEECH_MS)) {
+        // As if Home Assistant had heard them stop
+        endAudio(turn);
+        Assist.stopListening();
+    }
+}
+
+//! The wearer has said all they are going to, by pressing select or by
+//! something taking the watch's screen or microphone
+function finishListening() {
+    var turn = listening;
+    if (!turn || turn.ended) { return; }
+    // The phone says when it has handed over the last of the audio
+    turn.endTimer = setTimeout(function() {
+        turn.endTimer = null;
+        endAudio(turn);
+    }, AUDIO_DRAIN_MS);
+}
+
+/**
+ * What the watch reports about a turn going to Home Assistant as audio
+ */
+function onStream(event) {
+    switch (event) {
+        case 'requested':
+            startListening();
+            return;
+        case 'started':
+            AudioStream.record('works');
+            return;
+        case 'finished':
+            finishListening();
+            return;
+        case 'cancelled':
+            abandonRun();
+            ConnectionService.showPendingReconnectDialog();
+            return;
+        case 'refused':
+        case 'noanswer':
+            // The watch has already gone on to dictation, which brings its own
+            // transcript, and the run waiting for audio is not needed
+            abandonRun();
+            AudioStream.record(event === 'refused' ? 'refused' : 'noanswer');
+            return;
+    }
+}
+
+// Errors a run starting at speech-to-text can be refused with before it
+// starts, all of which mean this pipeline cannot take audio. Dictation can
+// still carry the turn.
+var NO_AUDIO_CODES = ['validation-error', 'stt-provider-missing',
+    'stt-provider-unsupported-metadata'];
+
+/**
+ * Start a pipeline run and see it through to the answer on the watch.
+ * `onEvent` takes the speech-to-text events of a run that starts there.
+ */
+function startRun(body, onEvent) {
+    var appState = AppState.getInstance();
     var gen = runGeneration;
     var haws = appState.haws;
     var finished = false;
     Assist.beginReply();
+    // Read out as it is written, when it is to be read out at all. A run that
+    // only transcribes has nothing to say.
+    if (body.end_stage !== 'stt' && Speech.wanted()) {
+        Speech.begin(speechProblems(gen));
+    }
 
     var streaming = appState.assist_stream_reply !== false &&
         supportsStreaming(appState.ha_version);
@@ -280,7 +555,10 @@ function runPipeline(transcription) {
         streamText += piece;
         if (!streamTimer) {
             streamTimer = setTimeout(function() {
-                if (gen === runGeneration) { flushStream(); }
+                if (gen === runGeneration) {
+                    flushStream();
+                    Speech.write(streamText);
+                }
             }, STREAM_COALESCE_MS);
         }
     } : null;
@@ -302,8 +580,16 @@ function runPipeline(transcription) {
 
             if (!data.success) {
                 cancelStream();
+                Speech.stop();
                 Assist.error('Request failed');
                 ConnectionService.showPendingReconnectDialog();
+                return;
+            }
+
+            // Only transcribing, for the wearer to confirm. What was heard
+            // has already gone to the watch, and the answer is a later run.
+            if (body.end_stage === 'stt') {
+                cancelStream();
                 return;
             }
 
@@ -325,6 +611,7 @@ function runPipeline(transcription) {
                     // limit from the model. Drawn as an answer it is
                     // indistinguishable from one.
                     cancelStream();
+                    Speech.stop();
                     Assist.error(speech || 'The assistant could not answer');
                     ConnectionService.showPendingReconnectDialog();
                     return;
@@ -343,10 +630,22 @@ function runPipeline(transcription) {
                         'Done' : 'The assistant gave no answer';
                 }
 
+                // The speech is what the agent finished on. With nothing there
+                // the whole of what streamed in is the answer, and it has to be
+                // taken before cancelStream clears it.
+                var spoken = speech || streamText;
+
                 // Whatever was streamed came from this same answer, so ending
                 // on it settles any last piece and stops the dots. Nothing
                 // streamed and it goes down whole, exactly as it used to.
                 Assist.endReply(speech);
+                // Read out a sentence at a time, what streamed in is already
+                // being said and the rest goes now. This waits until the answer
+                // is on screen, since a reason it cannot be heard goes under it.
+                if (Speech.wanted()) {
+                    Speech.write(streamText);
+                    Speech.end(spoken, speechProblems(gen));
+                }
                 cancelStream();
                 ConnectionService.showPendingReconnectDialog();
 
@@ -360,6 +659,7 @@ function runPipeline(transcription) {
             } catch (err) {
                 helpers.log_message("Response format error: " + err.toString());
                 cancelStream();
+                Speech.stop();
                 Assist.error('Invalid response from Home Assistant');
                 ConnectionService.showPendingReconnectDialog();
             }
@@ -371,15 +671,44 @@ function runPipeline(transcription) {
             stopKeepAlive();
             helpers.log_message("assist_pipeline/run error: " + JSON.stringify(error));
             cancelStream();
+            Speech.stop();
+            var heldTurn = listening;
+            stopListening();
+            var detail = (error && error.error && typeof error.error === 'object') ? error.error : error;
+            if (heldTurn && !heldTurn.ended && heldTurn.handlerId === null && detail &&
+                    NO_AUDIO_CODES.indexOf(detail.code) !== -1) {
+                // Refused before any audio was taken, because this pipeline
+                // cannot hear. The wearer is still waiting to talk.
+                Assist.dictateInstead();
+                return;
+            }
             Assist.error(describeError(error));
             ConnectionService.showPendingReconnectDialog();
         },
-        onProgress
+        onProgress,
+        onEvent
     );
     // The error callback may already have run, if the request never left
     if (runId && !finished && gen === runGeneration) {
         activeRun = { haws: haws, id: runId };
     }
+}
+
+/**
+ * What to do when an answer cannot be read out on the watch's speaker.
+ * Anything that stops it being heard, other than the wearer silencing it or
+ * a muted speaker, is said under the answer.
+ */
+function speechProblems(gen) {
+    return function(problem) {
+        // Only for the answer it belongs to, and never while the wearer is
+        // talking: a message closes the microphone on the watch
+        if (gen !== runGeneration || Assist.isDictating() || problem === lastSpeechProblem) {
+            return;
+        }
+        lastSpeechProblem = problem;
+        Assist.error(problem);
+    };
 }
 
 /**
@@ -407,11 +736,21 @@ function openAssist(listen, reset) {
         dark: Theme.assistIsDark(),
         listen: listen,
         reset: reset,
+        // Settled each time the screen comes up, so a change of pipeline or
+        // of the setting applies from the next turn
+        stream: AudioStream.shouldTry() && pipelineHearsAudio(),
+        streamManual: appState.assist_stream_end === 'manual',
         onTranscript: runPipeline,
+        onStream: onStream,
         // A reconnect held back for the microphone is due now, whether or not
         // anything was heard
         onDictationEnd: function() {
             ConnectionService.showPendingReconnectDialog();
+        },
+        // The watch has already silenced its speaker for the new turn. What is
+        // still on its way to it, or still being made, is not wanted either.
+        onListen: function() {
+            Speech.stop();
         },
         onSettings: function() {
             // Imported inline to avoid a circular dependency
@@ -463,9 +802,11 @@ function showAssistMenu() {
     // always been; the watch throws its own transcript away at the same time
     conversation_id = null;
     inSettings = false;
+    lastSpeechProblem = null;
     abandonRun();
     openAssist(true);
 }
 
 module.exports.showAssistMenu = showAssistMenu;
 module.exports.loadAssistPipelines = loadAssistPipelines;
+module.exports.pipelineHearsAudio = pipelineHearsAudio;

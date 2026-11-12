@@ -26,6 +26,7 @@ var AppState = require('app/AppState');
 var Constants = require('app/Constants');
 var TimelineLaunch = require('app/TimelineLaunch');
 var DateTimeEditorPage = require('app/pages/DateTimeEditorPage');
+var NavRoute = require('app/NavRoute');
 var helpers = require('app/helpers');
 
 // Width reserved by the action bar on the event detail page
@@ -1036,6 +1037,9 @@ function showCalendarEventByLaunchCode(launchCode) {
         helpers.log_message('Timeline launch: failed to fetch events');
     });
 }
+
+showCalendarList = NavRoute.wrap('calendars', showCalendarList);
+showCalendarEvents = NavRoute.wrap('calendarEvents', showCalendarEvents);
 
 module.exports.showCalendarList = showCalendarList;
 module.exports.showCalendarEvents = showCalendarEvents;

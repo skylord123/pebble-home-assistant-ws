@@ -39,6 +39,11 @@ var ConnectionService = {
     // How long a connection test waits for Home Assistant before giving up
     TEST_TIMEOUT_MS: 15000,
 
+    // With its Plugins preview on, the Pebble app only lets the app reach the
+    // internet and the local network once the wearer allows them
+    BLOCKED_MESSAGE: 'The Pebble app has not allowed Home Assistant WS to reach Home Assistant yet. ' +
+        'Allow it the internet and local network in the Pebble app.',
+
     /**
      * Initialize the connection service
      * @param {Object} options - Configuration options
@@ -208,6 +213,14 @@ var ConnectionService = {
             self.loadingCard.subtitle('Error');
         });
 
+        haws.on('blocked', function() {
+            if (!current()) { return; }
+            self.lastError = { code: 'blocked', message: ConnectionService.BLOCKED_MESSAGE };
+            self.loadingCard.subtitle('Not allowed');
+            self.loadingCard.body('Allow Home Assistant WS the internet and local network in the Pebble app');
+            ConfigBridge.notifyStatus();
+        });
+
         haws.on('auth_invalid', function(evt) {
             if (!current()) { return; }
             self.authFailed = true;
@@ -299,6 +312,10 @@ var ConnectionService = {
                 code: 'auth_invalid',
                 message: (evt.detail && evt.detail.message) || 'Home Assistant refused the access token'
             } });
+        });
+
+        haws.on('blocked', function() {
+            finish({ ok: false, error: { code: 'blocked', message: ConnectionService.BLOCKED_MESSAGE } });
         });
 
         haws.on('error', function() {

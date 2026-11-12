@@ -11,6 +11,7 @@ var Touch = require('ui/touch');
 var Voice = require('ui/voice');
 var NumberField = require('ui/numberfield');
 var Assist = require('ui/assist');
+var Speaker = require('ui/speaker');
 var ImageService = require('ui/imageservice');
 var WindowStack = require('ui/windowstack');
 var Window = require('ui/window');
@@ -377,6 +378,16 @@ var StatusBarSeparatorModeTypes = [
 
 var StatusBarSeparatorModeType = makeArrayType(StatusBarSeparatorModeTypes);
 
+// The index of each name is what goes over the wire. 'default' is 0 so a
+// watch reading a zeroed field draws menus exactly as it always has.
+var MenuTextSizeTypes = [
+  'default',
+  'smaller',
+  'larger',
+];
+
+var MenuTextSizeType = makeArrayType(MenuTextSizeTypes);
+
 var Packet = new struct([
   ['uint16', 'type'],
   ['uint16', 'length'],
@@ -399,6 +410,7 @@ var LaunchReasonPacket = new struct([
   ['uint32', 'time'],
   ['bool', 'isTimezone'],
   ['bool', 'is24h'],
+  ['bool', 'isResumed'],
 ]);
 
 var WakeupSetPacket = new struct([
@@ -592,6 +604,7 @@ var MenuPropsPacket = new struct([
   ['uint8', 'highlightBackgroundColor', ColorType],
   ['uint8', 'highlightTextColor', ColorType],
   ['bool', 'scrollWrap', BoolType],
+  ['uint8', 'textSize', MenuTextSizeType],
 ]);
 
 var MenuSectionPacket = new struct([
@@ -860,6 +873,7 @@ var AssistShowPacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'fontSize'],
   ['uint8', 'flags'],
+  ['uint8', 'streamFlags'],
 ]);
 
 var AssistHidePacket = new struct([
@@ -882,6 +896,49 @@ var AssistTranscriptPacket = new struct([
 var AssistActionPacket = new struct([
   [Packet, 'packet'],
   ['uint8', 'action'],
+]);
+
+var AssistListenPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'op'],
+]);
+
+var AssistLevelsPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'count'],
+  ['data', 'levels'],
+]);
+
+// Speech for the watch's speaker. See simply_speaker.c.
+var SpeakerPlayPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+  ['uint8', 'rate'],
+  ['uint8', 'volume'],
+  ['uint8', 'flags'],
+  ['uint32', 'prebuffer'],
+  ['uint32', 'total'],
+]);
+
+var SpeakerDataPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+  ['uint8', 'flags'],
+  ['uint32', 'offset'],
+  ['data', 'audio'],
+]);
+
+var SpeakerStopPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+]);
+
+var SpeakerStatusPacket = new struct([
+  [Packet, 'packet'],
+  ['uint8', 'clip'],
+  ['uint8', 'state'],
+  ['uint32', 'played'],
+  ['uint32', 'capacity'],
 ]);
 
 var CommandPackets = [
@@ -962,6 +1019,12 @@ var CommandPackets = [
   AssistMessagePacket,
   AssistTranscriptPacket,
   AssistActionPacket,
+  AssistListenPacket,
+  AssistLevelsPacket,
+  SpeakerPlayPacket,
+  SpeakerDataPacket,
+  SpeakerStopPacket,
+  SpeakerStatusPacket,
 ];
 
 // Mirrors TouchEventType in the SDK. Position updates are only sent when a
@@ -1012,6 +1075,10 @@ SimplyPebble.init = function() {
 
   // Initialize the packet queue
   state.packetQueue = new PacketQueue();
+  state.messageQueue.onIdle = function() {
+    flushLevels();
+    Speaker.emitIdle();
+  };
 
   // Signal the Pebble that the Phone's app message is ready
   SimplyPebble.ready();
@@ -1030,6 +1097,9 @@ var MessageQueue = function() {
 
 MessageQueue.prototype.stop = function() {
   this._sending = false;
+  if (this.onIdle) {
+    this.onIdle();
+  }
 };
 
 MessageQueue.prototype.consume = function() {
@@ -1370,9 +1440,13 @@ SimplyPebble.menuClearSection = function(section) {
 };
 
 SimplyPebble.menuProps = function(def) {
-  // scrollWrap is set explicitly because the packet buffer is reused between
-  // sends and prop() skips fields missing from def
-  SimplyPebble.sendPacket(MenuPropsPacket.prop(def).scrollWrap(def.scrollWrap !== false));
+  // scrollWrap and textSize are set explicitly because the packet buffer is
+  // reused between sends and prop() skips fields missing from def. The text
+  // size is one setting for the whole app rather than a property of any one
+  // menu, so it is read from Menu instead of def.
+  SimplyPebble.sendPacket(MenuPropsPacket.prop(def)
+    .scrollWrap(def.scrollWrap !== false)
+    .textSize(Menu.textSize()));
 };
 
 SimplyPebble.menuSection = function(section, def, clear) {
@@ -1626,15 +1700,24 @@ SimplyPebble.stageElement = function(id, type, def, index) {
 
 SimplyPebble.stageRemove = SimplyPebble.elementRemove;
 
+// What the splash was last told, so it can be put back as it was when the
+// watch had to take it over while the phone was away
+var splashState = { wanted: false, title: '', status: '', body: '', mode: 0 };
+
 SimplyPebble.splashShow = function() {
+  splashState.wanted = true;
   SimplyPebble.sendPacket(SplashShowPacket);
 };
 
 SimplyPebble.splashHide = function() {
+  splashState.wanted = false;
   SimplyPebble.sendPacket(SplashHidePacket);
 };
 
 SimplyPebble.splashStatus = function(title, status, body) {
+  splashState.title = title;
+  splashState.status = status;
+  splashState.body = body;
   SplashStatusPacket
     .titleLength(title)
     .statusLength(status)
@@ -1676,7 +1759,10 @@ SimplyPebble.assistShow = function(opts) {
     .fontSize(opts.fontSize || 18)
     .flags((opts.confirm ? 1 : 0) | (opts.backlight ? 2 : 0) | (opts.dark ? 4 : 0) |
            (opts.listen ? 8 : 0) | (opts.reset ? 32 : 0) |
-           (opts.backlightHold ? 64 : 0) | (opts.vibrationFeedback ? 128 : 0));
+           (opts.backlightHold ? 64 : 0) | (opts.vibrationFeedback ? 128 : 0))
+    // StreamFlag in simply_assist.c: whether the microphone may go to Home
+    // Assistant, and whether the wearer ends the turn rather than it
+    .streamFlags((opts.stream ? 1 : 0) | (opts.streamManual ? 2 : 0));
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 
@@ -1687,8 +1773,51 @@ SimplyPebble.assistTheme = function(dark) {
   SimplyPebble.sendPacket(AssistShowPacket);
 };
 
+SimplyPebble.assistListen = function(op) {
+  SimplyPebble.sendPacket(AssistListenPacket.op(op));
+};
+
+// Only the newest levels are worth anything. While a message is still on its
+// way they wait here, each replacing the last, rather than queueing behind it
+// and putting the bars further and further behind the voice.
+var pendingLevels = null;
+
+var flushLevels = function() {
+  if (!pendingLevels) { return; }
+  var levels = pendingLevels;
+  pendingLevels = null;
+  SimplyPebble.sendPacket(AssistLevelsPacket.count(levels.length).levels(levels));
+};
+
+SimplyPebble.assistLevels = function(levels) {
+  pendingLevels = levels;
+  if (!state.messageQueue._sending) {
+    flushLevels();
+  }
+};
+
 SimplyPebble.assistHide = function() {
   SimplyPebble.sendPacket(AssistHidePacket);
+};
+
+SimplyPebble.speakerPlay = function(clip, rate, prebuffer, total, volume) {
+  SimplyPebble.sendPacket(SpeakerPlayPacket.clip(clip).rate(rate).volume(volume).flags(0)
+    .prebuffer(prebuffer).total(total));
+};
+
+SimplyPebble.speakerData = function(clip, offset, bytes, flags) {
+  SimplyPebble.sendPacket(SpeakerDataPacket.clip(clip).flags(flags)
+    .offset(offset).audio(bytes));
+};
+
+SimplyPebble.speakerStop = function(clip) {
+  SimplyPebble.sendPacket(SpeakerStopPacket.clip(clip));
+};
+
+//! Whether nothing is waiting to go to the watch, so a piece of speech can go
+//! without holding up anything the wearer is looking at
+SimplyPebble.isIdle = function() {
+  return !state.messageQueue._sending;
 };
 
 SimplyPebble.assistMessage = function(role, text, flags) {
@@ -1697,6 +1826,7 @@ SimplyPebble.assistMessage = function(role, text, flags) {
 };
 
 SimplyPebble.splashMode = function(mode) {
+  splashState.mode = mode;
   SimplyPebble.sendPacket(SplashModePacket.mode(mode));
 };
 
@@ -1755,6 +1885,9 @@ SimplyPebble.onLaunchReason = function(packet) {
   // the args value is the pin action's launchCode.
   state.launchReason = reason;
   state.launchArgs = args;
+  // A new copy of this JS taking over an app that was already open on the
+  // watch, after the phone app lost it and started it again
+  state.launchResumed = packet.isResumed();
 };
 
 SimplyPebble.onWakeupSetResult = function(packet) {
@@ -1860,7 +1993,19 @@ SimplyPebble.onPacket = function(buffer, offset) {
     case AssistActionPacket:
       Assist.emitAction(packet.action());
       break;
+    case SpeakerStatusPacket:
+      Speaker.emitStatus(packet.clip(), packet.state(), packet.played(), packet.capacity());
+      break;
     case SplashRevealPacket:
+      // The watch put the splash up itself while the phone was away and is
+      // asking whether anyone is still here. This JS was waiting behind a
+      // splash of its own, so that is what goes back up.
+      if (splashState.wanted) {
+        SimplyPebble.sendPacket(SplashShowPacket);
+        SimplyPebble.splashStatus(splashState.title, splashState.status, splashState.body);
+        SimplyPebble.sendPacket(SplashModePacket.mode(splashState.mode));
+        break;
+      }
       // The splash was covering the current window, which reloaded empty on
       // the watch; re-render the top window (images must re-send too)
       ImageService.markAllUnloaded();

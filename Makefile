@@ -54,7 +54,9 @@ timeline-off:
 wipe:
 	pebble wipe
 
-DOCKER_IMAGE = ghcr.io/skylord123/docker-coredevices-pebble-tool:latest
+# Pinned: an app built with a newer SDK refuses to start on any firmware older
+# than that SDK, and the image's latest tag moves to every new SDK each week
+DOCKER_IMAGE = ghcr.io/skylord123/docker-coredevices-pebble-tool:sdk-4.33.1
 DOCKER_RUN = docker run --rm -v $(shell pwd):/pebble \
 	--user $(shell id -u):$(shell id -g) \
 	-e HOME=/tmp \

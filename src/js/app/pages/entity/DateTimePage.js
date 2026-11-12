@@ -174,17 +174,17 @@ function sendValue(entity_id, date, onDone) {
 /**
  * Open the right editor for what this entity holds: the alarm style
  * date editor when there is a date, and the watch's own HH:MM:SS picker
- * when it is only a time.
+ * when it is only a time. Returns false when there is no value to edit.
  */
 function editValue(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('editValue: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     var data = getDateTimeData(entity);
-    if (data.unavailable) return;
+    if (data.unavailable) return false;
 
     if (!data.hasDate) {
         var current = data.value.getHours() * 3600 + data.value.getMinutes() * 60 + data.value.getSeconds();
@@ -203,7 +203,7 @@ function editValue(entity_id) {
                 });
             }
         });
-        return;
+        return true;
     }
 
     DateTimeEditorPage.show({
@@ -214,6 +214,7 @@ function editValue(entity_id) {
             sendValue(entity_id, result);
         }
     });
+    return true;
 }
 
 function showDateTimeEntity(entity_id) {

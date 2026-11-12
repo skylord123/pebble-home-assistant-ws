@@ -91,7 +91,7 @@ function callMowerService(entity_id, service) {
 /**
  * The one action that makes sense right now: stop a mower that is moving,
  * and set a stopped one going. Falls back to docking when the mower cannot
- * do the first choice, so there is always something useful on a long press.
+ * do the first choice, so there is always something useful for its quick action.
  * @returns {string|null} the service to call, or null when nothing applies
  */
 function quickActionService(data) {
@@ -114,19 +114,24 @@ function quickActionService(data) {
     return null;
 }
 
+/**
+ * Quick action: whatever quickActionService picks for the mower as it is.
+ * Returns false when there was nothing to do.
+ */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     var service = quickActionService(getMowerData(entity));
     if (!service) {
         helpers.log_message('Lawn mower ' + entity_id + ' in state ' + entity.state + ' - no action taken');
-        return;
+        return false;
     }
     callMowerService(entity_id, service);
+    return true;
 }
 
 function showLawnMowerEntity(entity_id) {

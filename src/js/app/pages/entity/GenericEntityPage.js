@@ -698,10 +698,6 @@ function updateEntityMenuItem(menu, sectionIndex, itemIndex, entity, options) {
     EntityService.updateMenuItem(menu, sectionIndex, itemIndex, entity, options);
 }
 
-function handleEntityLongPress(entity_id) {
-    EntityService.handleLongPress(entity_id);
-}
-
 function getEntityIcon(entity) {
     return EntityService.getIcon(entity);
 }

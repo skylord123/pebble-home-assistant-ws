@@ -77,20 +77,21 @@ function callValveService(entity_id, service, data) {
 }
 
 /**
- * Long press: toggle when the valve can do both, otherwise whichever single
- * direction it supports, so a valve that only opens still has its action
+ * Quick action: toggle when the valve can do both, otherwise whichever single
+ * direction it supports, so a valve that only opens still has its action.
+ * Returns false when there was nothing to do.
  */
 function quickAction(entity_id) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('quickAction: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     var data = getValveData(entity);
     if (data.unavailable) {
         helpers.log_message('Valve ' + entity_id + ' in state ' + entity.state + ' - no action taken');
-        return;
+        return false;
     }
 
     if (data.can_open && data.can_close) {
@@ -101,7 +102,9 @@ function quickAction(entity_id) {
         callValveService(entity_id, 'close_valve');
     } else {
         helpers.log_message('Valve ' + entity_id + ' supports no open or close - no action taken');
+        return false;
     }
+    return true;
 }
 
 function showPositionPicker(entity_id) {

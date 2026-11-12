@@ -4,6 +4,7 @@
 var UI = require('ui');
 var sortJSON = require('vendor/sortjson');
 var BasePage = require('app/pages/BasePage');
+var NavRoute = require('app/NavRoute');
 var AppState = require('app/AppState');
 var EntityService = require('app/EntityService');
 var RelativeTimeUpdater = require('app/RelativeTimeUpdater');
@@ -65,12 +66,12 @@ class EntityListPage extends BasePage {
                 return;
             }
             helpers.log_message('Entity ' + entity_id + ' was short pressed! Index: ' + e.itemIndex);
-            EntityService.show(entity_id);
+            EntityService.press(entity_id);
         });
 
         this.menu.on('longSelect', function(e) {
             if (e.item && e.item.entity_id) {
-                EntityService.handleLongPress(e.item.entity_id);
+                EntityService.longPress(e.item.entity_id);
             }
         });
 
@@ -524,6 +525,9 @@ function showEntityList(title, entityIdList, ignoreEntityCache, sortItems, skipI
     });
     page.show();
 }
+
+showEntityList = NavRoute.wrap('entityList', showEntityList);
+showEntityDomainsFromList = NavRoute.wrap('entityDomains', showEntityDomainsFromList);
 
 module.exports = EntityListPage;
 module.exports.showEntityList = showEntityList;

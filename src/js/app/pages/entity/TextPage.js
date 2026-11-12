@@ -86,18 +86,19 @@ function setValue(entity_id, value, onDone) {
 
 /**
  * Dictate a new value and send it. Length is checked first so an obvious
- * mismatch is explained here instead of bouncing off the server.
+ * mismatch is explained here instead of bouncing off the server. Returns
+ * false when there is no way to dictate one.
  */
 function dictateValue(entity_id, onDone) {
     var appState = AppState.getInstance();
     var entity = appState.getEntity(entity_id);
     if (!entity) {
         helpers.log_message('dictateValue: entity ' + entity_id + ' not found in state dict');
-        return;
+        return false;
     }
     if (!Feature.microphone(true, false)) {
         helpers.log_message('dictateValue: no microphone on this watch');
-        return;
+        return false;
     }
     var data = getTextData(entity);
 
@@ -126,6 +127,7 @@ function dictateValue(entity_id, onDone) {
 
         setValue(entity_id, value, onDone);
     });
+    return true;
 }
 
 function showTextEntity(entity_id) {
