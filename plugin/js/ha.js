@@ -167,7 +167,16 @@ function request(conn, method, path, body) {
             return null;
         }
         if (response.status === 400) {
-            throw new PluginError('INVALID_ARGS', 'Home Assistant did not accept that');
+            // Home Assistant says why in a JSON message; a proxy in front of it
+            // answers with a page of its own
+            return response.text().then(function(text) {
+                var reason = '';
+                try { reason = JSON.parse(text).message || ''; } catch (e) {
+                    reason = String(text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+                }
+                reason = String(reason).slice(0, 120);
+                throw new PluginError('INVALID_ARGS', 'Home Assistant did not accept that' + (reason ? ': ' + reason : ''));
+            });
         }
         // A service that fails answers 500; the server itself is fine
         if (response.status === 500 && method === 'POST') {
