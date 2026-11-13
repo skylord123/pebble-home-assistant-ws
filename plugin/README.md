@@ -436,7 +436,9 @@ reads the lists to choose from in `reminders/list`:
   shared). `count` comes from the list's state, and `items` from one
   `todo.get_items` call for all the lists, made only when `items` is asked
   for. Home Assistant before 2024.8 cannot answer that over REST, so
-  there the lists come without `items`.
+  there the lists come without `items`, as they do when one list cannot
+  be read. Every shared list is an instance, in the same order, whatever
+  is asked for; one Home Assistant no longer has comes with its name alone.
 - The wearer picks Home Assistant WS as the place for reminders in Index's
   settings; with a ring paired, the Pebble app also offers once to make
   it the default when the settings page closes with a list shared.

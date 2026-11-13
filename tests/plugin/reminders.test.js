@@ -195,11 +195,21 @@ test('a list Home Assistant cannot read still leaves every list with its count',
     assert.equal(props['todo.shopping_list'].items, undefined);
 });
 
-test('reading the counts leaves out a list Home Assistant no longer has, and an unavailable count', async () => {
-    const h = setUp({ plugin_exposed_entities: ['todo.deleted', 'todo.chores'] });
+test('reading the counts keeps a list Home Assistant no longer has, by name, and leaves out an unavailable count', async () => {
+    const h = setUp({ plugin_exposed_entities: [{ entity_id: 'todo.deleted', name: 'Old list' }, 'todo.chores'] });
     h.ha.statesById['todo.chores'].state = 'unavailable';
     const answer = await h.source('reminders', 'list', { properties: ['count'] });
     assert.deepEqual(answer.data.instances, [
+        { instanceId: 'todo.deleted', properties: { name: { shortText: { text: 'Old list' } } } },
         { instanceId: 'todo.chores', properties: { name: { shortText: { text: 'Chores' } } } }
     ]);
+});
+
+test('reminders/list has the same lists in the same order whatever is asked', async () => {
+    const h = setUp({ plugin_exposed_entities: ['todo.chores', 'todo.deleted', 'todo.shopping_list'] });
+    const order = (answer) => answer.data.instances.map((i) => i.instanceId);
+    const named = order(await h.source('reminders', 'list', { properties: ['name'] }));
+    assert.deepEqual(named, ['todo.chores', 'todo.deleted', 'todo.shopping_list']);
+    assert.deepEqual(order(await h.source('reminders', 'list', { properties: ['name', 'count'] })), named);
+    assert.deepEqual(order(await h.source('reminders', 'list')), named);
 });

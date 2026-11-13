@@ -85,20 +85,23 @@ function openItems(conn, ids) {
 }
 
 /**
- * One instance per shared to-do list. Names alone, all Index asks for, come
- * from the settings as the watch app last saw them; the open items need
- * Home Assistant, and a list it no longer has is then left out.
+ * One instance per shared to-do list, the same lists in the same order
+ * whatever is asked, since a complication picks one by its place. Names
+ * alone, all Index asks for, come from the settings as the watch app last
+ * saw them; the open items need Home Assistant, and a list it no longer has
+ * then has its name alone.
  */
 function lists(conn, opts, request) {
     var ids = listIds(opts);
+    var names = options.sharedNames(opts);
+    function nameOnly(id) {
+        return {
+            instanceId: id,
+            properties: { name: { shortText: S.shortText(names[id] || fallbackName(id)) } }
+        };
+    }
     if (!wants(request, 'count') && !wants(request, 'items')) {
-        var names = options.sharedNames(opts);
-        return Promise.resolve(ids.map(function(id) {
-            return {
-                instanceId: id,
-                properties: { name: { shortText: S.shortText(names[id] || fallbackName(id)) } }
-            };
-        }));
+        return Promise.resolve(ids.map(nameOnly));
     }
     if (ids.length === 0) { return Promise.resolve([]); }
     return ha.getStates(conn, ids).then(function(states) {
@@ -110,7 +113,9 @@ function lists(conn, opts, request) {
         });
         var reading = wants(request, 'items') && readable.length > 0 ? openItems(conn, readable) : Promise.resolve({});
         return reading.then(function(itemsById) {
-            return found.map(function(id) { return toInstance(states[id], itemsById[id]); });
+            return ids.map(function(id) {
+                return states[id] ? toInstance(states[id], itemsById[id]) : nameOnly(id);
+            });
         });
     });
 }
