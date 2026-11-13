@@ -1,6 +1,6 @@
 /**
  * Home Assistant over its WebSocket, for what REST cannot reach: the assist
- * pipelines. A plugin's socket closes when the request that opened it ends and
+ * pipelines and the recorder's statistics. A plugin's socket closes when the request that opened it ends and
  * there are no timers, so this connects, sends one command, waits for the
  * answer and closes. If Home Assistant never answers, the phone ends the
  * request after 20 seconds.
@@ -34,9 +34,12 @@ function commandError(error) {
  * Send `command` once logged in and hand every message about it to
  * `onMessage(msg, settle)`, until it calls `settle(value)` or throws. A
  * refused command ends it with an error before `onMessage` sees it.
+ * @param {boolean} [optional] a socket that fails to connect does not mark
+ *   Home Assistant unreachable, for something REST can do without, since a
+ *   proxy may refuse WebSockets and still pass REST
  * @returns {Promise} whatever was settled with
  */
-function run(conn, command, onMessage) {
+function run(conn, command, onMessage, optional) {
     if (ha.tokenRefused(conn)) {
         return Promise.reject(new PluginError('AUTH_REQUIRED', ha.REFUSED));
     }
@@ -105,7 +108,7 @@ function run(conn, command, onMessage) {
         // A close always follows.
         socket.onerror = function() {};
         socket.onclose = function() {
-            if (!loggedIn) { ha.markUnreachable(); }
+            if (!loggedIn && !optional) { ha.markUnreachable(); }
             finish(new PluginError('PLUGIN_UNAVAILABLE', loggedIn ?
                 'Home Assistant closed the connection' : ha.UNREACHABLE));
         };

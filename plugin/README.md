@@ -42,10 +42,11 @@ The phone starts a fresh JS engine for every request and stops it once the
 plugin answers, or after 20 seconds. There are no timers, and a WebSocket
 closes when the request that opened it ends, so nothing can stay connected to
 Home Assistant between requests. Everything goes over the REST API, which
-reuses the phone's open connection, except `ask_assistant`: REST cannot run a
-pipeline, so that opens a WebSocket, logs in, runs the pipeline and closes
-(`js/ws.js`). Speech does the same once an hour to look up the pipeline's
-voice. The plugin reads the same `localStorage` as the watch app (same
+reuses the phone's open connection, except `ask_assistant` and the hourly
+statistics behind `history`: REST cannot reach either, so those open a
+WebSocket, log in, send one command and close (`js/ws.js`). Speech does the
+same once an hour to look up the pipeline's voice. The plugin reads the same
+`localStorage` as the watch app (same
 UUID):
 
 | What it reads | Where it comes from |
@@ -156,9 +157,19 @@ range are those of `value` (or `state`).
 - It is only built for a request that names `history` in its `properties`.
   A request that names no properties (Index reads everything) does not get
   it, to keep its answer small and save Home Assistant the work.
-- One history call covers every sensor the source serves, and the values
-  are kept 5 minutes, or until the hour turns. If Home Assistant cannot
-  give the history, the sensors are served without it.
+- A sensor with a `state_class` gets its hours from Home Assistant's
+  long-term statistics, a few numbers an hour however often it changes.
+  Statistics only cover finished hours, so its last value is its value now.
+  One WebSocket command covers every such sensor the source serves.
+- Any other sensor gets its hours from its state changes, in one REST
+  history call. A sensor that changes every second has tens of thousands of
+  those in a day, so one call asks for at most 5 sensors, and the rest get
+  theirs on the polls after.
+- The values are kept 5 minutes, or until the hour turns. If Home Assistant
+  cannot give the statistics or the history, the sensors are served without
+  them (the statistics fall back to the history), and that call is not tried
+  again for 5 minutes. A WebSocket that cannot connect, as behind a proxy
+  that refuses them, does not make the plugin count Home Assistant as down.
 ### Custom values
 
 `home/value` serves the values the wearer writes in the settings page, each

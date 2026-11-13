@@ -200,6 +200,38 @@ function createHomeAssistant(clock) {
             }
         }),
 
+        /**
+         * Answers recorder/statistics_during_period (hourly means only), or
+         * { error }. As Home Assistant keeps them: only for an entity with a
+         * state_class, worked out from `history`, one row for each finished
+         * hour with a number in it.
+         */
+        statistics: (command) => {
+            const HOUR = 3600000;
+            const from = Date.parse(command.start_time);
+            const to = Math.min(command.end_time ? Date.parse(command.end_time) : clock.now(), clock.now());
+            const out = {};
+            command.statistic_ids.forEach((id) => {
+                const state = fake.statesById[id];
+                if (!state || !state.attributes || !state.attributes.state_class) { return; }
+                const all = (fake.history[id] || []).map((e) => ({ value: Number(e.state), at: Date.parse(e.last_changed) }));
+                const rows = [];
+                for (let start = Math.ceil(from / HOUR) * HOUR; start + HOUR <= to; start += HOUR) {
+                    let sum = 0;
+                    let held = 0;
+                    all.forEach((e, i) => {
+                        if (isNaN(e.value)) { return; }
+                        const begins = Math.max(e.at, start);
+                        const ends = Math.min(i + 1 < all.length ? all[i + 1].at : to, start + HOUR);
+                        if (ends > begins) { sum += e.value * (ends - begins); held += ends - begins; }
+                    });
+                    if (held > 0) { rows.push({ start: start, end: start + HOUR, mean: sum / held }); }
+                }
+                if (rows.length > 0) { out[id] = rows; }
+            });
+            return out;
+        },
+
         on(method, pattern, handler) {
             fake.routes.unshift({ method: method, pattern: pattern, handler: handler });
             return fake;
@@ -475,6 +507,13 @@ function createHomeAssistant(clock) {
             const id = msg.id;
             if (msg.type === 'assist_pipeline/pipeline/list') {
                 deliver({ id: id, type: 'result', success: true, result: clone(fake.pipelines) });
+            } else if (msg.type === 'recorder/statistics_during_period') {
+                const answer = fake.statistics(msg);
+                if (answer && answer.error) {
+                    deliver({ id: id, type: 'result', success: false, error: answer.error });
+                    return;
+                }
+                deliver({ id: id, type: 'result', success: true, result: answer });
             } else if (msg.type === 'assist_pipeline/run') {
                 const output = fake.assist(msg);
                 if (output && output.error) {

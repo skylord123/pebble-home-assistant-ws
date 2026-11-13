@@ -51,7 +51,9 @@ function homeSource(conn, opts, item, request) {
             ids = ids.filter(function(id) { return entities.itemFor(id) === item; });
         }
         if (ids.length === 0) { return []; }
-        return ha.getStates(conn, ids).then(function(states) {
+        var states;
+        return ha.getStates(conn, ids).then(function(found) {
+            states = found;
             var instances = [];
             ids.forEach(function(id) {
                 var instance = states[id] && entities.toInstance(item, states[id]);
@@ -61,7 +63,7 @@ function homeSource(conn, opts, item, request) {
         }).then(function(instances) {
             // Graphs only for numbers, and only for a caller that asked
             if (!history.wanted(request) || (item !== 'sensor' && item !== 'entity')) { return instances; }
-            return history.attach(conn, instances, item === 'sensor' ? 'value' : 'state');
+            return history.attach(conn, instances, item === 'sensor' ? 'value' : 'state', states);
         });
     });
 }
