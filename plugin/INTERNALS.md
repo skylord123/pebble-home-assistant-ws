@@ -604,8 +604,8 @@ the way the bundle does, in a fresh engine for every request with
 runtime, `fetch` and the WebSocket. The tests check that every property the
 plugin sends is declared in `manifest.json`, the sources and actions end to
 end, the unlock and sharing rules, the assistant and speech. They also hold
-the speech encoder to what the watch app made before it was shared. They
-run on every push.
+the speech encoder to what the watch app made before it was shared, and its
+decoder to the one the watch's speaker uses. They run on every push.
 
 ## Settings page messages
 

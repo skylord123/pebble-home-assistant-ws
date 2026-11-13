@@ -87,6 +87,33 @@ test('what the encoder makes decodes back close to the voice, across pieces', ()
     assert.deepEqual(decodeAdpcm(second, { predictor: 0, index: 0 }).length, second.length * 2);
 });
 
+test('the shared decoder is the watch\'s, and carries its state from part to part', () => {
+    const wav = codec.parseWav(cases.arrayBuffer(cases.wav({ rate: 16000, count: 16001, peak: 30000, hum: 2000, seed: 4 })));
+    const encoder = { predictor: 0, index: 0 };
+    const bytes = codec.encodeAdpcm(wav.samples, encoder);
+    assert.deepEqual(codec.decodeAdpcm(bytes), decodeAdpcm(bytes));
+
+    // In parts of odd sizes, as an upload arrives
+    const state = { predictor: 0, index: 0 };
+    const parts = [];
+    for (let at = 0; at < bytes.length; at += 777) {
+        parts.push(codec.decodeAdpcm(bytes.subarray(at, at + 777), state));
+    }
+    const joined = new Int16Array(bytes.length * 2);
+    let offset = 0;
+    parts.forEach((part) => { joined.set(part, offset); offset += part.length; });
+    assert.deepEqual(joined, decodeAdpcm(bytes));
+    // The decoder ends where the encoder did, so the two never drift apart
+    assert.deepEqual(state, encoder);
+
+    // Full scale both ways is held, not wrapped
+    const loud = codec.decodeAdpcm(new Uint8Array(200).fill(0x77));
+    assert.equal(loud[loud.length - 1], 32767);
+    const low = codec.decodeAdpcm(new Uint8Array(200).fill(0xFF));
+    assert.equal(low[low.length - 1], -32768);
+    assert.deepEqual(codec.decodeAdpcm(new Uint8Array(0)), new Int16Array(0));
+});
+
 test('nextPiece takes a smaller piece size when given one', () => {
     const text = 'This is the first sentence here. ' + 'Another sentence of words follows it. '.repeat(10);
     const first = codec.nextPiece(text, true, true, 200);

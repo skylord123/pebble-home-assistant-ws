@@ -5,7 +5,8 @@
  * both need to turn an answer into audio for the watch: the words of a
  * markdown answer, where its sentences end, how to split it into pieces to
  * ask Home Assistant for, and how to turn the WAV Home Assistant sends into
- * the 4-bit IMA ADPCM the watch decodes (simply_speaker.c).
+ * the 4-bit IMA ADPCM the watch decodes (simply_speaker.c). The plugin also
+ * decodes that ADPCM, for apps that send their recorded voice in it.
  *
  * This is the one copy: the plugin's bundle takes this file as its module
  * `speech-codec` (plugin/bundle.json). Plain ES5 with no requires, so it
@@ -309,6 +310,37 @@ function encodeAdpcm(samples, state) {
     return out;
 }
 
+/**
+ * The 16-bit samples of what encodeAdpcm made, as the watch's speaker
+ * decodes them (simply_speaker.c): two a byte, low nibble first, from
+ * silence unless `state` says otherwise. `state` is carried on, so a stream
+ * that arrives in parts decodes the same as it would whole.
+ */
+function decodeAdpcm(bytes, state) {
+    state = state || { predictor: 0, index: 0 };
+    var out = new Int16Array(bytes.length * 2);
+    var predictor = state.predictor;
+    var index = state.index;
+    for (var i = 0; i < out.length; i++) {
+        var code = (i & 1) ? bytes[i >> 1] >> 4 : bytes[i >> 1] & 0x0F;
+        var step = ADPCM_STEP[index];
+        var delta = step >> 3;
+        if (code & 4) { delta += step; }
+        if (code & 2) { delta += step >> 1; }
+        if (code & 1) { delta += step >> 2; }
+        predictor += (code & 8) ? -delta : delta;
+        if (predictor > 32767) { predictor = 32767; }
+        if (predictor < -32768) { predictor = -32768; }
+        index += ADPCM_INDEX[code];
+        if (index < 0) { index = 0; }
+        if (index > 88) { index = 88; }
+        out[i] = predictor;
+    }
+    state.predictor = predictor;
+    state.index = index;
+    return out;
+}
+
 codec.speakable = speakable;
 codec.settled = settled;
 codec.sentenceEnds = sentenceEnds;
@@ -319,6 +351,7 @@ codec.resample = resample;
 codec.gainFor = gainFor;
 codec.amplify = amplify;
 codec.encodeAdpcm = encodeAdpcm;
+codec.decodeAdpcm = decodeAdpcm;
 codec.ADPCM_INDEX = ADPCM_INDEX;
 codec.ADPCM_STEP = ADPCM_STEP;
 
