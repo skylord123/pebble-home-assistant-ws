@@ -82,7 +82,7 @@ get, and `{ type: 'list_areas' }` for **Share a whole area**. Without the
 plugin the preview says it is not available, the area picker stays hidden,
 and the values still save with the rest. The phone fires `ready` with
 `{ target: 'plugin' }` once the plugin can be reached. See
-`plugin/README.md`.
+`plugin/INTERNALS.md`.
 
 The phone can also open the bundled page with no watch app behind it, from
 its Plugins tab or from an Index destination. `Pebble.targets()` then lists
