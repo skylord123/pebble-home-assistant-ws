@@ -22,6 +22,20 @@ var SEARCH_LIMIT_MAX = 100;
 //! Longer than anyone writes by hand; past it a preview is refused
 var TEMPLATE_MAX = 10000;
 
+//! Every area with what is in it, as [entity_id, name, state, unit]. REST has
+//! no way to the area registry; a template does, in one request.
+var AREAS_TEMPLATE =
+    '{%- set ns = namespace(areas=[], entities=[]) -%}' +
+    '{%- for area in areas() -%}' +
+    '{%- set ns.entities = [] -%}' +
+    '{%- for s in states | selectattr(\'entity_id\', \'in\', area_entities(area)) -%}' +
+    '{%- set ns.entities = ns.entities + [[s.entity_id, s.name, s.state, ' +
+    's.attributes.unit_of_measurement | default(\'\')]] -%}' +
+    '{%- endfor -%}' +
+    '{%- set ns.areas = ns.areas + [{\'id\': area, \'name\': area_name(area), \'entities\': ns.entities}] -%}' +
+    '{%- endfor -%}' +
+    '{{ ns.areas | tojson }}';
+
 //! Every entity's state, fetched once while the page is open
 var allStates = null;
 
@@ -137,6 +151,12 @@ function search(query, limit) {
         }),
         total: matches.length
     };
+}
+
+function byName(a, b) {
+    var x = a.name.toLowerCase();
+    var y = b.name.toLowerCase();
+    return x < y ? -1 : (x > y ? 1 : 0);
 }
 
 /** Have whatever reads the shared entities read them again */
@@ -257,6 +277,29 @@ var handlers = {
                 return respond(failure({ code: 'template_error', message: rendered.error }));
             }
             respond({ ok: true, result: rendered.result, text: rendered.text });
+        });
+    },
+
+    /**
+     * The areas and what is in each, for the page to share a whole area at
+     * once. Sent here whoever answers the rest: sharing is for the plugin.
+     * Entities come as search results do; empty areas are left out.
+     */
+    list_areas: function(message, respond) {
+        var conn = options.connection(options.read());
+        if (!conn) {
+            return respond(failure({ code: 'not_loaded', message: 'Home Assistant is not set up yet' }));
+        }
+        return ha.request(conn, 'POST', '/api/template', { template: AREAS_TEMPLATE }).then(function(found) {
+            var areas = (Array.isArray(found) ? found : []).map(function(area) {
+                var members = (Array.isArray(area.entities) ? area.entities : []).map(function(e) {
+                    return { entity_id: e[0], name: String(e[1] || e[0]), state: e[2] + (e[3] ? ' ' + e[3] : '') };
+                });
+                members.sort(byName);
+                return { id: area.id, name: String(area.name || area.id), entities: members };
+            }).filter(function(area) { return area.entities.length > 0; });
+            areas.sort(byName);
+            respond({ ok: true, areas: areas });
         });
     },
 

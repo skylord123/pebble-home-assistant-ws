@@ -482,12 +482,14 @@ The settings page (v1.8 and later) sends messages to the plugin with
 | `{ type: 'save_settings', settings }` | `{ ok }`. Merges `settings` into the stored ones, keeping the previous copy as the backup, and asks every source to refresh. |
 | `{ type: 'connect', ha_url, token }` | `{ ok, ha_version }`. Saves the URL and token only once Home Assistant accepts them. |
 | `{ type: 'search_entities', query, limit }` | `{ ok, results, total }`, ranked as the watch app ranks them. |
+| `{ type: 'list_areas' }` | `{ ok, areas: [{ id, name, entities }] }`: every area with something in it, by name, its entities as `search_entities` gives them. One `POST /api/template`, since REST has no other way to the areas. The page offers them under **Share a whole area**. |
 | `{ type: 'preview_template', template, unit }` | `{ ok, result, text }`: what the template rendered, and the `state` text `home/value` would serve with that unit. A template Home Assistant cannot render answers `{ ok: false, error: { code: 'template_error', message } }`. |
 
-The page always sends `preview_template` here, even with the watch app
-answering everything else: the values are only for other apps, which reach
-them through the plugin, so a preview from anywhere else would not show what
-they get. Without the plugin the page still saves values, and says the
+The page always sends `list_areas` and `preview_template` here, even with
+the watch app answering everything else: sharing and the values are only for
+other apps, which reach them through the plugin, so the page has no use for
+them without it. A preview from anywhere else would not show what they get
+either. Without the plugin the page still saves values, and says the
 preview is not available.
 
 `get_settings`, `save_settings`, `connect` and `search_entities` are what

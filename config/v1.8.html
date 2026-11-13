@@ -671,6 +671,26 @@
 			flex-shrink: 0;
 		}
 
+		/* What other apps can do with a shared entity */
+		.list-group-item .shared-controls {
+			font-size: 0.78rem;
+			color: var(--color-text-secondary);
+		}
+
+		.section-count {
+			display: inline-block;
+			margin-left: 0.4rem;
+			padding: 0.05rem 0.45rem;
+			border-radius: 0.6rem;
+			background: var(--color-accent);
+			color: #ffffff;
+			font-size: 0.72rem;
+			font-weight: 600;
+			text-transform: none;
+			letter-spacing: 0;
+			vertical-align: 0.05em;
+		}
+
 		.list-group-item .edit-item {
 			margin-left: 0.75rem;
 			padding: 0.25rem;
@@ -1056,7 +1076,7 @@
 		<details class="section bridge-only" id="entity-search-section">
 			<summary class="section-header">
 				<span class="section-title">Find Entities</span>
-				<span class="section-hint">Search everything in Home Assistant to favourite it or pin it to the main menu</span>
+				<span class="section-hint">Search everything in Home Assistant to favourite it, pin it to the main menu or share it with other apps</span>
 			</summary>
 			<div class="section-body">
 				<div class="component">
@@ -1374,22 +1394,31 @@
 
 		<details class="section" id="plugin-section">
 			<summary class="section-header">
-				<span class="section-title">Shared with Other Apps</span>
+				<span class="section-title">Shared with Other Apps <span class="section-count hidden" id="plugin-count"></span></span>
 				<span class="section-hint">Entities other watchfaces and apps can read and control through the plugin</span>
 			</summary>
 			<div class="section-body">
 				<div class="component">
 					<div class="alert alert-info" role="alert">
 						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
-						Other watchfaces and apps can show these entities and control them. Weather entities are always shared. This needs the Core Devices Pebble app with Plugins / permissions preview turned on.
+						Other watchfaces and apps can show these entities and control them, and show the custom values below. Weather entities are always shared. This needs the Core Devices Pebble app with Plugins / permissions preview turned on.
 					</div>
 					<ul id="plugin-sortable" class="list-group">
 					</ul>
-					<p class="form-text" id="plugin-empty">Nothing is shared yet. Find an entity above and tap its share button, or choose Expose to Plugins on the watch.</p>
+					<p class="form-text" id="plugin-empty">Nothing is shared yet. Find an entity above and tap its share button, share a whole area below, or choose Expose to Plugins on the watch.</p>
+					<button type="button" class="btn btn-outline-secondary btn-sm mt-2 hidden" id="plugin-clear">Stop sharing all</button>
 					<div class="status-line bridge-only" id="plugin-status" aria-live="polite">
 						<span class="status-dot"></span>
 						<span class="status-text">Checking the plugin…</span>
 					</div>
+				</div>
+				<div class="component bridge-only hidden" id="plugin-areas">
+					<label class="form-label" for="plugin-area-select">Share a whole area</label>
+					<select class="form-select" id="plugin-area-select">
+						<option value="">Choose an area…</option>
+					</select>
+					<ul id="plugin-area-results" class="list-group mt-2"></ul>
+					<button type="button" class="btn btn-secondary btn-sm mt-2 hidden" id="plugin-area-share-all">Share all</button>
 				</div>
 				<div class="component">
 					<label class="form-label">Custom values</label>
@@ -1812,6 +1841,12 @@
 		pluginStatus = $('plugin-status'),
 		pluginShareAssistant = $('plugin-share-assistant'),
 		pluginAllowUnlock = $('plugin-allow-unlock'),
+		pluginCount = $('plugin-count'),
+		pluginClear = $('plugin-clear'),
+		pluginAreas = $('plugin-areas'),
+		pluginAreaSelect = $('plugin-area-select'),
+		pluginAreaResults = $('plugin-area-results'),
+		pluginAreaShareAll = $('plugin-area-share-all'),
 		valueSortable = $('value-sortable'),
 		valueEditor = $('value-editor'),
 		valueName = $('value-name'),
@@ -2157,8 +2192,75 @@
 		return entityId.indexOf('weather.') === 0;
 	}
 
+	// What other apps can do with each kind of entity, besides reading it,
+	// as the plugin's actions allow (plugin/README.md)
+	var SHARED_CONTROLS = {
+		light: 'on/off, brightness',
+		switch: 'on/off',
+		input_boolean: 'on/off',
+		siren: 'on/off',
+		remote: 'on/off',
+		fan: 'on/off, speed',
+		automation: 'on/off, run',
+		humidifier: 'on/off, humidity, mode',
+		climate: 'temperature, mode',
+		water_heater: 'temperature, mode',
+		media_player: 'play, pause, tracks, volume',
+		scene: 'run',
+		script: 'run',
+		button: 'press',
+		input_button: 'press',
+		number: 'set the value',
+		input_number: 'set the value',
+		counter: 'count up and down',
+		select: 'choose an option',
+		input_select: 'choose an option',
+		text: 'set the text',
+		input_text: 'set the text',
+		input_datetime: 'set the date and time',
+		vacuum: 'start, pause, dock',
+		lawn_mower: 'start, pause, dock'
+	};
+
+	function sharedControlsText(entityId) {
+		var domain = entityId.split('.')[0];
+		var unlock = pluginAllowUnlock.checked;
+		var controls = SHARED_CONTROLS[domain];
+		var note = '';
+		if (domain === 'lock') {
+			controls = unlock ? 'lock, unlock' : 'lock';
+			note = unlock ? '' : ' Unlocking is off below.';
+		} else if (domain === 'alarm_control_panel') {
+			controls = unlock ? 'arm, disarm' : 'arm';
+			note = unlock ? '' : ' Disarming is off below.';
+		} else if (domain === 'cover' || domain === 'valve') {
+			controls = 'open, close, stop, position';
+			note = domain === 'cover' && !unlock ? ' Garage doors, gates and doors only close.' : '';
+		}
+		return 'Apps can: read' + (controls ? ', ' + controls : '') + '.' + note;
+	}
+
+	function renderSharedControls() {
+		listItems(pluginSortable).forEach(function(li) {
+			li.querySelector('.shared-controls').textContent = sharedControlsText(li.dataset.entityId);
+		});
+	}
+
+	function plural(count, one, many) {
+		return count + ' ' + (count === 1 ? one : many);
+	}
+
+	// The count stays in the header with the section shut
 	function updatePluginEmpty() {
-		show(pluginEmpty, listItems(pluginSortable).length === 0);
+		var shared = listItems(pluginSortable).length;
+		var values = listItems(valueSortable).length;
+		show(pluginEmpty, shared === 0);
+		show(pluginClear, shared > 1);
+		var parts = [];
+		if (shared) { parts.push(plural(shared, 'entity', 'entities')); }
+		if (values) { parts.push(plural(values, 'value', 'values')); }
+		pluginCount.textContent = parts.join(' · ');
+		show(pluginCount, parts.length > 0);
 	}
 
 	function addPluginRow(entityId, friendlyName) {
@@ -2167,6 +2269,10 @@
 		li.dataset.entityId = entityId;
 		li.dataset.friendlyName = friendlyName || '';
 		li.innerHTML = entityRowHtml(entityId, friendlyName, removeButtonHtml('Stop sharing with other apps'));
+		var controls = document.createElement('div');
+		controls.className = 'shared-controls';
+		controls.textContent = sharedControlsText(entityId);
+		li.querySelector('.entity-info').appendChild(controls);
 		li.querySelector('.remove-item').addEventListener('click', function() {
 			var displayName = friendlyName || entityId;
 			if (!confirmRemoval('Stop sharing "' + displayName + '" with other apps?')) { return; }
@@ -2188,6 +2294,83 @@
 		});
 		updatePluginEmpty();
 		makeSortable(pluginSortable);
+	}
+
+	pluginAllowUnlock.addEventListener('change', renderSharedControls);
+
+	pluginClear.addEventListener('click', function() {
+		if (!confirmRemoval('Stop sharing all of these with other apps?')) { return; }
+		pluginSortable.innerHTML = '';
+		updatePluginEmpty();
+		refreshSearchButtons();
+	});
+
+	// --- Sharing a whole area ---
+	//
+	// The plugin lists the areas, since only a template reaches the area
+	// registry over REST. Sharing goes nowhere without the plugin, so the
+	// picker only shows once it has answered.
+
+	var pluginAreaList = [];
+	var areasRequested = false;
+
+	function loadAreas() {
+		if (areasRequested) { return; }
+		areasRequested = true;
+		bridge.sendMessage('plugin', { type: 'list_areas' }).then(function(reply) {
+			if (!reply || !reply.ok || !Array.isArray(reply.areas) || reply.areas.length === 0) {
+				// Tried again the next time the plugin is checked
+				areasRequested = false;
+				return;
+			}
+			pluginAreaList = reply.areas;
+			pluginAreaSelect.innerHTML = '<option value="">Choose an area…</option>';
+			pluginAreaList.forEach(function(area, index) {
+				var option = document.createElement('option');
+				option.value = String(index);
+				option.textContent = area.name + ' (' + area.entities.length + ')';
+				pluginAreaSelect.appendChild(option);
+			});
+			show(pluginAreas, true);
+		}, function() {
+			areasRequested = false;
+		});
+	}
+
+	function areaRows() {
+		return listItems(pluginAreaResults).filter(function(li) { return !isAlwaysShared(li.dataset.entityId); });
+	}
+
+	pluginAreaSelect.addEventListener('change', function() {
+		var area = pluginAreaList[parseInt(pluginAreaSelect.value, 10)];
+		pluginAreaResults.innerHTML = '';
+		(area ? area.entities : []).forEach(function(result) {
+			pluginAreaResults.appendChild(searchRow(result));
+		});
+		refreshSearchButtons();
+	});
+
+	pluginAreaShareAll.addEventListener('click', function() {
+		var rows = areaRows();
+		var allShared = rows.every(function(li) { return listHas(pluginSortable, li.dataset.entityId); });
+		rows.forEach(function(li) {
+			var entityId = li.dataset.entityId;
+			var existing = listItems(pluginSortable).filter(function(row) { return row.dataset.entityId === entityId; })[0];
+			if (allShared && existing) {
+				existing.remove();
+			} else if (!allShared && !existing) {
+				addPluginRow(entityId, li.dataset.friendlyName || null);
+			}
+		});
+		updatePluginEmpty();
+		refreshSearchButtons();
+	});
+
+	function updateAreaShareAll() {
+		var rows = areaRows();
+		var allShared = rows.length > 0 && rows.every(function(li) { return listHas(pluginSortable, li.dataset.entityId); });
+		pluginAreaShareAll.textContent = (allShared ? 'Stop sharing all ' : 'Share all ') + rows.length;
+		show(pluginAreaShareAll, rows.length > 0);
 	}
 
 	// --- Custom values (the plugin's home/value) ---
@@ -2265,6 +2448,7 @@
 			}
 		});
 		makeSortable(valueSortable);
+		updatePluginEmpty();
 	}
 
 	function setValuePreview(cls, text) {
@@ -2906,6 +3090,7 @@
 		pluginShareAssistant.checked = watch_config['plugin_share_assistant'] === true;
 		pluginAllowUnlock.checked = watch_config['plugin_allow_unlock'] === true;
 		renderValues(watch_config['plugin_values']);
+		renderSharedControls();
 		renderIgnoreDomains(watch_config['ignore_domains']);
 
 		// Set up the timeline token section if there is a token worth showing
@@ -3192,6 +3377,7 @@
 			} else {
 				addPluginRow(entityId, li.dataset.friendlyName || null);
 			}
+			updatePluginEmpty();
 			refreshSearchButtons();
 		});
 
@@ -3235,7 +3421,7 @@
 
 	// The buttons on each result show whether it is already in a list
 	function refreshSearchButtons() {
-		listItems(entitySearchResults).forEach(function(li) {
+		listItems(entitySearchResults).concat(listItems(pluginAreaResults)).forEach(function(li) {
 			var entityId = li.dataset.entityId;
 			var favorite = li.querySelector('.search-favorite');
 			var pin = li.querySelector('.search-pin');
@@ -3259,6 +3445,7 @@
 				: (isShared ? 'Stop sharing with other apps' : 'Share with other apps'));
 			share.title = share.getAttribute('aria-label');
 		});
+		updateAreaShareAll();
 	}
 
 	function runSearch(query) {
@@ -3486,6 +3673,7 @@
 	function checkPlugin() {
 		bridge.sendMessage('plugin', { type: 'status' }).then(function(reply) {
 			if (reply && reply.ok) {
+				loadAreas();
 				setPluginStatus('connected', 'The plugin can reach Home Assistant. ' +
 					reply.shared + (reply.shared === 1 ? ' entity' : ' entities') + ' shared, plus ' +
 					reply.weather + ' weather' + (reply.values
