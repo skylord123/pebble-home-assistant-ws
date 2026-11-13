@@ -75,9 +75,12 @@ function homeSource(conn, opts, item, request) {
         var states;
         return ha.getStates(conn, ids).then(function(found) {
             states = found;
+            return item === 'climate' ? climateUnit(conn, ids, states) : null;
+        }).then(function(temperatureUnit) {
+            var context = { temperatureUnit: temperatureUnit };
             var instances = [];
             ids.forEach(function(id) {
-                var instance = states[id] && entities.toInstance(item, states[id]);
+                var instance = states[id] && entities.toInstance(item, states[id], context);
                 if (instance) { instances.push(instance); }
             });
             return withRooms(conn, instances, request);
@@ -87,6 +90,14 @@ function homeSource(conn, opts, item, request) {
             return history.attach(conn, instances, item === 'sensor' ? 'value' : 'state', states);
         });
     });
+}
+
+//! Home Assistant's temperature unit, when a thermostat or water heater does not name its own
+function climateUnit(conn, ids, states) {
+    var unnamed = ids.some(function(id) {
+        return states[id] && !(states[id].attributes || {}).temperature_unit;
+    });
+    return unnamed ? ha.temperatureUnit(conn) : null;
 }
 
 //! Each instance's room, when the caller wants it and Home Assistant has one

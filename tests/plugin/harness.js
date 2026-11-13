@@ -155,7 +155,8 @@ function createHomeAssistant(clock) {
         reachable: true,
         //! true: fetch fails the way a Pebble app from 1.17 fails an address it does not allow
         notAllowed: false,
-        config: { version: '2026.11.0', latitude: 40.0, longitude: -105.0, location_name: 'Home' },
+        config: { version: '2026.11.0', latitude: 40.0, longitude: -105.0, location_name: 'Home',
+            unit_system: { temperature: '°C', length: 'km', wind_speed: 'km/h' } },
         statesById: {},
         forecastsById: {},
         //! entity_id -> the to-do list's items, as todo.get_items gives them

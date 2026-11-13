@@ -341,9 +341,10 @@ var BUILDERS = {
         }
     },
 
-    climate: function(entity, props) {
+    climate: function(entity, props, context) {
         var attrs = entity.attributes || {};
-        var unit = attrs.temperature_unit;
+        // Thermostats rarely name their unit: theirs is Home Assistant's own
+        var unit = attrs.temperature_unit || context.temperatureUnit;
         if (typeof attrs.current_temperature === 'number') {
             props.current_temperature = temperatureProperty(attrs.current_temperature, unit);
         }
@@ -444,14 +445,15 @@ var BUILDERS = {
 
 /**
  * One instance for the given item. `home/entity` takes every entity; the
- * others only their own kinds.
+ * others only their own kinds. `context` carries what the entity does not
+ * say itself: `temperatureUnit`, Home Assistant's unit for temperatures.
  */
-function toInstance(item, entity) {
+function toInstance(item, entity, context) {
     var build = BUILDERS[item];
     if (!build) { return null; }
     if (item !== 'entity' && itemFor(entity.entity_id) !== item) { return null; }
     var props = common(entity);
-    build(entity, props);
+    build(entity, props, context || {});
     return { instanceId: entity.entity_id, properties: props };
 }
 

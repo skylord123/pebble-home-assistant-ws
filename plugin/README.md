@@ -128,7 +128,7 @@ minutes.
 | `home/switch` | switch, input_boolean, fan, automation, siren, humidifier, remote | `on`, `speed` |
 | `home/sensor` | sensor, number, input_number, counter | `value`, `device_class`, `history` (see below) |
 | `home/binary_sensor` | binary_sensor | `on`, `state` (e.g. Open/Closed by device class), `device_class` |
-| `home/climate` | climate, water_heater | `current_temperature`, `target_temperature`, `target_temp_low` and `target_temp_high` (heat_cool), `temperature_step`, `on`, `hvac_mode`, `hvac_modes` (comma separated, as Home Assistant names them), `hvac_action`, `summary` |
+| `home/climate` | climate, water_heater | `current_temperature`, `target_temperature` (their `numericValue` in Home Assistant's temperature unit, read from its configuration once a day), `target_temp_low` and `target_temp_high` (heat_cool), `temperature_step`, `on`, `hvac_mode`, `hvac_modes` (comma separated, as Home Assistant names them), `hvac_action`, `summary` |
 | `home/cover` | cover, valve | `open`, `position`, `state` |
 | `home/lock` | lock | `locked`, `state` |
 | `home/media_player` | media_player | `on`, `playing`, `state`, `title`, `artist`, `volume` |

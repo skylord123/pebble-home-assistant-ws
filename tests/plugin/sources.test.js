@@ -290,3 +290,31 @@ test('locations are not read until the wearer has allowed Location', async () =>
     h.settings({ plugin_weather_entities: ['weather.home'] });
     assert.deepEqual(ids(await h.source('weather', 'location', { properties: ['name'] })), ['weather.home']);
 });
+
+test('a thermostat\'s temperatures are in Home Assistant\'s unit, read once a day', async () => {
+    const h = harness.create();
+    const thermostat = { entity_id: 'climate.hall', state: 'heat', attributes: {
+        friendly_name: 'Hall', current_temperature: 68, temperature: 70, min_temp: 45, max_temp: 95 } };
+    h.ha.config.unit_system.temperature = '°F';
+    h.states([thermostat]);
+    h.settings({ plugin_exposed_entities: ['climate.hall'] });
+    const unitOf = async (name) => {
+        const answer = await h.source('home', 'climate');
+        return answer.data.instances[0].properties[name].numericValue.unit;
+    };
+    assert.equal(await unitOf('current_temperature'), '°F');
+    assert.equal(await unitOf('target_temperature'), '°F');
+    assert.equal(h.ha.calls('GET /api/config').length, 1);
+
+    // home/entity has no temperatures to label
+    await h.source('home', 'entity');
+    assert.equal(h.ha.calls('GET /api/config').length, 1);
+
+    // A Home Assistant that cannot say leaves the bare degree sign, and is asked again later
+    const other = harness.create();
+    other.ha.on('GET', '/api/config', () => ({ status: 500, body: 'nope' }));
+    other.states([thermostat]);
+    other.settings({ plugin_exposed_entities: ['climate.hall'] });
+    const answer = await other.source('home', 'climate');
+    assert.equal(answer.data.instances[0].properties.current_temperature.numericValue.unit, '°');
+});

@@ -21,6 +21,9 @@ var AUTH_RETRY_MS = 30 * 60 * 1000;
 //! is polled in turn, one at a time, and a host that never answers holds
 //! each of them for the phone's full 20 seconds.
 var UNREACHABLE_RETRY_MS = 30 * 1000;
+//! How long Home Assistant's temperature unit is kept; it changes only when
+//! someone changes its unit system
+var TEMPERATURE_UNIT_TTL_MS = 24 * 60 * 60 * 1000;
 
 var REFUSED = 'Home Assistant refused the access token. Update it in the watch app\'s settings.';
 //! Before Pebble app 1.17 a host that is down and one the Pebble app has not
@@ -340,6 +343,25 @@ function discoverWeather(conn) {
 }
 
 /**
+ * The unit Home Assistant keeps temperatures in (°C or °F), from its
+ * configuration, kept for a day. Thermostats and water heaters give theirs
+ * in it without naming it. Null when Home Assistant does not say or the
+ * read fails, which is tried again on the next request.
+ */
+function temperatureUnit(conn) {
+    var known = store.fresh('temperature_unit', TEMPERATURE_UNIT_TTL_MS);
+    if (known) { return Promise.resolve(known); }
+    return request(conn, 'GET', '/api/config').then(function(config) {
+        var unit = config && config.unit_system && config.unit_system.temperature;
+        if (typeof unit !== 'string' || !unit) { return null; }
+        store.remember('temperature_unit', unit);
+        return unit;
+    }, function() {
+        return null;
+    });
+}
+
+/**
  * Call a service on one entity. The states Home Assistant reports changed
  * replace the cached ones, so the next read already shows the result.
  */
@@ -382,6 +404,7 @@ module.exports = {
     forgetStates: forgetStates,
     getStates: getStates,
     discoverWeather: discoverWeather,
+    temperatureUnit: temperatureUnit,
     callService: callService,
     callServiceForResponse: callServiceForResponse,
     fingerprint: fingerprint
