@@ -702,10 +702,15 @@ function defaultStorage() {
 
 /**
  * Speech for your app. options:
- *   key     - the message key the watch side listens on, by name or number
- *   volume  - 0 to 100, a share of the watch's own speaker volume (100)
- *   storage - where the link speed is remembered (localStorage)
- *   log     - fn(text) for what happened, or null for nothing (console.log)
+ *   key       - the message key the watch side listens on, by name or number
+ *   transport - instead of key, for an app that already carries the
+ *               speaker's messages its own way: an object as the Player
+ *               takes (see Player above). handleMessage is not needed then.
+ *   watchdog  - as the Player takes it: on with key, off with a transport
+ *               unless set, for a transport that can lose a report too
+ *   volume    - 0 to 100, a share of the watch's own speaker volume (100)
+ *   storage   - where the link speed is remembered (localStorage)
+ *   log       - fn(text) for what happened, or null for nothing (console.log)
  *
  * Returns { say, ask, playReply, stop, hasSpeaker, handleMessage }. One
  * thing is spoken at a time: starting another stops the one before, whose
@@ -713,19 +718,19 @@ function defaultStorage() {
  */
 function create(options) {
     options = options || {};
-    if (options.key === undefined || options.key === null) {
-        throw new Error('HaSpeech.create needs the message key the watch listens on');
+    if (!options.transport && (options.key === undefined || options.key === null)) {
+        throw new Error('HaSpeech.create needs the message key the watch listens on, or a transport');
     }
     var volume = options.volume === undefined ? 100 : Number(options.volume);
     var log = options.log === undefined ? function(text) { console.log('ha_speech: ' + text); } :
         options.log || noop;
-    var transport = new AppMessageTransport(options.key);
+    var transport = options.transport || new AppMessageTransport(options.key);
     var player = new Player({
         transport: transport,
         storage: options.storage === undefined ? defaultStorage() : options.storage,
         log: log,
-        // A status the phone could not take is not sent again
-        watchdog: true
+        // Over AppMessage a status the phone could not take is not sent again
+        watchdog: options.watchdog === undefined ? !options.transport : !!options.watchdog
     });
 
     // What is being spoken: from the first call to the plugin until the watch
@@ -897,7 +902,7 @@ function create(options) {
         playReply: playReply,
         stop: stop,
         hasSpeaker: hasSpeaker,
-        handleMessage: transport.handleMessage
+        handleMessage: transport.handleMessage || function() { return false; }
     };
 }
 

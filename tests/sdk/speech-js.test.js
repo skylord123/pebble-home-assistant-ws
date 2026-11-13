@@ -668,3 +668,113 @@ test('only emery and flint have a speaker; elsewhere say() rejects and ask() sti
 test('create() needs the message key', () => {
     assert.throws(() => HaSpeech.create({}), /message key/);
 });
+
+// MARK: - A speaker channel the app already has
+
+/**
+ * A transport with exactly ui/speaker.js's shape, carrying each message
+ * straight to `watch` a moment later, as Home Assistant WS's runtime does
+ * over its own messages
+ */
+function directTransport(watch) {
+    let busy = 0;
+    let statusHandler = null;
+    let idleHandler = null;
+    const transport = {
+        calls: [],
+        play(clip, rate, prebuffer, total, volume) {
+            carry('play', [1, clip, rate, volume, 0].concat(le32(prebuffer), le32(total)));
+        },
+        data(clip, offset, bytes, flags) {
+            carry('data', [2, clip, flags].concat(le32(offset), Array.from(bytes)));
+        },
+        stop(clip) { carry('stop', [3, clip]); },
+        isIdle: () => busy === 0,
+        onIdle(fn) { idleHandler = fn; },
+        onStatus(fn) { statusHandler = fn; },
+        status(s) { statusHandler(s.clip, s.state, s.played, s.capacity); }
+    };
+    function le32(v) { return [v & 0xFF, (v >>> 8) & 0xFF, (v >>> 16) & 0xFF, (v >>> 24) & 0xFF]; }
+    function carry(name, bytes) {
+        transport.calls.push(name);
+        busy++;
+        setImmediate(() => {
+            watch.receive(bytes);
+            if (--busy === 0 && idleHandler) { idleHandler(); }
+        });
+    }
+    return transport;
+}
+
+function setUpWithTransport(opts) {
+    opts = opts || {};
+    const env = setUp(Object.assign({ platform: 'flint' }, opts));
+    let transport = null;
+    env.watch.report = (status) => setImmediate(() => transport.status(status));
+    transport = directTransport(env.watch);
+    env.transport = transport;
+    env.speech = HaSpeech.create({ transport: transport, storage: memoryStorage(), log: null, volume: opts.volume });
+    return env;
+}
+
+test('with a transport of its own, an app gets the same speech, and no AppMessage is sent', async () => {
+    const { h, watch, pebble, speech, transport } = setUpWithTransport({ volume: 40 });
+    assert.equal(await playOut(watch, speech.say(TEXT)), 'done');
+    assert.deepEqual(watch.violations, []);
+    assert.equal(pebble.sent.length, 0);
+    assert.equal(transport.calls[0], 'play');
+    assert.equal(watch.messages[0].volume, 40);
+    const slices = await slicesOf(h, TEXT, 8000);
+    assert.deepEqual(Buffer.from(watch.audio), Buffer.concat(slices.map((s) => Buffer.from(s.audio, 'base64'))));
+    // Nothing comes in by AppMessage for the kit to take
+    assert.equal(speech.handleMessage({ HA_SPEECH: [4, 1, 2, 0, 0, 0, 0, 0, 0, 0, 0] }), false);
+
+    const answer = await speech.ask('is the house locked');
+    assert.equal(await playOut(watch, answer.spoken), 'done');
+    const result = await Pebble.invokeAction({ plugin: HaSpeech.PLUGIN_UUID, action: 'ask_assistant',
+        args: { text: 'lights on', speak: true } });
+    const spoken = speech.playReply(result);
+    for (let i = 0; i < 2000 && !watch.open; i++) { await tick(); watch.tick(300); }
+    speech.stop();
+    assert.equal(await spoken, 'stopped');
+    await tick();
+    assert.equal(watch.messages[watch.messages.length - 1].op, 'stop');
+    assert.equal(pebble.sent.length, 0);
+});
+
+test('with a transport, a report that never comes is waited for unless the watchdog is asked for', async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1000000 });
+    const first = JSON.stringify({ audio: Buffer.from(audio(4000)).toString('base64'), rate: 8000,
+        phrase: true, last: false, next: 'more' });
+    async function run(watchdog) {
+        let statusHandler = null;
+        let idleHandler = null;
+        const transport = {
+            // The watch says once that it has room for half, and never again
+            play(clip) { setTimeout(() => statusHandler(clip, STATES.BUFFERING, 0, 2000), 0); },
+            data() { setTimeout(() => idleHandler(), 0); },
+            stop() {}, isIdle: () => true,
+            onIdle(fn) { idleHandler = fn; }, onStatus(fn) { statusHandler = fn; }
+        };
+        global.Pebble = {
+            getActiveWatchInfo: () => ({ platform: 'emery' }),
+            invokeAction: (req) => (req.action === 'speak' ? Promise.resolve({ ok: true, text: first }) :
+                new Promise(() => {}))
+        };
+        const options = { transport: transport, storage: memoryStorage(), log: null };
+        if (watchdog !== undefined) { options.watchdog = watchdog; }
+        const speech = HaSpeech.create(options);
+        let how = null;
+        speech.say('Hello.').then((h) => { how = h; }, (e) => { how = e.code; });
+        for (let i = 0; i < 150; i++) {
+            t.mock.timers.tick(100);
+            await Promise.resolve();
+        }
+        speech.stop();
+        await Promise.resolve();
+        return how;
+    }
+    // Home Assistant WS's own messages lose nothing, so the kit waits
+    assert.equal(await run(undefined), 'stopped');
+    assert.equal(await run(true), 'FAILED');
+});
