@@ -321,6 +321,16 @@ The phone registers the plugin's manifest when it starts, and again only when
 in `appinfo.json` so the phone reads it again; Core also keeps the old watch
 binary for a sideload of the same version.
 
+## Tests
+
+`node --test tests/plugin` (Node 22, nothing to install) runs the plugin
+against a fake Home Assistant. `tests/plugin/harness.js` loads `plugin/js`
+the way the bundle does, in a fresh engine for every request with
+`localStorage` kept between them, and stands in for the Pebble app's plugin
+runtime, `fetch` and the WebSocket. The tests check that every property the
+plugin sends is declared in `manifest.json`, the sources and actions end to
+end, the unlock and sharing rules, and the assistant.
+
 ## Settings page messages
 
 The settings page (v1.8 and later) sends messages to the plugin with
