@@ -469,8 +469,8 @@ its text-to-speech engine, voice and language. They answer with audio, not
 words, so an app that wants something said to the wearer on screen, or an
 assistant that wants to talk to them, uses `ask_assistant` instead.
 
-- `text` is up to 4000 characters. Markdown is read as the words it shows,
-  and only about the first 1200 characters are spoken, ending at a
+- `text` is up to 20000 characters. Markdown is read as the words it
+  shows, and only about the first 1200 characters are spoken, ending at a
   sentence, as in the watch app.
 - `format` must be `ima_adpcm`. It is required, so that nothing asks for
   audio without meaning to.

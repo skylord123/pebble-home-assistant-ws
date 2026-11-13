@@ -33,7 +33,10 @@ var PluginError = ha.PluginError;
 var FORMAT = 'ima_adpcm';
 var RATES = [8000, 16000];
 var DEFAULT_RATE = 8000;
-var MAX_TEXT_CHARS = 4000;
+//! The longest text taken. Only the first 1200 or so characters are spoken
+//! (speakable), so this only bounds what each call has to read through, and
+//! is long enough for any reply ask_assistant hands on to speak_next.
+var MAX_TEXT_CHARS = 20000;
 
 //! Each call asks Home Assistant for one piece. Shorter than the watch app's
 //! own pieces, so the piece being made ahead is ready sooner.
@@ -301,6 +304,10 @@ function slice(conn, opts, pieces, c) {
  * there is nothing in the reply to say.
  */
 function start(conn, opts, reply, rate) {
+    // speak_next would refuse it
+    if (reply.length > MAX_TEXT_CHARS) {
+        return Promise.resolve({ speech_error: 'The reply is too long to read out' });
+    }
     var pieces = piecesOf(reply);
     if (pieces.length === 0) { return Promise.resolve({}); }
     return voiceFor(conn, opts).then(function(voice) {

@@ -632,7 +632,7 @@
         "type": "object",
         "required": ["text", "format"],
         "properties": {
-          "text": { "type": "string", "maxLength": 4000, "description": "What to say. Markdown is read as plain words." },
+          "text": { "type": "string", "maxLength": 20000, "description": "What to say. Markdown is read as plain words." },
           "format": { "type": "string", "enum": ["ima_adpcm"], "description": "The audio format. Only ima_adpcm, 4-bit mono." },
           "rate": { "type": "integer", "enum": [8000, 16000], "description": "Samples a second. 8000 unless given." }
         }
@@ -647,7 +647,7 @@
         "type": "object",
         "required": ["text", "next", "format"],
         "properties": {
-          "text": { "type": "string", "maxLength": 4000, "description": "The same text the cursor came from" },
+          "text": { "type": "string", "maxLength": 20000, "description": "The same text the cursor came from" },
           "next": { "type": "string", "description": "The cursor from the last result" },
           "format": { "type": "string", "enum": ["ima_adpcm"] }
         }

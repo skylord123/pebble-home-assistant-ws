@@ -237,7 +237,7 @@ test('bad arguments are INVALID_ARGS and ask Home Assistant nothing', async () =
         ['speak', { text: 'Hello there.', format: 'mp3' }],
         ['speak', { text: '   ', format: 'ima_adpcm' }],
         ['speak', { text: 'https://example.com/only-a-link', format: 'ima_adpcm' }],
-        ['speak', { text: 'x'.repeat(4001), format: 'ima_adpcm' }],
+        ['speak', { text: 'x'.repeat(20001), format: 'ima_adpcm' }],
         ['speak', { text: 'Hello there.', format: 'ima_adpcm', rate: 11025 }],
         ['speak', { text: 'Hello there.', format: 'ima_adpcm', rate: '8000' }],
         ['speak_next', { text: TEXT, format: 'ima_adpcm' }],
@@ -430,4 +430,18 @@ test('the manifest offers speak on ask_assistant, for watch apps only', () => {
     assert.match(action.parameters.properties.speak.description, /^For watch apps using the Home Assistant speech SDK only/);
     assert.deepEqual(action.parameters.properties.rate.enum, [8000, 16000]);
     assert.deepEqual(action.parameters.required, ['text']);
+});
+
+test('every reply ask_assistant hands a cursor out for can be read out with it', async () => {
+    const h = setUp({ plugin_share_assistant: true });
+    const long = 'The garage is closed and all is well. '.repeat(120);
+    h.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: long } } } });
+    const result = JSON.parse((await h.action('ask_assistant', { text: 'x', speak: true })).ok.text);
+    assert.ok(result.reply.length > 4000 && result.next);
+    assert.ok(parse(await h.action('speak_next', { text: result.reply, next: result.next, format: 'ima_adpcm' })));
+
+    const huge = 'The garage is closed and all is well. '.repeat(600);
+    h.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: huge } } } });
+    const refused = JSON.parse((await h.action('ask_assistant', { text: 'x', speak: true })).ok.text);
+    assert.deepEqual(refused, { reply: huge, speech_error: 'The reply is too long to read out' });
 });
