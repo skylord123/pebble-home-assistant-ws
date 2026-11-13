@@ -701,7 +701,7 @@ Pebble.invokeAction({ plugin: HA, action: 'create_reminder', args: { title: 'Mil
 
 | Action | Arguments | Does |
 | --- | --- | --- |
-| `ask_assistant` | `text`, `new_conversation`?, `speak`?, `rate`? | Asks Home Assistant's assistant, in the wearer's own pipeline and language, and answers with its reply as `text`. |
+| `ask_assistant` | `text`, `new_conversation`?, `json`?, `conversation_id`?, `speak`?, `rate`? | Asks Home Assistant's assistant, in the wearer's own pipeline and language, and answers with its reply as `text`. |
 | `send_to_agent` | `message`, `chat_id`? | The same, under the name Index looks for. `chat_id` is ignored. |
 
 Both need `Assistant`, and only work while the wearer has turned on sharing
@@ -715,6 +715,27 @@ does not ask on the watch first.
 Pebble.invokeAction({ plugin: HA, action: 'ask_assistant', args: { text: 'Is the garage door closed?' } });
 // { ok: true, text: 'The garage door is closed.', refreshed: [...] }
 ```
+
+A watch app that holds a conversation of its own, such as a voice
+assistant app, passes `json: true`. `text` is then JSON:
+
+```json
+{ "reply": "Which light?", "conversation_id": "01JD8ZK3Q4", "response_type": "query_answer",
+  "continue_conversation": true }
+```
+
+| Field | |
+| --- | --- |
+| `reply` | What the assistant said, as its agent wrote it, which can be markdown. |
+| `conversation_id` | Pass it back as `conversation_id` to carry the conversation on; leave it out to start a new one. `null` if Home Assistant gave none. |
+| `response_type` | Home Assistant's: `action_done`, `query_answer`, ... An `error` answer comes as `UNKNOWN` instead, with the agent's words. |
+| `continue_conversation` | Only when Home Assistant says: `true` when the assistant asked something back and expects an answer. |
+
+With `json`, the conversation is yours alone: the five-minute conversation
+every other app shares is neither read nor carried on, and
+`new_conversation` is ignored. Without `json`, `conversation_id` is
+ignored and nothing changes. `json` and `speak` go together; the answer
+then also has `next` or `speech_error`.
 
 For `speak` and `rate`, see [Speech](#speech).
 
@@ -820,7 +841,8 @@ on from what you already played, so you get `UNKNOWN` (`The speech changed
 in Home Assistant; start again with speak`): start again with `speak`.
 
 To hear the assistant's answer, call `ask_assistant` with `speak: true`
-(and `rate` if you want 16000). Its `text` is then JSON:
+(and `rate` if you want 16000). Its `text` is then JSON, with the fields
+`json` adds too when you pass both:
 
 ```json
 { "reply": "The garage door is closed.", "next": "<cursor>" }

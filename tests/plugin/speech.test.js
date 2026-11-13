@@ -522,3 +522,13 @@ test('a WebSocket that cannot connect stops speech, not the other sources', asyn
     assert.ok(lights.data, 'the lights answered ' + JSON.stringify(lights.error));
     assert.equal(lights.data.instances.length, 1);
 });
+
+test('json and speak together answer with the conversation and the cursor', async () => {
+    const h = setUp({ plugin_share_assistant: true });
+    const answer = await h.action('ask_assistant', { text: 'lights on', json: true, speak: true, conversation_id: 'c7' });
+    const result = JSON.parse(answer.ok.text);
+    assert.deepEqual(Object.keys(result).sort(), ['conversation_id', 'next', 'reply', 'response_type']);
+    assert.equal(result.conversation_id, 'c7');
+    assert.ok(parse(await h.action('speak_next', { text: result.reply, next: result.next, format: 'ima_adpcm' })));
+    assert.equal(h.stored('conversation'), null);
+});

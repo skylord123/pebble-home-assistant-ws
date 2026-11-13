@@ -346,7 +346,7 @@ happened, and asks the sources that show that entity to refresh.
 | `alarm_arm` `{ mode?, code? }`, `alarm_disarm` `{ code? }` | Alarm panels. `mode` is `home`, `away` (the default), `night`, `vacation` or `custom_bypass`. |
 | `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
 | `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
-| `ask_assistant` `{ text, new_conversation?, speak?, rate? }` | Asks Home Assistant's assistant and returns what it said. With `speak`, also starts reading it out (see [Speech](#speech)). See below. |
+| `ask_assistant` `{ text, new_conversation?, json?, conversation_id?, speak?, rate? }` | Asks Home Assistant's assistant and returns what it said. With `json`, returns JSON and keeps the caller's own conversation. With `speak`, also starts reading it out (see [Speech](#speech)). See below. |
 | `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
 | `create_reminder` `{ title, due_iso?, timezone?, notify_before_ms?, instanceId? }` | Adds an item to a shared to-do list. See below. |
 | `speak` `{ text, format, rate? }` | Says `text` in the assistant's voice, as audio for a watch app to play. Returns the first slice of it. See below. |
@@ -420,7 +420,19 @@ turning it on:
   once for each app that wants it: `ask_assistant` needs the plugin's own
   `Assistant` permission, which is `dangerous` like `Unlock`.
 - Every app that asks shares the one conversation, since the plugin cannot
-  tell callers apart.
+  tell callers apart, unless it asks with `json` (below).
+
+With `json: true`, the answer is JSON: `reply`, `conversation_id`,
+`response_type`, and `continue_conversation` when Home Assistant sends one.
+The caller keeps the conversation by sending `conversation_id` back, and
+the shared `plugin:conversation` is neither read nor written, so Index or
+another app cannot join or take over a watch app's conversation, and the
+watch app's turns do not end up in theirs. `new_conversation` is ignored,
+and a `conversation_id` that is not a string of at most 200 characters is
+`INVALID_ARGS`. An `error` response is still `UNKNOWN` with the agent's
+words. With `speak` as well, `next` or `speech_error` is added to the same
+JSON. Without `json`, nothing changes, so Index and the toasts get plain
+text.
 
 `send_to_agent` is `ask_assistant` under the name Index looks for. A plugin
 with that action and an `agent/configured` source is offered in Index as a

@@ -31,6 +31,9 @@ var PluginError = ha.PluginError;
 //! How long a conversation with the assistant carries on between asks
 var CONVERSATION_IDLE_MS = 5 * 60 * 1000;
 
+//! Longer than any conversation id Home Assistant makes
+var MAX_CONVERSATION_ID_CHARS = 200;
+
 var TOGGLE_DOMAINS = {
     light: true, switch: true, input_boolean: true, fan: true, automation: true,
     siren: true, humidifier: true, remote: true
@@ -482,10 +485,12 @@ function runEntityAction(conn, opts, name, args) {
  * Send text to Home Assistant's assistant and answer with what it said. It
  * runs the pipeline chosen in the watch app, from the intent stage, so the
  * agent and language are the pipeline's own. The conversation carries on
- * across asks for a few minutes, since an action's result has nowhere to
- * hand its id back to the caller. Any app asking shares the one conversation.
- * With `speak`, the answer is JSON instead: the reply, and a cursor for
- * speak_next to read it out with.
+ * across asks for a few minutes, since plain text has nowhere to hand its id
+ * back to the caller. Any app asking that way shares the one conversation.
+ * With `json`, the answer is JSON instead, with the conversation's id, and
+ * the caller keeps its own conversation by sending that id back. With
+ * `speak`, it is JSON too, with a cursor for speak_next to read the reply out
+ * with.
  */
 function askAssistant(conn, opts, args) {
     if (opts.plugin_share_assistant !== true) {
@@ -494,6 +499,15 @@ function askAssistant(conn, opts, args) {
     }
     var text = typeof args.text === 'string' ? args.text.trim() : '';
     if (!text) { return Promise.reject(invalid('text is required')); }
+    // A watch app keeping its own conversation, apart from the shared one
+    var json = args.json === true;
+    var own = null;
+    if (json && args.conversation_id !== undefined && args.conversation_id !== null && args.conversation_id !== '') {
+        if (typeof args.conversation_id !== 'string' || args.conversation_id.length > MAX_CONVERSATION_ID_CHARS) {
+            return Promise.reject(invalid('conversation_id must be the id from an earlier answer'));
+        }
+        own = args.conversation_id;
+    }
     // A watch app can have the reply read out too (speech.js)
     var speak = args.speak === true;
     var rate;
@@ -513,7 +527,12 @@ function askAssistant(conn, opts, args) {
     };
     var pipeline = options.pipeline(opts);
     if (pipeline) { command.pipeline = pipeline; }
-    var previous = args.new_conversation === true ? null : store.fresh('conversation', CONVERSATION_IDLE_MS);
+    var previous;
+    if (json) {
+        previous = own;
+    } else {
+        previous = args.new_conversation === true ? null : store.fresh('conversation', CONVERSATION_IDLE_MS);
+    }
     if (previous) { command.conversation_id = previous; }
 
     return ws.run(conn, command, function(msg, settle) {
@@ -530,7 +549,8 @@ function askAssistant(conn, opts, args) {
         }
     }).then(function(answer) {
         var response = answer.response || {};
-        if (answer.conversation_id) {
+        // The caller keeps its own conversation, so the shared one is left as it was
+        if (answer.conversation_id && !json) {
             store.remember('conversation', answer.conversation_id);
         }
         // Home Assistant always sends a speech key, but leaves it empty when
@@ -545,13 +565,23 @@ function askAssistant(conn, opts, args) {
         var reply = said || (response.response_type === 'action_done' ? 'Done.' : 'The assistant gave no answer.');
         // Whatever it did could have changed anything shared
         var refreshed = entities.ITEMS.map(function(item) { return 'home/' + item; });
-        if (!speak) {
+        if (!speak && !json) {
             return { text: reply, refreshed: refreshed };
+        }
+        var result = { reply: reply };
+        if (json) {
+            result.conversation_id = answer.conversation_id || previous || null;
+            result.response_type = response.response_type || null;
+            if (typeof answer.continue_conversation === 'boolean') {
+                result.continue_conversation = answer.continue_conversation;
+            }
+        }
+        if (!speak) {
+            return { text: JSON.stringify(result), refreshed: refreshed };
         }
         // The reply, and where speak_next picks up its speech. Whatever goes
         // wrong with the speech, the reply still gets back.
         return speech.start(conn, opts, reply, rate).then(function(started) {
-            var result = { reply: reply };
             if (started.next) { result.next = started.next; }
             if (started.speech_error) { result.speech_error = started.speech_error; }
             return { text: JSON.stringify(result), refreshed: refreshed };

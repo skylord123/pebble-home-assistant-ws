@@ -121,3 +121,70 @@ test('the assistant\'s work is read afresh, not from the cache', async () => {
     const answer = await h.source('home', 'light');
     assert.deepEqual(answer.data.instances[0].properties.on.boolean, { value: true });
 });
+
+test('with json, the caller keeps its own conversation and the shared one is left alone', async () => {
+    const h = setUp();
+    let n = 0;
+    h.ha.assist = (command) => ({
+        conversation_id: command.conversation_id || 'conv-' + (++n),
+        continue_conversation: command.input.text === 'ask me',
+        response: { response_type: 'query_answer', speech: { plain: { speech: '**Answer** ' + n } } }
+    });
+    // The shared conversation, as Index or another app has it
+    await h.action('ask_assistant', { text: 'shared one' });
+    assert.equal(h.stored('conversation').value, 'conv-1');
+
+    const first = await h.action('ask_assistant', { text: 'mine', json: true, new_conversation: false });
+    assert.ok(first.ok.refreshed.includes('home/light'));
+    assert.deepEqual(JSON.parse(first.ok.text), {
+        reply: '**Answer** 2', conversation_id: 'conv-2', response_type: 'query_answer', continue_conversation: false
+    });
+    const second = JSON.parse((await h.action('ask_assistant', { text: 'ask me', json: true, conversation_id: 'conv-2' })).ok.text);
+    assert.equal(second.conversation_id, 'conv-2');
+    assert.equal(second.continue_conversation, true);
+
+    // Neither read nor written: the shared one carries on where it was
+    assert.equal(h.stored('conversation').value, 'conv-1');
+    await h.action('ask_assistant', { text: 'shared two' });
+    assert.deepEqual(runs(h).map((c) => [c.input.text, c.conversation_id]), [
+        ['shared one', undefined], ['mine', undefined], ['ask me', 'conv-2'], ['shared two', 'conv-1']
+    ]);
+});
+
+test('with json, an answer without an id keeps the one sent, and continue_conversation only comes when Home Assistant says', async () => {
+    const h = setUp();
+    h.ha.assist = () => ({ response: { response_type: 'action_done', speech: {} } });
+    assert.deepEqual(JSON.parse((await h.action('ask_assistant', { text: 'lights on', json: true, conversation_id: 'abc' })).ok.text),
+        { reply: 'Done.', conversation_id: 'abc', response_type: 'action_done' });
+    assert.deepEqual(JSON.parse((await h.action('ask_assistant', { text: 'lights on', json: true })).ok.text),
+        { reply: 'Done.', conversation_id: null, response_type: 'action_done' });
+});
+
+test('with json, a bad conversation_id is INVALID_ARGS, and the errors stay errors', async () => {
+    const h = setUp();
+    for (const id of [42, 'x'.repeat(201), {}]) {
+        assert.equal((await h.action('ask_assistant', { text: 'hi', json: true, conversation_id: id })).error.code, 'INVALID_ARGS');
+    }
+    assert.equal(h.ha.sockets.length, 0);
+    h.ha.assist = () => ({ response: { response_type: 'error', speech: { plain: { speech: 'Sorry, I did not understand' } } } });
+    assert.deepEqual((await h.action('ask_assistant', { text: 'blorp', json: true })).error,
+        { code: 'UNKNOWN', message: 'Sorry, I did not understand' });
+
+    const off = setUp({ plugin_share_assistant: false });
+    assert.equal((await off.action('ask_assistant', { text: 'hi', json: true })).error.code, 'PERMISSION_DENIED');
+});
+
+test('without json, conversation_id is ignored and the answer is plain text', async () => {
+    const h = setUp();
+    const answer = await h.action('ask_assistant', { text: 'hi', conversation_id: 'mine' });
+    assert.equal(answer.ok.text, 'Turned on the kitchen light.');
+    assert.equal(runs(h)[0].conversation_id, undefined);
+});
+
+test('the manifest offers json and conversation_id on ask_assistant, for watch apps only', () => {
+    const action = harness.manifest().actions.find((a) => a.name === 'ask_assistant');
+    assert.equal(action.parameters.properties.json.type, 'boolean');
+    assert.match(action.parameters.properties.json.description, /^For watch apps keeping their own conversation only/);
+    assert.equal(action.parameters.properties.conversation_id.type, 'string');
+    assert.deepEqual(action.parameters.required, ['text']);
+});
