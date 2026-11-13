@@ -69,8 +69,9 @@ permission mode. Only declare them if you call those actions.
 
 The Pebble app only lets an app use plugins when the `appinfo.json` inside
 its pbw has `"manifestVersion": 2`. With an `appinfo.json` project, add it
-there. With a `package.json` project, `pebble build` leaves it out; the
-[test apps](#testing-your-app) have a small script,
+there. With a `package.json` project, add it to the `pebble` block: SDK
+4.33.1 keeps it in the pbw. If yours is built with an older SDK that leaves
+it out, the [test apps](#testing-your-app) have a small script,
 `scripts/manifest_v2.py`, that adds it to a built pbw.
 
 ### 2. Read and control
@@ -821,6 +822,10 @@ with a speaker (Pebble Time 2, Core 2 Duo). They say any text in the voice
 of the wearer's assistant, as audio ready for the watch. They answer with
 audio, not words: to show the wearer an answer, use `ask_assistant`.
 
+You probably want the [speech kit](../sdk/speech/README.md) rather than
+these actions: it calls them for you and plays the audio on the watch. This
+section is for when you want to do that part yourself.
+
 | Action | Arguments | Does |
 | --- | --- | --- |
 | `speak` | `text`, `format`, `rate`?, `pipeline`? | The first slice of `text` as audio. |
@@ -900,10 +905,9 @@ from the wearer's pipeline, so speech from a paid cloud engine is paid for
 by the wearer. Speech needs a Home Assistant recent enough to make WAV at
 the rate asked for, as the watch app's own spoken answers do.
 
-A small library for the watch side, to play these slices through the
-speaker, is on its way. Until then, the format above is all you need, and
-the watch app's own player (`src/simply/simply_speaker.c`) decodes the same
-stream.
+The easiest way to play all this is the [speech kit](../sdk/speech/README.md):
+three files to copy into your app, and then `speech.say(text)` or
+`speech.ask(question)` does the rest, watch side included.
 
 ## Hearing what was said
 

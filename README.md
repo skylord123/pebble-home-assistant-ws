@@ -204,7 +204,8 @@ watch first.
 - Codes you saved for locks and alarms are never used for other apps.
 
 If you build watch apps, the [developer guide](plugin/README.md) shows how
-to use all this from yours.
+to use all this from yours, and the [speech kit](sdk/speech/README.md) lets
+your app talk through the watch speaker in the wearer's assistant voice.
 
 ## Troubleshooting
 
