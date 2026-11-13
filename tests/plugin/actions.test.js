@@ -33,6 +33,44 @@ function assertRefused(answer, code, pattern) {
     if (pattern) { assert.match(answer.error.message, pattern); }
 }
 
+/**
+ * What a tap on a Dashboard tile showing `property` of an instance does, by
+ * the rule Core's Dashboard and ActionDeclaration.bindable follow: the action
+ * may require only instanceId, item, and on when the property it writes is a
+ * boolean (sent as the opposite of what it shows). One targeting the property
+ * goes first, then one targeting the item, then one writing another property.
+ */
+async function dashboardTap(h, category, item, instanceId, property) {
+    const manifest = harness.manifest();
+    const declared = manifest.sources.find((s) => s.category === category && s.items.includes(item)).properties;
+    const prefix = category + '/' + item;
+    const writes = (action) => {
+        const target = action.targets.find((t) => t.indexOf(prefix + '/') === 0);
+        return target ? target.slice(prefix.length + 1) : '';
+    };
+    const usable = manifest.actions.filter((action) => {
+        const flipped = writes(action) || property;
+        const canFlip = (declared[flipped] || []).includes('boolean');
+        return action.parameters.required.every((name) => name === 'instanceId' || name === 'item' ||
+            (name === 'on' && canFlip));
+    });
+    const targeting = (target) => usable.filter((action) => action.targets.includes(target));
+    const action = targeting(prefix + '/' + property).concat(targeting(prefix))
+        .concat(usable.filter((a) => writes(a) && writes(a) !== property))[0];
+    assert.ok(action, 'nothing to tap on ' + prefix + '/' + property);
+
+    const answer = await h.source(category, item);
+    const instance = answer.data.instances.find((i) => i.instanceId === instanceId);
+    const args = { instanceId: instanceId };
+    if (action.parameters.required.includes('item')) { args.item = item; }
+    if (action.parameters.required.includes('on')) {
+        const shown = instance.properties[writes(action) || property];
+        args.on = !(shown && shown.boolean && shown.boolean.value);
+    }
+    h.ha.requests.length = 0;
+    return { action: action.name, args: args, answer: await h.action(action.name, args) };
+}
+
 test('toggle toggles a light and says so', async () => {
     const h = setUp();
     const answer = await h.action('toggle', { instanceId: 'light.kitchen' });
@@ -69,6 +107,31 @@ test('set_on runs the Hue-style action on lights and switches', async () => {
     assert.equal(onlyCall(h).service, 'light.turn_off');
     assertRefused(await h.action('set_on', { instanceId: 'light.kitchen', on: 'yes' }), 'INVALID_ARGS');
     assertRefused(await h.action('set_on', { instanceId: 'scene.movie', on: false }), 'INVALID_ARGS', /cannot be turned off/);
+});
+
+test('set_on plays and pauses a media player, as its on reads', async () => {
+    const h = setUp();
+    const answer = await h.action('set_on', { instanceId: 'media_player.living_room', on: false });
+    assert.equal(answer.ok.text, 'Paused Living room speaker.');
+    assert.equal(onlyCall(h).service, 'media_player.media_pause');
+
+    h.ha.requests.length = 0;
+    await h.action('set_on', { instanceId: 'media_player.living_room', on: true });
+    assert.equal(onlyCall(h).service, 'media_player.media_play');
+
+    // The TV can pause but not play
+    h.ha.requests.length = 0;
+    assertRefused(await h.action('set_on', { instanceId: 'media_player.tv', on: true }), 'INVALID_ARGS', /cannot play/);
+    assert.equal(h.ha.serviceCalls().length, 0);
+});
+
+test('a Dashboard tap on a media player plays and pauses it', async () => {
+    const h = setUp();
+    for (const item of ['media_player', 'entity']) {
+        const tap = await dashboardTap(h, 'home', item, 'media_player.living_room', 'on');
+        assert.equal(tap.action, 'set_on', item);
+        assert.equal(onlyCall(h).service, 'media_player.media_pause', item);
+    }
 });
 
 test('set_brightness sets a percentage, turns off at 0, and refuses lights that cannot dim', async () => {

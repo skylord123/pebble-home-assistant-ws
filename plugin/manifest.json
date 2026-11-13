@@ -316,7 +316,7 @@
   "actions": [
     {
       "name": "set_on",
-      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans, media players and climate turn on and off; covers and valves open and close (a garage door, gate or door only opens with the open action); scenes and scripts run.",
+      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans and climate turn on and off; media players play and pause; covers and valves open and close (a garage door, gate or door only opens with the open action); scenes and scripts run.",
       "parameters": {
         "type": "object",
         "required": ["instanceId", "on"],

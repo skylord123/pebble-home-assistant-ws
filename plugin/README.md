@@ -328,7 +328,7 @@ happened, and asks the sources that show that entity to refresh.
 
 | Action | Does |
 | --- | --- |
-| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them. Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
+| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them, and for media players plays or pauses (their `on` is whether they are playing). Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
 | `toggle` | Toggles. A locked lock is refused (use `unlock`), and a closed garage door, gate or door is refused (use `open`). |
 | `activate` | Runs a scene or script, presses a button, or triggers an automation. |
 | `set_brightness` `{ percent }` | Sets a light's brightness. |

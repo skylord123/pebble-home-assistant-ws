@@ -178,8 +178,11 @@ var ENTITY_ACTIONS = {
         if (typeof args.on !== 'boolean') { throw invalid('on must be true or false'); }
         var domain = entities.domainOf(entity.entity_id);
         var name = entities.nameOf(entity);
-        if (TOGGLE_DOMAINS[domain] || domain === 'media_player' || domain === 'climate' ||
-            domain === 'water_heater') {
+        // A media player's `on` is whether it is playing, so that is what this sets
+        if (domain === 'media_player') {
+            return ENTITY_ACTIONS.set_playing(entity, { playing: args.on });
+        }
+        if (TOGGLE_DOMAINS[domain] || domain === 'climate' || domain === 'water_heater') {
             return { domain: domain, service: args.on ? 'turn_on' : 'turn_off',
                 text: (args.on ? 'Turned on ' : 'Turned off ') + name + '.' };
         }
