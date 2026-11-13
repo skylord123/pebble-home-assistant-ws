@@ -54,6 +54,8 @@ var VOICE_TTL_MS = 60 * 60 * 1000;
 
 var CURSOR_VERSION = 1;
 
+var SPEECH_CHANGED = 'The speech changed in Home Assistant; start again with speak';
+
 var NO_TTS = 'The assistant\'s pipeline in Home Assistant has no text-to-speech';
 
 function invalid(message) {
@@ -107,14 +109,19 @@ function rateArg(args) {
  * piece's audio, which starts `clipAt` bytes into the whole; the encoder's
  * `predictor` and `index` at the start of the piece; and the `gain` the
  * first piece set, in hundredths, or 0 while there has been no first piece;
- * and a fingerprint of the `text` it belongs to.
+ * a fingerprint of the `text` it belongs to; and one of the `audio` of the
+ * piece before `at`, since the encoder state is from the piece's start and
+ * only fits the rest of it if Home Assistant makes the piece the same again.
  */
 function firstCursor(rate, pieces) {
-    return { rate: rate, piece: 0, at: 0, clipAt: 0, predictor: 0, index: 0, gain: 0, text: textPrint(pieces) };
+    return {
+        rate: rate, piece: 0, at: 0, clipAt: 0, predictor: 0, index: 0, gain: 0,
+        text: textPrint(pieces), audio: audioPrint(new Uint8Array(0), 0)
+    };
 }
 
 function encodeCursor(c) {
-    return [CURSOR_VERSION, c.rate, c.piece, c.at, c.clipAt, c.predictor, c.index, c.gain, c.text].join('.');
+    return [CURSOR_VERSION, c.rate, c.piece, c.at, c.clipAt, c.predictor, c.index, c.gain, c.text, c.audio].join('.');
 }
 
 //! A short fingerprint of `length` numbers, as at(i) gives them
@@ -132,7 +139,12 @@ function textPrint(pieces) {
     return fingerprint(words.length, function(i) { return words.charCodeAt(i); });
 }
 
-var CURSOR = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)\.(-?\d+)\.(\d+)\.(\d+)\.([0-9a-z]{1,7})$/;
+//! The audio of a piece up to `at`
+function audioPrint(bytes, at) {
+    return fingerprint(at, function(i) { return bytes[i]; });
+}
+
+var CURSOR = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)\.(-?\d+)\.(\d+)\.(\d+)\.([0-9a-z]{1,7})\.([0-9a-z]{1,7})$/;
 
 //! A cursor this plugin could have made, or an INVALID_ARGS error
 function decodeCursor(text) {
@@ -140,7 +152,8 @@ function decodeCursor(text) {
     if (!m || Number(m[1]) !== CURSOR_VERSION) { throw invalid('next is not a cursor from speak'); }
     var c = {
         rate: Number(m[2]), piece: Number(m[3]), at: Number(m[4]), clipAt: Number(m[5]),
-        predictor: Number(m[6]), index: Number(m[7]), gain: Number(m[8]), text: m[9]
+        predictor: Number(m[6]), index: Number(m[7]), gain: Number(m[8]), text: m[9],
+        audio: m[10]
     };
     var start = c.piece === 0 && c.at === 0;
     var ok = RATES.indexOf(c.rate) !== -1 &&
@@ -275,8 +288,10 @@ function slice(conn, opts, pieces, c) {
         var gain = c.gain || Math.round(codec.gainFor(samples) * 100);
         var state = { predictor: c.predictor, index: c.index };
         var bytes = codec.encodeAdpcm(codec.amplify(samples, gain / 100), state);
-        if (c.at >= bytes.length) {
-            throw invalid('next does not belong to this text');
+        // Home Assistant made this piece again, and made it differently: the
+        // rest of it would not follow on from what was sent
+        if (c.at >= bytes.length || audioPrint(bytes, c.at) !== c.audio) {
+            throw new PluginError('UNKNOWN', SPEECH_CHANGED);
         }
         var end = Math.min(bytes.length, c.at + MAX_SLICE_BYTES);
         var endsPiece = end === bytes.length;
@@ -293,10 +308,12 @@ function slice(conn, opts, pieces, c) {
         if (!last) {
             result.next = encodeCursor(endsPiece ? {
                 rate: c.rate, piece: c.piece + 1, at: 0, clipAt: c.clipAt + bytes.length,
-                predictor: state.predictor, index: state.index, gain: gain, text: c.text
+                predictor: state.predictor, index: state.index, gain: gain, text: c.text,
+                audio: audioPrint(bytes, 0)
             } : {
                 rate: c.rate, piece: c.piece, at: end, clipAt: c.clipAt,
-                predictor: c.predictor, index: c.index, gain: gain, text: c.text
+                predictor: c.predictor, index: c.index, gain: gain, text: c.text,
+                audio: audioPrint(bytes, end)
             });
         }
         var answer = { text: JSON.stringify(result) };

@@ -520,7 +520,9 @@ Errors:
 - `PLUGIN_UNAVAILABLE`: the pipeline has no text-to-speech, or Home
   Assistant cannot be reached.
 - `UNKNOWN`: Home Assistant could not make the speech, or sent audio that
-  is not PCM WAV.
+  is not PCM WAV. Also when it made a piece again (once it had dropped it,
+  or after a restart) and made it differently, so that the rest of it would
+  not follow on from the slices already sent: start again with `speak`.
 - `AUTH_REQUIRED` and `PERMISSION_DENIED` as for every action.
 
 To have the assistant's reply read out, call `ask_assistant` with

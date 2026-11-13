@@ -252,18 +252,18 @@ test('bad arguments are INVALID_ARGS and ask Home Assistant nothing', async () =
         ['speak', { text: 'Hello there.', format: 'ima_adpcm', rate: '8000' }],
         ['speak_next', { text: TEXT, format: 'ima_adpcm' }],
         ['speak_next', { text: TEXT, next: 'garbage', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '2.8000.1.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.11025.1.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.50.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.401.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.0.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.40000.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.89.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.0.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.0.0.0.5.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.99999999.0.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.9.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.150.' + PRINT, format: 'pcm' }]
+        ['speak_next', { text: TEXT, next: '2.8000.1.0.100.0.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.11025.1.0.100.0.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.50.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.401.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.0.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.40000.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.89.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.0.0.100.0.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.0.0.0.5.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.99999999.0.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.9.0.100.0.0.150.' + PRINT + '.45h', format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.150.' + PRINT + '.45h', format: 'pcm' }]
     ];
     for (const [name, args] of bad) {
         const answer = await h.action(name, args);
@@ -272,12 +272,9 @@ test('bad arguments are INVALID_ARGS and ask Home Assistant nothing', async () =
     assert.equal(h.ha.requests.length, 0);
 });
 
-test('a cursor past the end of its piece, or from other text, is INVALID_ARGS', async () => {
+test('a cursor from other text is INVALID_ARGS', async () => {
     const h = setUp();
     const first = parse(await h.action('speak', { text: TEXT, format: 'ima_adpcm' }));
-    const parts = first.next.split('.');
-    parts[3] = '999999';
-    assert.equal((await h.action('speak_next', { text: TEXT, next: parts.join('.'), format: 'ima_adpcm' })).error.code, 'INVALID_ARGS');
     assert.equal((await h.action('speak_next', { text: 'One sentence only, nothing more.', next: first.next, format: 'ima_adpcm' }))
         .error.code, 'INVALID_ARGS');
 
@@ -465,4 +462,34 @@ test('every reply ask_assistant hands a cursor out for can be read out with it',
     h.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: huge } } } });
     const refused = JSON.parse((await h.action('ask_assistant', { text: 'x', speak: true })).ok.text);
     assert.deepEqual(refused, { reply: huge, speech_error: 'The reply is too long to read out' });
+});
+
+test('speech Home Assistant makes differently part way through a piece is refused, not garbled', async () => {
+    const h = setUp();
+    const first = parse(await h.action('speak', { text: TEXT, format: 'ima_adpcm' }));
+    const second = parse(await h.action('speak_next', { text: TEXT, next: first.next, format: 'ima_adpcm' }));
+    assert.equal(second.phrase, false, 'the second slice should end inside its piece');
+
+    // The piece is made again (its cache ran out, or the voice changed), a little differently
+    const made = h.ha.speechFor;
+    h.ha.speechFor = (message, options) => made(message + ' ', options);
+    const answer = await h.action('speak_next', { text: TEXT, next: second.next, format: 'ima_adpcm' });
+    assert.deepEqual(answer.error, { code: 'UNKNOWN', message: 'The speech changed in Home Assistant; start again with speak' });
+
+    // A cursor at the start of a piece needs nothing from before it
+    assert.ok(parse(await h.action('speak_next', { text: TEXT, next: first.next, format: 'ima_adpcm' })));
+
+    // Nor can a cursor point past the end of its piece
+    h.ha.speechFor = made;
+    const parts = second.next.split('.');
+    parts[3] = '999999';
+    assert.equal((await h.action('speak_next', { text: TEXT, next: parts.join('.'), format: 'ima_adpcm' })).error.code, 'UNKNOWN');
+});
+
+test('a cursor stays within 64 characters', async () => {
+    const h = setUp();
+    const results = await speakAll(h, TEXT, 16000);
+    results.forEach((r) => { if (r.next) { assert.ok(r.next.length <= 64, r.next); } });
+    // The longest one could be
+    assert.ok('1.16000.99.16777215.16777215.-32768.88.400.1z141z3.1z141z3'.length <= 64);
 });
