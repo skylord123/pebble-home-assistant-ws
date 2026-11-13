@@ -35,8 +35,8 @@ function shapesOf(instance) {
     return out;
 }
 
-/** Every shape each source emits for the fixtures, all of them shared */
-async function everythingEmitted() {
+/** A bench with every fixture shared, so every source has instances */
+function everythingShared() {
     const h = harness.create({ phone: { locations: [
         { id: 'loc-home', name: 'Boulder', latitude: 40.02, longitude: -105.05 },
         { id: 'loc-far', name: 'Paris', latitude: 48.85, longitude: 2.35 }
@@ -57,7 +57,12 @@ async function everythingEmitted() {
         plugin_values: fixtures.values()
     });
     h.ha.templates = fixtures.templates();
+    return h;
+}
 
+/** Every shape each source emits for the fixtures, all of them shared */
+async function everythingEmitted() {
+    const h = everythingShared();
     const emitted = {};
     function note(key, instance) {
         const shapes = shapesOf(instance);
@@ -128,6 +133,16 @@ test('the manifest lists the sources and actions the code serves', () => {
 
     const names = engine.require('actions').names.slice().sort();
     assert.deepEqual(manifest.actions.map((a) => a.name).sort(), names);
+});
+
+test('every source\'s answer stays valid until the Pebble app polls it again', async () => {
+    const h = everythingShared();
+    for (const source of manifest.sources) {
+        const key = sourceKey(source);
+        const answer = await h.source(source.category, source.items[0]);
+        assert.ok(answer.data, key + ' answered ' + JSON.stringify(answer.error));
+        assert.equal(answer.data.validUntilMs - h.now(), source.suggestedRefreshIntervalSec * 1000, key);
+    }
 });
 
 test('every action target names a declared source or property', () => {

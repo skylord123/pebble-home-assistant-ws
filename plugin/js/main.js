@@ -30,8 +30,29 @@ function notSetUp(respond) {
     respond.error('AUTH_REQUIRED', 'Home Assistant is not set up in the watch app yet');
 }
 
-//! How long a consumer may treat an answer as current
-var VALID_MS = { entity: 30000, light: 30000, switch: 30000, media_player: 30000, value: 30000 };
+/**
+ * How long a consumer may treat an answer as current, by category/item:
+ * until the Pebble app polls again (suggestedRefreshIntervalSec in
+ * manifest.json). The agent and reminders configured sources keep theirs.
+ */
+var VALID_MS = {
+    'home/entity': 30000,
+    'home/light': 30000,
+    'home/switch': 30000,
+    'home/sensor': 60000,
+    'home/binary_sensor': 30000,
+    'home/climate': 60000,
+    'home/cover': 30000,
+    'home/lock': 30000,
+    'home/media_player': 30000,
+    'home/person': 120000,
+    'home/scene': 120000,
+    'home/alarm': 30000,
+    'home/value': 60000,
+    'calendar/event': 300000,
+    'weather/location': 900000,
+    'reminders/list': 300000
+};
 
 function weatherIds(conn, opts) {
     var known = options.weatherIds(opts);
@@ -132,7 +153,7 @@ function source(request, respond) {
 
     return work.then(function(instances) {
         respond.data({
-            validUntilMs: Date.now() + (VALID_MS[request.item] || 60000),
+            validUntilMs: Date.now() + VALID_MS[request.category + '/' + request.item],
             instances: instances
         });
     }, function(err) {
