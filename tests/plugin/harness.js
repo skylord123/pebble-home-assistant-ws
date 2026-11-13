@@ -192,6 +192,15 @@ function createHomeAssistant(clock) {
         requests: [],
         sockets: [],
         routes: [],
+        /**
+         * What speech-to-text hears in a run from the stt stage: (pcm, command)
+         * -> the text, or { event } for the error event Home Assistant sends
+         * instead. `pcm` is every byte of audio after the handler bytes.
+         */
+        transcribe: (pcm) => (pcm.length ? 'turn on the kitchen light'
+            : { event: { type: 'error', data: { code: 'stt-no-text-recognized', message: 'No text recognized' } } }),
+        //! Every speech-to-text run: { command, handler, frames, early, pcm }
+        sttRuns: [],
         //! Answers assist_pipeline/run: (command) -> intent_output, or { error: { code, message } }
         assist: (command) => ({
             conversation_id: command.conversation_id || 'conv-1',
@@ -473,9 +482,11 @@ function createHomeAssistant(clock) {
         fake.sockets.push(socket);
         const expected = fake.url.replace(/^http/, 'ws') + '/api/websocket';
 
-        function deliver(msg) {
+        //! `before` runs just before the plugin sees `msg`
+        function deliver(msg, before) {
             setImmediate(() => {
                 if (socket.readyState !== 1) { return; }
+                if (before) { before(); }
                 socket.sent.push(msg);
                 if (socket.onmessage) { socket.onmessage({ data: JSON.stringify(msg) }); }
             });
@@ -490,8 +501,79 @@ function createHomeAssistant(clock) {
         }
         socket.serverClose = drop;
 
+        socket.handlers = 0;
+        socket.sttRuns = {};
+
+        /**
+         * A pipeline run from speech-to-text, as Home Assistant runs one: it
+         * names the handler its audio goes to in run-start, takes the audio
+         * once stt-start is out, and hears it once a frame with only the
+         * handler byte ends it.
+         */
+        function startStt(msg) {
+            const id = msg.id;
+            const chosen = msg.pipeline || fake.pipelines.preferred_pipeline;
+            const pipeline = (fake.pipelines.pipelines || []).find((p) => p.id === chosen);
+            if (!pipeline) {
+                deliver({ id: id, type: 'result', success: false,
+                    error: { code: 'pipeline-not-found', message: 'Pipeline ' + chosen + ' not found' } });
+                return;
+            }
+            if (!pipeline.stt_engine) {
+                deliver({ id: id, type: 'result', success: false,
+                    error: { code: 'validation-error', message: 'the pipeline does not support speech-to-text' } });
+                return;
+            }
+            if (pipeline.sttError) {
+                deliver({ id: id, type: 'result', success: false, error: pipeline.sttError });
+                return;
+            }
+            const run = { command: clone(msg), handler: ++socket.handlers, frames: [], early: 0, started: false, pcm: null };
+            socket.sttRuns[run.handler] = run;
+            fake.sttRuns.push(run);
+            deliver({ id: id, type: 'result', success: true, result: null });
+            deliver({ id: id, type: 'event', event: { type: 'run-start', data: {
+                pipeline: pipeline.id, language: 'en', conversation_id: 'conv-stt',
+                runner_data: { stt_binary_handler_id: run.handler, timeout: 300 } } } });
+            deliver({ id: id, type: 'event', event: { type: 'stt-start', data: { engine: pipeline.stt_engine } } },
+                () => { run.started = true; });
+        }
+
+        function hear(run) {
+            const id = run.command.id;
+            const heard = fake.transcribe(run.pcm, run.command);
+            if (heard && heard.event) {
+                deliver({ id: id, type: 'event', event: heard.event });
+            } else {
+                deliver({ id: id, type: 'event', event: { type: 'stt-end', data: { stt_output: { text: heard } } } });
+            }
+            deliver({ id: id, type: 'event', event: { type: 'run-end', data: null } });
+        }
+
+        //! A binary frame: the handler byte, then audio, or nothing to end it
+        function binary(data) {
+            // Home Assistant drops the connection for an empty frame, which is
+            // what the emulator makes of a bare ArrayBuffer
+            if (!ArrayBuffer.isView(data)) { throw new Error('send binary frames as a view, not a bare ArrayBuffer'); }
+            const frame = Buffer.from(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
+            if (frame.length === 0) { drop(); return; }
+            const run = socket.sttRuns[frame[0]];
+            if (!run || run.pcm) { return; }
+            if (!run.started) { run.early++; }
+            run.frames.push(frame);
+            if (frame.length === 1) {
+                run.pcm = Buffer.concat(run.frames.map((f) => f.subarray(1)));
+                hear(run);
+            }
+        }
+
         socket.send = function(text) {
             if (socket.readyState !== 1) { throw new Error('WebSocket is not open'); }
+            if (typeof text !== 'string') {
+                if (!socket.authed) { drop(); return; }
+                binary(text);
+                return;
+            }
             const msg = JSON.parse(text);
             socket.received.push(msg);
             if (msg.type === 'auth') {
@@ -515,6 +597,8 @@ function createHomeAssistant(clock) {
                     return;
                 }
                 deliver({ id: id, type: 'result', success: true, result: answer });
+            } else if (msg.type === 'assist_pipeline/run' && msg.start_stage === 'stt') {
+                startStt(msg);
             } else if (msg.type === 'assist_pipeline/run') {
                 const output = fake.assist(msg);
                 if (output && output.error) {

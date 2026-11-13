@@ -18,22 +18,28 @@ function socketUrl(conn) {
     return (secure ? 'wss' : 'ws') + conn.url.replace(/^https?/i, '') + '/api/websocket';
 }
 
+//! The error a refused command ends with. Home Assistant's own code goes
+//! with it as `reason`, for a caller that tells some apart.
 function commandError(error) {
     var code = error && error.code;
     var message = (error && error.message) || 'Home Assistant could not do that';
+    var err;
     if (code === 'unauthorized') {
-        return new PluginError('PERMISSION_DENIED', 'Home Assistant does not let this token\'s user do that');
+        err = new PluginError('PERMISSION_DENIED', 'Home Assistant does not let this token\'s user do that');
+    } else if (code === 'invalid_format' || code === 'pipeline-not-found') {
+        err = new PluginError('INVALID_ARGS', message);
+    } else {
+        err = new PluginError('UNKNOWN', message);
     }
-    if (code === 'invalid_format' || code === 'pipeline-not-found') {
-        return new PluginError('INVALID_ARGS', message);
-    }
-    return new PluginError('UNKNOWN', message);
+    err.reason = code;
+    return err;
 }
 
 /**
  * Send `command` once logged in and hand every message about it to
- * `onMessage(msg, settle)`, until it calls `settle(value)` or throws. A
- * refused command ends it with an error before `onMessage` sees it.
+ * `onMessage(msg, settle, send)`, until it calls `settle(value)` or throws.
+ * `send(data)` writes to the socket, for a pipeline's audio. A refused
+ * command ends it with an error before `onMessage` sees it.
  * @param {boolean} [optional] a socket that fails to connect does not mark
  *   Home Assistant unreachable, for something REST can do without, since a
  *   proxy may refuse WebSockets and still pass REST
@@ -97,7 +103,7 @@ function run(conn, command, onMessage, optional) {
                 return;
             }
             try {
-                onMessage(msg, function(value) { finish(null, value); });
+                onMessage(msg, function(value) { finish(null, value); }, function(data) { socket.send(data); });
             } catch (err) {
                 finish(err);
             }

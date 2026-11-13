@@ -654,6 +654,21 @@
       },
       "targets": [],
       "callerPermissions": ["Location"]
+    },
+    {
+      "name": "transcribe",
+      "description": "For watch apps that record the microphone. Takes recorded audio, not words: never call it to answer the user. Has the speech-to-text of the user's Home Assistant assistant write down what was said in the recording, and returns it as plain text; empty when nothing was heard.",
+      "parameters": {
+        "type": "object",
+        "required": ["audio", "format"],
+        "properties": {
+          "audio": { "type": "string", "description": "The recording in base64: 16 kHz mono, at most 30 seconds" },
+          "format": { "type": "string", "enum": ["ima_adpcm", "pcm16le"], "description": "ima_adpcm: 4-bit IMA ADPCM from silence, low nibble first. pcm16le: 16-bit little-endian samples." },
+          "sample_rate": { "type": "integer", "enum": [16000], "description": "Samples a second. Only 16000." }
+        }
+      },
+      "targets": [],
+      "callerPermissions": ["Location"]
     }
   ]
 }

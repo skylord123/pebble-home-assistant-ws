@@ -1,6 +1,7 @@
 /**
  * What other apps can do to shared entities, and the assistant. Speech for
- * watch apps to play is in speech.js.
+ * watch apps to play is in speech.js, and hearing what they recorded in
+ * transcribe.js.
  *
  * Every entity action names its entity by `instanceId` (the entity_id), and
  * is refused unless that entity is shared. Nothing here reaches beyond the
@@ -23,6 +24,7 @@ var options = require('options');
 var entities = require('entities');
 var todo = require('todo');
 var speech = require('speech');
+var transcribe = require('transcribe');
 
 var PluginError = ha.PluginError;
 
@@ -568,6 +570,10 @@ function run(conn, opts, name, args) {
     if (name === 'speak_next') {
         return speech.speakNext(conn, opts, args);
     }
+    // Words for watch apps that record the wearer's voice
+    if (name === 'transcribe') {
+        return transcribe.transcribe(conn, opts, args);
+    }
     // What Index calls to make the assistant a destination for ring
     // gestures and typed messages. Its chat_id names one of the chats an
     // agent/chats source would list; there is only the one conversation.
@@ -590,5 +596,5 @@ function run(conn, opts, name, args) {
 module.exports = {
     run: run,
     names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant', 'send_to_agent', 'create_reminder', 'speak',
-        'speak_next'])
+        'speak_next', 'transcribe'])
 };

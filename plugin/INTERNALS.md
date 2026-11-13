@@ -47,9 +47,9 @@ The phone starts a fresh JS engine for every request and stops it once the
 plugin answers, or after 20 seconds. There are no timers, and a WebSocket
 closes when the request that opened it ends, so nothing can stay connected to
 Home Assistant between requests. Everything goes over the REST API, which
-reuses the phone's open connection, except `ask_assistant` and the hourly
-statistics behind `history`: REST cannot reach either, so those open a
-WebSocket, log in, send one command and close (`js/ws.js`). Speech does the
+reuses the phone's open connection, except `ask_assistant`, `transcribe`
+and the hourly statistics behind `history`: REST cannot reach them, so those
+open a WebSocket, log in, send one command and close (`js/ws.js`). Speech does the
 same once an hour to look up the pipeline's voice. The plugin reads the same
 `localStorage` as the watch app (same
 UUID):
@@ -351,6 +351,7 @@ happened, and asks the sources that show that entity to refresh.
 | `create_reminder` `{ title, due_iso?, timezone?, notify_before_ms?, instanceId? }` | Adds an item to a shared to-do list. See below. |
 | `speak` `{ text, format, rate? }` | Says `text` in the assistant's voice, as audio for a watch app to play. Returns the first slice of it. See below. |
 | `speak_next` `{ text, next, format }` | The next slice of that audio. |
+| `transcribe` `{ audio, format, sample_rate? }` | What was said in a recording, as plain text. See [Hearing what was said](#hearing-what-was-said). |
 
 Actions check the entity's `supported_features` first. Asking a window
 that cannot be positioned to move to 40%, or a player that cannot skip to
@@ -574,6 +575,42 @@ Index offers its agent every action, and the plugin cannot tell who is
 calling. The descriptions of `speak` and `speak_next` say they return
 audio and are not for talking to the user, and the required `format`
 means a call has to ask for audio on purpose.
+
+### Hearing what was said
+
+`transcribe` is for watch apps that record the wearer's voice themselves.
+`audio` is the whole recording in base64, 16 kHz mono and at most 30
+seconds, as `ima_adpcm` (4-bit, from silence, low nibble first, decoded
+with `decodeAdpcm` in `speech-codec`, the inverse of the encoder speech
+uses) or `pcm16le`. `sample_rate` may only be 16000. The size is checked
+on the base64 before anything is decoded.
+
+It runs `assist_pipeline/run` from `stt` to `stt` in the pipeline chosen in
+the watch app, with `no_vad: true`: the recording is already over, and Home
+Assistant's end-of-speech detection would otherwise end it at the first
+pause. The audio goes the way the watch app sends its own (`haws.sendAudio`):
+
+- `run-start` names the handler (`runner_data.stt_binary_handler_id`), and
+  the plugin waits for `stt-start` before sending anything.
+- Binary frames of the handler byte and up to 8 KB of 16-bit PCM, each a
+  `Uint8Array` of its own and never a bare `ArrayBuffer`, which the
+  emulator sends empty. Home Assistant drops the connection for an empty
+  frame.
+- A frame with only the handler byte ends the audio, and `stt-end` brings
+  the text, which is the whole answer.
+
+`stt-no-text-recognized` is an answer with no text, not an error. A
+pipeline without speech-to-text (`validation-error`), or whose engine is
+missing or cannot take the audio (`stt-provider-missing`,
+`stt-provider-unsupported-metadata`), is `PLUGIN_UNAVAILABLE`; any other
+error event, `stt-stream-failed` among them, is `UNKNOWN`. A WebSocket that
+cannot connect does not mark Home Assistant unreachable, as for speech.
+
+It needs `Location` and `InvokeAction` and nothing else, like `speak`: it
+only turns audio into words, and does nothing with them. The answer is the
+wearer's own words, which are safe to show and for Index to read. The
+description and the required `audio` and `format` keep Index's agent from
+calling it to answer anyone.
 
 ## Trying it
 

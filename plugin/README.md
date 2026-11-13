@@ -17,6 +17,7 @@ Contents:
 - [What you can do](#what-you-can-do)
 - [Index and the phone](#index-and-the-phone)
 - [Speech](#speech)
+- [Hearing what was said](#hearing-what-was-said)
 - [Errors](#errors)
 - [Limits and good manners](#limits-and-good-manners)
 - [Testing your app](#testing-your-app)
@@ -843,6 +844,54 @@ speaker, is on its way. Until then, the format above is all you need, and
 the watch app's own player (`src/simply/simply_speaker.c`) decodes the same
 stream.
 
+## Hearing what was said
+
+`transcribe` is for watch apps that record the wearer's voice themselves,
+such as through the Pebble app's microphone stream. It has the
+speech-to-text of the wearer's assistant write down what was said in a
+recording, and answers with the words.
+
+| Action | Arguments | Does |
+| --- | --- | --- |
+| `transcribe` | `audio`, `format`, `sample_rate`? | What was said in `audio`, as plain text. |
+
+- `audio` is the whole recording in base64: 16 kHz, mono, at most 30
+  seconds.
+- `format` is `ima_adpcm` or `pcm16le`. `ima_adpcm` is 4-bit IMA ADPCM,
+  two samples a byte, low nibble first, encoded from silence (predictor 0,
+  index 0) at the start of the recording: the format `speak` answers
+  with, at a quarter of the size of PCM. `pcm16le` is 16-bit little-endian samples.
+  30 seconds is 320000 characters of base64 as `ima_adpcm`, and four times
+  that as `pcm16le`.
+- `sample_rate` may only be `16000`, the rate Home Assistant takes.
+
+```js
+Pebble.invokeAction({ plugin: HA, action: 'transcribe',
+  args: { audio: recordingBase64, format: 'ima_adpcm' } }).then(function(result) {
+  if (!result.ok) { return console.log(result.code + ': ' + result.message); }
+  console.log(result.text ? 'Heard: ' + result.text : 'Nothing heard');
+});
+```
+
+`text` is empty or `null` when nothing was heard. It is the wearer's own
+words, so you can show it, confirm it with them, and then send it on with
+`ask_assistant`.
+
+The audio has to be recorded first, and Home Assistant hears it once it is
+all there: a request cannot stay open while the wearer speaks. Decide on
+the phone when they have finished, after a pause or a press. Home
+Assistant's own detection of the end of speech is turned off, so a pause
+in the middle of the recording does not cut it short.
+
+`transcribe` needs only `Location` and `InvokeAction`, like `speak`: no
+entity has to be shared, and the assistant switch does not apply, since it
+only turns audio into words. A pipeline without speech-to-text answers
+`PLUGIN_UNAVAILABLE` (`The assistant's pipeline in Home Assistant has no
+speech-to-text`), and a speech-to-text engine that fails answers `UNKNOWN`.
+The request has 20 seconds, like any, which a slow local engine can run
+out of on a long recording; that answers `TIMEOUT`, and a shorter
+recording may get through.
+
 ## Errors
 
 A failed action resolves `{ ok: false, code, message }`, and a failed source
@@ -856,7 +905,7 @@ to show the wearer.
 | `INVALID_ARGS` | A missing or wrong argument, such as a speech cursor sent with other text. The entity cannot do that (a light that cannot dim, a player that cannot skip, `set_on` with `false` on a lock). Home Assistant did not accept the call. | Fix the call, or hide the control. `supported_features` and `color_modes` tell you beforehand. |
 | `PLUGIN_UNAVAILABLE` | Home Assistant cannot be reached, or the entity is no longer in Home Assistant. Also from the Pebble app when the plugin is not installed or has no such source or action. | Show it and try later. After a failure to connect, the plugin answers this at once for 30 seconds without trying. |
 | `TIMEOUT` | No answer in time. The Pebble app gives each request 20 seconds. | Try again later. |
-| `UNKNOWN` | Home Assistant failed to do it (a service that errored), the assistant could not answer, or the speech could not be made (`Home Assistant could not say that`). Also `The speech changed in Home Assistant; start again with speak`. | Show the message. For the speech change, start again with `speak`. |
+| `UNKNOWN` | Home Assistant failed to do it (a service that errored), the assistant could not answer, the speech could not be made (`Home Assistant could not say that`), or its speech-to-text failed. Also `The speech changed in Home Assistant; start again with speak`. | Show the message. For the speech change, start again with `speak`. |
 
 ## Limits and good manners
 
