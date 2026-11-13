@@ -14,6 +14,7 @@
  */
 var UI = require('ui');
 var Assist = require('ui/assist');
+var WindowStack = require('ui/windowstack');
 var Settings = require('settings');
 
 var AppState = require('app/AppState');
@@ -29,6 +30,29 @@ var conversation_id = null;
 
 // The settings menu is up in place of the conversation
 var inSettings = false;
+
+// A plain window under a conversation that has nothing else under it, as
+// after a quick launch with exit on back. The conversation steps off the
+// watch's window stack while the settings menu is up, and with nothing under
+// it the watch would take the empty stack as the app closing.
+var ground = null;
+
+function showGround() {
+    if (WindowStack.length() > 0) { return; }
+    ground = new UI.Window({
+        backgroundColor: Theme.assistIsDark() ? 'black' : 'white',
+        status: false
+    });
+    ground.show();
+}
+
+//! The conversation has closed, so the window under it goes too, and with it
+//! the app when that was all there was
+function hideGround() {
+    var window = ground;
+    ground = null;
+    if (window) { window.hide(); }
+}
 
 // Why the last answer was not read out, so a conversation that keeps failing
 // the same way says so once rather than under every answer
@@ -724,6 +748,7 @@ function openAssist(listen, reset) {
     // Wrap onClose to check for pending reconnect dialog when Assist closes
     var originalOnClose = function() {
         abandonRun();
+        hideGround();
         ConnectionService.showPendingReconnectDialog();
     };
 
@@ -804,6 +829,7 @@ function showAssistMenu() {
     inSettings = false;
     lastSpeechProblem = null;
     abandonRun();
+    showGround();
     openAssist(true);
 }
 
