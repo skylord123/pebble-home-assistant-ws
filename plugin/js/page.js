@@ -15,9 +15,12 @@ var options = require('options');
 var ha = require('ha');
 var ws = require('ws');
 var entities = require('entities');
+var values = require('values');
 
 var SEARCH_LIMIT_DEFAULT = 30;
 var SEARCH_LIMIT_MAX = 100;
+//! Longer than anyone writes by hand; past it a preview is refused
+var TEMPLATE_MAX = 10000;
 
 //! Every entity's state, fetched once while the page is open
 var allStates = null;
@@ -139,7 +142,8 @@ function search(query, limit) {
 /** Have whatever reads the shared entities read them again */
 function refreshSources() {
     ha.forgetStates();
-    Pebble.refreshSources(['home/entity', 'weather/location', 'agent/configured']
+    values.forget();
+    Pebble.refreshSources(['home/entity', 'home/value', 'weather/location', 'agent/configured']
         .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
 }
 
@@ -227,6 +231,32 @@ var handlers = {
             }
             var found = search(message.query, limit);
             respond({ ok: true, results: found.results, total: found.total });
+        });
+    },
+
+    /**
+     * A custom value's template rendered as `home/value` would serve it, so
+     * the wearer sees what other apps get while they write it. The page
+     * sends this here even when the watch app is answering everything else.
+     */
+    preview_template: function(message, respond) {
+        var conn = options.connection(options.read());
+        if (!conn) {
+            return respond(failure({ code: 'not_loaded', message: 'Home Assistant is not set up yet' }));
+        }
+        var template = message.template;
+        if (typeof template !== 'string' || !template.trim()) {
+            return respond(failure({ code: 'bad_request', message: 'preview_template needs a template' }));
+        }
+        if (template.length > TEMPLATE_MAX) {
+            return respond(failure({ code: 'bad_request', message: 'That template is too long' }));
+        }
+        var unit = typeof message.unit === 'string' ? message.unit.trim() : '';
+        return values.preview(conn, template, unit).then(function(rendered) {
+            if (rendered.error !== undefined) {
+                return respond(failure({ code: 'template_error', message: rendered.error }));
+            }
+            respond({ ok: true, result: rendered.result, text: rendered.text });
         });
     },
 

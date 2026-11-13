@@ -74,7 +74,11 @@ fills its dropdowns as soon as Connect succeeds.
 From v1.8 the page also talks to the plugin (`plugin/`), when the phone has
 plugins turned on: `Pebble.sendMessage('plugin', { type: 'status' })` to show
 whether other apps can reach Home Assistant, and `{ type: 'refresh' }` after a
-save so they pick up a changed list of shared entities. The phone fires
+save so they pick up a changed list of shared entities. The custom values
+editor sends `{ type: 'preview_template', template, unit }` there too, even
+when the watch app is answering everything else, to show what other apps
+will get; without the plugin it says the preview is not available, and the
+values still save with the rest. The phone fires
 `ready` with `{ target: 'plugin' }` once the plugin can be reached. See
 `plugin/README.md`.
 

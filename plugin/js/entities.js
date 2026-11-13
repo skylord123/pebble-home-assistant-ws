@@ -119,14 +119,19 @@ function withUnit(value, unit) {
     return value + (/^[°%]/.test(unit) ? '' : ' ') + unit;
 }
 
-function numericState(entity) {
-    if (isUnavailable(entity)) { return null; }
+//! The number a text is, or null
+function parseNumber(text) {
     // Strictly a number: timestamps and versions start with digits too
-    var text = String(entity.state).trim();
+    text = String(text).trim();
     if (!/^-?(\d+\.?\d*|\.\d+)(e[-+]?\d+)?$/i.test(text)) { return null; }
     // 1e400 is a number to the pattern and Infinity to JSON, which sends null
     var value = Number(text);
     return isFinite(value) ? value : null;
+}
+
+function numericState(entity) {
+    if (isUnavailable(entity)) { return null; }
+    return parseNumber(entity.state);
 }
 
 /** Whether the entity is on, in whatever sense its kind has one, or null */
@@ -458,6 +463,8 @@ module.exports = {
     isOn: isOn,
     stateText: stateText,
     toInstance: toInstance,
+    parseNumber: parseNumber,
+    withUnit: withUnit,
     shapes: {
         shortText: shortText,
         longText: longText,

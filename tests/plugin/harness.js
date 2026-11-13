@@ -161,6 +161,10 @@ function createHomeAssistant(clock) {
         //! false: the token's user is not an admin, and may not render templates
         admin: true,
         pipelines: { pipelines: [{ id: 'p1', name: 'Home', stt_engine: 'stt.x' }], preferred_pipeline: 'p1' },
+        //! What each template renders to, for POST /api/template: a string, or
+        //! { error } for one Home Assistant cannot render. Text without any
+        //! Jinja renders as itself; any other template is an error.
+        templates: {},
         requests: [],
         sockets: [],
         routes: [],
@@ -199,6 +203,43 @@ function createHomeAssistant(clock) {
 
     function authorized(headers) {
         return headers.authorization === 'Bearer ' + fake.token;
+    }
+
+    /**
+     * Enough Jinja for the plugin's templates: `{% set x %}...{% endset %}`
+     * blocks, each a template looked up in fake.templates, then one
+     * `{{ { "0": x, ... } | tojson }}`. Like Home Assistant, one template
+     * that fails fails the whole render with a 400.
+     */
+    function renderTemplate(text) {
+        text = String(text || '');
+        const one = (template) => {
+            if (Object.prototype.hasOwnProperty.call(fake.templates, template)) { return fake.templates[template]; }
+            return /[{}]/.test(template) ? { error: 'TemplateSyntaxError: the fake does not know ' + template } : template;
+        };
+        const refuse = (error) => ({ status: 400, body: { message: 'Error rendering template: ' + error } });
+        const blocks = /\{% set ([a-z_0-9]+) %\}([\s\S]*?)\{% endset %\}/g;
+        const captured = {};
+        let failed = null;
+        let m;
+        while ((m = blocks.exec(text)) !== null) {
+            const out = one(m[2]);
+            if (out && typeof out === 'object') { failed = failed || out.error; } else { captured[m[1]] = out; }
+        }
+        if (failed) { return refuse(failed); }
+        const rest = text.replace(blocks, '');
+        const tail = /^\{\{ \{(.*)\} \| tojson \}\}$/.exec(rest);
+        if (!tail) {
+            const out = one(rest);
+            if (out && typeof out === 'object') { return refuse(out.error); }
+            return { status: 200, body: out, headers: { 'content-type': 'text/plain' } };
+        }
+        const result = {};
+        tail[1].split(', ').forEach((pair) => {
+            const kv = /^"([^"]+)": ([a-z_0-9]+)$/.exec(pair);
+            result[kv[1]] = captured[kv[2]];
+        });
+        return { status: 200, body: JSON.stringify(result), headers: { 'content-type': 'text/plain' } };
     }
 
     function builtIn(req) {
@@ -254,9 +295,11 @@ function createHomeAssistant(clock) {
         }
         if (req.method === 'POST' && p === '/api/template') {
             if (!fake.admin) { return { status: 401, body: '401: Unauthorized' }; }
-            // Only the one template the plugin renders: the area of each id
-            const ids = (req.body && req.body.variables && req.body.variables.ids) || [];
-            return { status: 200, body: JSON.stringify(ids.map((id) => fake.areas[id] || null)) };
+            // The rooms template (areas.js) is the one that passes ids as a
+            // variable: the area of each id
+            const ids = req.body && req.body.variables && req.body.variables.ids;
+            if (ids) { return { status: 200, body: JSON.stringify(ids.map((id) => fake.areas[id] || null)) }; }
+            return renderTemplate(req.body && req.body.template);
         }
         m = /^\/api\/services\/([a-z0-9_]+)\/([a-z0-9_]+)$/.exec(p);
         if (req.method === 'POST' && m) {

@@ -60,7 +60,10 @@
 			<circle cx="12" cy="3.5" r="1.8"/><circle cx="12" cy="12.5" r="1.8"/><circle cx="4" cy="8" r="1.8"/>
 			<path d="M5.6 7.1l4.8-2.7M5.6 8.9l4.8 2.7"/>
 		</symbol>
-		<symbol id="i-pin" stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" viewBox="0 0 16 16">
+		<symbol id="i-pencil" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" viewBox="0 0 16 16">
+			<path d="M11.2 1.8l3 3L5.5 13.5 1.8 14.2l.7-3.7 8.7-8.7zM9.6 3.4l3 3"/>
+		</symbol>
+		<symbol id="i-pin"stroke="currentColor" stroke-width="1.2" stroke-linejoin="round" viewBox="0 0 16 16">
 			<path d="M4.5 1h7c0 1-.6 1.6-1 1.9v4.3c1 .5 2 1.4 2 2.8h-4v4.6L8 15.5l-.5-.9V10h-4c0-1.4 1-2.3 2-2.8V2.9C5.1 2.6 4.5 2 4.5 1z"/>
 		</symbol>
 	</svg>
@@ -666,6 +669,48 @@
 			font-size: 1rem;
 			cursor: pointer;
 			flex-shrink: 0;
+		}
+
+		.list-group-item .edit-item {
+			margin-left: 0.75rem;
+			padding: 0.25rem;
+			color: var(--color-text-muted);
+			background: none;
+			border: none;
+			font-size: 1rem;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+
+		/* A custom value's row shows its template under its name */
+		.list-group-item .value-template {
+			font-family: Menlo, Consolas, monospace;
+			font-size: 0.75rem;
+			color: var(--color-text-muted);
+			white-space: nowrap;
+			overflow: hidden;
+			text-overflow: ellipsis;
+		}
+
+		.template-input {
+			font-family: Menlo, Consolas, monospace;
+			font-size: 0.85rem;
+			resize: vertical;
+		}
+
+		.label-note {
+			font-weight: 400;
+			color: var(--color-text-muted);
+		}
+
+		.editor-actions {
+			display: flex;
+			gap: 0.5rem;
+		}
+
+		/* The value being edited, while the editor below has it */
+		.list-group-item.editing {
+			border-color: var(--color-accent);
 		}
 
 		/* Search results carry their own buttons: favourite and pin */
@@ -1347,6 +1392,34 @@
 					</div>
 				</div>
 				<div class="component">
+					<label class="form-label">Custom values</label>
+					<small class="form-text mb-2">Anything a Home Assistant template can work out, such as how many doors are open, for other apps to show. Each one is rendered by Home Assistant as other apps ask for it.</small>
+					<ul id="value-sortable" class="list-group">
+					</ul>
+					<div class="conditional-box hidden" id="value-editor">
+						<label class="form-label" for="value-name">Name</label>
+						<input type="text" class="form-control" id="value-name" placeholder="Doors open">
+						<div class="invalid-feedback hidden" id="value-name-invalid">Give it a name.</div>
+						<label class="form-label mt-3" for="value-template">Template</label>
+						<textarea class="form-control template-input" id="value-template" rows="4" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="{{ states.binary_sensor | selectattr('attributes.device_class', 'eq', 'door') | selectattr('state', 'eq', 'on') | list | count }}"></textarea>
+						<div class="invalid-feedback hidden" id="value-template-invalid">Write a template.</div>
+						<select class="form-select mt-2" id="value-example" aria-label="Start from an example">
+							<option value="">Start from an example…</option>
+						</select>
+						<label class="form-label mt-3" for="value-unit">Unit <span class="label-note">(optional)</span></label>
+						<input type="text" class="form-control" id="value-unit" autocapitalize="off" placeholder="°C, %, kWh">
+						<div class="status-line" id="value-preview" aria-live="polite">
+							<span class="status-dot"></span>
+							<span class="status-text"></span>
+						</div>
+						<div class="editor-actions mt-3">
+							<button type="button" class="btn btn-primary btn-sm" id="value-done">Done</button>
+							<button type="button" class="btn btn-outline-secondary btn-sm" id="value-cancel">Cancel</button>
+						</div>
+					</div>
+					<button type="button" class="btn btn-secondary btn-sm mt-2" id="value-add">Add a value</button>
+				</div>
+				<div class="component">
 					<div class="form-switch">
 						<label class="form-check-label" for="plugin-allow-unlock">Let other apps unlock and open doors</label>
 						<input class="form-check-input" type="checkbox" id="plugin-allow-unlock">
@@ -1739,6 +1812,14 @@
 		pluginStatus = $('plugin-status'),
 		pluginShareAssistant = $('plugin-share-assistant'),
 		pluginAllowUnlock = $('plugin-allow-unlock'),
+		valueSortable = $('value-sortable'),
+		valueEditor = $('value-editor'),
+		valueName = $('value-name'),
+		valueTemplate = $('value-template'),
+		valueUnit = $('value-unit'),
+		valueExample = $('value-example'),
+		valuePreview = $('value-preview'),
+		valueAdd = $('value-add'),
 		calendarsSection = $('calendars-section'),
 		calendarsSortable = $('calendars-sortable'),
 		calendarOrderReset = $('calendar-order-reset'),
@@ -2108,6 +2189,193 @@
 		updatePluginEmpty();
 		makeSortable(pluginSortable);
 	}
+
+	// --- Custom values (the plugin's home/value) ---
+	//
+	// Each is a name, a Home Assistant template and an optional unit, kept on
+	// its row until Save. The id is made here once and never changes, so an
+	// app showing a value keeps showing it when it is renamed or edited.
+
+	var VALUE_EXAMPLES = [
+		{ name: 'Doors open', template: "{{ states.binary_sensor | selectattr('attributes.device_class', 'eq', 'door') | selectattr('state', 'eq', 'on') | list | count }}" },
+		{ name: 'Lights on', template: "{{ states.light | selectattr('state', 'eq', 'on') | list | count }}" },
+		{ name: 'Who is home', template: "{{ states.person | selectattr('state', 'eq', 'home') | map(attribute='name') | join(', ') or 'Nobody' }}" },
+		{ name: 'Sunset', template: "{{ as_timestamp(state_attr('sun.sun', 'next_setting')) | timestamp_custom('%H:%M') }}" },
+		{ name: 'Low batteries', template: "{{ states.sensor | selectattr('attributes.device_class', 'eq', 'battery') | map(attribute='state') | map('float', 100) | select('lt', 20) | list | count }}" }
+	];
+
+	// The row the editor has open, or null while it adds a new one
+	var editingValueRow = null;
+	var previewTimer = null;
+	var previewSeq = 0;
+
+	VALUE_EXAMPLES.forEach(function(example, index) {
+		var option = document.createElement('option');
+		option.value = String(index);
+		option.textContent = example.name;
+		valueExample.appendChild(option);
+	});
+
+	function newValueId() {
+		return 'v' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+	}
+
+	function valueFromRow(li) {
+		var value = { id: li.dataset.valueId, name: li.dataset.name, template: li.dataset.template };
+		if (li.dataset.unit) { value.unit = li.dataset.unit; }
+		return value;
+	}
+
+	function fillValueRow(li, value) {
+		li.dataset.valueId = value.id;
+		li.dataset.name = value.name;
+		li.dataset.template = value.template;
+		li.dataset.unit = value.unit || '';
+		li.innerHTML = '<span class="drag-handle" aria-label="Drag to reorder">' + icon('i-bars') + '</span>' +
+			'<div class="entity-info">' +
+				'<div class="entity-name">' + esc(value.name) + (value.unit ? ' <span class="label-note">' + esc(value.unit) + '</span>' : '') + '</div>' +
+				'<div class="value-template">' + esc(value.template) + '</div>' +
+			'</div>' +
+			'<button type="button" class="edit-item" aria-label="Edit">' + icon('i-pencil') + '</button>' +
+			removeButtonHtml('Remove this value');
+		li.querySelector('.entity-info').addEventListener('click', function() { openValueEditor(li); });
+		li.querySelector('.edit-item').addEventListener('click', function() { openValueEditor(li); });
+		li.querySelector('.remove-item').addEventListener('click', function() {
+			if (!confirmRemoval('Remove the value "' + li.dataset.name + '"?')) { return; }
+			if (editingValueRow === li) { closeValueEditor(); }
+			li.remove();
+			updatePluginEmpty();
+		});
+	}
+
+	function addValueRow(value) {
+		var li = document.createElement('li');
+		li.className = 'list-group-item';
+		fillValueRow(li, value);
+		valueSortable.appendChild(li);
+		return li;
+	}
+
+	function renderValues(list) {
+		closeValueEditor();
+		valueSortable.innerHTML = '';
+		(Array.isArray(list) ? list : []).forEach(function(value) {
+			if (value && value.id && typeof value.template === 'string') {
+				addValueRow({ id: value.id, name: value.name || value.id, template: value.template, unit: value.unit || '' });
+			}
+		});
+		makeSortable(valueSortable);
+	}
+
+	function setValuePreview(cls, text) {
+		valuePreview.className = 'status-line ' + cls;
+		valuePreview.querySelector('.status-text').textContent = text;
+	}
+
+	// Rendered by the plugin, which is what other apps read the values from,
+	// whoever else is answering the page
+	function runValuePreview() {
+		var seq = ++previewSeq;
+		var template = valueTemplate.value;
+		if (!template.trim()) {
+			setValuePreview('', 'Write a template to see what other apps get.');
+			return;
+		}
+		if (!bridge || !pluginReady) {
+			setValuePreview('', 'The preview needs the plugin, which is not running. The value can still be saved.');
+			return;
+		}
+		setValuePreview('connecting', 'Rendering…');
+		bridge.sendMessage('plugin', { type: 'preview_template', template: template, unit: valueUnit.value.trim() }).then(function(reply) {
+			if (seq !== previewSeq) { return; }
+			if (reply && reply.ok) {
+				setValuePreview('connected', reply.text === '' ? 'Other apps get an empty text.' : 'Other apps get: ' + reply.text);
+				return;
+			}
+			var error = reply && reply.error;
+			var message = error && (error.message || (typeof error === 'string' ? error : ''));
+			setValuePreview('error', error && error.code === 'template_error'
+				? 'Home Assistant could not render it: ' + message
+				: (message || 'No preview from the plugin.'));
+		}, function() {
+			if (seq === previewSeq) { setValuePreview('error', 'The plugin did not answer.'); }
+		});
+	}
+
+	function schedulePreview() {
+		if (previewTimer) { clearTimeout(previewTimer); }
+		previewTimer = setTimeout(runValuePreview, 600);
+	}
+
+	function markValueField(input, invalidEl, bad) {
+		input.classList.toggle('is-invalid', bad);
+		show(invalidEl, bad);
+	}
+
+	function openValueEditor(li) {
+		if (editingValueRow) { editingValueRow.classList.remove('editing'); }
+		editingValueRow = li || null;
+		valueName.value = li ? li.dataset.name : '';
+		valueTemplate.value = li ? li.dataset.template : '';
+		valueUnit.value = li ? li.dataset.unit : '';
+		valueExample.value = '';
+		markValueField(valueName, $('value-name-invalid'), false);
+		markValueField(valueTemplate, $('value-template-invalid'), false);
+		if (li) { li.classList.add('editing'); }
+		show(valueEditor, true);
+		show(valueAdd, false);
+		runValuePreview();
+		(li ? valueTemplate : valueName).focus();
+	}
+
+	function closeValueEditor() {
+		if (editingValueRow) { editingValueRow.classList.remove('editing'); }
+		editingValueRow = null;
+		if (previewTimer) { clearTimeout(previewTimer); }
+		previewSeq++;
+		show(valueEditor, false);
+		show(valueAdd, true);
+	}
+
+	// Put what the editor holds on its row, or on a new one; false when it
+	// is not finished
+	function commitValueEditor() {
+		var name = valueName.value.trim();
+		var template = valueTemplate.value.trim();
+		markValueField(valueName, $('value-name-invalid'), !name);
+		markValueField(valueTemplate, $('value-template-invalid'), !template);
+		if (!name || !template) { return false; }
+		var value = {
+			id: editingValueRow ? editingValueRow.dataset.valueId : newValueId(),
+			name: name,
+			template: template,
+			unit: valueUnit.value.trim()
+		};
+		if (editingValueRow) {
+			fillValueRow(editingValueRow, value);
+		} else {
+			addValueRow(value);
+		}
+		closeValueEditor();
+		updatePluginEmpty();
+		return true;
+	}
+
+	valueAdd.addEventListener('click', function() { openValueEditor(null); });
+	$('value-cancel').addEventListener('click', closeValueEditor);
+	$('value-done').addEventListener('click', commitValueEditor);
+	valueTemplate.addEventListener('input', schedulePreview);
+	valueUnit.addEventListener('input', schedulePreview);
+
+	valueExample.addEventListener('change', function() {
+		var example = VALUE_EXAMPLES[parseInt(valueExample.value, 10)];
+		valueExample.value = '';
+		if (!example) { return; }
+		valueTemplate.value = example.template;
+		if (!valueName.value.trim()) { valueName.value = example.name; }
+		markValueField(valueTemplate, $('value-template-invalid'), false);
+		runValuePreview();
+	});
 
 	// --- Main menu order ---
 
@@ -2506,6 +2774,7 @@
 			'plugin_exposed_entities': listItems(pluginSortable).map(entityFromRow),
 			'plugin_share_assistant': pluginShareAssistant.checked,
 			'plugin_allow_unlock': pluginAllowUnlock.checked,
+			'plugin_values': listItems(valueSortable).map(valueFromRow),
 			// Calendars: null order means "use Home Assistant's order"
 			'calendar_order': calendarsCustomized
 				? listItems(calendarsSortable).map(function(li) { return li.dataset.entityId; })
@@ -2636,6 +2905,7 @@
 		renderPluginExposed(watch_config['plugin_exposed_entities']);
 		pluginShareAssistant.checked = watch_config['plugin_share_assistant'] === true;
 		pluginAllowUnlock.checked = watch_config['plugin_allow_unlock'] === true;
+		renderValues(watch_config['plugin_values']);
 		renderIgnoreDomains(watch_config['ignore_domains']);
 
 		// Set up the timeline token section if there is a token worth showing
@@ -2760,6 +3030,12 @@
 	}
 
 	saveBtn.addEventListener('click', function() {
+		// A value still open in the editor is kept, unless it is not finished
+		if (isShown(valueEditor) && !commitValueEditor()) {
+			display_alert('danger', '<strong>Oops!</strong> Finish the custom value you are editing, or cancel it.');
+			valueEditor.scrollIntoView({ behavior: 'smooth', block: 'center' });
+			return;
+		}
 		var values = getFormValues();
 		if (!validateForSave(values)) { return; }
 		if (bridge) {
@@ -3212,7 +3488,9 @@
 			if (reply && reply.ok) {
 				setPluginStatus('connected', 'The plugin can reach Home Assistant. ' +
 					reply.shared + (reply.shared === 1 ? ' entity' : ' entities') + ' shared, plus ' +
-					reply.weather + ' weather.');
+					reply.weather + ' weather' + (reply.values
+						? ' and ' + reply.values + (reply.values === 1 ? ' custom value.' : ' custom values.')
+						: '.'));
 			} else {
 				// The plugin's own message already says what it could not do
 				var message = reply && reply.error && (reply.error.message || reply.error);
@@ -3248,6 +3526,7 @@
 			pluginReady = true;
 			setPluginStatus('connecting', 'Checking the plugin…');
 			checkPlugin();
+			if (isShown(valueEditor)) { runValuePreview(); }
 		});
 
 		var started = false;

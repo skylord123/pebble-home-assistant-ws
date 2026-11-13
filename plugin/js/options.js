@@ -101,11 +101,37 @@ function weatherIds(options) {
     return Array.isArray(options.plugin_weather_entities) ? options.plugin_weather_entities.slice() : null;
 }
 
+/**
+ * The values the wearer wrote templates for, in their order, each with an
+ * id the settings page gave it. Entries without an id or a template are
+ * left out.
+ */
+function values(options) {
+    var list = Array.isArray(options.plugin_values) ? options.plugin_values : [];
+    var out = [];
+    var seen = {};
+    for (var i = 0; i < list.length; i++) {
+        var entry = list[i];
+        if (!entry || typeof entry.id !== 'string' || !entry.id || seen[entry.id]) { continue; }
+        if (typeof entry.template !== 'string' || !entry.template.trim()) { continue; }
+        seen[entry.id] = true;
+        var name = typeof entry.name === 'string' ? entry.name.trim() : '';
+        out.push({
+            id: entry.id,
+            name: name || entry.id,
+            template: entry.template,
+            unit: typeof entry.unit === 'string' ? entry.unit.trim() : ''
+        });
+    }
+    return out;
+}
+
 module.exports = {
     read: read,
     save: save,
     connection: connection,
     exposedIds: exposedIds,
     sharedNames: sharedNames,
-    weatherIds: weatherIds
+    weatherIds: weatherIds,
+    values: values
 };

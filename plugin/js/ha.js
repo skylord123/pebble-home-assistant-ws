@@ -175,7 +175,10 @@ function request(conn, method, path, body) {
                     reason = String(text || '').replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
                 }
                 reason = String(reason).slice(0, 120);
-                throw new PluginError('INVALID_ARGS', 'Home Assistant did not accept that' + (reason ? ': ' + reason : ''));
+                var refusal = new PluginError('INVALID_ARGS', 'Home Assistant did not accept that' + (reason ? ': ' + reason : ''));
+                // On its own, for a caller that words the error itself
+                refusal.reason = reason;
+                throw refusal;
             });
         }
         // A service that fails answers 500; the server itself is fine

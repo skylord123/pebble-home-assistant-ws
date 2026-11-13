@@ -12,6 +12,7 @@ var entities = require('entities');
 var weather = require('weather');
 var actions = require('actions');
 var todo = require('todo');
+var values = require('values');
 var page = require('page');
 var areas = require('areas');
 var calendar = require('calendar');
@@ -30,7 +31,7 @@ function notSetUp(respond) {
 }
 
 //! How long a consumer may treat an answer as current
-var VALID_MS = { entity: 30000, light: 30000, switch: 30000, media_player: 30000 };
+var VALID_MS = { entity: 30000, light: 30000, switch: 30000, media_player: 30000, value: 30000 };
 
 function weatherIds(conn, opts) {
     var known = options.weatherIds(opts);
@@ -113,7 +114,9 @@ function source(request, respond) {
     if (!conn) { return notSetUp(respond); }
 
     var work;
-    if (request.category === 'home' && entities.ITEMS.indexOf(request.item) !== -1) {
+    if (request.category === 'home' && request.item === 'value') {
+        work = values.instances(conn, opts);
+    } else if (request.category === 'home' && entities.ITEMS.indexOf(request.item) !== -1) {
         work = homeSource(conn, opts, request.item, request);
     } else if (request.category === 'weather' && request.item === 'location') {
         work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids, request); });
@@ -181,6 +184,7 @@ Pebble.registerConfigHandler(function(message, respond) {
                 ok: true,
                 shared: options.exposedIds(opts).length,
                 weather: (options.weatherIds(opts) || []).length,
+                values: options.values(opts).length,
                 assistant: opts.plugin_share_assistant === true
             });
         }, function(err) {

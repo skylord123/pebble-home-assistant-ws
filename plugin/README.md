@@ -6,11 +6,13 @@ system. That system is a preview: the Pebble app only runs plugins with
 **Plugins / permissions preview** turned on (Settings → Plugins), and only
 from pbws whose `appinfo.json` has `"manifestVersion": 2`.
 
-The plugin serves two things:
+The plugin serves three things:
 
 - the entities the wearer chooses to share, through **Expose to Plugins** on an
   entity's page on the watch or **Shared with Other Apps** in the settings page,
   and the upcoming events of the calendars among them;
+- values the wearer writes as Home Assistant templates under **Custom values**
+  in the settings page;
 - every `weather.*` entity, which is always shared.
 
 Anything that has not been shared is refused with `PERMISSION_DENIED`, for
@@ -53,6 +55,7 @@ weather entities itself and caches them for an hour.
 Everything the plugin caches is stored under a `plugin:` prefix:
 
 - entity states, for 10 s each;
+- rendered custom values, for 15 s;
 - forecasts, for 15 min, per weather entity;
 - calendar events, for 5 min, per calendar;
 - sensor history, for 5 min;
@@ -126,6 +129,7 @@ minutes.
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
 | `calendar/event` | calendar | `location`, `starts_at`, `ends_at`, `all_day`, `calendar`: the upcoming events of the shared calendars, as the phone's own calendar gives them (see below). |
+| `home/value` | none: the wearer's custom values | `state`, `unit`, `error` (see below) |
 | `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
 | `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
 | `reminders/list` | todo | `name`, `count` (open items) and `items` (the first five open ones, one a line). The shared to-do lists, for `create_reminder`. |
@@ -149,6 +153,33 @@ range are those of `value` (or `state`).
 - One history call covers every sensor the source serves, and the values
   are kept 5 minutes, or until the hour turns. If Home Assistant cannot
   give the history, the sensors are served without it.
+### Custom values
+
+`home/value` serves the values the wearer writes in the settings page, each
+a name, a Home Assistant template and an optional unit, such as "Doors open"
+from `{{ states.binary_sensor | selectattr('attributes.device_class', 'eq',
+'door') | selectattr('state', 'eq', 'on') | list | count }}`. Callers cannot
+send templates of their own.
+
+- There is one instance for each value, in the wearer's order, so a slot
+  that reads the third instance keeps reading the same value. Its
+  `instanceId` is an id the settings page gave the value, which stays the
+  same when the value is renamed or edited. `name` is the wearer's name for
+  it. Values have none of the entity properties.
+- `state` is what the template rendered, with the unit after it when it is a
+  number. A number also comes as a `numericValue` in that unit, from 0 to 100
+  for `%`. `shortText` is cut to 24 characters; `longText` has it all.
+- `unit` is there when the wearer gave one.
+- A template Home Assistant cannot render reads `Error`, and `error` says
+  why. The other values are not affected.
+- All of them are rendered in one `POST /api/template`, each in a
+  `{% set %}` block of its own, and handed back as JSON. When one fails the
+  whole render fails, so each is then rendered on its own to find which; a
+  failing one is rendered on its own after that, until it renders again.
+- Home Assistant only renders templates for an administrator. With a token
+  of a user who is not one, the source answers `PERMISSION_DENIED`.
+- With no values defined the source answers no instances, without asking
+  Home Assistant.
 
 Notes on the weather source:
 
@@ -445,16 +476,23 @@ The settings page (v1.8 and later) sends messages to the plugin with
 
 | Request | Reply |
 | --- | --- |
-| `{ type: 'status' }` | `{ ok, shared, weather, assistant }`, or `{ ok: false, error: { code, message } }`. Checks that the plugin can reach Home Assistant. |
+| `{ type: 'status' }` | `{ ok, shared, weather, values, assistant }`, or `{ ok: false, error: { code, message } }`. Checks that the plugin can reach Home Assistant. |
 | `{ type: 'refresh' }` | `{ ok }`. Asks every source to refresh. The page sends it after a save. |
 | `{ type: 'get_settings' }` | `{ ok, settings, status }`, as the watch app answers it. Then pushes `{ type: 'status', status, settings }` once the states, calendars and pipelines have been fetched. |
 | `{ type: 'save_settings', settings }` | `{ ok }`. Merges `settings` into the stored ones, keeping the previous copy as the backup, and asks every source to refresh. |
 | `{ type: 'connect', ha_url, token }` | `{ ok, ha_version }`. Saves the URL and token only once Home Assistant accepts them. |
 | `{ type: 'search_entities', query, limit }` | `{ ok, results, total }`, ranked as the watch app ranks them. |
+| `{ type: 'preview_template', template, unit }` | `{ ok, result, text }`: what the template rendered, and the `state` text `home/value` would serve with that unit. A template Home Assistant cannot render answers `{ ok: false, error: { code: 'template_error', message } }`. |
 
-The last four are what the page sends the watch app's JS. It sends them
-here instead when the phone opened it with only the plugin behind it, from
-the Plugins tab for example, so the settings can be changed without the
-watch app running. The plugin only writes the settings then: the watch
+The page always sends `preview_template` here, even with the watch app
+answering everything else: the values are only for other apps, which reach
+them through the plugin, so a preview from anywhere else would not show what
+they get. Without the plugin the page still saves values, and says the
+preview is not available.
+
+`get_settings`, `save_settings`, `connect` and `search_entities` are what
+the page sends the watch app's JS. It sends them here instead when the phone
+opened it with only the plugin behind it, from the Plugins tab for example,
+so the settings can be changed without the watch app running. The plugin only writes the settings then: the watch
 app's JS keeps them in memory while it runs and would write over them, but
 reads them afresh when it starts.

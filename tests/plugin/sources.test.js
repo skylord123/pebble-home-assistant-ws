@@ -199,7 +199,7 @@ test('the settings page checking the plugin clears the refusal', async () => {
     await h.source('home', 'light');
     h.ha.token = harness.TOKEN;
     const status = await h.config({ type: 'status' });
-    assert.deepEqual(status, { ok: true, shared: 2, weather: 1, assistant: false });
+    assert.deepEqual(status, { ok: true, shared: 2, weather: 1, values: 0, assistant: false });
     assert.equal(h.stored('auth_failed'), null);
     assert.equal(h.secureStorage.getItem('auth_failed'), null);
     assert.deepEqual(ids(await h.source('home', 'light')), ['light.kitchen']);

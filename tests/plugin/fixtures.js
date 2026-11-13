@@ -265,7 +265,29 @@ function todoItems() {
     };
 }
 
+/** Custom values as the settings page saves them: a number, a percentage, text, and one that fails */
+function values() {
+    return [
+        { id: 'v-doors', name: 'Doors open', template: '{{ doors }}' },
+        { id: 'v-battery', name: 'Lowest battery', template: '{{ battery }}', unit: '%' },
+        { id: 'v-home', name: 'Who is home', template: '{{ people }}' },
+        { id: 'v-broken', name: 'Broken', template: '{{ broken }}' }
+    ];
+}
+
+/** What Home Assistant renders the templates of values() to */
+function templates() {
+    return {
+        '{{ doors }}': '2',
+        '{{ battery }}': ' 17\n',
+        '{{ people }}': 'Alex, Jo',
+        '{{ broken }}': { error: 'UndefinedError: \'None\' has no attribute \'state\'' }
+    };
+}
+
 module.exports = {
+    values: values,
+    templates: templates,
     states: states,
     forecasts: forecasts,
     todoItems: todoItems,

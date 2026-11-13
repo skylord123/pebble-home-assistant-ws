@@ -53,8 +53,10 @@ async function everythingEmitted() {
     h.settings({
         plugin_exposed_entities: all.map((s) => s.entity_id).filter((id) => id.indexOf('weather.') !== 0),
         plugin_weather_entities: ['weather.home', 'weather.nws'],
-        plugin_share_assistant: true
+        plugin_share_assistant: true,
+        plugin_values: fixtures.values()
     });
+    h.ha.templates = fixtures.templates();
 
     const emitted = {};
     function note(key, instance) {
@@ -119,7 +121,7 @@ test('the manifest lists the sources and actions the code serves', () => {
     const h = harness.create();
     const engine = h.engine();
     const items = engine.require('entities').ITEMS;
-    const served = items.map((item) => 'home/' + item).concat(['calendar/event', 'weather/location', 'agent/configured',
+    const served = items.map((item) => 'home/' + item).concat(['home/value', 'calendar/event', 'weather/location', 'agent/configured',
         'reminders/configured', 'reminders/list']).sort();
     assert.deepEqual(manifest.sources.map(sourceKey).sort(), served);
     manifest.sources.forEach((source) => assert.equal(source.items.length, 1, sourceKey(source)));
