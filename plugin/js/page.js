@@ -170,7 +170,7 @@ function refreshSources() {
     // A new token may be an administrator's, which can read the rooms
     areas.forgetFailure();
     Pebble.refreshSources(['home/entity', 'home/value', 'weather/location', 'calendar/event',
-        'agent/configured', 'reminders/configured', 'reminders/list']
+        'agent/configured', 'agent/pipeline', 'reminders/configured', 'reminders/list']
         .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
 }
 

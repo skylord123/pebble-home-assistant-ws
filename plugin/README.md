@@ -533,6 +533,34 @@ read they come without `items`.
   "items": { "longText": { "text": "Milk\nEggs\nCoffee" } } } }
 ```
 
+### `agent/pipeline`
+
+The assistant's pipelines in Home Assistant, in Home Assistant's order, for
+an app with a picker of its own. The `instanceId` is the pipeline's id,
+which you can pass as `pipeline` to `ask_assistant`, `transcribe`, `speak`
+and `speak_next`. Read from what Home Assistant WS saved when it last
+looked, so it costs Home Assistant nothing.
+
+| Property | Shapes | |
+| --- | --- | --- |
+| `name` | shortText | The pipeline's name. |
+| `listens` | boolean | It has speech-to-text, so `transcribe` works with it. |
+| `speaks` | boolean | It has text-to-speech, so `speak` works with it. |
+| `preferred` | boolean | Home Assistant's preferred pipeline. |
+| `selected` | boolean | The one the wearer chose in Home Assistant WS, which a call without `pipeline` uses. |
+
+`listens` and `speaks` are left out when Home Assistant WS has not said,
+which an older watch app may not have.
+
+```json
+{ "instanceId": "01JD8ZK3Q4", "properties": {
+  "name": { "shortText": { "text": "Home" } },
+  "listens": { "boolean": { "value": true } },
+  "speaks": { "boolean": { "value": true } },
+  "preferred": { "boolean": { "value": true } },
+  "selected": { "boolean": { "value": true } } } }
+```
+
 ### `agent/configured` and `reminders/configured`
 
 One instance each, with a `configured` boolean and a `name`, for Index (see
@@ -701,7 +729,7 @@ Pebble.invokeAction({ plugin: HA, action: 'create_reminder', args: { title: 'Mil
 
 | Action | Arguments | Does |
 | --- | --- | --- |
-| `ask_assistant` | `text`, `new_conversation`?, `json`?, `conversation_id`?, `speak`?, `rate`? | Asks Home Assistant's assistant, in the wearer's own pipeline and language, and answers with its reply as `text`. |
+| `ask_assistant` | `text`, `new_conversation`?, `json`?, `conversation_id`?, `speak`?, `rate`?, `pipeline`? | Asks Home Assistant's assistant, in the wearer's own pipeline and language, and answers with its reply as `text`. |
 | `send_to_agent` | `message`, `chat_id`? | The same, under the name Index looks for. `chat_id` is ignored. |
 
 Both need `Assistant`, and only work while the wearer has turned on sharing
@@ -736,6 +764,11 @@ every other app shares is neither read nor carried on, and
 `new_conversation` is ignored. Without `json`, `conversation_id` is
 ignored and nothing changes. `json` and `speak` go together; the answer
 then also has `next` or `speech_error`.
+
+`pipeline` runs another of the wearer's pipelines than the one they chose,
+by its `instanceId` from [`agent/pipeline`](#agentpipeline); one not listed
+there is `INVALID_ARGS`. When your app switches pipeline, start a new
+conversation too.
 
 For `speak` and `rate`, see [Speech](#speech).
 
@@ -787,8 +820,8 @@ audio, not words: to show the wearer an answer, use `ask_assistant`.
 
 | Action | Arguments | Does |
 | --- | --- | --- |
-| `speak` | `text`, `format`, `rate`? | The first slice of `text` as audio. |
-| `speak_next` | `text`, `next`, `format` | The slice the cursor `next` names. Send the same `text` again. |
+| `speak` | `text`, `format`, `rate`?, `pipeline`? | The first slice of `text` as audio. |
+| `speak_next` | `text`, `next`, `format`, `pipeline`? | The slice the cursor `next` names. Send the same `text` again, and the same `pipeline` if you gave one. |
 
 - `text` is up to 20000 characters. Markdown is read as the words it
   shows. About the first 1200 characters are spoken, ending at a sentence.
@@ -796,6 +829,9 @@ audio, not words: to show the wearer an answer, use `ask_assistant`.
   by accident.
 - `rate` is `8000` (the default) or `16000` samples a second. 16000 needs
   twice the bytes, so pick it only if your link to the watch keeps up.
+- `pipeline` speaks in the voice of another of the wearer's pipelines, as
+  for `ask_assistant`. A cursor belongs to the pipeline it was made for:
+  `speak_next` refuses it with another, or without one.
 
 Each result is JSON in `text`:
 
@@ -875,7 +911,7 @@ recording, and answers with the words.
 
 | Action | Arguments | Does |
 | --- | --- | --- |
-| `transcribe` | `audio`, `format`, `sample_rate`? | What was said in `audio`, as plain text. |
+| `transcribe` | `audio`, `format`, `sample_rate`?, `pipeline`? | What was said in `audio`, as plain text. |
 
 - `audio` is the whole recording in base64: 16 kHz, mono, at most 30
   seconds.
@@ -886,6 +922,8 @@ recording, and answers with the words.
   30 seconds is 320000 characters of base64 as `ima_adpcm`, and four times
   that as `pcm16le`.
 - `sample_rate` may only be `16000`, the rate Home Assistant takes.
+- `pipeline` hears with another of the wearer's pipelines, as for
+  `ask_assistant`. `listens` in `agent/pipeline` says which can.
 
 ```js
 Pebble.invokeAction({ plugin: HA, action: 'transcribe',

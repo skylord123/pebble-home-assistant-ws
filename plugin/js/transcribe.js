@@ -1,7 +1,8 @@
 /**
  * What was said in a recording, for watch apps that record the wearer's
  * voice themselves. Home Assistant's speech-to-text, in the pipeline chosen
- * in the watch app, hears the audio and the plugin answers with the words.
+ * in the watch app or the one the call names, hears the audio and the plugin
+ * answers with the words.
  *
  * The audio comes whole, in base64: a plugin's WebSocket closes when the
  * request that opened it ends, so nothing can be heard live across calls. It
@@ -13,7 +14,7 @@
  */
 var ha = require('ha');
 var ws = require('ws');
-var options = require('options');
+var pipelines = require('pipelines');
 var codec = require('speech-codec');
 
 var PluginError = ha.PluginError;
@@ -127,12 +128,15 @@ function sttError(data) {
 }
 
 /**
- * transcribe { audio, format, sample_rate? }: the words Home Assistant heard
- * in `audio`, as plain text. Nothing heard is an empty answer, not an error.
+ * transcribe { audio, format, sample_rate?, pipeline? }: the words Home
+ * Assistant heard in `audio`, as plain text. Nothing heard is an empty
+ * answer, not an error.
  */
 function transcribe(conn, opts, args) {
     var pcm;
+    var pipeline;
     try {
+        pipeline = pipelines.choose(opts, args);
         pcm = audioArg(args);
     } catch (err) {
         return Promise.reject(err);
@@ -144,8 +148,7 @@ function transcribe(conn, opts, args) {
         end_stage: 'stt',
         input: { sample_rate: SAMPLE_RATE, no_vad: true }
     };
-    var pipeline = options.pipeline(opts);
-    if (pipeline) { command.pipeline = pipeline; }
+    if (pipeline.id) { command.pipeline = pipeline.id; }
 
     var handler = null;
     var sent = false;

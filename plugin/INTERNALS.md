@@ -70,8 +70,8 @@ Everything the plugin caches is stored under a `plugin:` prefix:
 - calendar events, for 5 min, per calendar;
 - sensor history, for 5 min;
 - the entities' areas, for an hour;
-- the engine, voice and language of the assistant's pipeline, for an hour,
-  for speech (see [Speech](#speech));
+- the engine, voice and language of each pipeline speech was asked in, for
+  an hour (see [Speech](#speech));
 - a marker for a token Home Assistant refused, so a bad token is not retried
   on every poll. Every refused attempt counts towards Home Assistant's IP ban.
   - While the marker is set, the plugin answers `AUTH_REQUIRED` without asking
@@ -143,6 +143,7 @@ minutes.
 | `calendar/event` | calendar | `location`, `starts_at`, `ends_at`, `all_day`, `calendar`: the upcoming events of the shared calendars, as the phone's own calendar gives them (see below). |
 | `home/value` | none: the wearer's custom values | `state`, `unit`, `error` (see below) |
 | `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
+| `agent/pipeline` | none: the pipelines the watch app saved (`available_pipelines`) | `name`, `listens` and `speaks` (whether it has speech-to-text and text-to-speech; left out when the saved entry does not say), `preferred`, `selected` (the watch app's choice, or the preferred one). One instance per pipeline, its id the pipeline's. |
 | `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
 | `reminders/list` | todo | `name`, `count` (open items) and `items` (the first five open ones, one a line). The shared to-do lists, for `create_reminder`. |
 | `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below; the wearer's locations also `sunrise`, `sunset` |
@@ -346,12 +347,12 @@ happened, and asks the sources that show that entity to refresh.
 | `alarm_arm` `{ mode?, code? }`, `alarm_disarm` `{ code? }` | Alarm panels. `mode` is `home`, `away` (the default), `night`, `vacation` or `custom_bypass`. |
 | `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
 | `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
-| `ask_assistant` `{ text, new_conversation?, json?, conversation_id?, speak?, rate? }` | Asks Home Assistant's assistant and returns what it said. With `json`, returns JSON and keeps the caller's own conversation. With `speak`, also starts reading it out (see [Speech](#speech)). See below. |
+| `ask_assistant` `{ text, new_conversation?, json?, conversation_id?, speak?, rate?, pipeline? }` | Asks Home Assistant's assistant and returns what it said. With `json`, returns JSON and keeps the caller's own conversation. With `speak`, also starts reading it out (see [Speech](#speech)). See below. |
 | `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
 | `create_reminder` `{ title, due_iso?, timezone?, notify_before_ms?, instanceId? }` | Adds an item to a shared to-do list. See below. |
-| `speak` `{ text, format, rate? }` | Says `text` in the assistant's voice, as audio for a watch app to play. Returns the first slice of it. See below. |
-| `speak_next` `{ text, next, format }` | The next slice of that audio. |
-| `transcribe` `{ audio, format, sample_rate? }` | What was said in a recording, as plain text. See [Hearing what was said](#hearing-what-was-said). |
+| `speak` `{ text, format, rate?, pipeline? }` | Says `text` in the assistant's voice, as audio for a watch app to play. Returns the first slice of it. See below. |
+| `speak_next` `{ text, next, format, pipeline? }` | The next slice of that audio. |
+| `transcribe` `{ audio, format, sample_rate?, pipeline? }` | What was said in a recording, as plain text. See [Hearing what was said](#hearing-what-was-said). |
 
 Actions check the entity's `supported_features` first. Asking a window
 that cannot be positioned to move to 40%, or a player that cannot skip to
@@ -434,6 +435,14 @@ words. With `speak` as well, `next` or `speech_error` is added to the same
 JSON. Without `json`, nothing changes, so Index and the toasts get plain
 text.
 
+`ask_assistant`, `transcribe`, `speak` and `speak_next` take a `pipeline`,
+for a watch app with a picker of its own: the id of one the watch app saved
+(`agent/pipeline`, `js/pipelines.js`), checked against that list, so a
+caller can only pick among the wearer's own pipelines. Without it they use
+the watch app's choice. A speech cursor made with a `pipeline` carries a
+fingerprint of it with that of the text, so `speak_next` refuses it with
+another pipeline or none, and the voice cannot change part way through.
+
 `send_to_agent` is `ask_assistant` under the name Index looks for. A plugin
 with that action and an `agent/configured` source is offered in Index as a
 destination for a ring gesture (Hold & Talk, Click & Hold) and for messages
@@ -515,6 +524,11 @@ An action can only answer with text, so each result is JSON in `text`:
 - `last` says nothing follows. Otherwise `next` is a cursor: call
   `speak_next` with the same `text`, that `next` and `format` for the
   following slice.
+
+The voice is looked up over the WebSocket (`assist_pipeline/pipeline/list`)
+and kept for an hour under `plugin:voice:<pipeline id>` (`voice:` alone for
+Home Assistant's preferred one), so moving between pipelines does not look
+each up again.
 
 The text is split into pieces of a sentence or a few, about 200 characters
 at most, and the first piece is kept short so the first word comes soon.

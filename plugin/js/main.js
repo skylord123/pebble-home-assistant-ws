@@ -17,6 +17,7 @@ var page = require('page');
 var areas = require('areas');
 var calendar = require('calendar');
 var history = require('history');
+var pipelines = require('pipelines');
 
 function fail(respond, err) {
     if (err instanceof ha.PluginError) {
@@ -51,7 +52,8 @@ var VALID_MS = {
     'home/value': 60000,
     'calendar/event': 300000,
     'weather/location': 900000,
-    'reminders/list': 300000
+    'reminders/list': 300000,
+    'agent/pipeline': 300000
 };
 
 function weatherIds(conn, opts) {
@@ -158,6 +160,9 @@ function source(request, respond) {
         work = todo.lists(conn, opts, request);
     } else if (request.category === 'calendar' && request.item === 'event') {
         work = calendar.upcoming(conn, options.exposedIds(opts));
+    } else if (request.category === 'agent' && request.item === 'pipeline') {
+        // From what the watch app saved, so it needs nothing from Home Assistant
+        work = Promise.resolve(pipelines.instances(opts));
     } else {
         return respond.error('INVALID_REQUEST', 'unknown item ' + request.category + '/' + request.item);
     }

@@ -24,6 +24,7 @@ var options = require('options');
 var entities = require('entities');
 var todo = require('todo');
 var speech = require('speech');
+var pipelines = require('pipelines');
 var transcribe = require('transcribe');
 
 var PluginError = ha.PluginError;
@@ -483,7 +484,8 @@ function runEntityAction(conn, opts, name, args) {
 
 /**
  * Send text to Home Assistant's assistant and answer with what it said. It
- * runs the pipeline chosen in the watch app, from the intent stage, so the
+ * runs the pipeline chosen in the watch app, or the one the caller names
+ * (pipelines.js), from the intent stage, so the
  * agent and language are the pipeline's own. The conversation carries on
  * across asks for a few minutes, since plain text has nowhere to hand its id
  * back to the caller. Any app asking that way shares the one conversation.
@@ -511,12 +513,12 @@ function askAssistant(conn, opts, args) {
     // A watch app can have the reply read out too (speech.js)
     var speak = args.speak === true;
     var rate;
-    if (speak) {
-        try {
-            rate = speech.rateArg(args);
-        } catch (err) {
-            return Promise.reject(err);
-        }
+    var pipeline;
+    try {
+        if (speak) { rate = speech.rateArg(args); }
+        pipeline = pipelines.choose(opts, args);
+    } catch (err) {
+        return Promise.reject(err);
     }
 
     var command = {
@@ -525,8 +527,7 @@ function askAssistant(conn, opts, args) {
         end_stage: 'intent',
         input: { text: text }
     };
-    var pipeline = options.pipeline(opts);
-    if (pipeline) { command.pipeline = pipeline; }
+    if (pipeline.id) { command.pipeline = pipeline.id; }
     var previous;
     if (json) {
         previous = own;
@@ -581,7 +582,7 @@ function askAssistant(conn, opts, args) {
         }
         // The reply, and where speak_next picks up its speech. Whatever goes
         // wrong with the speech, the reply still gets back.
-        return speech.start(conn, opts, reply, rate).then(function(started) {
+        return speech.start(conn, pipeline, reply, rate).then(function(started) {
             if (started.next) { result.next = started.next; }
             if (started.speech_error) { result.speech_error = started.speech_error; }
             return { text: JSON.stringify(result), refreshed: refreshed };

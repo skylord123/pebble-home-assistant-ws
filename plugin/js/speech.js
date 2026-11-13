@@ -1,8 +1,8 @@
 /**
  * Text read out in the voice of the wearer's assistant, for watch apps with a
  * speaker. Home Assistant makes the speech with the engine, voice and
- * language of the pipeline chosen in the watch app, as WAV at the rate asked
- * for, and it is handed back as the 4-bit IMA ADPCM the watch decodes, the
+ * language of the pipeline chosen in the watch app (or the one the call
+ * names), as WAV at the rate asked for, and it is handed back as the 4-bit IMA ADPCM the watch decodes, the
  * same as the watch app's own spoken answers (speech-codec).
  *
  * An action can only answer with text, so a result is JSON in `text`, its
@@ -25,7 +25,7 @@
 var ha = require('ha');
 var ws = require('ws');
 var store = require('store');
-var options = require('options');
+var pipelines = require('pipelines');
 var codec = require('speech-codec');
 
 var PluginError = ha.PluginError;
@@ -109,14 +109,15 @@ function rateArg(args) {
  * piece's audio, which starts `clipAt` bytes into the whole; the encoder's
  * `predictor` and `index` at the start of the piece; and the `gain` the
  * first piece set, in hundredths, or 0 while there has been no first piece;
- * a fingerprint of the `text` it belongs to; and one of the `audio` of the
- * piece before `at`, since the encoder state is from the piece's start and
- * only fits the rest of it if Home Assistant makes the piece the same again.
+ * a fingerprint of the `text` it belongs to, and of the pipeline the call
+ * named; and one of the `audio` of the piece before `at`, since the encoder
+ * state is from the piece's start and only fits the rest of it if Home
+ * Assistant makes the piece the same again.
  */
-function firstCursor(rate, pieces) {
+function firstCursor(rate, pieces, named) {
     return {
         rate: rate, piece: 0, at: 0, clipAt: 0, predictor: 0, index: 0, gain: 0,
-        text: textPrint(pieces), audio: audioPrint(new Uint8Array(0), 0)
+        text: textPrint(pieces, named), audio: audioPrint(new Uint8Array(0), 0)
     };
 }
 
@@ -133,9 +134,10 @@ function fingerprint(length, at) {
     return (hash >>> 0).toString(36);
 }
 
-//! What is said of a text, so a cursor can tell it apart from other text
-function textPrint(pieces) {
-    var words = pieces.join('\n');
+//! What is said of a text, and in which pipeline's voice when the call
+//! named one, so a cursor can tell it apart from other text or another voice
+function textPrint(pieces, named) {
+    var words = pieces.join('\n') + (named ? '\n\n' + named : '');
     return fingerprint(words.length, function(i) { return words.charCodeAt(i); });
 }
 
@@ -167,13 +169,13 @@ function decodeCursor(text) {
 }
 
 /**
- * The engine, voice and language of the pipeline the watch app uses. The
+ * The engine, voice and language of `pipeline` (from pipelines.choose). The
  * settings only keep its name and id, so Home Assistant is asked, and the
- * answer kept for an hour.
+ * answer kept for an hour, for each pipeline.
  */
-function voiceFor(conn, opts) {
-    var chosen = options.pipeline(opts) || '';
-    var cached = cachedVoice(opts);
+function voiceFor(conn, pipeline) {
+    var chosen = pipeline.id || '';
+    var cached = cachedVoice(pipeline);
     if (cached) {
         return Promise.resolve(cached);
     }
@@ -199,15 +201,19 @@ function voiceFor(conn, opts) {
             voice: pipeline.tts_voice || null,
             language: pipeline.tts_language || pipeline.language || null
         };
-        store.remember('voice', { pipeline: chosen, voice: voice });
+        store.remember(voiceKey(chosen), voice);
         return voice;
     });
 }
 
-//! The voice looked up within the hour for the pipeline in use, or null
-function cachedVoice(opts) {
-    var cached = store.fresh('voice', VOICE_TTL_MS);
-    return cached && cached.pipeline === (options.pipeline(opts) || '') ? cached.voice : null;
+//! Where the voice of a pipeline is kept: '' is Home Assistant's preferred one
+function voiceKey(id) {
+    return 'voice:' + id;
+}
+
+//! The voice looked up within the hour for `pipeline`, or null
+function cachedVoice(pipeline) {
+    return store.fresh(voiceKey(pipeline.id || ''), VOICE_TTL_MS);
 }
 
 /**
@@ -280,12 +286,13 @@ function base64(bytes) {
  * already made), encoded from the state the cursor carries, and cut at the
  * cursor; the next piece is asked for before answering.
  */
-function slice(conn, opts, pieces, c) {
-    if (c.piece >= pieces.length || c.text !== textPrint(pieces)) {
-        return Promise.reject(invalid('next does not belong to this text'));
+function slice(conn, pipeline, pieces, c) {
+    if (c.piece >= pieces.length || c.text !== textPrint(pieces, pipeline.named)) {
+        return Promise.reject(invalid(pipeline.named ? 'next does not belong to this text and pipeline'
+            : 'next does not belong to this text'));
     }
     var voice;
-    return voiceFor(conn, opts).then(function(found) {
+    return voiceFor(conn, pipeline).then(function(found) {
         voice = found;
         return startPiece(conn, voice, pieces[c.piece], c.rate);
     }).then(function(path) {
@@ -338,23 +345,23 @@ function slice(conn, opts, pieces, c) {
 
 /**
  * For ask_assistant with `speak`: resolve { next }, the cursor speak_next
- * takes for `reply`, having Home Assistant start on its first piece when the
- * voice is already known. The assistant can take most of the request's
+ * takes for `reply` in `pipeline` (from pipelines.choose), having Home
+ * Assistant start on its first piece when the voice is already known. The assistant can take most of the request's
  * time, and running out of it would lose a reply to something already done,
  * so this waits for nothing that could stall: not the audio, and not a
  * WebSocket to look the voice up, which has no timeout (there are no timers)
  * and is left to the first speak_next. Resolves { speech_error } saying why
  * instead, or {} when there is nothing in the reply to say.
  */
-function start(conn, opts, reply, rate) {
+function start(conn, pipeline, reply, rate) {
     // speak_next would refuse it
     if (reply.length > MAX_TEXT_CHARS) {
         return Promise.resolve({ speech_error: 'The reply is too long to read out' });
     }
     var pieces = piecesOf(reply);
     if (pieces.length === 0) { return Promise.resolve({}); }
-    var next = encodeCursor(firstCursor(rate, pieces));
-    var voice = cachedVoice(opts);
+    var next = encodeCursor(firstCursor(rate, pieces, pipeline.named));
+    var voice = cachedVoice(pipeline);
     if (!voice) {
         return Promise.resolve({ next: next });
     }
@@ -365,32 +372,36 @@ function start(conn, opts, reply, rate) {
     });
 }
 
-/** speak { text, format, rate? }: the first slice of `text` */
+/** speak { text, format, rate?, pipeline? }: the first slice of `text` */
 function speak(conn, opts, args) {
     var pieces;
     var rate;
+    var pipeline;
     try {
         formatArg(args);
         pieces = textArg(args);
         rate = rateArg(args);
+        pipeline = pipelines.choose(opts, args);
     } catch (err) {
         return Promise.reject(err);
     }
-    return slice(conn, opts, pieces, firstCursor(rate, pieces));
+    return slice(conn, pipeline, pieces, firstCursor(rate, pieces, pipeline.named));
 }
 
-/** speak_next { text, next, format }: the slice `next` names */
+/** speak_next { text, next, format, pipeline? }: the slice `next` names */
 function speakNext(conn, opts, args) {
     var pieces;
     var cursor;
+    var pipeline;
     try {
         formatArg(args);
         pieces = textArg(args);
         cursor = decodeCursor(args.next);
+        pipeline = pipelines.choose(opts, args);
     } catch (err) {
         return Promise.reject(err);
     }
-    return slice(conn, opts, pieces, cursor);
+    return slice(conn, pipeline, pieces, cursor);
 }
 
 module.exports = {
