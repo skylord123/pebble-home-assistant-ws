@@ -99,7 +99,9 @@ def build_platform(ctx, platform=None, binaries=None):
     build_worker = os.path.exists('worker_src')
 
     app_elf = '{}/pebble-app.elf'.format(ctx.env.BUILD_DIR)
-    ctx.pbl_program(source=ctx.path.ant_glob('src/**/*.c'),
+    # The speech kit other apps copy is the app's own speaker too
+    ctx.pbl_program(source=ctx.path.ant_glob('src/**/*.c') +
+                    [ctx.path.make_node('sdk/speech/ha_speech.c')],
                     target=app_elf)
 
     if build_worker:
