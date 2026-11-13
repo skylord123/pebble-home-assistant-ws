@@ -587,6 +587,22 @@ test('when the rest cannot be had, what came still plays and the error follows',
     assert.deepEqual(watch.violations, []);
 });
 
+test('stopped on the watch after the rest could not be had is just stopped', async () => {
+    const { h, watch, speech } = setUp();
+    let calls = 0;
+    h.ha.routes.push({ method: 'POST', pattern: '/api/tts_get_url', handler: () => (++calls > 2 ? { status: 500, body: { message: 'boom' } } : undefined) });
+    const promise = speech.say(TEXT);
+    let settled = false;
+    promise.then(() => { settled = true; }, () => { settled = true; });
+    // Until the plugin has failed, with some audio already on the watch
+    for (let i = 0; i < 2000 && (calls <= 2 || !watch.audio.length); i++) { await tick(); }
+    assert.ok(watch.audio.length > 0 && calls > 2);
+    assert.equal(settled, false);
+    // The wearer presses Back
+    watch.end(STATES.STOPPED);
+    assert.equal(await promise, 'stopped');
+});
+
 // MARK: - ask() and playReply()
 
 test('ask() resolves the reply at once and reads it out', async () => {

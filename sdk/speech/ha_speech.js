@@ -785,7 +785,10 @@ function create(options) {
 
             // The watch has finished with it, one way or another
             function ended(error, how) {
-                job.settle(error || job.error, how === 'nothing' ? 'done' : how);
+                // Stopped, muted or taken over is how it ended, even when the
+                // plugin had already failed to give the rest
+                var cut = how === 'stopped' || how === 'muted' || how === 'preempted';
+                job.settle(error || (cut ? null : job.error), how === 'nothing' ? 'done' : how);
             }
 
             // The plugin could not give the rest. What has come still plays,
