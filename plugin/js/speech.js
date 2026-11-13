@@ -173,9 +173,9 @@ function decodeCursor(text) {
  */
 function voiceFor(conn, opts) {
     var chosen = options.pipeline(opts) || '';
-    var cached = store.fresh('voice', VOICE_TTL_MS);
-    if (cached && cached.pipeline === chosen) {
-        return Promise.resolve(cached.voice);
+    var cached = cachedVoice(opts);
+    if (cached) {
+        return Promise.resolve(cached);
     }
     return ws.run(conn, { type: 'assist_pipeline/pipeline/list' }, function(msg, settle) {
         if (msg.type === 'result') { settle(msg.result || {}); }
@@ -200,6 +200,12 @@ function voiceFor(conn, opts) {
         store.remember('voice', { pipeline: chosen, voice: voice });
         return voice;
     });
+}
+
+//! The voice looked up within the hour for the pipeline in use, or null
+function cachedVoice(opts) {
+    var cached = store.fresh('voice', VOICE_TTL_MS);
+    return cached && cached.pipeline === (options.pipeline(opts) || '') ? cached.voice : null;
 }
 
 /**
@@ -329,12 +335,14 @@ function slice(conn, opts, pieces, c) {
 }
 
 /**
- * For ask_assistant with `speak`: have Home Assistant start on the first
- * piece of `reply`, and resolve { next }, the cursor speak_next takes for it.
- * It does not wait for the audio: the assistant can take most of the
- * request's time, and running out of it would lose a reply to something
- * already done. Resolves { speech_error } saying why instead, or {} when
- * there is nothing in the reply to say.
+ * For ask_assistant with `speak`: resolve { next }, the cursor speak_next
+ * takes for `reply`, having Home Assistant start on its first piece when the
+ * voice is already known. The assistant can take most of the request's
+ * time, and running out of it would lose a reply to something already done,
+ * so this waits for nothing that could stall: not the audio, and not a
+ * WebSocket to look the voice up, which has no timeout (there are no timers)
+ * and is left to the first speak_next. Resolves { speech_error } saying why
+ * instead, or {} when there is nothing in the reply to say.
  */
 function start(conn, opts, reply, rate) {
     // speak_next would refuse it
@@ -343,10 +351,13 @@ function start(conn, opts, reply, rate) {
     }
     var pieces = piecesOf(reply);
     if (pieces.length === 0) { return Promise.resolve({}); }
-    return voiceFor(conn, opts).then(function(voice) {
-        return startPiece(conn, voice, pieces[0], rate);
-    }).then(function() {
-        return { next: encodeCursor(firstCursor(rate, pieces)) };
+    var next = encodeCursor(firstCursor(rate, pieces));
+    var voice = cachedVoice(opts);
+    if (!voice) {
+        return Promise.resolve({ next: next });
+    }
+    return startPiece(conn, voice, pieces[0], rate).then(function() {
+        return { next: next };
     }, function(err) {
         return { speech_error: (err && err.message) || 'The reply cannot be read out' };
     });

@@ -375,7 +375,7 @@ test('the manifest declares speak and speak_next for watch apps, with Location a
     });
 });
 
-test('ask_assistant with speak answers with the reply and a cursor, having started its speech', async () => {
+test('ask_assistant with speak answers with the reply and a cursor, and leaves the voice to speak_next', async () => {
     const h = setUp({ plugin_share_assistant: true });
     const said = 'The front door is locked and the garage is closed. Everything else is fine too.';
     h.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: said } } } });
@@ -386,10 +386,9 @@ test('ask_assistant with speak answers with the reply and a cursor, having start
     assert.equal(result.reply, said);
     assert.ok(answer.ok.text.length < 200 + said.length);
 
-    // Home Assistant is already making the first piece, and nothing was waited for
-    assert.deepEqual(ttsPosts(h), [piecesOf(h, said)[0]]);
-    assert.equal(h.ha.calls('POST /api/tts_get_url')[0].body.options.preferred_sample_rate, 16000);
-    assert.equal(h.ha.calls(/^GET \/api\/tts_proxy\//).length, 0);
+    // Nothing that could stall: no second WebSocket for the voice, no speech
+    assert.equal(h.ha.sockets.length, 1);
+    assert.equal(h.ha.calls('POST /api/tts_get_url').length, 0);
 
     // The SDK hands the reply back with the cursor
     const results = [parse(await h.action('speak_next', { text: result.reply, next: result.next, format: 'ima_adpcm' }))];
@@ -410,14 +409,16 @@ test('ask_assistant without speak is plain text and makes no speech', async () =
 });
 
 test('ask_assistant still gets its reply back when the reply cannot be spoken', async () => {
+    // A voice not looked up yet is looked up by speak_next, which then says why
     const h = setUp({ plugin_share_assistant: true, selected_pipeline: 'p1' });
     let result = JSON.parse((await h.action('ask_assistant', { text: 'lights on', speak: true })).ok.text);
-    assert.deepEqual(result, {
-        reply: 'Turned on the kitchen light.',
-        speech_error: 'The assistant\'s pipeline in Home Assistant has no text-to-speech'
-    });
+    assert.equal(result.reply, 'Turned on the kitchen light.');
+    assert.deepEqual((await h.action('speak_next', { text: result.reply, next: result.next, format: 'ima_adpcm' })).error,
+        { code: 'PLUGIN_UNAVAILABLE', message: 'The assistant\'s pipeline in Home Assistant has no text-to-speech' });
 
+    // With the voice known, Home Assistant refusing to start says so
     const failing = setUp({ plugin_share_assistant: true });
+    await failing.action('speak', { text: 'Short and sweet, that is it.', format: 'ima_adpcm' });
     failing.ha.on('POST', '/api/tts_get_url', () => ({ status: 500, body: 'Error' }));
     result = JSON.parse((await failing.action('ask_assistant', { text: 'lights on', speak: true })).ok.text);
     assert.equal(result.reply, 'Turned on the kitchen light.');
@@ -492,4 +493,19 @@ test('a cursor stays within 64 characters', async () => {
     results.forEach((r) => { if (r.next) { assert.ok(r.next.length <= 64, r.next); } });
     // The longest one could be
     assert.ok('1.16000.99.16777215.16777215.-32768.88.400.1z141z3.1z141z3'.length <= 64);
+});
+
+test('ask_assistant with speak starts the first piece when the voice is already known', async () => {
+    const h = setUp({ plugin_share_assistant: true });
+    await h.action('speak', { text: 'Short and sweet, that is it.', format: 'ima_adpcm' });
+    const said = 'The front door is locked and the garage is closed. Everything else is fine too.';
+    h.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: said } } } });
+    h.ha.requests.length = 0;
+    const sockets = h.ha.sockets.length;
+    const result = JSON.parse((await h.action('ask_assistant', { text: 'is the house locked', speak: true, rate: 16000 })).ok.text);
+    assert.ok(result.next);
+    assert.equal(h.ha.sockets.length, sockets + 1, 'looked the voice up again');
+    assert.deepEqual(ttsPosts(h), [piecesOf(h, said)[0]]);
+    assert.equal(h.ha.calls('POST /api/tts_get_url')[0].body.options.preferred_sample_rate, 16000);
+    assert.equal(h.ha.calls(/^GET \/api\/tts_proxy\//).length, 0, 'waited for the audio');
 });

@@ -527,26 +527,41 @@ Errors:
 
 To have the assistant's reply read out, call `ask_assistant` with
 `speak: true` (and `rate`, as for `speak`). It runs the assistant as
-usual, has Home Assistant start on the first piece of the reply, and
-answers with JSON instead of plain text:
+usual and answers with JSON instead of plain text:
 
 ```json
 { "reply": "The garage door is closed.", "next": "<cursor>" }
 ```
 
-Call `speak_next` with `reply` as `text` and that `next` for the audio. It
-does not wait for the audio itself: the assistant can take most of the 20
-seconds a request has, and running out of them would lose the reply to
-something already done. When the reply cannot be spoken, `next` is left out
-and `speech_error` says why; when there is nothing in it to say, both are
-left out. With `speak`, `ask_assistant` still needs the `Assistant`
-permission and **Share with Apps**.
+Call `speak_next` with `reply` as `text` and that `next` for the audio.
+`ask_assistant` waits for nothing that could keep it past the 20 seconds a
+request has, since running out of them would lose the reply to something
+already done: the assistant can take most of them. It does not wait for the
+audio, and it only has Home Assistant start on the first piece when it
+already knows the pipeline's voice from a call in the last hour. Otherwise
+the first `speak_next` looks the voice up and starts the speech. When the
+reply cannot be spoken, `next` is left out and `speech_error` says why;
+when there is nothing in it to say, both are left out. A reply too long for
+`speak_next` (over 20000 characters) gets a `speech_error`. With `speak`,
+`ask_assistant` still needs the `Assistant` permission and **Share with
+Apps**.
 
 `speak` and `speak_next` need `Location` and `InvokeAction` like every
-action, and nothing else: no entity has to be shared, and **Share with Apps** does not apply,
-since they only say what the caller gives them. Speech made with a paid
-cloud engine is paid for by the wearer, and the Pebble app asking before an
-app first calls an action is what lets them say no.
+action, and nothing else: no entity has to be shared, and **Share with
+Apps** does not apply, since they only say what the caller gives them.
+Speech made with a paid cloud engine is paid for by the wearer, and the
+Pebble app asking before an app first calls an action is what lets them
+say no.
+
+Speech needs a Home Assistant recent enough to convert speech to WAV at
+the rate asked for (the `preferred_format` and `preferred_sample_rate`
+options of `/api/tts_get_url`), which the watch app's own spoken answers
+need too. Recent versions start making the speech as soon as they are
+asked for its address and answer at once, which is what lets each call
+start on the next piece while it answers. Older ones may make the speech
+before answering that request; speech then still works, but each call also
+waits for the next piece to be made, and `ask_assistant` waits for the
+first piece when it starts it. Which release changed this has not been checked.
 
 Index offers its agent every action, and the plugin cannot tell who is
 calling. The descriptions of `speak` and `speak_next` say they return
