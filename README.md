@@ -112,6 +112,100 @@ The reply still shows on screen as it always has. The watch starts speaking as s
 - For media players, use the dedicated control screen with volume and playback controls
 - Add frequently used entities to favorites for quicker access
 
+## Use your Home Assistant in other watch apps
+
+Home Assistant WS comes with a plugin that lets other watchfaces and apps
+show your Home Assistant and control it, using the connection you already
+set up here. A watchface can show the living room temperature or whether
+the garage door is closed, and an app can turn on a light, without either
+of them ever seeing your Home Assistant address or token. Only what you
+choose to share is shown.
+
+### Turning it on
+
+1. Use the Core Devices Pebble app and turn on **Plugins / permissions
+   preview** (Settings → Plugins).
+2. Set up Home Assistant WS as usual. If the Pebble app asked, allow it the
+   internet and your local network.
+3. Install a watchface or app that works with Home Assistant WS. The Pebble
+   app asks you to allow it your location (the plugin asks this of every
+   app, because it can also provide the watch's own weather), and asks
+   again before it first controls anything.
+
+### Sharing entities
+
+Nothing is shared until you share it, except weather, which every app can
+show.
+
+- **On the watch:** open an entity and choose **Expose to Plugins**. Choose
+  **Hide from Plugins** to stop.
+- **On the settings page:** open **Shared with Other Apps**. Tap the share
+  button next to an entity in **Find Entities**, or pick a room under
+  **Share a whole area** and tap **Share all**. Each shared entity says
+  what other apps can do with it. Drag them into the order you like:
+  complications show entities by their place in this list.
+
+Calendars and to-do lists are shared the same way. Other apps can then show
+your upcoming events and add items to your lists.
+
+### Custom values
+
+Under **Custom values** on the same page you can share anything a Home
+Assistant template can work out. Tap **Add a value**, give it a name, a
+template and an optional unit, and the page shows what other apps will see.
+For example, **Doors open**:
+
+```jinja
+{{ states.binary_sensor | selectattr('attributes.device_class', 'eq', 'door') | selectattr('state', 'eq', 'on') | list | count }}
+```
+
+**Start from an example** has a few more, such as who is home and how many
+batteries are low. Home Assistant only renders templates for an
+administrator, so custom values need a token from an administrator's
+account.
+
+### The assistant, reminders and weather on your phone
+
+- **The assistant:** turn on **Share with Apps** (watch: Settings →
+  Assistant; settings page: **Share with other apps** under Voice Assistant
+  Settings). Other apps can then ask your assistant things, and in Index's
+  settings you can pick Home Assistant WS as where a ring gesture or a
+  typed message goes.
+- **Reminders:** share a to-do list, such as your Shopping List, and pick
+  Home Assistant WS as the place for reminders in Index's settings. "Add
+  milk to the shopping list" then lands on that list. Anything that names
+  no list goes on the first list you shared.
+- **Weather:** pick Home Assistant WS under **Weather provider** in the
+  Pebble app (Settings → Weather), and the watch's Weather app and timeline
+  show Home Assistant's weather when you are near home.
+
+### What other apps can and cannot do
+
+Other apps can read what you shared and control it: turn lights and
+switches on and off, set thermostats, open and close blinds, play music,
+run scenes and lock locks. The Pebble app asks you before an app first
+controls anything.
+
+They cannot unlock a lock, disarm an alarm, or open a garage door, gate or
+door, unless you turn on **Apps Can Unlock** (watch: Settings → Entity
+Settings; settings page: **Let other apps unlock and open doors**). Even
+then the Pebble app asks you once for each app that wants to. Index and its
+assistant are not asked, so leave the switch off unless they may do it too.
+
+Sharing the assistant reaches whatever you exposed to Assist in Home
+Assistant, not only what you shared here, and it acts without asking on the
+watch first.
+
+### Privacy
+
+- Other apps never see your Home Assistant address or token.
+- Anything you have not shared stays hidden from them.
+- People are shown by zone (Home, Away, Work), never by their location.
+- Codes you saved for locks and alarms are never used for other apps.
+
+If you build watch apps, the [developer guide](plugin/README.md) shows how
+to use all this from yours.
+
 ## Troubleshooting
 
 - **Connection Issues**: Verify your Home Assistant URL and token are correct
