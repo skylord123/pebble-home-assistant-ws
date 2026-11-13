@@ -24,6 +24,8 @@ const path = require('path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PLUGIN_JS = path.join(ROOT, 'plugin', 'js');
+//! Modules the plugin's bundle takes from outside plugin/js: name -> path from the repo root
+const BUNDLE_MODULES = JSON.parse(fs.readFileSync(path.join(ROOT, 'plugin', 'bundle.json'), 'utf8')).modules;
 
 const URL = 'http://ha.test:8123';
 const TOKEN = 'good-token';
@@ -47,7 +49,8 @@ function listFiles(dir, out) {
 /**
  * The bundle as wscript's concat_javascript writes it: the app's module
  * loader, every file under plugin/js defined under its path relative to
- * that folder, appinfo.json as the `appinfo` module, then main required.
+ * that folder, the app's files plugin/bundle.json maps to module names,
+ * appinfo.json as the `appinfo` module, then main required.
  */
 function buildBundle() {
     const LOADER_TEMPLATE = (relpath, lineno, body) =>
@@ -58,6 +61,10 @@ function buildBundle() {
         let body = fs.readFileSync(file, 'utf8');
         if (file.endsWith('.json')) { body = 'module.exports = ' + body + ';'; }
         sources.push({ relpath: path.relative(PLUGIN_JS, file).split(path.sep).join('/'), body: body });
+    });
+    // The modules it takes from the app, as wscript adds them
+    Object.keys(BUNDLE_MODULES).sort().forEach((name) => {
+        sources.push({ relpath: name + '.js', body: fs.readFileSync(path.join(ROOT, BUNDLE_MODULES[name]), 'utf8') });
     });
     sources.push({
         relpath: 'appinfo.json',

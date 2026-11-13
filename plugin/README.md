@@ -23,6 +23,9 @@ reads and for actions alike.
 - `plugin/js/` is a separate bundle. It is built with the same module loader as
   the app (`wscript`, `concat_javascript`) and written to
   `build/plugin/plugin.js`.
+- `plugin/bundle.json` names files from the app that the bundle also takes,
+  each as a module: `speech-codec` is `src/js/app/speech-codec.js`, so the
+  plugin speaks with the same code as the app. The tests read the same file.
 - `plugin/manifest.json` becomes the `plugin` block of the pbw's
   `appinfo.json`.
 - The permissions are those the whole app declares in `appinfo.json`

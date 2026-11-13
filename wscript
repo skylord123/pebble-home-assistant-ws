@@ -39,10 +39,15 @@ def build(ctx):
     binaries = []
     js_target = ctx.concat_javascript(js_path='src/js')
     # The plugin other apps read Home Assistant through: its own bundle, built
-    # with the same module loader, added to the pbw after it is zipped
+    # with the same module loader, added to the pbw after it is zipped. It
+    # also takes the modules plugin/bundle.json names from the app, so there
+    # is one copy of each (tests/plugin/harness.js reads the same file).
+    with open('plugin/bundle.json', 'r') as f:
+        plugin_modules = json.load(f)['modules']
     plugin_target = ctx.concat_javascript(js_path='plugin/js',
                                           loader_path='src/js/loader.js',
-                                          target='build/plugin/plugin.js')
+                                          target='build/plugin/plugin.js',
+                                          extra=plugin_modules)
 
     if ctx.env.TARGET_PLATFORMS:
         for platform in ctx.env.TARGET_PLATFORMS:
@@ -108,7 +113,7 @@ def build_platform(ctx, platform=None, binaries=None):
 
 @conf
 def concat_javascript(ctx, js_path=None, loader_path=None,
-                      target='build/src/js/pebble-js-app.js'):
+                      target='build/src/js/pebble-js-app.js', extra=None):
     js_nodes = (ctx.path.ant_glob(js_path + '/**/*.js') +
                 ctx.path.ant_glob(js_path + '/**/*.json') +
                 ctx.path.ant_glob(js_path + '/**/*.coffee'))
@@ -120,6 +125,14 @@ def concat_javascript(ctx, js_path=None, loader_path=None,
     loader_node = ctx.path.make_node(loader_path) if loader_path else None
     if loader_node is not None:
         js_nodes = [loader_node] + js_nodes
+
+    # Files from outside js_path, each defined as the module it is mapped to
+    # ({'speech-codec': 'src/js/app/speech-codec.js'})
+    extra_relpaths = {}
+    for name, path in sorted((extra or {}).items()):
+        node = ctx.path.make_node(path)
+        js_nodes.append(node)
+        extra_relpaths[node.abspath()] = name + '.js'
 
     def concat_javascript_task(task):
         LOADER_PATH = "loader.js"
@@ -151,6 +164,8 @@ def concat_javascript(ctx, js_path=None, loader_path=None,
         for node in task.inputs:
             if loader_node is not None and node.abspath() == loader_node.abspath():
                 relpath = LOADER_PATH
+            elif node.abspath() in extra_relpaths:
+                relpath = extra_relpaths[node.abspath()]
             else:
                 relpath = os.path.relpath(node.abspath(), js_path)
             with open(node.abspath(), 'r') as f:

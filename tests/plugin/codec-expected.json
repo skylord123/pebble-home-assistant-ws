@@ -1,0 +1,560 @@
+{
+ "text": {
+  "speakable": [
+   {
+    "text": "Sure. The kitchen light is on.",
+    "capped": false
+   },
+   {
+    "text": "Weather. It is sunny and 21 degrees. See the forecast for more. High of 25. Low of 12. Bring water. Done",
+    "capped": false
+   },
+   {
+    "text": "Mr. Smith arrived at 3 p.m. today, e.g. on time! Is that right? Yes.",
+    "capped": false
+   },
+   {
+    "text": "One sentence without an end",
+    "capped": false
+   },
+   {
+    "text": "A long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence.",
+    "capped": true
+   },
+   {
+    "text": "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word",
+    "capped": true
+   },
+   {
+    "text": "\"Quoted.\" (Bracketed!) Next... And done?",
+    "capped": false
+   },
+   {
+    "text": "",
+    "capped": false
+   }
+  ],
+  "settled": [
+   "Here is code ",
+   "Look at ",
+   "An image ",
+   "Plain text. More",
+   "Done ```a``` and [x](y)"
+  ],
+  "sentenceEnds": [
+   [
+    5
+   ],
+   [
+    42,
+    94,
+    122
+   ],
+   [
+    27,
+    48,
+    63
+   ],
+   [],
+   [
+    16,
+    31,
+    46,
+    61,
+    76,
+    91,
+    106,
+    121,
+    136,
+    151,
+    166,
+    181,
+    196,
+    211,
+    226,
+    241,
+    256,
+    271,
+    286,
+    301,
+    316,
+    331,
+    346,
+    361,
+    376,
+    391,
+    406,
+    421,
+    436,
+    451,
+    466,
+    481,
+    496,
+    511,
+    526,
+    541,
+    556,
+    571,
+    586,
+    601,
+    616,
+    631,
+    646,
+    661,
+    676,
+    691,
+    706,
+    721,
+    736,
+    751,
+    766,
+    781,
+    796,
+    811,
+    826,
+    841,
+    856,
+    871,
+    886,
+    901,
+    916,
+    931,
+    946,
+    961,
+    976,
+    991,
+    1006,
+    1021,
+    1036,
+    1051,
+    1066,
+    1081,
+    1096,
+    1111,
+    1126,
+    1141,
+    1156,
+    1171,
+    1186,
+    1201,
+    1216,
+    1231,
+    1246,
+    1261,
+    1276,
+    1291,
+    1306,
+    1321,
+    1336,
+    1351,
+    1366,
+    1381,
+    1396,
+    1411,
+    1426,
+    1441,
+    1456,
+    1471,
+    1486,
+    1501,
+    1516,
+    1531,
+    1546,
+    1561,
+    1576,
+    1591,
+    1606,
+    1621,
+    1636,
+    1651,
+    1666,
+    1681,
+    1696,
+    1711,
+    1726,
+    1741,
+    1756,
+    1771,
+    1786
+   ],
+   [],
+   [
+    9,
+    22,
+    30
+   ],
+   []
+  ],
+  "nextPiece": [
+   30,
+   0,
+   30,
+   5,
+   [
+    "Sure. The kitchen light is on."
+   ],
+   36,
+   36,
+   104,
+   99,
+   [
+    "Weather. It is sunny and 21 degrees.",
+    "See the forecast for more. High of 25. Low of 12. Bring water. Done"
+   ],
+   27,
+   27,
+   68,
+   63,
+   [
+    "Mr. Smith arrived at 3 p.m.",
+    "today, e.g. on time! Is that right? Yes."
+   ],
+   27,
+   0,
+   27,
+   0,
+   [
+    "One sentence without an end"
+   ],
+   31,
+   31,
+   391,
+   391,
+   [
+    "A long sentence. long sentence.",
+    "long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence.",
+    "long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence.",
+    "long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence. long sentence."
+   ],
+   1199,
+   0,
+   1199,
+   0,
+   [
+    "Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word Word"
+   ],
+   22,
+   22,
+   40,
+   30,
+   [
+    "\"Quoted.\" (Bracketed!)",
+    "Next... And done?"
+   ],
+   0,
+   0,
+   0,
+   0,
+   []
+  ]
+ },
+ "audio": {
+  "mono16k": {
+   "8000": {
+    "resampled": 8000,
+    "gain": 4,
+    "amplified": "0fba4b06f959825557a6e6c23dc7ee67913720af909bca1dc589ce3421b3040c",
+    "adpcm": "860a2b1c568cf151f5733ff1df1d273a420e89ab04f3c2bafcce5b4a4a86e6de",
+    "adpcmLength": 4000,
+    "state": {
+     "predictor": -13323,
+     "index": 64
+    },
+    "pieces": [
+     "16c9f90be0e636899ffec1abe5a5d6e3e1f30206b2f157f039c146e9677d9b16",
+     "24ca76e4b3a9837c7ea702306ff2f036b1adbb757fd83cd0713002b957409e80"
+    ],
+    "carried": {
+     "predictor": -12908,
+     "index": 63
+    }
+   },
+   "16000": {
+    "resampled": 16001,
+    "gain": 4,
+    "amplified": "e44912f3ec98c00aff3bbb7df035b4d1db479bf5a59d0a6ca02f11e091a8baf3",
+    "adpcm": "4d62f12c00f9e872451cfdca6c3aa00d5e7d6447972addd6c0047262bbc26bce",
+    "adpcmLength": 8001,
+    "state": {
+     "predictor": -10861,
+     "index": 62
+    },
+    "pieces": [
+     "b884c138c83bcc4db7b49791978603de8f18c14062007790eeed70643777e27b",
+     "6bb9d0a4d62e7593160dbf520bb263cfa63f302e5bb1e4eb528839a5f8ead4b9"
+    ],
+    "carried": {
+     "predictor": -11239,
+     "index": 63
+    }
+   },
+   "rate": 16000,
+   "samples": 16001,
+   "parsed": "453383b8dfa2f81ca166611fd10355e81198a9099410b843ebe2c39f40c8a58f"
+  },
+  "mono8k": {
+   "8000": {
+    "resampled": 7001,
+    "gain": 3.697313285679073,
+    "amplified": "a80a7bc34991aa70b2d31b999bd9b4fb13fc1c7def38fb066630f7e7173e13d8",
+    "adpcm": "eac40ee45dd34924335ff16ba52b25c490ce4d486dab569511c249341c544071",
+    "adpcmLength": 3501,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "e968c8f3e6dcbcf057a56690fd37c78f2e231915c873b8381e866702d263fc7d",
+     "e856a23935b6a63f4f0ebfd2592590c2a7a333bb57ce9498288d44b0a6539a13"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "16000": {
+    "resampled": 14002,
+    "gain": 1,
+    "amplified": "5c17c669f3ece4175e6c3ed3723380c3c9d78919c017b6944dee1f605d96464d",
+    "adpcm": "493c77d4189b55b3687365569bc3c9522c4a2e17de8ef9e55a1f63595a1cb707",
+    "adpcmLength": 7001,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "6ad3ccedcc619fd29bc6fdf7d381ae8bb1c7c384ebc91a83fff8bd9a1ff473d3",
+     "ea5b55d78f442ad5701ca58f91c5e4fbeb09bd6d705701ecd6024baf53579fbc"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "rate": 8000,
+   "samples": 7001,
+   "parsed": "6acf03a0f83cc52ba9a5802df20e25b769591af8c47889bb9f53b22740504f8e"
+  },
+  "stereo22k": {
+   "8000": {
+    "resampled": 4000,
+    "gain": 4,
+    "amplified": "c8d945b8d11fa9ea220b52f0a6088dfee7fd98c539318900898ce533df44c767",
+    "adpcm": "eb5f43b900faeef14eb8907840c1b55f1113bcb4714f6ae0da07653fc0bc09e8",
+    "adpcmLength": 2000,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "246343a80ad28d992269a9a202e6432be4b2c07707a25fa992e1af6be8d166eb",
+     "6c9d5f6381885d7c46aaa89ce232b14ee2b6154c5fc8e2a0755aba2bf1bc0430"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "16000": {
+    "resampled": 8000,
+    "gain": 4,
+    "amplified": "fd4f6f87a0e0236fdf0a552df899d86bf0da9e524639fa9d1a92462b85fda581",
+    "adpcm": "6edcaf7cf473b0e3dc4e4098fb47c0ee9291fa853208d88c51003bf1797d28f8",
+    "adpcmLength": 4000,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "ec000120ec831a2388160728fee4fc245f24a329842265a3ab4e8a24cf62b272",
+     "ab9f93b6b62508d64292496b72fd440f2176eecd95e64d875c793f91b18a5fab"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "rate": 22050,
+   "samples": 11025,
+   "parsed": "2011ab507737818ce568d161c20d1872dc6d39e92eacaba5ad39a965d9d9a23e"
+  },
+  "eightBit44k": {
+   "8000": {
+    "resampled": 4000,
+    "gain": 2.34375,
+    "amplified": "c22a5052561b671e163e8c72742d2910898b0ede7b00ee8bd44bf3167f490b34",
+    "adpcm": "d3c3c8561d6e9699db93e0145dc51e7f65b3d13ec720a4656e3952a0a9e1e225",
+    "adpcmLength": 2000,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "bb1936c1cb1b5c86e926d7fe2665d18028834cda17907365f2f2b7f58ccb0c03",
+     "fad2d6b5161bba131c8a8f41a9afbad3110ce1746e6153265c2e1efef2e242c2"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "16000": {
+    "resampled": 8000,
+    "gain": 2.2682594888855285,
+    "amplified": "c59b699c7eafdc42e7bc49b8d4a6b5e1de985849672b06b4df6aafce6d17d141",
+    "adpcm": "b92d082b0584af240e172a84cd2a8a2d1213debaa3d9bc93278b33787b567307",
+    "adpcmLength": 4000,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "be046ea9c4302ce2f18540201ed7269ac75239ffa35f036380d84fc4fe99ae0f",
+     "f1487af92997e3432e6f40ccd5d37072719197ad6a43bec1d5ec9873ea19353f"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "rate": 44100,
+   "samples": 22050,
+   "parsed": "d1e99d33415a83ac98821a3fd31b54ba1be75c855eae1c357fcbe6aec3776d0f"
+  },
+  "loud24k": {
+   "8000": {
+    "resampled": 4000,
+    "gain": 1.443834825295986,
+    "amplified": "8a804b67421beae752f35c3f2ddce0a74a2d150907733df1a07cb5de2f202213",
+    "adpcm": "9034cd932b91cae436803e2c1caa038ec5c7ed17eaa0050c38bb6ca57640f11c",
+    "adpcmLength": 2000,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "d7bbdf301cb904bd4198d99387bf8b21033290142f24a194e6118ea7f26ccca0",
+     "2ecd99a6a7c27bd16118d4520925c482cea83ec029c2842faa0395641896f4f3"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "16000": {
+    "resampled": 8000,
+    "gain": 1.3938577335873252,
+    "amplified": "733bf216bdf68a335d06b5f20b9147cbd2182d754f34748c97320f8bebfd4383",
+    "adpcm": "8545f991a957b51631a3e739c2423451feedaa741013cc97f95a70a2b40705c2",
+    "adpcmLength": 4000,
+    "state": {
+     "predictor": 0,
+     "index": 0
+    },
+    "pieces": [
+     "5eb510bb7d776fdde311d13d930201c8d7f64410470d2da57a44f382971a2430",
+     "50167ced9137d97f582b800a06e3f43f99af37d502b39f184d21845bee00c34a"
+    ],
+    "carried": {
+     "predictor": 0,
+     "index": 0
+    }
+   },
+   "rate": 24000,
+   "samples": 12000,
+   "parsed": "2bfe550ce59224b3f8d288e5ed5e62fd6160e9c00239d7cf7533bfb164ea7f23"
+  },
+  "extensible": {
+   "8000": {
+    "resampled": 2000,
+    "gain": 4,
+    "amplified": "17d07cb3ef83ec0b78d434c8532e3729969fa095f6e22b5eebdb1b4efa3d7022",
+    "adpcm": "88a0e862862c26d1a1993768f9cb606141947bb744588da34a259f0f355b3445",
+    "adpcmLength": 1000,
+    "state": {
+     "predictor": -6900,
+     "index": 55
+    },
+    "pieces": [
+     "0e70f000fb95f22cd98d4c20623ddb3a24da29989d171dbfe4bbe1a4895b9361",
+     "e82fd1c00d07dc6235fdbc76bb21b10cb93e2f187784a69c8ac58663e2b77d0a"
+    ],
+    "carried": {
+     "predictor": -6709,
+     "index": 54
+    }
+   },
+   "16000": {
+    "resampled": 4000,
+    "gain": 4,
+    "amplified": "8c6324eb123b01584a458b8570d9308e59b74347383c66dcf97b8b546f58ccff",
+    "adpcm": "fc481f299d74fcdab8aac394054ce15d44d9dbabc48a0962db117f26f350c60d",
+    "adpcmLength": 2000,
+    "state": {
+     "predictor": -7328,
+     "index": 49
+    },
+    "pieces": [
+     "82e9964d12eba66fa5a55b9f2e549ca40d960978ab35c2e42de23de16f6e778f",
+     "0076a547eb1c7b896cdd51e8fc7fdd7305ca365256716f190333fd07a2e4e6dd"
+    ],
+    "carried": {
+     "predictor": -7229,
+     "index": 48
+    }
+   },
+   "rate": 16000,
+   "samples": 4000,
+   "parsed": "d446208a11282fb28b7795939559eb1ec489f355390ad663a09190f399a2a3c2"
+  },
+  "quiet": {
+   "8000": {
+    "resampled": 2000,
+    "gain": 4,
+    "amplified": "fb0d99ea12c24b267e709a10c9292492e8e74c13795bcbecef5c485bf9758898",
+    "adpcm": "de3aea10834f2a4be73e9d6b1ce059296dd165eb6c8da1200d2537adba02e3a6",
+    "adpcmLength": 1000,
+    "state": {
+     "predictor": -248,
+     "index": 20
+    },
+    "pieces": [
+     "a8fb5a793e9c1a535952132f35d88ba0b016a886e731a0650e53d0d0242cc11f",
+     "19d0487c472d7678b73ece761e313f1f486ebef74ff9fc211c43e25550da660f"
+    ],
+    "carried": {
+     "predictor": -242,
+     "index": 19
+    }
+   },
+   "16000": {
+    "resampled": 4000,
+    "gain": 4,
+    "amplified": "5603803ab482c5747572e91ccd7ff4297471ece2ad5f87d13b69724ea93645d2",
+    "adpcm": "ca513afac722b28075e00e5536a6624a2711ad3941146e8bfcc72ecb71aa179b",
+    "adpcmLength": 2000,
+    "state": {
+     "predictor": -245,
+     "index": 18
+    },
+    "pieces": [
+     "c0ed5f8d99eeb89e6ec76c68464c17ac6fbdb881b2aef5a06136a04c6fe87ea5",
+     "edc10e6fd5c789352c97d99758db6b7f902a170bbef16374a08c406eb9e99bd1"
+    ],
+    "carried": {
+     "predictor": -240,
+     "index": 17
+    }
+   },
+   "rate": 16000,
+   "samples": 4000,
+   "parsed": "5e978311d5f354f96b27750bb170187e3dfd9218f788de7128a0ab875b5c0c54"
+  }
+ },
+ "rejected": {
+  "float": null,
+  "mp3": null,
+  "short": null
+ },
+ "defaultState": "8ccbc9f14a675bc8caf93216623a28400326480089078bec8435ca6010f7d36c"
+}
