@@ -622,6 +622,36 @@
       },
       "targets": ["reminders/list"],
       "callerPermissions": ["Location"]
+    },
+    {
+      "name": "speak",
+      "description": "For watch apps using the Home Assistant speech SDK. Returns encoded audio, not words: never call it to answer or talk to the user; use ask_assistant. Makes speech of the text in the voice of the user's Home Assistant assistant, and returns JSON with the first slice of it as IMA ADPCM and a cursor for speak_next.",
+      "parameters": {
+        "type": "object",
+        "required": ["text", "format"],
+        "properties": {
+          "text": { "type": "string", "maxLength": 4000, "description": "What to say. Markdown is read as plain words." },
+          "format": { "type": "string", "enum": ["ima_adpcm"], "description": "The audio format. Only ima_adpcm, 4-bit mono." },
+          "rate": { "type": "integer", "enum": [8000, 16000], "description": "Samples a second. 8000 unless given." }
+        }
+      },
+      "targets": [],
+      "callerPermissions": ["Location"]
+    },
+    {
+      "name": "speak_next",
+      "description": "For watch apps using the Home Assistant speech SDK. Returns encoded audio, not words: never call it to answer or talk to the user; use ask_assistant. Returns the slice of speech that the cursor from speak or speak_next names, as JSON.",
+      "parameters": {
+        "type": "object",
+        "required": ["text", "next", "format"],
+        "properties": {
+          "text": { "type": "string", "maxLength": 4000, "description": "The same text the cursor came from" },
+          "next": { "type": "string", "description": "The cursor from the last result" },
+          "format": { "type": "string", "enum": ["ima_adpcm"] }
+        }
+      },
+      "targets": [],
+      "callerPermissions": ["Location"]
     }
   ]
 }

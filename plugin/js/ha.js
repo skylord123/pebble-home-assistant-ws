@@ -136,6 +136,20 @@ function refused(conn, path) {
 
 /** Make one request */
 function request(conn, method, path, body) {
+    return send(conn, method, path, body, false);
+}
+
+/**
+ * GET something that is not JSON, such as the audio of /api/tts_proxy.
+ * Resolves its bytes as an ArrayBuffer, or null for a 404. Fails as
+ * request() does, except that a status it does not expect is UNKNOWN:
+ * Home Assistant answering at all says it is up.
+ */
+function fetchBytes(conn, path) {
+    return send(conn, 'GET', path, undefined, true);
+}
+
+function send(conn, method, path, body, binary) {
     if (tokenRefused(conn)) {
         return Promise.reject(new PluginError('AUTH_REQUIRED', REFUSED));
     }
@@ -152,6 +166,10 @@ function request(conn, method, path, body) {
     if (body !== undefined) {
         init.headers['Content-Type'] = 'application/json';
         init.body = JSON.stringify(body);
+    }
+    // The Pebble app's fetch only hands back bytes when asked for them
+    if (binary) {
+        init.responseType = 'arraybuffer';
     }
 
     return fetch(conn.url + path, init).then(function(response) {
@@ -186,7 +204,10 @@ function request(conn, method, path, body) {
             throw new PluginError('UNKNOWN', 'Home Assistant could not do that');
         }
         if (!response.ok) {
-            throw new PluginError('PLUGIN_UNAVAILABLE', 'Home Assistant answered ' + response.status);
+            throw new PluginError(binary ? 'UNKNOWN' : 'PLUGIN_UNAVAILABLE', 'Home Assistant answered ' + response.status);
+        }
+        if (binary) {
+            return response.arrayBuffer();
         }
         return response.text().then(function(text) {
             return text ? JSON.parse(text) : null;
@@ -351,6 +372,7 @@ module.exports = {
     UNREACHABLE: UNREACHABLE,
     NOT_ALLOWED: NOT_ALLOWED,
     request: request,
+    fetchBytes: fetchBytes,
     tokenRefused: tokenRefused,
     markRefused: markRefused,
     loadRefusal: loadRefusal,

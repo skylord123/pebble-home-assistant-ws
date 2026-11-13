@@ -21,6 +21,7 @@ process.env.TZ = 'America/Denver';
 
 const fs = require('fs');
 const path = require('path');
+const codecCases = require('./codec-cases');
 
 const ROOT = path.join(__dirname, '..', '..');
 const PLUGIN_JS = path.join(ROOT, 'plugin', 'js');
@@ -172,6 +173,21 @@ function createHomeAssistant(clock) {
         //! { error } for one Home Assistant cannot render. Text without any
         //! Jinja renders as itself; any other template is an error.
         templates: {},
+        //! Text-to-speech engines /api/tts_get_url accepts
+        ttsEngines: ['tts.piper'],
+        //! What each /api/tts_get_url was asked, by the token in its path
+        ttsTokens: new Map(),
+        /**
+         * The WAV the proxy serves for `message`: about 15 characters a
+         * second at the rate asked for, a different voice-like signal for
+         * every message, the same every time for one
+         */
+        speechFor: (message, options) => {
+            const rate = options.preferred_sample_rate || 22050;
+            let seed = 7;
+            for (let i = 0; i < message.length; i++) { seed = (Math.imul(seed, 31) + message.charCodeAt(i)) >>> 0; }
+            return codecCases.wav({ rate: rate, count: Math.round(rate * message.length / 15), peak: 8000, hum: 1500, seed: seed });
+        },
         requests: [],
         sockets: [],
         routes: [],
@@ -249,8 +265,35 @@ function createHomeAssistant(clock) {
         return { status: 200, body: JSON.stringify(result), headers: { 'content-type': 'text/plain' } };
     }
 
+    /**
+     * POST /api/tts_get_url starts making the speech and answers where it
+     * will be; GET /api/tts_proxy/<token> serves it to anyone who has the
+     * token. The url names an address the phone cannot reach, as Home
+     * Assistant's own idea of its address often is.
+     */
+    function tts(req) {
+        if (req.method === 'POST' && req.path === '/api/tts_get_url') {
+            const body = req.body || {};
+            if (fake.ttsEngines.indexOf(body.engine_id) === -1) {
+                return { status: 400, body: { message: 'Provider ' + body.engine_id + ' not found' } };
+            }
+            const token = 'tts' + (fake.ttsTokens.size + 1) + 'x' + Math.random().toString(36).slice(2, 10);
+            fake.ttsTokens.set(token, clone(body));
+            const path = '/api/tts_proxy/' + token + '.wav';
+            return { status: 200, body: { url: 'http://homeassistant.local:8123' + path, path: path } };
+        }
+        const m = /^\/api\/tts_proxy\/([a-z0-9]+)\.wav$/.exec(req.path);
+        if (req.method === 'GET' && m) {
+            const asked = fake.ttsTokens.get(m[1]);
+            if (!asked) { return { status: 404, body: '404: Not Found' }; }
+            return { status: 200, body: fake.speechFor(asked.message, asked.options || {}), headers: { 'Content-Type': 'audio/wav' } };
+        }
+        return null;
+    }
+
     function builtIn(req) {
-        if (!authorized(req.headers)) {
+        // The audio needs no token, only its address
+        if (!authorized(req.headers) && !/^\/api\/tts_proxy\//.test(req.path)) {
             return { status: 401, body: '401: Unauthorized' };
         }
         // Core's fetch adds a Content-Type of its own to a request without a
@@ -258,6 +301,8 @@ function createHomeAssistant(clock) {
         if (req.headers['content-type'] !== undefined && req.rawBody === undefined) {
             return { status: 400, body: { message: 'Duplicate Content-Type header' } };
         }
+        const speech = tts(req);
+        if (speech) { return speech; }
         const p = req.path;
         if (req.method === 'GET' && p === '/api/') { return { status: 200, body: { message: 'API running.' } }; }
         if (req.method === 'GET' && p === '/api/config') { return { status: 200, body: fake.config }; }
@@ -602,10 +647,18 @@ function create(opts) {
             }));
         },
 
-        /** Call an action: resolves { ok } or { error: { code, message } } */
+        /**
+         * Call an action: resolves { ok: { text, refreshed } } or { error: { code, message } }.
+         * Only `text` and `refreshed` reach the caller, as the Pebble app's
+         * host passes them on (PluginHostJs respond.ok); anything else the
+         * plugin puts in its result is dropped here too.
+         */
         action(name, args) {
             return run('action', { action: name, args: clone(args || {}) }, (settle) => ({
-                ok: (result) => settle({ ok: clone(result) }),
+                ok: (result) => {
+                    result = result || {};
+                    settle({ ok: clone({ text: result.text || null, refreshed: result.refreshed || [] }) });
+                },
                 error: (code, message) => settle({ error: { code: code, message: message } })
             }));
         },

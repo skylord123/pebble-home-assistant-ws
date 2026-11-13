@@ -126,8 +126,25 @@ function values(options) {
     return out;
 }
 
+/**
+ * The pipeline the watch app would talk to, or undefined for Home Assistant's
+ * preferred one. A pipeline the app no longer lists has been deleted, and
+ * gives way to the preferred one as it does in the app.
+ */
+function pipeline(options) {
+    var chosen = options.selected_pipeline;
+    if (typeof chosen !== 'string' || !chosen) { return undefined; }
+    var pipelines = Array.isArray(options.available_pipelines) ? options.available_pipelines : [];
+    if (pipelines.length === 0) { return chosen; }
+    for (var i = 0; i < pipelines.length; i++) {
+        if (pipelines[i] && pipelines[i].id === chosen) { return chosen; }
+    }
+    return undefined;
+}
+
 module.exports = {
     read: read,
+    pipeline: pipeline,
     save: save,
     connection: connection,
     exposedIds: exposedIds,

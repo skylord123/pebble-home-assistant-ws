@@ -1,5 +1,6 @@
 /**
- * What other apps can do to shared entities, and the assistant.
+ * What other apps can do to shared entities, and the assistant. Speech for
+ * watch apps to play is in speech.js.
  *
  * Every entity action names its entity by `instanceId` (the entity_id), and
  * is refused unless that entity is shared. Nothing here reaches beyond the
@@ -21,6 +22,7 @@ var store = require('store');
 var options = require('options');
 var entities = require('entities');
 var todo = require('todo');
+var speech = require('speech');
 
 var PluginError = ha.PluginError;
 
@@ -462,22 +464,6 @@ function runEntityAction(conn, opts, name, args) {
 }
 
 /**
- * The pipeline the watch app would talk to, or undefined for Home Assistant's
- * preferred one. A pipeline the app no longer lists has been deleted, and
- * gives way to the preferred one as it does in the app.
- */
-function pipelineFor(opts) {
-    var chosen = opts.selected_pipeline;
-    if (typeof chosen !== 'string' || !chosen) { return undefined; }
-    var pipelines = Array.isArray(opts.available_pipelines) ? opts.available_pipelines : [];
-    if (pipelines.length === 0) { return chosen; }
-    for (var i = 0; i < pipelines.length; i++) {
-        if (pipelines[i] && pipelines[i].id === chosen) { return chosen; }
-    }
-    return undefined;
-}
-
-/**
  * Send text to Home Assistant's assistant and answer with what it said. It
  * runs the pipeline chosen in the watch app, from the intent stage, so the
  * agent and language are the pipeline's own. The conversation carries on
@@ -498,7 +484,7 @@ function askAssistant(conn, opts, args) {
         end_stage: 'intent',
         input: { text: text }
     };
-    var pipeline = pipelineFor(opts);
+    var pipeline = options.pipeline(opts);
     if (pipeline) { command.pipeline = pipeline; }
     var previous = args.new_conversation === true ? null : store.fresh('conversation', CONVERSATION_IDLE_MS);
     if (previous) { command.conversation_id = previous; }
@@ -541,6 +527,13 @@ function run(conn, opts, name, args) {
     if (name === 'ask_assistant') {
         return askAssistant(conn, opts, args);
     }
+    // Audio for watch apps to play, not words for anyone to read
+    if (name === 'speak') {
+        return speech.speak(conn, opts, args);
+    }
+    if (name === 'speak_next') {
+        return speech.speakNext(conn, opts, args);
+    }
     // What Index calls to make the assistant a destination for ring
     // gestures and typed messages. Its chat_id names one of the chats an
     // agent/chats source would list; there is only the one conversation.
@@ -562,5 +555,6 @@ function run(conn, opts, name, args) {
 
 module.exports = {
     run: run,
-    names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant', 'send_to_agent', 'create_reminder'])
+    names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant', 'send_to_agent', 'create_reminder', 'speak',
+        'speak_next'])
 };

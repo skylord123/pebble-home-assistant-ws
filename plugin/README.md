@@ -44,7 +44,8 @@ closes when the request that opened it ends, so nothing can stay connected to
 Home Assistant between requests. Everything goes over the REST API, which
 reuses the phone's open connection, except `ask_assistant`: REST cannot run a
 pipeline, so that opens a WebSocket, logs in, runs the pipeline and closes
-(`js/ws.js`). The plugin reads the same `localStorage` as the watch app (same
+(`js/ws.js`). Speech does the same once an hour to look up the pipeline's
+voice. The plugin reads the same `localStorage` as the watch app (same
 UUID):
 
 | What it reads | Where it comes from |
@@ -63,6 +64,8 @@ Everything the plugin caches is stored under a `plugin:` prefix:
 - calendar events, for 5 min, per calendar;
 - sensor history, for 5 min;
 - the entities' areas, for an hour;
+- the engine, voice and language of the assistant's pipeline, for an hour,
+  for speech (see [Speech](#speech));
 - a marker for a token Home Assistant refused, so a bad token is not retried
   on every poll. Every refused attempt counts towards Home Assistant's IP ban.
   - While the marker is set, the plugin answers `AUTH_REQUIRED` without asking
@@ -329,6 +332,8 @@ happened, and asks the sources that show that entity to refresh.
 | `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
 | `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
 | `create_reminder` `{ title, due_iso?, timezone?, notify_before_ms?, instanceId? }` | Adds an item to a shared to-do list. See below. |
+| `speak` `{ text, format, rate? }` | Says `text` in the assistant's voice, as audio for a watch app to play. Returns the first slice of it. See below. |
+| `speak_next` `{ text, next, format }` | The next slice of that audio. |
 
 Actions check the entity's `supported_features` first. Asking a window
 that cannot be positioned to move to 40%, or a player that cannot skip to
@@ -442,6 +447,79 @@ or to the watch app that called `create_reminder` itself. Notes are not
 offered: Index would send every note there once the wearer made it the
 default, and a to-do list is a poor home for a long note.
 
+### Speech
+
+`speak` and `speak_next` are for watch apps that play speech on a watch with
+a speaker (Pebble Time 2, Core 2 Duo). They read `text` out in the voice of
+the pipeline chosen in the watch app (or Home Assistant's preferred one):
+its text-to-speech engine, voice and language. They answer with audio, not
+words, so an app that wants something said to the wearer on screen, or an
+assistant that wants to talk to them, uses `ask_assistant` instead.
+
+- `text` is up to 4000 characters. Markdown is read as the words it shows,
+  and only about the first 1200 characters are spoken, ending at a
+  sentence, as in the watch app.
+- `format` must be `ima_adpcm`. It is required, so that nothing asks for
+  audio without meaning to.
+- `rate` is `8000` (the default) or `16000` samples a second. Only the
+  caller knows how fast its link to the watch is: 16000 needs twice the
+  bytes.
+
+An action can only answer with text, so each result is JSON in `text`:
+
+```json
+{ "v": 1, "format": "ima_adpcm", "rate": 8000, "offset": 0,
+  "audio": "<base64>", "phrase": true, "last": false, "next": "1.8000.1.0.13334.0.0.400" }
+```
+
+- `audio` is 4-bit IMA ADPCM, mono, two samples a byte, low nibble first.
+  The encoder starts from silence (predictor 0, index 0) at the start of
+  the text and carries on from one slice into the next, so the slices
+  joined are one stream, decoded as the watch app's own speaker decodes it.
+- `offset` is where `audio` starts in that stream, in bytes.
+- `phrase` says the slice ends at the end of a sentence, where a pause
+  sounds natural if the next slice is late.
+- `last` says nothing follows. Otherwise `next` is a cursor: call
+  `speak_next` with the same `text`, that `next` and `format` for the
+  following slice.
+
+The text is split into pieces of a sentence or a few, about 200 characters
+at most, and the first piece is kept short so the first word comes soon.
+Each result is one piece, or a slice of at most 32 KB of audio (8 seconds
+at 8000, about 43 KB of base64) when a piece is longer. Each call has Home
+Assistant start on the piece after its own, so that piece is being made
+while this one is sent to the watch and played; calling `speak_next` as
+soon as a result arrives keeps ahead of the speaker.
+
+The plugin keeps nothing between calls. The cursor carries all it needs,
+so the same cursor always gives the same audio: a call that failed or
+timed out can simply be made again, and several apps can speak at once. A
+cursor that does not fit the text it comes with is refused. Home Assistant
+keeps the speech it has made for five minutes, so asking again for a piece
+it has already made costs little.
+
+Errors:
+
+- `INVALID_ARGS`: no `text`, too long, or nothing in it to say; a missing
+  or other `format`; another `rate`; a `next` that is not a cursor from
+  these actions or does not fit `text`.
+- `PLUGIN_UNAVAILABLE`: the pipeline has no text-to-speech, or Home
+  Assistant cannot be reached.
+- `UNKNOWN`: Home Assistant could not make the speech, or sent audio that
+  is not PCM WAV.
+- `AUTH_REQUIRED` and `PERMISSION_DENIED` as for every action.
+
+They need `Location` and `InvokeAction` like every action, and nothing
+else: no entity has to be shared, and **Share with Apps** does not apply,
+since they only say what the caller gives them. Speech made with a paid
+cloud engine is paid for by the wearer, and the Pebble app asking before an
+app first calls an action is what lets them say no.
+
+Index offers its agent every action, and the plugin cannot tell who is
+calling. The descriptions of `speak` and `speak_next` say they return
+audio and are not for talking to the user, and the required `format`
+means a call has to ask for audio on purpose.
+
 ## Trying it
 
 1. Build and sideload the pbw.
@@ -470,7 +548,9 @@ the way the bundle does, in a fresh engine for every request with
 `localStorage` kept between them, and stands in for the Pebble app's plugin
 runtime, `fetch` and the WebSocket. The tests check that every property the
 plugin sends is declared in `manifest.json`, the sources and actions end to
-end, the unlock and sharing rules, and the assistant. They run on every push.
+end, the unlock and sharing rules, the assistant and speech. They also hold
+the speech encoder to what the watch app made before it was shared. They
+run on every push.
 
 ## Settings page messages
 

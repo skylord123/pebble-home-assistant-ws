@@ -41,7 +41,7 @@ function signal(count, rate, peak, seed) {
  * A WAV file. `size` is 'exact', 'zero' or 'max' for the data chunk's size,
  * as Home Assistant writes it when it streams. `format` 1 is PCM, 0xFFFE
  * WAVE_FORMAT_EXTENSIBLE, 3 float. `junk` puts an odd-sized chunk before
- * the data.
+ * the data. `hum` adds a steady tone that loud, so it is never silent.
  */
 function wav(opts) {
     const channels = opts.channels || 1;
@@ -52,7 +52,8 @@ function wav(opts) {
     const sig = signal(count, opts.rate, opts.peak, opts.seed || 1);
     for (let i = 0; i < count; i++) {
         for (let c = 0; c < channels; c++) {
-            const v = Math.round(sig[i] * (c ? 0.5 : 1));
+            const hum = opts.hum ? opts.hum * Math.sin(2 * Math.PI * 200 * i / opts.rate) : 0;
+            const v = Math.round((sig[i] + hum) * (c ? 0.5 : 1));
             const at = (i * channels + c) * width;
             if (bits === 16) {
                 data.writeInt16LE(Math.max(-32768, Math.min(32767, v)), at);
