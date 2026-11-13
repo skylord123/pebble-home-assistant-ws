@@ -257,6 +257,8 @@ static void prv_tick(void *data) {
     // had more than long enough to play out its buffer.
     if (now - s_speaker.since_ms > DRAIN_MAX_MS ||
         speaker_get_status() == SpeakerStatusIdle) {
+      // A finish callback still to come would end the next clip instead
+      speaker_set_finish_callback(NULL, NULL);
       s_speaker.open = false;
       prv_end(HaSpeechStateDone);
       return;

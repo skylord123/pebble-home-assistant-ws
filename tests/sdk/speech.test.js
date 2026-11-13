@@ -338,6 +338,9 @@ speechTest('after the last sample the speaker is left to drain', async (w) => {
     assert.ok(!w.reports(out).some((r) => r[1] === DONE));
     out = await w.run('advance 200 50');
     assert.deepEqual(w.reports(out), [[1, DONE, 1000, 0]]);
+    // Nor does the speaker saying so late end the clip after it
+    out = await w.run('play 2 0 100 0 0 0', 'finish 0', 'advance 200 50');
+    assert.deepEqual(w.reports(out), [[2, BUFFERING, 0, 32768]]);
 });
 
 speechTest('a speaker still letting go is asked again, for a while', async (w) => {
