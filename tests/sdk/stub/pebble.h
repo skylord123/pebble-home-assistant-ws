@@ -89,6 +89,7 @@ DictionaryResult dict_write_data(DictionaryIterator *iter, const uint32_t key,
 typedef enum {
   APP_MSG_OK = 0,
   APP_MSG_BUSY = 1 << 6,
+  APP_MSG_INVALID_STATE = 1 << 13,
 } AppMessageResult;
 
 AppMessageResult app_message_outbox_begin(DictionaryIterator **iterator);

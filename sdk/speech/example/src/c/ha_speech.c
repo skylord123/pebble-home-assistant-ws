@@ -461,14 +461,18 @@ static void prv_flush_status(void *data) {
   s_status_timer = NULL;
   if (!s_status_waiting) { return; }
   DictionaryIterator *iter;
-  if (app_message_outbox_begin(&iter) == APP_MSG_OK) {
-    dict_write_data(iter, s_key, s_status, STATUS_LENGTH);
-    app_message_outbox_send();
+  const AppMessageResult result = app_message_outbox_begin(&iter);
+  if (result == APP_MSG_OK) {
+    // An outbox too small for it (see HA_SPEECH_OUTBOX_SIZE) sends nothing
+    if (dict_write_data(iter, s_key, s_status, STATUS_LENGTH) == DICT_OK) {
+      app_message_outbox_send();
+    }
     s_status_waiting = false;
     return;
   }
-  // With the phone gone there is nobody to tell
-  if (!connection_service_peek_pebble_app_connection()) {
+  // Only a busy outbox frees up. With the phone gone there is nobody to
+  // tell, and anything else (AppMessage never opened) will not get better.
+  if (result != APP_MSG_BUSY || !connection_service_peek_pebble_app_connection()) {
     s_status_waiting = false;
     return;
   }

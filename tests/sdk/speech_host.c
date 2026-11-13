@@ -135,6 +135,8 @@ struct DictionaryIterator {
 static DictionaryIterator s_inbox;
 static DictionaryIterator s_outbox;
 static bool s_outbox_busy;
+// AppMessage was never opened
+static bool s_outbox_closed;
 static bool s_outbox_open;
 
 Tuple *dict_find(const DictionaryIterator *iter, const uint32_t key) {
@@ -164,6 +166,7 @@ DictionaryResult dict_write_data(DictionaryIterator *iter, const uint32_t key,
 }
 
 AppMessageResult app_message_outbox_begin(DictionaryIterator **iterator) {
+  if (s_outbox_closed) { return APP_MSG_INVALID_STATE; }
   if (s_outbox_busy || s_outbox_open) { return APP_MSG_BUSY; }
   s_outbox.length = 0;
   s_outbox_open = true;
@@ -273,6 +276,9 @@ int main(void) {
     } else if (!strcmp(command, "outbox_busy")) {
       sscanf(args, "%lu", &a);
       s_outbox_busy = a;
+    } else if (!strcmp(command, "outbox_closed")) {
+      sscanf(args, "%lu", &a);
+      s_outbox_closed = a;
     } else if (!strcmp(command, "connected")) {
       sscanf(args, "%lu", &a);
       s_connected = a;

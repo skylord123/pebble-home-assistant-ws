@@ -396,6 +396,16 @@ speechTest('over AppMessage, a busy outbox gets only the newest status', async (
     assert.deepEqual(w.sent(out), []);
 });
 
+speechTest('over AppMessage, an outbox that was never opened is not tried forever', async (w) => {
+    const bytes = adpcm(4000);
+    let out = await w.run('init ' + KEY, 'room_per_ms 0', 'outbox_closed 1', message(KEY, playMessage(1, 0, 100, 0, 0)),
+        message(KEY, dataMessage(1, 0, 0, bytes.subarray(0, 1024))), 'advance 50');
+    assert.deepEqual(w.sent(out), []);
+    // Given up on, not waiting for the outbox to come right
+    out = await w.run('outbox_closed 0', 'advance 200 50');
+    assert.deepEqual(w.sent(out), []);
+});
+
 speechTest('deinit stops the speaker without a word to the phone', async (w) => {
     const bytes = adpcm(4000);
     const out = await w.run('init ' + KEY, 'room_per_ms 0', message(KEY, playMessage(1, 0, 100, 0, 0)),
