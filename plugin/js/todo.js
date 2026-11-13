@@ -64,7 +64,9 @@ function wants(request, name) {
 /**
  * The first few open items of each list, by entity_id, in one call for all
  * of them. Home Assistant before 2024.8 cannot answer a service over REST
- * and refuses the call; the lists are then served without their items.
+ * and refuses the call, and one list it cannot reach (Google Tasks offline)
+ * fails it for all of them; the lists are then served without their items.
+ * Only a refused token fails the source.
  */
 function openItems(conn, ids) {
     return ha.callServiceForResponse(conn, 'todo', 'get_items', { entity_id: ids, status: 'needs_action' })
@@ -77,8 +79,8 @@ function openItems(conn, ids) {
             });
             return byId;
         }, function(err) {
-            if (err instanceof PluginError && err.code === 'INVALID_ARGS') { return {}; }
-            throw err;
+            if (err instanceof PluginError && err.code === 'AUTH_REQUIRED') { throw err; }
+            return {};
         });
 }
 

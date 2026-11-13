@@ -185,6 +185,16 @@ test('a Home Assistant that cannot answer services over REST still gets its coun
     assert.equal(props['todo.shopping_list'].items, undefined);
 });
 
+test('a list Home Assistant cannot read still leaves every list with its count', async () => {
+    const h = setUp();
+    // What Home Assistant answers when one list's integration cannot reach its service
+    h.ha.on('POST', '/api/services/todo/get_items', () => ({ status: 500, body: '500 Internal Server Error' }));
+    const props = listProps(await h.source('reminders', 'list'));
+    assert.deepEqual(Object.keys(props), ['todo.chores', 'todo.shopping_list', 'todo.errands']);
+    assert.deepEqual(props['todo.shopping_list'].count.shortText, { text: '3' });
+    assert.equal(props['todo.shopping_list'].items, undefined);
+});
+
 test('reading the counts leaves out a list Home Assistant no longer has, and an unavailable count', async () => {
     const h = setUp({ plugin_exposed_entities: ['todo.deleted', 'todo.chores'] });
     h.ha.statesById['todo.chores'].state = 'unavailable';
