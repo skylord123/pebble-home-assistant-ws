@@ -482,7 +482,7 @@ An action can only answer with text, so each result is JSON in `text`:
 
 ```json
 { "v": 1, "format": "ima_adpcm", "rate": 8000, "offset": 0,
-  "audio": "<base64>", "phrase": true, "last": false, "next": "1.8000.1.0.13334.0.0.400" }
+  "audio": "<base64>", "phrase": true, "last": false, "next": "<cursor>" }
 ```
 
 - `audio` is 4-bit IMA ADPCM, mono, two samples a byte, low nibble first.
@@ -507,7 +507,8 @@ soon as a result arrives keeps ahead of the speaker.
 The plugin keeps nothing between calls. The cursor carries all it needs,
 so the same cursor always gives the same audio: a call that failed or
 timed out can simply be made again, and several apps can speak at once. A
-cursor that does not fit the text it comes with is refused. Home Assistant
+cursor also carries a fingerprint of the words it was made for, so one sent
+with other text is refused. Home Assistant
 keeps the speech it has made for five minutes, so asking again for a piece
 it has already made costs little.
 
@@ -528,7 +529,7 @@ usual, has Home Assistant start on the first piece of the reply, and
 answers with JSON instead of plain text:
 
 ```json
-{ "reply": "The garage door is closed.", "next": "1.8000.0.0.0.0.0.0" }
+{ "reply": "The garage door is closed.", "next": "<cursor>" }
 ```
 
 Call `speak_next` with `reply` as `text` and that `next` for the audio. It

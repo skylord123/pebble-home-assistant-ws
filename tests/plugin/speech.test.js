@@ -81,6 +81,14 @@ function piecesOf(h, text) {
     return pieces;
 }
 
+//! The fingerprint of the text a cursor carries, as speech.js makes it
+function textPrint(pieces) {
+    const words = pieces.join('\n');
+    let hash = 5381;
+    for (let i = 0; i < words.length; i++) { hash = ((hash << 5) + hash + words.charCodeAt(i)) | 0; }
+    return (hash >>> 0).toString(36);
+}
+
 function ttsPosts(h) {
     return h.ha.calls('POST /api/tts_get_url').map((r) => r.body.message);
 }
@@ -232,6 +240,8 @@ test('a pipeline without text-to-speech is PLUGIN_UNAVAILABLE', async () => {
 
 test('bad arguments are INVALID_ARGS and ask Home Assistant nothing', async () => {
     const h = setUp();
+    // Each cursor below is right for TEXT but for the one thing wrong with it
+    const PRINT = textPrint(piecesOf(h, TEXT));
     const bad = [
         ['speak', { text: 'Hello there.' }],
         ['speak', { text: 'Hello there.', format: 'mp3' }],
@@ -242,18 +252,18 @@ test('bad arguments are INVALID_ARGS and ask Home Assistant nothing', async () =
         ['speak', { text: 'Hello there.', format: 'ima_adpcm', rate: '8000' }],
         ['speak_next', { text: TEXT, format: 'ima_adpcm' }],
         ['speak_next', { text: TEXT, next: 'garbage', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '2.8000.1.0.100.0.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.11025.1.0.100.0.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.50', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.401', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.0', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.40000.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.89.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.0.0.100.0.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.0.0.0.5.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.99999999.0.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.9.0.100.0.0.150', format: 'ima_adpcm' }],
-        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.150', format: 'pcm' }]
+        ['speak_next', { text: TEXT, next: '2.8000.1.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.11025.1.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.50.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.401.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.0.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.40000.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.89.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.0.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.0.0.0.5.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.99999999.0.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.9.0.100.0.0.150.' + PRINT, format: 'ima_adpcm' }],
+        ['speak_next', { text: TEXT, next: '1.8000.1.0.100.0.0.150.' + PRINT, format: 'pcm' }]
     ];
     for (const [name, args] of bad) {
         const answer = await h.action(name, args);
@@ -270,6 +280,17 @@ test('a cursor past the end of its piece, or from other text, is INVALID_ARGS', 
     assert.equal((await h.action('speak_next', { text: TEXT, next: parts.join('.'), format: 'ima_adpcm' })).error.code, 'INVALID_ARGS');
     assert.equal((await h.action('speak_next', { text: 'One sentence only, nothing more.', next: first.next, format: 'ima_adpcm' }))
         .error.code, 'INVALID_ARGS');
+
+    // Text that splits into as many pieces, but is not the text the cursor came from
+    const other = TEXT.replace('kitchen', 'bedroom');
+    assert.equal(piecesOf(h, other).length, piecesOf(h, TEXT).length);
+    h.ha.requests.length = 0;
+    assert.deepEqual((await h.action('speak_next', { text: other, next: first.next, format: 'ima_adpcm' })).error,
+        { code: 'INVALID_ARGS', message: 'next does not belong to this text' });
+    assert.equal(h.ha.requests.length, 0);
+
+    // The fingerprint the test uses is the plugin's, so the cursors above fail for their own reasons
+    assert.equal(first.next.split('.')[8], textPrint(piecesOf(h, TEXT)));
 });
 
 test('Home Assistant failing to say it is UNKNOWN', async () => {

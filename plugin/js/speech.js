@@ -106,17 +106,33 @@ function rateArg(args) {
  * Where a slice starts: `rate`, the `piece` it is in, `at` bytes into that
  * piece's audio, which starts `clipAt` bytes into the whole; the encoder's
  * `predictor` and `index` at the start of the piece; and the `gain` the
- * first piece set, in hundredths, or 0 while there has been no first piece.
+ * first piece set, in hundredths, or 0 while there has been no first piece;
+ * and a fingerprint of the `text` it belongs to.
  */
-function firstCursor(rate) {
-    return { rate: rate, piece: 0, at: 0, clipAt: 0, predictor: 0, index: 0, gain: 0 };
+function firstCursor(rate, pieces) {
+    return { rate: rate, piece: 0, at: 0, clipAt: 0, predictor: 0, index: 0, gain: 0, text: textPrint(pieces) };
 }
 
 function encodeCursor(c) {
-    return [CURSOR_VERSION, c.rate, c.piece, c.at, c.clipAt, c.predictor, c.index, c.gain].join('.');
+    return [CURSOR_VERSION, c.rate, c.piece, c.at, c.clipAt, c.predictor, c.index, c.gain, c.text].join('.');
 }
 
-var CURSOR = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)\.(-?\d+)\.(\d+)\.(\d+)$/;
+//! A short fingerprint of `length` numbers, as at(i) gives them
+function fingerprint(length, at) {
+    var hash = 5381;
+    for (var i = 0; i < length; i++) {
+        hash = ((hash << 5) + hash + at(i)) | 0;
+    }
+    return (hash >>> 0).toString(36);
+}
+
+//! What is said of a text, so a cursor can tell it apart from other text
+function textPrint(pieces) {
+    var words = pieces.join('\n');
+    return fingerprint(words.length, function(i) { return words.charCodeAt(i); });
+}
+
+var CURSOR = /^(\d+)\.(\d+)\.(\d+)\.(\d+)\.(\d+)\.(-?\d+)\.(\d+)\.(\d+)\.([0-9a-z]{1,7})$/;
 
 //! A cursor this plugin could have made, or an INVALID_ARGS error
 function decodeCursor(text) {
@@ -124,7 +140,7 @@ function decodeCursor(text) {
     if (!m || Number(m[1]) !== CURSOR_VERSION) { throw invalid('next is not a cursor from speak'); }
     var c = {
         rate: Number(m[2]), piece: Number(m[3]), at: Number(m[4]), clipAt: Number(m[5]),
-        predictor: Number(m[6]), index: Number(m[7]), gain: Number(m[8])
+        predictor: Number(m[6]), index: Number(m[7]), gain: Number(m[8]), text: m[9]
     };
     var start = c.piece === 0 && c.at === 0;
     var ok = RATES.indexOf(c.rate) !== -1 &&
@@ -244,7 +260,7 @@ function base64(bytes) {
  * cursor; the next piece is asked for before answering.
  */
 function slice(conn, opts, pieces, c) {
-    if (c.piece >= pieces.length) {
+    if (c.piece >= pieces.length || c.text !== textPrint(pieces)) {
         return Promise.reject(invalid('next does not belong to this text'));
     }
     var voice;
@@ -277,10 +293,10 @@ function slice(conn, opts, pieces, c) {
         if (!last) {
             result.next = encodeCursor(endsPiece ? {
                 rate: c.rate, piece: c.piece + 1, at: 0, clipAt: c.clipAt + bytes.length,
-                predictor: state.predictor, index: state.index, gain: gain
+                predictor: state.predictor, index: state.index, gain: gain, text: c.text
             } : {
                 rate: c.rate, piece: c.piece, at: end, clipAt: c.clipAt,
-                predictor: c.predictor, index: c.index, gain: gain
+                predictor: c.predictor, index: c.index, gain: gain, text: c.text
             });
         }
         var answer = { text: JSON.stringify(result) };
@@ -313,7 +329,7 @@ function start(conn, opts, reply, rate) {
     return voiceFor(conn, opts).then(function(voice) {
         return startPiece(conn, voice, pieces[0], rate);
     }).then(function() {
-        return { next: encodeCursor(firstCursor(rate)) };
+        return { next: encodeCursor(firstCursor(rate, pieces)) };
     }, function(err) {
         return { speech_error: (err && err.message) || 'The reply cannot be read out' };
     });
@@ -330,7 +346,7 @@ function speak(conn, opts, args) {
     } catch (err) {
         return Promise.reject(err);
     }
-    return slice(conn, opts, pieces, firstCursor(rate));
+    return slice(conn, opts, pieces, firstCursor(rate, pieces));
 }
 
 /** speak_next { text, next, format }: the slice `next` names */
