@@ -569,7 +569,7 @@ test('the plugin\'s errors reject with its code', async () => {
     await assert.rejects(env.speech.say('The front door is locked.'), (e) => e.code === 'UNKNOWN' && /Provider/.test(e.message));
 
     env = setUp();
-    await assert.rejects(env.speech.say('   '), (e) => e.code === 'INVALID_ARGS');
+    await assert.rejects(env.speech.say('   '), (e) => e.code === 'INVALID_ARGS' && !e.partial);
 
     env = setUp();
     delete env.pebble.invokeAction;
@@ -581,7 +581,7 @@ test('when the rest cannot be had, what came still plays and the error follows',
     let calls = 0;
     h.ha.routes.push({ method: 'POST', pattern: '/api/tts_get_url', handler: () => (++calls > 2 ? { status: 500, body: { message: 'boom' } } : undefined) });
     const promise = speech.say(TEXT);
-    await assert.rejects(playOut(watch, promise), (e) => e.code === 'UNKNOWN');
+    await assert.rejects(playOut(watch, promise), (e) => e.code === 'UNKNOWN' && e.partial === true);
     assert.ok(watch.audio.length > 0);
     assert.equal(watch.state, STATES.DONE);
     assert.deepEqual(watch.violations, []);

@@ -788,13 +788,15 @@ function create(options) {
                 job.settle(error || job.error, how === 'nothing' ? 'done' : how);
             }
 
-            // The plugin could not give the rest. What has come still plays.
+            // The plugin could not give the rest. What has come still plays,
+            // and the error says some of it was heard.
             function failed(error) {
                 if (current !== job) { return; }
                 if (!job.clip) {
                     job.settle(error);
                     return;
                 }
+                error.partial = true;
                 job.error = error;
                 player.end(job.clip);
             }
@@ -829,7 +831,9 @@ function create(options) {
      * Read `text` out on the watch, in the voice of the wearer's assistant.
      * `args` are more of the plugin's speak arguments, such as { pipeline }.
      * Resolves 'done', 'muted', 'stopped' or 'preempted'; rejects with
-     * NO_SPEAKER, NO_MEMORY, FAILED or the plugin's code.
+     * NO_SPEAKER, NO_MEMORY, FAILED or the plugin's code. When the plugin
+     * fails part way, what came first still plays, and the error, with
+     * `partial` true, comes once it has.
      */
     function say(text, args) {
         if (!hasSpeaker()) {
