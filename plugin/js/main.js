@@ -13,6 +13,7 @@ var weather = require('weather');
 var actions = require('actions');
 var todo = require('todo');
 var page = require('page');
+var areas = require('areas');
 
 function fail(respond, err) {
     if (err instanceof ha.PluginError) {
@@ -34,7 +35,7 @@ function weatherIds(conn, opts) {
     return known !== null ? Promise.resolve(known) : ha.discoverWeather(conn);
 }
 
-function homeSource(conn, opts, item) {
+function homeSource(conn, opts, item, request) {
     // Weather is shared without being chosen, and only belongs in the full list
     var listed = item === 'entity' ? weatherIds(conn, opts) : Promise.resolve([]);
     return listed.then(function(weatherList) {
@@ -53,8 +54,21 @@ function homeSource(conn, opts, item) {
                 var instance = states[id] && entities.toInstance(item, states[id]);
                 if (instance) { instances.push(instance); }
             });
-            return instances;
+            return withRooms(conn, instances, request);
         });
+    });
+}
+
+//! Each instance's room, when the caller wants it and Home Assistant has one
+function withRooms(conn, instances, request) {
+    if (!areas.wants(request, 'room') || instances.length === 0) { return instances; }
+    var ids = instances.map(function(instance) { return instance.instanceId; });
+    return areas.rooms(conn, ids).then(function(rooms) {
+        instances.forEach(function(instance) {
+            var room = rooms[instance.instanceId];
+            if (room) { instance.properties.room = { shortText: entities.shapes.shortText(room) }; }
+        });
+        return instances;
     });
 }
 
@@ -94,7 +108,7 @@ function source(request, respond) {
 
     var work;
     if (request.category === 'home' && entities.ITEMS.indexOf(request.item) !== -1) {
-        work = homeSource(conn, opts, request.item);
+        work = homeSource(conn, opts, request.item, request);
     } else if (request.category === 'weather' && request.item === 'location') {
         work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids, request); });
     } else if (request.category === 'reminders' && request.item === 'list') {

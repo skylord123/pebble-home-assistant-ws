@@ -11,6 +11,7 @@
       "items": ["entity"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "state": ["shortText", "longText", "numericValue", "timestamp"],
         "on": ["boolean"],
         "domain": ["shortText"],
@@ -27,6 +28,7 @@
       "items": ["light"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "on": ["boolean", "shortText"],
         "brightness": ["numericValue", "shortText"],
         "color_temp": ["numericValue", "shortText"],
@@ -44,6 +46,7 @@
       "items": ["switch"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "on": ["boolean", "shortText"],
         "speed": ["numericValue", "shortText"],
         "last_changed": ["timestamp"],
@@ -59,6 +62,7 @@
       "items": ["sensor"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "value": ["shortText", "longText", "numericValue", "timestamp"],
         "device_class": ["shortText"],
         "last_changed": ["timestamp"],
@@ -74,6 +78,7 @@
       "items": ["binary_sensor"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "on": ["boolean", "shortText"],
         "state": ["shortText", "longText"],
         "device_class": ["shortText"],
@@ -90,6 +95,7 @@
       "items": ["climate"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "current_temperature": ["numericValue", "shortText"],
         "target_temperature": ["numericValue", "shortText"],
         "on": ["boolean", "shortText"],
@@ -113,6 +119,7 @@
       "items": ["cover"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "open": ["boolean", "shortText"],
         "position": ["numericValue", "shortText"],
         "state": ["shortText"],
@@ -129,6 +136,7 @@
       "items": ["lock"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "locked": ["boolean", "shortText"],
         "state": ["shortText"],
         "last_changed": ["timestamp"],
@@ -144,6 +152,7 @@
       "items": ["media_player"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "on": ["boolean", "shortText"],
         "playing": ["boolean"],
         "state": ["shortText"],
@@ -163,6 +172,7 @@
       "items": ["person"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "home": ["boolean", "shortText"],
         "zone": ["shortText", "longText"],
         "since": ["timestamp"],
@@ -179,6 +189,7 @@
       "items": ["scene"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "running": ["boolean"],
         "last_run": ["timestamp"],
         "last_changed": ["timestamp"],
@@ -194,6 +205,7 @@
       "items": ["alarm"],
       "properties": {
         "name": ["shortText", "longText"],
+        "room": ["shortText"],
         "armed": ["boolean", "shortText"],
         "state": ["shortText", "longText"],
         "last_changed": ["timestamp"],

@@ -53,6 +53,7 @@ Everything the plugin caches is stored under a `plugin:` prefix:
 
 - entity states, for 10 s each;
 - forecasts, for 15 min, per weather entity;
+- the entities' areas, for an hour;
 - a marker for a token Home Assistant refused, so a bad token is not retried
   on every poll. Every refused attempt counts towards Home Assistant's IP ban.
   - While the marker is set, the plugin answers `AUTH_REQUIRED` without asking
@@ -94,7 +95,17 @@ instance includes these properties:
 - `name`;
 - `last_changed` and `last_updated`, as timestamps;
 - `supported_features`, Home Assistant's own bits for what the entity can do
-  (for a cover, 1 open, 2 close, 4 set position, 8 stop), when it has them.
+  (for a cover, 1 open, 2 close, 4 set position, 8 stop), when it has them;
+- `room`, the name of the entity's area in Home Assistant, or of its
+  device's when the entity has none of its own, as short text. The Google
+  Home plugin uses the same name. An entity in no area has no `room`.
+
+The areas of every entity a source serves come from one template, kept for
+an hour, and only for a request that names `room` in its `properties` or
+names no properties at all. Home Assistant only renders templates for an
+administrator's token; with any other, or if the template fails, the
+instances come without `room` and the template is not tried again for ten
+minutes.
 
 | Source | Domains | Other properties |
 | --- | --- | --- |

@@ -47,6 +47,7 @@ async function everythingEmitted() {
     Object.keys(forecasts).forEach((id) => h.forecasts(id, forecasts[id]));
     const todoItems = fixtures.todoItems();
     Object.keys(todoItems).forEach((id) => h.todoItems(id, todoItems[id]));
+    h.ha.areas = fixtures.areas();
     h.settings({
         plugin_exposed_entities: all.map((s) => s.entity_id).filter((id) => id.indexOf('weather.') !== 0),
         plugin_weather_entities: ['weather.home', 'weather.nws'],

@@ -152,6 +152,10 @@ function createHomeAssistant(clock) {
         forecastsById: {},
         //! entity_id -> the to-do list's items, as todo.get_items gives them
         todoItemsById: {},
+        //! entity_id -> the name of its area (its own, or its device's)
+        areas: {},
+        //! false: the token's user is not an admin, and may not render templates
+        admin: true,
         pipelines: { pipelines: [{ id: 'p1', name: 'Home', stt_engine: 'stt.x' }], preferred_pipeline: 'p1' },
         requests: [],
         sockets: [],
@@ -212,6 +216,12 @@ function createHomeAssistant(clock) {
         if (req.method === 'GET' && m) {
             const state = fake.statesById[decodeURIComponent(m[1])];
             return state ? { status: 200, body: state } : { status: 404, body: { message: 'Entity not found.' } };
+        }
+        if (req.method === 'POST' && p === '/api/template') {
+            if (!fake.admin) { return { status: 401, body: '401: Unauthorized' }; }
+            // Only the one template the plugin renders: the area of each id
+            const ids = (req.body && req.body.variables && req.body.variables.ids) || [];
+            return { status: 200, body: JSON.stringify(ids.map((id) => fake.areas[id] || null)) };
         }
         m = /^\/api\/services\/([a-z0-9_]+)\/([a-z0-9_]+)$/.exec(p);
         if (req.method === 'POST' && m) {

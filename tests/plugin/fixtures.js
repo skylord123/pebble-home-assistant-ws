@@ -127,6 +127,24 @@ function states(now) {
     ];
 }
 
+/** Areas of some of the entities above, as Home Assistant names them */
+function areas() {
+    return {
+        'light.kitchen': 'Kitchen',
+        'switch.coffee': 'Kitchen',
+        'sensor.outside_temperature': 'Garden',
+        'climate.living_room': 'Living room',
+        'cover.office_blind': 'Office',
+        'lock.front_door': 'Hall',
+        'media_player.living_room': 'Living room',
+        'person.alex': 'Hall',
+        'scene.movie': 'Living room',
+        'alarm_control_panel.house': 'Hall',
+        'binary_sensor.front_door': 'Hall',
+        'weather.home': 'Garden'
+    };
+}
+
 /** Forecasts for the weather entities above, from `now` on */
 function forecasts(now) {
     const midnight = new Date(now);
@@ -183,5 +201,6 @@ function todoItems() {
 module.exports = {
     states: states,
     forecasts: forecasts,
-    todoItems: todoItems
+    todoItems: todoItems,
+    areas: areas
 };
