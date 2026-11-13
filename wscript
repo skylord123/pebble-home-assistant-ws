@@ -37,7 +37,10 @@ def build(ctx):
     ctx.load('bundle_config_page', tooldir='waftools')
 
     binaries = []
-    js_target = ctx.concat_javascript(js_path='src/js')
+    # The speech kit's phone side is the one other apps copy, and the app's
+    # own spoken answers play through it too
+    js_target = ctx.concat_javascript(js_path='src/js',
+                                      extra={'ha_speech': 'sdk/speech/ha_speech.js'})
     # The plugin other apps read Home Assistant through: its own bundle, built
     # with the same module loader, added to the pbw after it is zipped. It
     # also takes the modules plugin/bundle.json names from the app, so there

@@ -61,7 +61,8 @@ test('the watch app\'s Speech uses the shared encoder', () => {
         'ui/speaker': { onIdle() {}, onStatus() {}, RATE_8K: 0, RATE_16K: 1 },
         'app/AppState': { getInstance: () => ({}) },
         'app/helpers': { log_message() {} },
-        'app/speech-codec': codec
+        'app/speech-codec': codec,
+        'ha_speech': load('sdk/speech/ha_speech.js', {})
     });
     assert.equal(Speech.parseWav, codec.parseWav);
     assert.equal(Speech.encodeAdpcm, codec.encodeAdpcm);
