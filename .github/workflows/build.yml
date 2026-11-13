@@ -69,3 +69,6 @@ jobs:
 
       - name: Test the plugin
         run: node --test tests/plugin
+
+      - name: Test the speech kit
+        run: node --test tests/sdk
