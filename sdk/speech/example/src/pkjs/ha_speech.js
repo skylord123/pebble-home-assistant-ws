@@ -538,11 +538,18 @@ function AppMessageTransport(key) {
                 setTimeout(sendNext, RETRY_MS);
                 return;
             }
-            // The watch is not listening. Whatever clip this was for is over.
+            // The watch is not listening. Every clip with a message still
+            // waiting here is over, not only the one at the front.
+            var clips = [];
+            queue.forEach(function(waiting) {
+                if (clips.indexOf(waiting[1]) === -1) { clips.push(waiting[1]); }
+            });
             retries = 0;
             queue = [];
             sending = false;
-            if (statusHandler) { statusHandler(head[1], FAILED, 0, 0); }
+            clips.forEach(function(clip) {
+                if (statusHandler) { statusHandler(clip, FAILED, 0, 0); }
+            });
         });
     }
 

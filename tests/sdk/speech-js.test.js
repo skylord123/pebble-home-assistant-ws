@@ -264,6 +264,19 @@ test('a watch that refuses everything ends the clip as FAILED rather than being 
     assert.equal(transport.isIdle(), true);
 });
 
+test('giving up on the watch ends every clip still waiting, not only the first', async () => {
+    const pebble = fakePebble({ nack: () => true });
+    global.Pebble = pebble;
+    const transport = new HaSpeech.AppMessageTransport(KEY);
+    const heard = [];
+    transport.onStatus((...args) => heard.push(args));
+    transport.onIdle(() => {});
+    transport.stop(8);
+    transport.play(9, 0, 1000, 0, 100);
+    for (let i = 0; i < 200 && heard.length < 2; i++) { await new Promise((r) => setTimeout(r, 10)); }
+    assert.deepEqual(heard, [[8, STATES.FAILED, 0, 0], [9, STATES.FAILED, 0, 0]]);
+});
+
 // MARK: - The player, on its own clock
 
 /** A Player over the AppMessage transport and a fake watch, with mocked timers */
