@@ -14,6 +14,7 @@ var actions = require('actions');
 var todo = require('todo');
 var page = require('page');
 var areas = require('areas');
+var calendar = require('calendar');
 
 function fail(respond, err) {
     if (err instanceof ha.PluginError) {
@@ -113,6 +114,8 @@ function source(request, respond) {
         work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids, request); });
     } else if (request.category === 'reminders' && request.item === 'list') {
         work = todo.lists(conn, opts, request);
+    } else if (request.category === 'calendar' && request.item === 'event') {
+        work = calendar.upcoming(conn, options.exposedIds(opts));
     } else {
         return respond.error('INVALID_REQUEST', 'unknown item ' + request.category + '/' + request.item);
     }

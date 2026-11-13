@@ -1,5 +1,5 @@
 {
-  "description": "Home Assistant entities shared from the Home Assistant WS watch app, and Home Assistant weather. Read their state and control them, and add items to shared to-do lists. Only the entities chosen in the watch app are served; weather is always shared.",
+  "description": "Home Assistant entities and calendars shared from the Home Assistant WS watch app, and Home Assistant weather. Read their state and upcoming events, control them, and add items to shared to-do lists. Only what is chosen in the watch app is served; weather is always shared.",
   "script": "plugin.js",
   "definesPermissions": [
     { "name": "Unlock", "label": "Unlock doors, open gates and disarm alarms in Home Assistant", "kind": "dangerous" },
@@ -215,6 +215,21 @@
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 30,
       "callerPermissions": ["Location"]
+    },
+    {
+      "category": "calendar",
+      "items": ["event"],
+      "properties": {
+        "name": ["shortText", "longText"],
+        "location": ["shortText", "longText"],
+        "starts_at": ["shortText", "longText", "timestamp"],
+        "ends_at": ["shortText", "timestamp"],
+        "all_day": ["boolean"],
+        "calendar": ["shortText"]
+      },
+      "supportsMultiple": true,
+      "suggestedRefreshIntervalSec": 300,
+      "callerPermissions": ["Location", "Calendar"]
     },
     {
       "category": "weather",

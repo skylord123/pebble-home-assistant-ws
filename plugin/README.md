@@ -9,7 +9,8 @@ from pbws whose `appinfo.json` has `"manifestVersion": 2`.
 The plugin serves two things:
 
 - the entities the wearer chooses to share, through **Expose to Plugins** on an
-  entity's page on the watch or **Shared with Other Apps** in the settings page;
+  entity's page on the watch or **Shared with Other Apps** in the settings page,
+  and the upcoming events of the calendars among them;
 - every `weather.*` entity, which is always shared.
 
 Anything that has not been shared is refused with `PERMISSION_DENIED`, for
@@ -53,6 +54,7 @@ Everything the plugin caches is stored under a `plugin:` prefix:
 
 - entity states, for 10 s each;
 - forecasts, for 15 min, per weather entity;
+- calendar events, for 5 min, per calendar;
 - the entities' areas, for an hour;
 - a marker for a token Home Assistant refused, so a bad token is not retried
   on every poll. Every refused attempt counts towards Home Assistant's IP ban.
@@ -89,8 +91,9 @@ codes the watch app remembers; a code has to come from the caller.
 Every source requires `Location` of the app reading it, as explained under
 [The watch's own weather](#the-watchs-own-weather).
 
-Every entity is an instance whose `instanceId` is its `entity_id`. Every
-instance includes these properties:
+In the `home/*` sources, every entity is an instance whose `instanceId` is
+its `entity_id`, in the order the wearer shared them. Every instance
+includes these properties:
 
 - `name`;
 - `last_changed` and `last_updated`, as timestamps;
@@ -121,6 +124,7 @@ minutes.
 | `home/person` | person, device_tracker | `home`, `zone`, `since` (never coordinates) |
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
+| `calendar/event` | calendar | `location`, `starts_at`, `ends_at`, `all_day`, `calendar`: the upcoming events of the shared calendars, as the phone's own calendar gives them (see below). |
 | `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
 | `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
 | `reminders/list` | todo | `name`, `count` (open items) and `items` (the first five open ones, one a line). The shared to-do lists, for `create_reminder`. |
@@ -165,6 +169,41 @@ app's UUID in the request:
 ```js
 { category: 'weather', item: 'location', plugin: '61ae3254-ce00-49db-aad8-23143f649b90' }
 ```
+
+Notes on the calendar source:
+
+- `calendar/event` serves the calendars the wearer shared (any `calendar.*`
+  entity among the shared ones) the way the phone's own calendar source
+  serves the phone's calendars, so a face or app made for that one shows
+  Home Assistant's events instead when it asks for this plugin:
+  - one instance per event, at most 10, from the next 7 days, soonest first.
+    An event under way counts until it ends. Events starting at the same
+    moment keep the order the calendars were shared in;
+  - the `instanceId` is the event's place in that list, as there: `"0"` is
+    always the next event;
+  - `name` (the event's summary) and `location` as short and long text,
+    `location` only when there is one;
+  - `starts_at` as short and long text and a timestamp, `ends_at` as short
+    text and a timestamp. The text is the time in the phone's time zone
+    (`09:30`), or `All day`. A whole day runs from the phone's midnight to
+    the next;
+  - `all_day` as a boolean, and `calendar`, the calendar's name, as short
+    text.
+- Each calendar's events are fetched from Home Assistant at most every 5
+  minutes. A calendar Home Assistant cannot read is left out, and the rest
+  are still served.
+- Like the phone's own calendar source, this one requires `Calendar` of the
+  app reading it as well as `Location`. An app that reads calendars already
+  declares it. The phone's own calendar is asked first, unless the wearer
+  picks this app under **Preferred sources**; to get Home Assistant's
+  calendars either way, name this app's UUID in the request:
+
+```js
+{ category: 'calendar', item: 'event', plugin: '61ae3254-ce00-49db-aad8-23143f649b90' }
+```
+
+Shared calendars are also plain entities under `home/entity`, whose `on`
+says whether an event is under way.
 
 ### The watch's own weather
 

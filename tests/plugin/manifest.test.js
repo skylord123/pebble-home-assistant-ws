@@ -48,6 +48,7 @@ async function everythingEmitted() {
     const todoItems = fixtures.todoItems();
     Object.keys(todoItems).forEach((id) => h.todoItems(id, todoItems[id]));
     h.ha.areas = fixtures.areas();
+    h.ha.calendars = fixtures.calendars(h.now());
     h.settings({
         plugin_exposed_entities: all.map((s) => s.entity_id).filter((id) => id.indexOf('weather.') !== 0),
         plugin_weather_entities: ['weather.home', 'weather.nws'],
@@ -116,7 +117,7 @@ test('the manifest lists the sources and actions the code serves', () => {
     const h = harness.create();
     const engine = h.engine();
     const items = engine.require('entities').ITEMS;
-    const served = items.map((item) => 'home/' + item).concat(['weather/location', 'agent/configured',
+    const served = items.map((item) => 'home/' + item).concat(['calendar/event', 'weather/location', 'agent/configured',
         'reminders/configured', 'reminders/list']).sort();
     assert.deepEqual(manifest.sources.map(sourceKey).sort(), served);
     manifest.sources.forEach((source) => assert.equal(source.items.length, 1, sourceKey(source)));

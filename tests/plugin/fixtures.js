@@ -116,6 +116,11 @@ function states(now) {
             friendly_name: 'Washer program', options: ['eco', 'quick'] } },
         { entity_id: 'event.doorbell', state: ago, attributes: { friendly_name: 'Doorbell press', event_type: 'pressed' } },
 
+        // Calendars: one in an event, one between events
+        { entity_id: 'calendar.family', state: 'on', attributes: {
+            friendly_name: 'Family', message: 'School run', all_day: false, location: 'Elm Street' } },
+        { entity_id: 'calendar.work', state: 'off', attributes: { friendly_name: 'Work', message: 'Standup', all_day: false } },
+
         // Weather: the home's, with daily and hourly forecasts, and one with twice-daily only
         { entity_id: 'weather.home', state: 'partlycloudy', attributes: {
             friendly_name: 'Forecast Home', temperature: 18.4, apparent_temperature: 17.1, temperature_unit: '°C',
@@ -142,6 +147,48 @@ function areas() {
         'alarm_control_panel.house': 'Hall',
         'binary_sensor.front_door': 'Hall',
         'weather.home': 'Garden'
+    };
+}
+
+/** A moment `day` days from today, at `hour` (fractions for minutes) in the phone's time zone */
+function local(now, day, hour) {
+    const midnight = new Date(now);
+    midnight.setHours(0, 0, 0, 0);
+    return midnight.getTime() + day * 86400000 + hour * HOUR;
+}
+
+function ymd(ms) {
+    const d = new Date(ms);
+    return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+}
+
+/**
+ * The calendars' events as /api/calendars/<id> lists them, with `now` at
+ * 09:00: one already over, one under way, a whole day, two starting at
+ * once, and more than the ten the source serves.
+ */
+function calendars(now) {
+    const timed = (summary, day, from, to, extra) => Object.assign({
+        summary: summary,
+        start: { dateTime: iso(local(now, day, from)) },
+        end: { dateTime: iso(local(now, day, to)) },
+        description: '', location: null, uid: summary.toLowerCase().replace(/\W+/g, '-') + '-' + day,
+        recurrence_id: null, rrule: null
+    }, extra || {});
+    const focus = [];
+    for (let day = 0; day < 9; day++) {
+        focus.push(timed('Focus time', day, 13, 15, { rrule: 'FREQ=DAILY' }));
+    }
+    return {
+        'calendar.family': [
+            timed('Breakfast', 0, 7, 8),
+            timed('School run', 0, 8.5, 9.5, { location: 'Elm Street' }),
+            { summary: 'Bin day', start: { date: ymd(local(now, 0, 0)) }, end: { date: ymd(local(now, 1, 0)) },
+                description: '', location: '', uid: 'bins', recurrence_id: null, rrule: null },
+            timed('Dentist', 0, 10, 10.5),
+            timed('Dinner with Sam', 1, 18, 19.75, { location: 'Luigi\'s' })
+        ],
+        'calendar.work': [timed('Standup', 0, 10, 10.25)].concat(focus)
     };
 }
 
@@ -202,5 +249,6 @@ module.exports = {
     states: states,
     forecasts: forecasts,
     todoItems: todoItems,
-    areas: areas
+    areas: areas,
+    calendars: calendars
 };

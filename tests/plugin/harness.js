@@ -152,6 +152,8 @@ function createHomeAssistant(clock) {
         forecastsById: {},
         //! entity_id -> the to-do list's items, as todo.get_items gives them
         todoItemsById: {},
+        //! calendar entity_id -> its events, as /api/calendars/<id> lists them
+        calendars: {},
         //! entity_id -> the name of its area (its own, or its device's)
         areas: {},
         //! false: the token's user is not an admin, and may not render templates
@@ -216,6 +218,16 @@ function createHomeAssistant(clock) {
         if (req.method === 'GET' && m) {
             const state = fake.statesById[decodeURIComponent(m[1])];
             return state ? { status: 200, body: state } : { status: 404, body: { message: 'Entity not found.' } };
+        }
+        m = /^\/api\/calendars\/(.+)$/.exec(p);
+        if (req.method === 'GET' && m) {
+            const events = fake.calendars[decodeURIComponent(m[1])];
+            if (!events) { return { status: 400, body: { message: 'Entity not found' } }; }
+            const from = Date.parse(req.query.start);
+            const to = Date.parse(req.query.end);
+            if (isNaN(from) || isNaN(to)) { return { status: 400, body: { message: 'Invalid start or end' } }; }
+            const at = (when) => Date.parse(when.dateTime || when.date + 'T00:00:00');
+            return { status: 200, body: clone(events.filter((e) => at(e.end) > from && at(e.start) < to)) };
         }
         if (req.method === 'POST' && p === '/api/template') {
             if (!fake.admin) { return { status: 401, body: '401: Unauthorized' }; }
