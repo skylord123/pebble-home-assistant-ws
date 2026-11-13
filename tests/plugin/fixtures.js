@@ -168,7 +168,20 @@ function forecasts(now) {
     };
 }
 
+/** Items on the to-do lists above, done ones among them */
+function todoItems() {
+    const item = (uid, summary, status, extra) => Object.assign({ uid: uid, summary: summary, status: status }, extra || {});
+    return {
+        'todo.shopping_list': [item('1', 'Milk', 'needs_action'), item('2', 'Eggs', 'completed'),
+            item('3', 'Bread', 'needs_action'), item('4', 'Coffee', 'needs_action')],
+        'todo.chores': [item('5', 'Vacuum', 'needs_action', { due: '2026-06-16T18:00:00-06:00' }),
+            item('6', 'Laundry', 'needs_action', { description: 'Darks first' })],
+        'todo.errands': [item('7', 'Post office', 'completed')]
+    };
+}
+
 module.exports = {
     states: states,
-    forecasts: forecasts
+    forecasts: forecasts,
+    todoItems: todoItems
 };

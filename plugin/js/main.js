@@ -98,7 +98,7 @@ function source(request, respond) {
     } else if (request.category === 'weather' && request.item === 'location') {
         work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids, request); });
     } else if (request.category === 'reminders' && request.item === 'list') {
-        work = Promise.resolve(todo.lists(opts));
+        work = todo.lists(conn, opts, request);
     } else {
         return respond.error('INVALID_REQUEST', 'unknown item ' + request.category + '/' + request.item);
     }

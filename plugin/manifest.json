@@ -262,7 +262,9 @@
       "category": "reminders",
       "items": ["list"],
       "properties": {
-        "name": ["shortText"]
+        "name": ["shortText"],
+        "count": ["numericValue", "shortText"],
+        "items": ["longText"]
       },
       "supportsMultiple": true,
       "suggestedRefreshIntervalSec": 300,

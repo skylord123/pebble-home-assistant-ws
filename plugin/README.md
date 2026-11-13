@@ -112,7 +112,7 @@ instance includes these properties:
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
 | `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
 | `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
-| `reminders/list` | todo | Only `name`. The shared to-do lists, for `create_reminder`. |
+| `reminders/list` | todo | `name`, `count` (open items) and `items` (the first five open ones, one a line). The shared to-do lists, for `create_reminder`. |
 | `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below; the wearer's locations also `sunrise`, `sunset` |
 
 Notes on the weather source:
@@ -311,8 +311,12 @@ reads the lists to choose from in `reminders/list`:
 
 - `reminders/configured` says `true` once Home Assistant is set up and at
   least one to-do list is shared. Index gives it three seconds, so it is
-  answered from the settings alone, as is `reminders/list` (with the
-  names the watch app saved when the lists were shared).
+  answered from the settings alone, as is `reminders/list` when only
+  names are asked for (the names the watch app saved when the lists were
+  shared). `count` comes from the list's state, and `items` from one
+  `todo.get_items` call for all the lists, made only when `items` is asked
+  for. Home Assistant before 2024.8 cannot answer that over REST, so
+  there the lists come without `items`.
 - The wearer picks Home Assistant WS as the place for reminders in Index's
   settings; with a ring paired, the Pebble app also offers once to make
   it the default when the settings page closes with a list shared.

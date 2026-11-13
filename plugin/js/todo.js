@@ -8,6 +8,9 @@
  * the lists to pick from by name, with only three seconds for each answer,
  * so both are answered from what is stored on the phone. Only the to-do
  * lists the wearer shared are offered, in the order they were shared.
+ *
+ * A face or app can also read how many items are open on each list, and
+ * the first few of them, which do need Home Assistant.
  */
 var ha = require('ha');
 var options = require('options');
@@ -18,6 +21,8 @@ var S = entities.shapes;
 
 //! Home Assistant's own bits for what a to-do list can do
 var FEATURE = { create_item: 1, due_date: 16, due_datetime: 32 };
+//! How many open items `items` lists
+var ITEMS_SHOWN = 5;
 
 function invalid(message) {
     return new PluginError('INVALID_ARGS', message);
@@ -50,15 +55,74 @@ function fallbackName(id) {
     return entities.humanize(id.split('.')[1]);
 }
 
-/** One instance per shared to-do list, named as the watch app last saw it */
-function lists(opts) {
-    var names = options.sharedNames(opts);
-    return listIds(opts).map(function(id) {
-        return {
-            instanceId: id,
-            properties: { name: { shortText: S.shortText(names[id] || fallbackName(id)) } }
-        };
+//! Whether the caller wants `name`. A caller that names no properties wants them all.
+function wants(request, name) {
+    var names = request && request.properties;
+    return !Array.isArray(names) || names.indexOf(name) !== -1;
+}
+
+/**
+ * The first few open items of each list, by entity_id, in one call for all
+ * of them. Home Assistant before 2024.8 cannot answer a service over REST
+ * and refuses the call; the lists are then served without their items.
+ */
+function openItems(conn, ids) {
+    return ha.callServiceForResponse(conn, 'todo', 'get_items', { entity_id: ids, status: 'needs_action' })
+        .then(function(response) {
+            var byId = {};
+            ids.forEach(function(id) {
+                var items = response[id] && Array.isArray(response[id].items) ? response[id].items : [];
+                byId[id] = items.map(function(item) { return item && item.summary; })
+                    .filter(function(summary) { return typeof summary === 'string' && summary; });
+            });
+            return byId;
+        }, function(err) {
+            if (err instanceof PluginError && err.code === 'INVALID_ARGS') { return {}; }
+            throw err;
+        });
+}
+
+/**
+ * One instance per shared to-do list. Names alone, all Index asks for, come
+ * from the settings as the watch app last saw them; the open items need
+ * Home Assistant, and a list it no longer has is then left out.
+ */
+function lists(conn, opts, request) {
+    var ids = listIds(opts);
+    if (!wants(request, 'count') && !wants(request, 'items')) {
+        var names = options.sharedNames(opts);
+        return Promise.resolve(ids.map(function(id) {
+            return {
+                instanceId: id,
+                properties: { name: { shortText: S.shortText(names[id] || fallbackName(id)) } }
+            };
+        }));
+    }
+    if (ids.length === 0) { return Promise.resolve([]); }
+    return ha.getStates(conn, ids).then(function(states) {
+        var found = ids.filter(function(id) { return states[id]; });
+        // The state is the number of open items, so only the items themselves are asked for
+        // An unavailable list would fail the call for all of them
+        var readable = found.filter(function(id) {
+            return states[id].state !== 'unavailable' && states[id].state !== 'unknown';
+        });
+        var reading = wants(request, 'items') && readable.length > 0 ? openItems(conn, readable) : Promise.resolve({});
+        return reading.then(function(itemsById) {
+            return found.map(function(id) { return toInstance(states[id], itemsById[id]); });
+        });
     });
+}
+
+function toInstance(entity, items) {
+    var props = { name: { shortText: S.shortText(entities.nameOf(entity)) } };
+    var count = Number(entity.state);
+    if (/^\d+$/.test(String(entity.state)) && isFinite(count)) {
+        props.count = { numericValue: S.numeric(count), shortText: S.shortText(String(count)) };
+    }
+    if (items) {
+        props.items = { longText: S.longText(items.slice(0, ITEMS_SHOWN).join('\n')) };
+    }
+    return { instanceId: entity.entity_id, properties: props };
 }
 
 function hasFeature(entity, bit) {

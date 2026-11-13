@@ -150,6 +150,8 @@ function createHomeAssistant(clock) {
         config: { version: '2026.11.0', latitude: 40.0, longitude: -105.0, location_name: 'Home' },
         statesById: {},
         forecastsById: {},
+        //! entity_id -> the to-do list's items, as todo.get_items gives them
+        todoItemsById: {},
         pipelines: { pipelines: [{ id: 'p1', name: 'Home', stt_engine: 'stt.x' }], preferred_pipeline: 'p1' },
         requests: [],
         sockets: [],
@@ -219,6 +221,16 @@ function createHomeAssistant(clock) {
                     const response = {};
                     ids.forEach((id) => {
                         response[id] = { forecast: clone(((fake.forecastsById[id] || {})[req.body.type]) || []) };
+                    });
+                    return { status: 200, body: { changed_states: [], service_response: response } };
+                }
+                if (m[1] === 'todo' && m[2] === 'get_items') {
+                    const ids = [].concat((req.body && req.body.entity_id) || []);
+                    const wanted = [].concat((req.body && req.body.status) || []);
+                    const response = {};
+                    ids.forEach((id) => {
+                        const items = clone(fake.todoItemsById[id] || []);
+                        response[id] = { items: wanted.length ? items.filter((i) => wanted.includes(i.status)) : items };
                     });
                     return { status: 200, body: { changed_states: [], service_response: response } };
                 }
@@ -427,6 +439,12 @@ function create(opts) {
         /** Forecasts Home Assistant gives for one weather entity: { daily: [...], hourly: [...] } */
         forecasts(entityId, byType) {
             ha.forecastsById[entityId] = clone(byType);
+            return h;
+        },
+
+        /** The items of one to-do list: [{ uid, summary, status, due?, description? }] */
+        todoItems(entityId, items) {
+            ha.todoItemsById[entityId] = clone(items);
             return h;
         },
 

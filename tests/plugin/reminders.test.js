@@ -136,3 +136,60 @@ test('create_reminder goes through without the assistant being shared', async ()
     const h = setUp({ plugin_share_assistant: false });
     assert.ok((await h.action('create_reminder', { title: 'Eggs' })).ok);
 });
+
+function listProps(answer) {
+    assert.ok(answer.data, JSON.stringify(answer.error));
+    const out = {};
+    answer.data.instances.forEach((i) => { out[i.instanceId] = i.properties; });
+    return out;
+}
+
+test('reminders/list counts the open items, and lists the first few when asked', async () => {
+    const h = setUp();
+    const items = fixtures.todoItems();
+    Object.keys(items).forEach((id) => h.todoItems(id, items[id]));
+
+    const all = listProps(await h.source('reminders', 'list'));
+    assert.deepEqual(Object.keys(all), ['todo.chores', 'todo.shopping_list', 'todo.errands']);
+    assert.deepEqual(all['todo.shopping_list'], {
+        name: { shortText: { text: 'Shopping List' } },
+        count: { numericValue: { value: 3 }, shortText: { text: '3' } },
+        items: { longText: { text: 'Milk\nBread\nCoffee' } }
+    });
+    assert.deepEqual(all['todo.errands'].items, { longText: { text: '' } });
+    assert.deepEqual(h.ha.serviceCalls(), [{
+        service: 'todo.get_items', query: { return_response: '' },
+        data: { entity_id: ['todo.chores', 'todo.shopping_list', 'todo.errands'], status: 'needs_action' }
+    }]);
+
+    // The count is the list's state; the items are only fetched for a caller that wants them
+    const counted = listProps(await h.source('reminders', 'list', { properties: ['name', 'count'] }));
+    assert.deepEqual(counted['todo.chores'].count.numericValue, { value: 2 });
+    assert.equal(counted['todo.chores'].items, undefined);
+    assert.equal(h.ha.serviceCalls().length, 1);
+});
+
+test('only five items are listed', async () => {
+    const h = setUp();
+    h.todoItems('todo.chores', [1, 2, 3, 4, 5, 6, 7].map((n) => ({ uid: String(n), summary: 'Job ' + n, status: 'needs_action' })));
+    const props = listProps(await h.source('reminders', 'list', { properties: ['items'] }));
+    assert.equal(props['todo.chores'].items.longText.text, 'Job 1\nJob 2\nJob 3\nJob 4\nJob 5');
+});
+
+test('a Home Assistant that cannot answer services over REST still gets its counts served', async () => {
+    const h = setUp();
+    h.ha.on('POST', '/api/services/todo/get_items', () => ({ status: 400,
+        body: { message: 'Service call requires responses but caller did not ask for responses' } }));
+    const props = listProps(await h.source('reminders', 'list'));
+    assert.deepEqual(props['todo.shopping_list'].count.shortText, { text: '3' });
+    assert.equal(props['todo.shopping_list'].items, undefined);
+});
+
+test('reading the counts leaves out a list Home Assistant no longer has, and an unavailable count', async () => {
+    const h = setUp({ plugin_exposed_entities: ['todo.deleted', 'todo.chores'] });
+    h.ha.statesById['todo.chores'].state = 'unavailable';
+    const answer = await h.source('reminders', 'list', { properties: ['count'] });
+    assert.deepEqual(answer.data.instances, [
+        { instanceId: 'todo.chores', properties: { name: { shortText: { text: 'Chores' } } } }
+    ]);
+});
