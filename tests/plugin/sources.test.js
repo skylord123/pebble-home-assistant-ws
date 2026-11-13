@@ -51,6 +51,30 @@ test('a light instance has the typed properties a face draws', async () => {
     assert.ok(answer.data.validUntilMs > h.now());
 });
 
+test('instances come in the order the wearer shared them, the same on every read', async () => {
+    // Complications and faces pick an instance by its place in the list
+    const h = setUp({ plugin_exposed_entities: ['switch.coffee', 'light.bedroom', 'light.kitchen'] });
+    const first = ids(await h.source('home', 'entity'));
+    assert.deepEqual(first, ['switch.coffee', 'light.bedroom', 'light.kitchen', 'weather.home']);
+    assert.deepEqual(ids(await h.source('home', 'light')), ['light.bedroom', 'light.kitchen']);
+    // Partly from the cache, partly fetched again
+    h.advance(11000);
+    await h.source('home', 'light');
+    assert.deepEqual(ids(await h.source('home', 'entity')), first);
+
+    // Enough of them to be fetched all at once, which Home Assistant answers in its own order
+    const many = [];
+    for (let i = 0; i < 20; i++) { many.push('sensor.s' + String(i).padStart(2, '0')); }
+    const big = harness.create();
+    big.states(many.map((id) => ({ entity_id: id, state: '1', attributes: {} })));
+    const shared = many.slice().reverse();
+    big.settings({ plugin_exposed_entities: shared, plugin_weather_entities: [] });
+    assert.deepEqual(ids(await big.source('home', 'sensor')), shared);
+    assert.equal(big.ha.calls('GET /api/states').length, 1);
+    big.advance(11000);
+    assert.deepEqual(ids(await big.source('home', 'sensor', { properties: ['value', 'room', 'history'] })), shared);
+});
+
 test('the shared list also takes entries saved as objects', async () => {
     const h = setUp({ plugin_exposed_entities: [{ entity_id: 'light.kitchen', name: 'Kitchen' }, 'light.kitchen'] });
     assert.deepEqual(ids(await h.source('home', 'light')), ['light.kitchen']);
