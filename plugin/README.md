@@ -328,7 +328,7 @@ happened, and asks the sources that show that entity to refresh.
 
 | Action | Does |
 | --- | --- |
-| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them, and for media players plays or pauses (their `on` is whether they are playing). Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
+| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them, and for media players plays or pauses (their `on` is whether they are playing). Locks only lock and alarm panels only arm (in `away`); turning them off is refused, as only `unlock` and `alarm_disarm` do that. Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
 | `toggle` | Toggles. A locked lock is refused (use `unlock`), and a closed garage door, gate or door is refused (use `open`). |
 | `activate` | Runs a scene or script, presses a button, or triggers an automation. |
 | `set_brightness` `{ percent }` | Sets a light's brightness. |
@@ -380,7 +380,7 @@ The **Apps Can Unlock** switch stays, because the Pebble app's own callers
 None of these actions can be done another way, short of asking the
 assistant (see `ask_assistant` below):
 
-- `toggle` never unlocks a lock.
+- `toggle` and `set_on` never unlock a lock, and `set_on` never disarms.
 - A garage door, gate or door (a cover with that device class) never opens
   through `set_on`, `toggle`, `set_position` or `call_service`.
 - `call_service` refuses `lock.unlock`, `lock.open` and

@@ -199,6 +199,16 @@ var ENTITY_ACTIONS = {
             }
             return { domain: domain, service: 'turn_on', text: 'Ran ' + name + '.' };
         }
+        // A lock's `on` is locked and a panel's armed. Unlocking and disarming
+        // need the Unlock permission, which only their own actions ask for.
+        if (domain === 'lock') {
+            if (!args.on) { throw invalid(name + ' only unlocks with the unlock action'); }
+            return ENTITY_ACTIONS.lock(entity, args);
+        }
+        if (domain === 'alarm_control_panel') {
+            if (!args.on) { throw invalid(name + ' only disarms with the alarm_disarm action'); }
+            return ENTITY_ACTIONS.alarm_arm(entity, args);
+        }
         throw invalid(entity.entity_id + ' has no on or off');
     },
 

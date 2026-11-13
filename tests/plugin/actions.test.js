@@ -134,6 +134,26 @@ test('a Dashboard tap on a media player plays and pauses it', async () => {
     }
 });
 
+test('set_on locks and arms, but never unlocks or disarms, even with Apps Can Unlock', async () => {
+    const h = setUp({ plugin_allow_unlock: true,
+        plugin_exposed_entities: SHARED.concat(['lock.shed', 'alarm_control_panel.shed']) });
+    // A Dashboard tile on home/entity flips `on`: an unlocked lock locks
+    let tap = await dashboardTap(h, 'home', 'entity', 'lock.shed', 'on');
+    assert.deepEqual([tap.action, tap.args.on], ['set_on', true]);
+    assert.equal(tap.answer.ok.text, 'Locked Shed.');
+    assert.equal(onlyCall(h).service, 'lock.lock');
+
+    tap = await dashboardTap(h, 'home', 'entity', 'alarm_control_panel.shed', 'on');
+    assert.equal(onlyCall(h).service, 'alarm_control_panel.alarm_arm_away');
+
+    // and a locked one, or an armed panel, is refused with what to use instead
+    tap = await dashboardTap(h, 'home', 'entity', 'lock.front_door', 'on');
+    assertRefused(tap.answer, 'INVALID_ARGS', /unlock action/);
+    tap = await dashboardTap(h, 'home', 'entity', 'alarm_control_panel.house', 'on');
+    assertRefused(tap.answer, 'INVALID_ARGS', /alarm_disarm action/);
+    assert.equal(h.ha.serviceCalls().length, 0);
+});
+
 test('set_brightness sets a percentage, turns off at 0, and refuses lights that cannot dim', async () => {
     const h = setUp();
     let answer = await h.action('set_brightness', { instanceId: 'light.kitchen', percent: 42.4 });
