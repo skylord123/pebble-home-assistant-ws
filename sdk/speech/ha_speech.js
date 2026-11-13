@@ -708,26 +708,29 @@ function defaultStorage() {
  *               takes (see Player above). handleMessage is not needed then.
  *   watchdog  - as the Player takes it: on with key, off with a transport
  *               unless set, for a transport that can lose a report too
- *   volume    - 0 to 100, a share of the watch's own speaker volume (100)
+ *   volume    - 0 to 100, a share of the watch's own speaker volume (100),
+ *               or a function giving it, asked each time something starts
  *   storage   - where the link speed is remembered (localStorage)
+ *   linkKey   - the key it is remembered under (ha_speech_link_bps)
  *   log       - fn(text) for what happened, or null for nothing (console.log)
  *
- * Returns { say, ask, playReply, stop, hasSpeaker, handleMessage }. One
- * thing is spoken at a time: starting another stops the one before, whose
- * promise resolves 'stopped'.
+ * Returns { say, ask, playReply, stop, hasSpeaker, rate, handleMessage }.
+ * One thing is spoken at a time: starting another stops the one before,
+ * whose promise resolves 'stopped'.
  */
 function create(options) {
     options = options || {};
     if (!options.transport && (options.key === undefined || options.key === null)) {
         throw new Error('HaSpeech.create needs the message key the watch listens on, or a transport');
     }
-    var volume = options.volume === undefined ? 100 : Number(options.volume);
+    var volume = options.volume;
     var log = options.log === undefined ? function(text) { console.log('ha_speech: ' + text); } :
         options.log || noop;
     var transport = options.transport || new AppMessageTransport(options.key);
     var player = new Player({
         transport: transport,
         storage: options.storage === undefined ? defaultStorage() : options.storage,
+        linkKey: options.linkKey,
         log: log,
         // Over AppMessage a status the phone could not take is not sent again
         watchdog: options.watchdog === undefined ? !options.transport : !!options.watchdog
@@ -744,6 +747,12 @@ function create(options) {
         } catch (e) {
             return false;
         }
+    }
+
+    //! How loud, as it is now
+    function volumeNow() {
+        var value = typeof volume === 'function' ? volume() : volume;
+        return value === undefined ? 100 : Number(value);
     }
 
     function stop() {
@@ -798,7 +807,7 @@ function create(options) {
                     return;
                 }
                 if (!job.clip) {
-                    job.clip = player.begin({ rate: slice.rate, volume: volume, onEnd: ended });
+                    job.clip = player.begin({ rate: slice.rate, volume: volumeNow(), onEnd: ended });
                 }
                 player.add(job.clip, decodeBase64(slice.audio), !!slice.phrase, !!slice.last);
                 if (slice.last || current !== job) { return; }
@@ -835,9 +844,9 @@ function create(options) {
 
     /**
      * Read out the reply of an `ask_assistant` your app made itself with
-     * `speak: true`: its result as the Pebble app gave it, its `text`, or
-     * that parsed. Pass the same `args` ({ pipeline }) the ask had. Resolves
-     * and rejects as say() does.
+     * `speak: true` and `rate: rate()`: its result as the Pebble app gave
+     * it, its `text`, or that parsed. Pass the same `args` ({ pipeline }) the
+     * ask had. Resolves and rejects as say() does.
      */
     function playReply(result, args) {
         var answer = result;
@@ -902,6 +911,9 @@ function create(options) {
         playReply: playReply,
         stop: stop,
         hasSpeaker: hasSpeaker,
+        // The sample rate to ask for speech at, 8000 or 16000, from how fast
+        // the link has been
+        rate: player.rate,
         handleMessage: transport.handleMessage || function() { return false; }
     };
 }

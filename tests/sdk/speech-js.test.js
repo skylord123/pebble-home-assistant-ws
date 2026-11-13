@@ -742,6 +742,27 @@ test('with a transport of its own, an app gets the same speech, and no AppMessag
     assert.equal(pebble.sent.length, 0);
 });
 
+test('an app asking the assistant itself gets the rate, its own volume setting and link speed key', async () => {
+    const { h, watch, speech, transport } = setUpWithTransport();
+    const settings = memoryStorage({ assist_speak_link_bps: '20000' });
+    let volume = 25;
+    const own = HaSpeech.create({ transport: transport, storage: settings, linkKey: 'assist_speak_link_bps',
+        volume: () => volume, log: null });
+    assert.equal(speech.rate(), 8000);
+    // The link speed it has always kept, under its own key
+    assert.equal(own.rate(), 16000);
+    const result = await h.action('ask_assistant', { text: 'lights on', speak: true, rate: own.rate() });
+    assert.equal(await playOut(watch, own.playReply(JSON.parse(result.ok.text)), 2000), 'done');
+    assert.equal(watch.messages[0].volume, 25);
+    assert.equal(watch.messages[0].rate, 1);
+    // A setting changed since is used for the next
+    volume = 75;
+    assert.equal(await playOut(watch, own.say('The garage is closed.'), 2000), 'done');
+    assert.equal(watch.messages.filter((m) => m.op === 'play').pop().volume, 75);
+    assert.ok(Number(settings.items.assist_speak_link_bps) > 0);
+    assert.equal(settings.items.ha_speech_link_bps, undefined);
+});
+
 test('with a transport, a report that never comes is waited for unless the watchdog is asked for', async (t) => {
     t.mock.timers.enable({ apis: ['setTimeout', 'setInterval', 'Date'], now: 1000000 });
     const first = JSON.stringify({ audio: Buffer.from(audio(4000)).toString('base64'), rate: 8000,
