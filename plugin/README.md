@@ -111,6 +111,8 @@ instance includes these properties:
 | `home/scene` | scene, script, button, input_button | `running`, `last_run` |
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
 | `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
+| `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
+| `reminders/list` | todo | Only `name`. The shared to-do lists, for `create_reminder`. |
 | `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below; the wearer's locations also `sunrise`, `sunset` |
 
 Notes on the weather source:
@@ -222,6 +224,7 @@ happened, and asks the sources that show that entity to refresh.
 | `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
 | `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
 | `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
+| `create_reminder` `{ title, due_iso?, timezone?, notify_before_ms?, instanceId? }` | Adds an item to a shared to-do list. See below. |
 
 Actions check the entity's `supported_features` first. Asking a window
 that cannot be positioned to move to 40%, or a player that cannot skip to
@@ -300,6 +303,36 @@ while it does. Index is not asked for the `Assistant` permission, as with
 any of the Pebble app's own callers, so **Share with Apps** is what keeps it
 out. Nothing on the watch goes through these destinations; watch apps call
 `ask_assistant` or `send_to_agent` directly.
+
+Shared to-do lists (`todo.*`, such as the Shopping List) are offered to
+Index the same way, as a place for reminders and list items. Index looks
+for a `create_reminder` action and a `reminders/configured` source, and
+reads the lists to choose from in `reminders/list`:
+
+- `reminders/configured` says `true` once Home Assistant is set up and at
+  least one to-do list is shared. Index gives it three seconds, so it is
+  answered from the settings alone, as is `reminders/list` (with the
+  names the watch app saved when the lists were shared).
+- The wearer picks Home Assistant WS as the place for reminders in Index's
+  settings; with a ring paired, the Pebble app also offers once to make
+  it the default when the settings page closes with a list shared.
+  For "add milk to the shopping list", Index matches "shopping" against the
+  list names and passes the list it found as `instanceId`. Anything else,
+  such as "remind me to call the plumber", has no list and goes on the
+  first list shared, so share the list for those first.
+- `due_iso` becomes the item's due date and time on a list that keeps
+  them (Local To-do), only its date on one that keeps dates (Google Tasks),
+  and is left off on one that keeps neither (the Shopping List). The reply
+  says which. Home Assistant's lists have no reminders of their own, so
+  `notify_before_ms` is ignored.
+- A list that is not shared is refused with `PERMISSION_DENIED`, like any
+  entity.
+
+Index shows its own "Sent to" line with the app's name for these. The
+reply, such as "Added Milk to Shopping List.", goes to Index's assistant,
+or to the watch app that called `create_reminder` itself. Notes are not
+offered: Index would send every note there once the wearer made it the
+default, and a to-do list is a poor home for a long note.
 
 ## Trying it
 

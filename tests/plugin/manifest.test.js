@@ -113,7 +113,8 @@ test('the manifest lists the sources and actions the code serves', () => {
     const h = harness.create();
     const engine = h.engine();
     const items = engine.require('entities').ITEMS;
-    const served = items.map((item) => 'home/' + item).concat(['weather/location', 'agent/configured']).sort();
+    const served = items.map((item) => 'home/' + item).concat(['weather/location', 'agent/configured',
+        'reminders/configured', 'reminders/list']).sort();
     assert.deepEqual(manifest.sources.map(sourceKey).sort(), served);
     manifest.sources.forEach((source) => assert.equal(source.items.length, 1, sourceKey(source)));
 

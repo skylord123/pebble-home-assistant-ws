@@ -20,6 +20,7 @@ var ws = require('ws');
 var store = require('store');
 var options = require('options');
 var entities = require('entities');
+var todo = require('todo');
 
 var PluginError = ha.PluginError;
 
@@ -549,6 +550,10 @@ function run(conn, opts, name, args) {
         }
         return askAssistant(conn, opts, { text: args.message });
     }
+    // What Index calls to put a reminder or a list item on a shared to-do list
+    if (name === 'create_reminder') {
+        return todo.createReminder(conn, opts, args);
+    }
     if (!ENTITY_ACTIONS.hasOwnProperty(name)) {
         return Promise.reject(new PluginError('INVALID_REQUEST', 'unknown action ' + name));
     }
@@ -557,5 +562,5 @@ function run(conn, opts, name, args) {
 
 module.exports = {
     run: run,
-    names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant', 'send_to_agent'])
+    names: Object.keys(ENTITY_ACTIONS).concat(['ask_assistant', 'send_to_agent', 'create_reminder'])
 };

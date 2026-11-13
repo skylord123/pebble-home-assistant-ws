@@ -78,6 +78,22 @@ function exposedIds(options) {
 }
 
 /**
+ * The names shared entities had when they were shared, by entity_id. The
+ * watch app keeps them in step with Home Assistant; an entry saved as a bare
+ * id has none.
+ */
+function sharedNames(options) {
+    var list = Array.isArray(options.plugin_exposed_entities) ? options.plugin_exposed_entities : [];
+    var names = {};
+    list.forEach(function(entry) {
+        if (entry && typeof entry.entity_id === 'string' && typeof entry.name === 'string' && entry.name) {
+            names[entry.entity_id] = entry.name;
+        }
+    });
+    return names;
+}
+
+/**
  * Weather entities the app has seen, or null when it has not published any
  * yet and the plugin has to look for itself
  */
@@ -90,5 +106,6 @@ module.exports = {
     save: save,
     connection: connection,
     exposedIds: exposedIds,
+    sharedNames: sharedNames,
     weatherIds: weatherIds
 };

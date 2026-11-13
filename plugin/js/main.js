@@ -11,6 +11,7 @@ var ha = require('ha');
 var entities = require('entities');
 var weather = require('weather');
 var actions = require('actions');
+var todo = require('todo');
 var page = require('page');
 
 function fail(respond, err) {
@@ -86,6 +87,9 @@ function source(request, respond) {
     if (request.category === 'agent' && request.item === 'configured') {
         return respond.data(agentConfigured(conn, opts));
     }
+    if (request.category === 'reminders' && request.item === 'configured') {
+        return respond.data(todo.configured(conn, opts));
+    }
     if (!conn) { return notSetUp(respond); }
 
     var work;
@@ -93,6 +97,8 @@ function source(request, respond) {
         work = homeSource(conn, opts, request.item);
     } else if (request.category === 'weather' && request.item === 'location') {
         work = weatherIds(conn, opts).then(function(ids) { return weather.location(conn, ids, request); });
+    } else if (request.category === 'reminders' && request.item === 'list') {
+        work = Promise.resolve(todo.lists(opts));
     } else {
         return respond.error('INVALID_REQUEST', 'unknown item ' + request.category + '/' + request.item);
     }

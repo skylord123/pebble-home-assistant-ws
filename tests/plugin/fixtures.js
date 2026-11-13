@@ -105,6 +105,12 @@ function states(now) {
             friendly_name: 'House alarm', code_format: 'number', supported_features: 63 } },
         { entity_id: 'alarm_control_panel.shed', state: 'disarmed', attributes: { friendly_name: 'Shed alarm' } },
 
+        // To-do lists, their state the number of open items: the Shopping List
+        // keeps no due dates, Local To-do keeps a time, Google Tasks a date only
+        { entity_id: 'todo.shopping_list', state: '3', attributes: { friendly_name: 'Shopping List', supported_features: 15 } },
+        { entity_id: 'todo.chores', state: '2', attributes: { friendly_name: 'Chores', supported_features: 127 } },
+        { entity_id: 'todo.errands', state: '0', attributes: { friendly_name: 'Errands', supported_features: 95 } },
+
         // Only served under home/entity
         { entity_id: 'select.washer_program', state: 'eco', attributes: {
             friendly_name: 'Washer program', options: ['eco', 'quick'] } },
