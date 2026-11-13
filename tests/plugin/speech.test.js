@@ -509,3 +509,16 @@ test('ask_assistant with speak starts the first piece when the voice is already 
     assert.equal(h.ha.calls('POST /api/tts_get_url')[0].body.options.preferred_sample_rate, 16000);
     assert.equal(h.ha.calls(/^GET \/api\/tts_proxy\//).length, 0, 'waited for the audio');
 });
+
+test('a WebSocket that cannot connect stops speech, not the other sources', async () => {
+    const h = setUp({ plugin_exposed_entities: ['light.kitchen'] });
+    h.states([{ entity_id: 'light.kitchen', state: 'on', attributes: { friendly_name: 'Kitchen' } }]);
+    const RealSocket = h.ha.WebSocket;
+    h.ha.WebSocket = function(url) { return new RealSocket(url + '/refused'); };
+    const answer = await h.action('speak', { text: 'Short and sweet, that is it.', format: 'ima_adpcm' });
+    assert.equal(answer.error.code, 'PLUGIN_UNAVAILABLE');
+    assert.equal(h.stored('unreachable'), null, 'marked Home Assistant unreachable');
+    const lights = await h.source('home', 'light');
+    assert.ok(lights.data, 'the lights answered ' + JSON.stringify(lights.error));
+    assert.equal(lights.data.instances.length, 1);
+});

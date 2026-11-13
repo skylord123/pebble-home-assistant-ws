@@ -177,9 +177,11 @@ function voiceFor(conn, opts) {
     if (cached) {
         return Promise.resolve(cached);
     }
+    // Optional: a proxy that refuses WebSockets only stops speech, not every
+    // source that REST still reaches
     return ws.run(conn, { type: 'assist_pipeline/pipeline/list' }, function(msg, settle) {
         if (msg.type === 'result') { settle(msg.result || {}); }
-    }).then(function(result) {
+    }, true).then(function(result) {
         var pipelines = Array.isArray(result.pipelines) ? result.pipelines : [];
         var find = function(id) {
             for (var i = 0; i < pipelines.length; i++) {
