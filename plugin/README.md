@@ -329,7 +329,7 @@ the way the bundle does, in a fresh engine for every request with
 `localStorage` kept between them, and stands in for the Pebble app's plugin
 runtime, `fetch` and the WebSocket. The tests check that every property the
 plugin sends is declared in `manifest.json`, the sources and actions end to
-end, the unlock and sharing rules, and the assistant.
+end, the unlock and sharing rules, and the assistant. They run on every push.
 
 ## Settings page messages
 
