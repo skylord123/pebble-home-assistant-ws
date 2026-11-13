@@ -49,6 +49,7 @@ async function everythingEmitted() {
     Object.keys(todoItems).forEach((id) => h.todoItems(id, todoItems[id]));
     h.ha.areas = fixtures.areas();
     h.ha.calendars = fixtures.calendars(h.now());
+    h.ha.history = fixtures.history(h.now());
     h.settings({
         plugin_exposed_entities: all.map((s) => s.entity_id).filter((id) => id.indexOf('weather.') !== 0),
         plugin_weather_entities: ['weather.home', 'weather.nws'],
@@ -67,9 +68,10 @@ async function everythingEmitted() {
 
     for (const source of manifest.sources) {
         const key = sourceKey(source);
+        // Some properties are only built when asked for by name
         const requests = key === 'weather/location'
             ? [{}, { iconPixelSize: { w: 25, h: 25 } }]
-            : [{}];
+            : [{}, { properties: Object.keys(source.properties) }];
         for (const extra of requests) {
             const answer = await h.source(source.category, source.items[0], extra);
             assert.ok(answer.data, key + ' answered ' + JSON.stringify(answer.error));

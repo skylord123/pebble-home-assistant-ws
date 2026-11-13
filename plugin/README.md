@@ -55,6 +55,7 @@ Everything the plugin caches is stored under a `plugin:` prefix:
 - entity states, for 10 s each;
 - forecasts, for 15 min, per weather entity;
 - calendar events, for 5 min, per calendar;
+- sensor history, for 5 min;
 - the entities' areas, for an hour;
 - a marker for a token Home Assistant refused, so a bad token is not retried
   on every poll. Every refused attempt counts towards Home Assistant's IP ban.
@@ -112,10 +113,10 @@ minutes.
 
 | Source | Domains | Other properties |
 | --- | --- | --- |
-| `home/entity` | everything shared, plus weather | `state`, `on`, `domain` |
+| `home/entity` | everything shared, plus weather | `state`, `on`, `domain`, `history` (see below) |
 | `home/light` | light | `on`, `brightness`, `color_temp`, `color_modes` (comma separated; `onoff` alone means it cannot dim) |
 | `home/switch` | switch, input_boolean, fan, automation, siren, humidifier, remote | `on`, `speed` |
-| `home/sensor` | sensor, number, input_number, counter | `value`, `device_class` |
+| `home/sensor` | sensor, number, input_number, counter | `value`, `device_class`, `history` (see below) |
 | `home/binary_sensor` | binary_sensor | `on`, `state` (e.g. Open/Closed by device class), `device_class` |
 | `home/climate` | climate, water_heater | `current_temperature`, `target_temperature`, `target_temp_low` and `target_temp_high` (heat_cool), `temperature_step`, `on`, `hvac_mode`, `hvac_modes` (comma separated, as Home Assistant names them), `hvac_action`, `summary` |
 | `home/cover` | cover, valve | `open`, `position`, `state` |
@@ -129,6 +130,25 @@ minutes.
 | `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
 | `reminders/list` | todo | `name`, `count` (open items) and `items` (the first five open ones, one a line). The shared to-do lists, for `create_reminder`. |
 | `weather/location` | weather | `temperature`, `feels_like`, `high`, `low`, `condition`, `condition_code`, `uv_index`, `precipitation`, `humidity`, `wind_speed`, `wind_direction`, and the series below; the wearer's locations also `sunrise`, `sunset` |
+
+`history` is the last day of a number, for drawing a graph: a series
+`{ start, stepSec, numericValue: { values, unit, min?, max? } }` of 24
+values, one an hour, oldest first. The last value is the hour under way,
+and `start` is the beginning of the hour 23 hours before it. The unit and
+range are those of `value` (or `state`).
+
+- Each value is the hour's average, weighted by how long each state held,
+  so a sensor that did not change all hour still has its value there.
+  States that are not numbers (unavailable, unknown) are left out of the
+  average, and an hour with nothing else is `null`.
+- Only instances whose `value` (or `state`) is a number right now have it,
+  and only when Home Assistant's recorder has some of their history.
+- It is only built for a request that names `history` in its `properties`.
+  A request that names no properties (Index reads everything) does not get
+  it, to keep its answer small and save Home Assistant the work.
+- One history call covers every sensor the source serves, and the values
+  are kept 5 minutes, or until the hour turns. If Home Assistant cannot
+  give the history, the sensors are served without it.
 
 Notes on the weather source:
 

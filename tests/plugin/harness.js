@@ -152,6 +152,8 @@ function createHomeAssistant(clock) {
         forecastsById: {},
         //! entity_id -> the to-do list's items, as todo.get_items gives them
         todoItemsById: {},
+        //! entity_id -> its states over time, [{ state, last_changed }], oldest first
+        history: {},
         //! calendar entity_id -> its events, as /api/calendars/<id> lists them
         calendars: {},
         //! entity_id -> the name of its area (its own, or its device's)
@@ -228,6 +230,27 @@ function createHomeAssistant(clock) {
             if (isNaN(from) || isNaN(to)) { return { status: 400, body: { message: 'Invalid start or end' } }; }
             const at = (when) => Date.parse(when.dateTime || when.date + 'T00:00:00');
             return { status: 200, body: clone(events.filter((e) => at(e.end) > from && at(e.start) < to)) };
+        }
+        m = /^\/api\/history\/period\/(.+)$/.exec(p);
+        if (req.method === 'GET' && m) {
+            const from = Date.parse(decodeURIComponent(m[1]));
+            const to = req.query.end_time ? Date.parse(req.query.end_time) : from + 86400000;
+            if (isNaN(from) || isNaN(to)) { return { status: 400, body: { message: 'Invalid datetime' } }; }
+            const minimal = 'minimal_response' in req.query;
+            const ids = String(req.query.filter_entity_id || '').split(',').filter(Boolean);
+            const lists = [];
+            ids.forEach((id) => {
+                const all = (fake.history[id] || []).map((e) => ({ state: e.state, at: Date.parse(e.last_changed) }));
+                // The state it was in at the start, then every change up to the end
+                const before = all.filter((e) => e.at <= from).pop();
+                const shown = (before ? [{ state: before.state, at: from }] : []).concat(all.filter((e) => e.at > from && e.at <= to));
+                if (shown.length === 0) { return; }
+                lists.push(shown.map((e, i) => (minimal && i > 0
+                    ? { state: e.state, last_changed: new Date(e.at).toISOString() }
+                    : { entity_id: id, state: e.state, last_changed: new Date(e.at).toISOString(),
+                        last_updated: new Date(e.at).toISOString() })));
+            });
+            return { status: 200, body: lists };
         }
         if (req.method === 'POST' && p === '/api/template') {
             if (!fake.admin) { return { status: 401, body: '401: Unauthorized' }; }

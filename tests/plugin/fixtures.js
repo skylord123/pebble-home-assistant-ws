@@ -192,6 +192,26 @@ function calendars(now) {
     };
 }
 
+/**
+ * State changes over the last day and a bit, as the recorder keeps them: a
+ * temperature that changes every half hour with an outage, a battery that
+ * only changed twice, and a text sensor.
+ */
+function history(now) {
+    const out = { 'sensor.outside_temperature': [], 'sensor.phone_battery': [], 'sensor.washer_status': [] };
+    const start = now - 26 * HOUR;
+    for (let t = start, i = 0; t <= now - 10 * 60000; t += HOUR / 2, i++) {
+        // Down for two hours around six hours ago
+        const down = t > now - 7 * HOUR && t < now - 5 * HOUR;
+        out['sensor.outside_temperature'].push({ state: down ? 'unavailable' : String(10 + (i % 12)), last_changed: iso(t) });
+    }
+    out['sensor.phone_battery'].push({ state: '100', last_changed: iso(now - 30 * HOUR) });
+    out['sensor.phone_battery'].push({ state: '87', last_changed: iso(now - 3 * HOUR) });
+    out['sensor.washer_status'].push({ state: 'wash', last_changed: iso(now - 2 * HOUR) });
+    out['sensor.washer_status'].push({ state: 'rinse_cycle', last_changed: iso(now - HOUR) });
+    return out;
+}
+
 /** Forecasts for the weather entities above, from `now` on */
 function forecasts(now) {
     const midnight = new Date(now);
@@ -250,5 +270,6 @@ module.exports = {
     forecasts: forecasts,
     todoItems: todoItems,
     areas: areas,
-    calendars: calendars
+    calendars: calendars,
+    history: history
 };

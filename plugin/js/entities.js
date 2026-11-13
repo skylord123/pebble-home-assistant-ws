@@ -465,5 +465,7 @@ module.exports = {
         bool: bool,
         timestamp: timestamp
     },
-    humanize: humanize
+    humanize: humanize,
+    numericState: numericState,
+    roundValue: roundValue
 };

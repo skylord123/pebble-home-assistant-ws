@@ -15,6 +15,7 @@ var todo = require('todo');
 var page = require('page');
 var areas = require('areas');
 var calendar = require('calendar');
+var history = require('history');
 
 function fail(respond, err) {
     if (err instanceof ha.PluginError) {
@@ -56,6 +57,10 @@ function homeSource(conn, opts, item, request) {
                 if (instance) { instances.push(instance); }
             });
             return withRooms(conn, instances, request);
+        }).then(function(instances) {
+            // Graphs only for numbers, and only for a caller that asked
+            if (!history.wanted(request) || (item !== 'sensor' && item !== 'entity')) { return instances; }
+            return history.attach(conn, instances, item === 'sensor' ? 'value' : 'state');
         });
     });
 }
