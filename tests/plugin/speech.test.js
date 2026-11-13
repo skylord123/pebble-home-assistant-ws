@@ -354,3 +354,78 @@ test('the manifest declares speak and speak_next for watch apps, with Location a
         assert.match(action.description, /^For watch apps using the Home Assistant speech SDK\. Returns encoded audio, not words: never call it to answer or talk to the user; use ask_assistant\./);
     });
 });
+
+test('ask_assistant with speak answers with the reply and a cursor, having started its speech', async () => {
+    const h = setUp({ plugin_share_assistant: true });
+    const said = 'The front door is locked and the garage is closed. Everything else is fine too.';
+    h.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: said } } } });
+    const answer = await h.action('ask_assistant', { text: 'is the house locked', speak: true, rate: 16000 });
+    assert.ok(answer.ok.refreshed.includes('home/light'));
+    const result = JSON.parse(answer.ok.text);
+    assert.deepEqual(Object.keys(result).sort(), ['next', 'reply']);
+    assert.equal(result.reply, said);
+    assert.ok(answer.ok.text.length < 200 + said.length);
+
+    // Home Assistant is already making the first piece, and nothing was waited for
+    assert.deepEqual(ttsPosts(h), [piecesOf(h, said)[0]]);
+    assert.equal(h.ha.calls('POST /api/tts_get_url')[0].body.options.preferred_sample_rate, 16000);
+    assert.equal(h.ha.calls(/^GET \/api\/tts_proxy\//).length, 0);
+
+    // The SDK hands the reply back with the cursor
+    const results = [parse(await h.action('speak_next', { text: result.reply, next: result.next, format: 'ima_adpcm' }))];
+    while (!results[results.length - 1].last) {
+        const next = results[results.length - 1].next;
+        results.push(parse(await h.action('speak_next', { text: result.reply, next: next, format: 'ima_adpcm' })));
+    }
+    results.forEach((r) => assert.equal(r.rate, 16000));
+    assert.deepEqual(Buffer.concat(results.map((r) => r.bytes)), reference(h, piecesOf(h, said), 16000).all);
+});
+
+test('ask_assistant without speak is plain text and makes no speech', async () => {
+    const h = setUp({ plugin_share_assistant: true });
+    const answer = await h.action('ask_assistant', { text: 'turn on the kitchen light', rate: 16000 });
+    assert.equal(answer.ok.text, 'Turned on the kitchen light.');
+    assert.equal(h.ha.calls('POST /api/tts_get_url').length, 0);
+    assert.equal(h.ha.commands().filter((c) => c.type === 'assist_pipeline/pipeline/list').length, 0);
+});
+
+test('ask_assistant still gets its reply back when the reply cannot be spoken', async () => {
+    const h = setUp({ plugin_share_assistant: true, selected_pipeline: 'p1' });
+    let result = JSON.parse((await h.action('ask_assistant', { text: 'lights on', speak: true })).ok.text);
+    assert.deepEqual(result, {
+        reply: 'Turned on the kitchen light.',
+        speech_error: 'The assistant\'s pipeline in Home Assistant has no text-to-speech'
+    });
+
+    const failing = setUp({ plugin_share_assistant: true });
+    failing.ha.on('POST', '/api/tts_get_url', () => ({ status: 500, body: 'Error' }));
+    result = JSON.parse((await failing.action('ask_assistant', { text: 'lights on', speak: true })).ok.text);
+    assert.equal(result.reply, 'Turned on the kitchen light.');
+    assert.equal(result.next, undefined);
+    assert.equal(typeof result.speech_error, 'string');
+
+    // Nothing to say is not an error
+    const silent = setUp({ plugin_share_assistant: true });
+    silent.ha.assist = () => ({ response: { response_type: 'query_answer', speech: { plain: { speech: '![map](http://x/y.png)' } } } });
+    result = JSON.parse((await silent.action('ask_assistant', { text: 'map', speak: true })).ok.text);
+    assert.deepEqual(result, { reply: '![map](http://x/y.png)' });
+    assert.equal(silent.ha.calls('POST /api/tts_get_url').length, 0);
+});
+
+test('ask_assistant with speak checks the rate first, and still needs Share with Apps', async () => {
+    const h = setUp({ plugin_share_assistant: true });
+    assert.equal((await h.action('ask_assistant', { text: 'hi', speak: true, rate: 44100 })).error.code, 'INVALID_ARGS');
+    assert.equal(h.ha.sockets.length, 0, 'asked the assistant before refusing');
+
+    const off = setUp({ plugin_share_assistant: false });
+    assert.equal((await off.action('ask_assistant', { text: 'hi', speak: true })).error.code, 'PERMISSION_DENIED');
+    assert.equal(off.ha.sockets.length, 0);
+});
+
+test('the manifest offers speak on ask_assistant, for watch apps only', () => {
+    const action = harness.manifest().actions.find((a) => a.name === 'ask_assistant');
+    assert.equal(action.parameters.properties.speak.type, 'boolean');
+    assert.match(action.parameters.properties.speak.description, /^For watch apps using the Home Assistant speech SDK only/);
+    assert.deepEqual(action.parameters.properties.rate.enum, [8000, 16000]);
+    assert.deepEqual(action.parameters.required, ['text']);
+});

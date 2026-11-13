@@ -288,6 +288,26 @@ function slice(conn, opts, pieces, c) {
     });
 }
 
+/**
+ * For ask_assistant with `speak`: have Home Assistant start on the first
+ * piece of `reply`, and resolve { next }, the cursor speak_next takes for it.
+ * It does not wait for the audio: the assistant can take most of the
+ * request's time, and running out of it would lose a reply to something
+ * already done. Resolves { speech_error } saying why instead, or {} when
+ * there is nothing in the reply to say.
+ */
+function start(conn, opts, reply, rate) {
+    var pieces = piecesOf(reply);
+    if (pieces.length === 0) { return Promise.resolve({}); }
+    return voiceFor(conn, opts).then(function(voice) {
+        return startPiece(conn, voice, pieces[0], rate);
+    }).then(function() {
+        return { next: encodeCursor(firstCursor(rate)) };
+    }, function(err) {
+        return { speech_error: (err && err.message) || 'The reply cannot be read out' };
+    });
+}
+
 /** speak { text, format, rate? }: the first slice of `text` */
 function speak(conn, opts, args) {
     var pieces;
@@ -319,6 +339,8 @@ function speakNext(conn, opts, args) {
 module.exports = {
     speak: speak,
     speakNext: speakNext,
+    start: start,
+    rateArg: rateArg,
     piecesOf: piecesOf,
     MAX_SLICE_BYTES: MAX_SLICE_BYTES,
     MAX_PIECE_CHARS: MAX_PIECE_CHARS

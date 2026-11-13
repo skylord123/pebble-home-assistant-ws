@@ -329,7 +329,7 @@ happened, and asks the sources that show that entity to refresh.
 | `alarm_arm` `{ mode?, code? }`, `alarm_disarm` `{ code? }` | Alarm panels. `mode` is `home`, `away` (the default), `night`, `vacation` or `custom_bypass`. |
 | `set_playing` `{ playing }`, `next_track`, `previous_track`, `set_volume` `{ percent }` | Media players. |
 | `call_service` `{ service, data? }` | Other services of the entity's own domain, called on that entity only. See below. |
-| `ask_assistant` `{ text, new_conversation? }` | Asks Home Assistant's assistant and returns what it said. See below. |
+| `ask_assistant` `{ text, new_conversation?, speak?, rate? }` | Asks Home Assistant's assistant and returns what it said. With `speak`, also starts reading it out (see [Speech](#speech)). See below. |
 | `send_to_agent` `{ message, chat_id? }` | The same, under the name Index looks for. `chat_id` is ignored. |
 | `create_reminder` `{ title, due_iso?, timezone?, notify_before_ms?, instanceId? }` | Adds an item to a shared to-do list. See below. |
 | `speak` `{ text, format, rate? }` | Says `text` in the assistant's voice, as audio for a watch app to play. Returns the first slice of it. See below. |
@@ -509,8 +509,25 @@ Errors:
   is not PCM WAV.
 - `AUTH_REQUIRED` and `PERMISSION_DENIED` as for every action.
 
-They need `Location` and `InvokeAction` like every action, and nothing
-else: no entity has to be shared, and **Share with Apps** does not apply,
+To have the assistant's reply read out, call `ask_assistant` with
+`speak: true` (and `rate`, as for `speak`). It runs the assistant as
+usual, has Home Assistant start on the first piece of the reply, and
+answers with JSON instead of plain text:
+
+```json
+{ "reply": "The garage door is closed.", "next": "1.8000.0.0.0.0.0.0" }
+```
+
+Call `speak_next` with `reply` as `text` and that `next` for the audio. It
+does not wait for the audio itself: the assistant can take most of the 20
+seconds a request has, and running out of them would lose the reply to
+something already done. When the reply cannot be spoken, `next` is left out
+and `speech_error` says why; when there is nothing in it to say, both are
+left out. With `speak`, `ask_assistant` still needs the `Assistant`
+permission and **Share with Apps**.
+
+`speak` and `speak_next` need `Location` and `InvokeAction` like every
+action, and nothing else: no entity has to be shared, and **Share with Apps** does not apply,
 since they only say what the caller gives them. Speech made with a paid
 cloud engine is paid for by the wearer, and the Pebble app asking before an
 app first calls an action is what lets them say no.

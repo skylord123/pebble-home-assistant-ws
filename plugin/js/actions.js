@@ -469,6 +469,8 @@ function runEntityAction(conn, opts, name, args) {
  * agent and language are the pipeline's own. The conversation carries on
  * across asks for a few minutes, since an action's result has nowhere to
  * hand its id back to the caller. Any app asking shares the one conversation.
+ * With `speak`, the answer is JSON instead: the reply, and a cursor for
+ * speak_next to read it out with.
  */
 function askAssistant(conn, opts, args) {
     if (opts.plugin_share_assistant !== true) {
@@ -477,6 +479,16 @@ function askAssistant(conn, opts, args) {
     }
     var text = typeof args.text === 'string' ? args.text.trim() : '';
     if (!text) { return Promise.reject(invalid('text is required')); }
+    // A watch app can have the reply read out too (speech.js)
+    var speak = args.speak === true;
+    var rate;
+    if (speak) {
+        try {
+            rate = speech.rateArg(args);
+        } catch (err) {
+            return Promise.reject(err);
+        }
+    }
 
     var command = {
         type: 'assist_pipeline/run',
@@ -508,18 +520,27 @@ function askAssistant(conn, opts, args) {
         }
         // Home Assistant always sends a speech key, but leaves it empty when
         // the agent set none
-        var speech = response.speech && response.speech.plain && response.speech.plain.speech;
+        var said = response.speech && response.speech.plain && response.speech.plain.speech;
         if (response.response_type === 'error') {
-            throw new PluginError('UNKNOWN', speech || 'The assistant could not answer');
+            throw new PluginError('UNKNOWN', said || 'The assistant could not answer');
         }
         // The refresh below would otherwise be answered from the cache, with
         // the states from before whatever the assistant did
         ha.forgetStates();
-        return {
-            text: speech || (response.response_type === 'action_done' ? 'Done.' : 'The assistant gave no answer.'),
-            // Whatever it did could have changed anything shared
-            refreshed: entities.ITEMS.map(function(item) { return 'home/' + item; })
-        };
+        var reply = said || (response.response_type === 'action_done' ? 'Done.' : 'The assistant gave no answer.');
+        // Whatever it did could have changed anything shared
+        var refreshed = entities.ITEMS.map(function(item) { return 'home/' + item; });
+        if (!speak) {
+            return { text: reply, refreshed: refreshed };
+        }
+        // The reply, and where speak_next picks up its speech. Whatever goes
+        // wrong with the speech, the reply still gets back.
+        return speech.start(conn, opts, reply, rate).then(function(started) {
+            var result = { reply: reply };
+            if (started.next) { result.next = started.next; }
+            if (started.speech_error) { result.speech_error = started.speech_error; }
+            return { text: JSON.stringify(result), refreshed: refreshed };
+        });
     });
 }
 

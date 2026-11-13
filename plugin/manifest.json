@@ -586,7 +586,9 @@
         "required": ["text"],
         "properties": {
           "text": { "type": "string" },
-          "new_conversation": { "type": "boolean", "description": "Start afresh rather than continue the last conversation" }
+          "new_conversation": { "type": "boolean", "description": "Start afresh rather than continue the last conversation" },
+          "speak": { "type": "boolean", "description": "For watch apps using the Home Assistant speech SDK only; leave it out otherwise. Also starts reading the reply out, and returns JSON with the reply and a cursor for speak_next instead of plain text." },
+          "rate": { "type": "integer", "enum": [8000, 16000], "description": "With speak: samples a second of the audio. 8000 unless given." }
         }
       },
       "targets": [],
