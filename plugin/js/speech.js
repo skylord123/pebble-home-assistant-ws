@@ -203,7 +203,11 @@ function startPiece(conn, voice, words, rate) {
 /** The samples of the piece at `path`, once Home Assistant has made them */
 function fetchPiece(conn, path) {
     return ha.fetchBytes(conn, path).then(function(bytes) {
-        var wav = bytes ? codec.parseWav(bytes) : null;
+        // The audio is not there when Home Assistant failed to make it
+        if (!bytes) {
+            throw new PluginError('UNKNOWN', 'Home Assistant could not say that');
+        }
+        var wav = codec.parseWav(bytes);
         if (!wav || !wav.samples.length) {
             throw new PluginError('UNKNOWN', 'Home Assistant sent audio that is not PCM WAV');
         }

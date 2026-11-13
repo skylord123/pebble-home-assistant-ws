@@ -285,8 +285,10 @@ test('Home Assistant failing to say it is UNKNOWN', async () => {
         { code: 'UNKNOWN', message: 'Home Assistant sent audio that is not PCM WAV' });
 
     h.ha.routes = [];
+    // What Home Assistant answers when making the speech failed
     h.ha.on('GET', /^\/api\/tts_proxy\//, () => ({ status: 404, body: '404: Not Found' }));
-    assert.equal((await h.action('speak', { text: text, format: 'ima_adpcm' })).error.code, 'UNKNOWN');
+    assert.deepEqual((await h.action('speak', { text: text, format: 'ima_adpcm' })).error,
+        { code: 'UNKNOWN', message: 'Home Assistant could not say that' });
 
     h.ha.routes = [];
     h.ha.ttsEngines = [];
