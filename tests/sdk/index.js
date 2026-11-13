@@ -1,6 +1,6 @@
 /**
- * `node --test tests/sdk` runs this file: Node 22 takes a folder as a
- * module rather than looking in it for tests, so this loads them all.
+ * `node --test tests/sdk` runs this file: Node 22 takes a folder as a module
+ * rather than looking in it for tests, so this loads them all.
  */
 'use strict';
 
