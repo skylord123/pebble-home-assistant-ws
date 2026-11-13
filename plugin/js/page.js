@@ -160,13 +160,17 @@ function byName(a, b) {
     return x < y ? -1 : (x > y ? 1 : 0);
 }
 
-/** Have whatever reads the shared entities read them again */
+/**
+ * Have whatever reads the shared entities read them again: every source in
+ * manifest.json, since the settings decide what each of them serves
+ */
 function refreshSources() {
     ha.forgetStates();
     values.forget();
     // A new token may be an administrator's, which can read the rooms
     areas.forgetFailure();
-    Pebble.refreshSources(['home/entity', 'home/value', 'weather/location', 'agent/configured']
+    Pebble.refreshSources(['home/entity', 'home/value', 'weather/location', 'calendar/event',
+        'agent/configured', 'reminders/configured', 'reminders/list']
         .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
 }
 

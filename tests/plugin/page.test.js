@@ -48,3 +48,14 @@ test('list_areas needs Home Assistant set up, and passes on what went wrong', as
     assert.equal(reply.ok, false);
     assert.equal(reply.error.code, 'PERMISSION_DENIED');
 });
+
+test('saving the settings refreshes every source the plugin serves', async () => {
+    const h = harness.create().settings({});
+    await h.config({ type: 'refresh' });
+    const refreshed = h.refreshed[h.refreshed.length - 1];
+    harness.manifest().sources.forEach((source) => {
+        source.items.forEach((item) => {
+            assert.ok(refreshed.includes(source.category + '/' + item), source.category + '/' + item + ' is not refreshed');
+        });
+    });
+});
