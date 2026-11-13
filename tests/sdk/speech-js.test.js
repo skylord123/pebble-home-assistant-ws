@@ -603,6 +603,17 @@ test('stopped on the watch after the rest could not be had is just stopped', asy
     assert.equal(await promise, 'stopped');
 });
 
+test('when nothing came before the rest failed, the error does not say some was heard', async () => {
+    const { watch, pebble, speech } = setUp();
+    // An empty first slice that is not the last, then a failure
+    pebble.invokeAction = (call) => Promise.resolve(call.action === 'speak'
+        ? { ok: true, text: JSON.stringify({ v: 1, format: 'ima_adpcm', rate: 8000, offset: 0, audio: '', phrase: false, last: false, next: 'x' }) }
+        : { ok: false, code: 'UNKNOWN', message: 'Home Assistant could not say that' });
+    const promise = speech.say('Hello there.');
+    await assert.rejects(playOut(watch, promise), (e) => e.code === 'UNKNOWN' && !e.partial);
+    assert.equal(watch.audio.length, 0);
+});
+
 // MARK: - ask() and playReply()
 
 test('ask() resolves the reply at once and reads it out', async () => {

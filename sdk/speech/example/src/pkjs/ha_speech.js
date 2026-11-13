@@ -792,14 +792,14 @@ function create(options) {
             }
 
             // The plugin could not give the rest. What has come still plays,
-            // and the error says some of it was heard.
+            // and the error says whether any of it was heard.
             function failed(error) {
                 if (current !== job) { return; }
                 if (!job.clip) {
                     job.settle(error);
                     return;
                 }
-                error.partial = true;
+                if (job.clip.received) { error.partial = true; }
                 job.error = error;
                 player.end(job.clip);
             }
