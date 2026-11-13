@@ -40,7 +40,10 @@ static void prv_inbox_received(DictionaryIterator *iter, void *context) {
 
 static void prv_select_click(ClickRecognizerRef recognizer, void *context) {
   DictionaryIterator *iter;
+  // The kit's reports to the phone share the outbox, so it can be busy for
+  // a moment while speech is playing
   if (app_message_outbox_begin(&iter) != APP_MSG_OK) {
+    prv_show("Busy, press Select again");
     return;
   }
   dict_write_uint8(iter, MESSAGE_KEY_ASK, 1);
