@@ -154,6 +154,28 @@ test('set_on locks and arms, but never unlocks or disarms, even with Apps Can Un
     assert.equal(h.ha.serviceCalls().length, 0);
 });
 
+test('a Dashboard tap on a script runs or stops it, and set_on runs scenes and presses buttons', async () => {
+    const h = setUp({ plugin_exposed_entities: SHARED.concat(['button.restart_router']) });
+    const tap = await dashboardTap(h, 'home', 'scene', 'script.good_night', 'running');
+    assert.deepEqual([tap.action, tap.args.on], ['set_on', true]);
+    assert.equal(onlyCall(h).service, 'script.turn_on');
+
+    h.ha.requests.length = 0;
+    await h.action('set_on', { instanceId: 'button.restart_router', on: true });
+    assert.equal(onlyCall(h).service, 'button.press');
+    assertRefused(await h.action('set_on', { instanceId: 'button.restart_router', on: false }),
+        'INVALID_ARGS', /cannot be turned off/);
+});
+
+test('set_on and set_brightness take a Hue-style item and go by the entity\'s own kind', async () => {
+    const h = setUp();
+    await h.action('set_on', { item: 'switch', instanceId: 'light.kitchen', on: true });
+    assert.equal(onlyCall(h).service, 'light.turn_on');
+    h.ha.requests.length = 0;
+    await h.action('set_brightness', { item: 'entity', instanceId: 'light.kitchen', percent: 10 });
+    assert.equal(onlyCall(h).service, 'light.turn_on');
+});
+
 test('set_brightness sets a percentage, turns off at 0, and refuses lights that cannot dim', async () => {
     const h = setUp();
     let answer = await h.action('set_brightness', { instanceId: 'light.kitchen', percent: 42.4 });

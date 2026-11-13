@@ -328,10 +328,10 @@ happened, and asks the sources that show that entity to refresh.
 
 | Action | Does |
 | --- | --- |
-| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them, and for media players plays or pauses (their `on` is whether they are playing). Locks only lock and alarm panels only arm (in `away`); turning them off is refused, as only `unlock` and `alarm_disarm` do that. Scenes can only be turned on. Takes the same arguments as the Hue plugin's action. |
+| `set_on` `{ on }` | On or off. For covers and valves, opens or closes them, and for media players plays or pauses (their `on` is whether they are playing). Locks only lock and alarm panels only arm (in `away`); turning them off is refused, as only `unlock` and `alarm_disarm` do that. Scenes and buttons can only be turned on (run, press); off stops a script. Takes the same arguments as the Hue plugin's action, whose `item` is accepted and not needed. |
 | `toggle` | Toggles. A locked lock is refused (use `unlock`), and a closed garage door, gate or door is refused (use `open`). |
 | `activate` | Runs a scene or script, presses a button, or triggers an automation. |
-| `set_brightness` `{ percent }` | Sets a light's brightness. |
+| `set_brightness` `{ percent }` | Sets a light's brightness. Like `set_on`, also takes the Hue plugin's `item`, which is not needed. |
 | `set_temperature` `{ temperature }` or `{ target_temp_low, target_temp_high }` | Sets the target temperature, or the range for a thermostat that keeps one (heat_cool). |
 | `set_hvac_mode` `{ hvac_mode }` | Sets the heating or cooling mode. |
 | `set_position` `{ position }` | Sets a cover's position. A garage door, gate or door can only be closed (position 0). |

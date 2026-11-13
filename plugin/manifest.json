@@ -316,17 +316,17 @@
   "actions": [
     {
       "name": "set_on",
-      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans and climate turn on and off; media players play and pause; locks lock and alarm panels arm (only unlock and alarm_disarm undo those); covers and valves open and close (a garage door, gate or door only opens with the open action); scenes and scripts run.",
+      "description": "Turn a Home Assistant entity on or off. Lights, switches, fans and climate turn on and off; media players play and pause; locks lock and alarm panels arm (only unlock and alarm_disarm undo those); covers and valves open and close (a garage door, gate or door only opens with the open action); scenes, scripts and buttons run (off stops a script).",
       "parameters": {
         "type": "object",
         "required": ["instanceId", "on"],
         "properties": {
-          "item": { "type": "string", "enum": ["entity", "light", "switch", "cover", "media_player", "climate", "scene"] },
+          "item": { "type": "string", "description": "Accepted for the Hue plugin's arguments and not needed: the entity's own kind decides what this does" },
           "instanceId": { "type": "string", "description": "The entity_id, from any home/* source" },
           "on": { "type": "boolean" }
         }
       },
-      "targets": ["home/light/on", "home/switch/on", "home/entity/on", "home/cover/open", "home/media_player/on", "home/climate/on"],
+      "targets": ["home/light/on", "home/switch/on", "home/entity/on", "home/cover/open", "home/media_player/on", "home/climate/on", "home/scene/running"],
       "callerPermissions": ["Location"]
     },
     {
@@ -362,7 +362,7 @@
         "type": "object",
         "required": ["instanceId", "percent"],
         "properties": {
-          "item": { "type": "string", "enum": ["light", "entity"] },
+          "item": { "type": "string", "description": "Accepted for the Hue plugin's arguments and not needed" },
           "instanceId": { "type": "string" },
           "percent": { "type": "integer", "minimum": 0, "maximum": 100 }
         }

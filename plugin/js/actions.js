@@ -191,13 +191,13 @@ var ENTITY_ACTIONS = {
             return { domain: domain, service: (args.on ? 'open_' : 'close_') + domain,
                 text: (args.on ? 'Opening ' : 'Closing ') + name + '.' };
         }
-        if (domain === 'scene' || domain === 'script') {
+        if (domain === 'scene' || domain === 'script' || domain === 'button' || domain === 'input_button') {
             if (!args.on) {
-                // A scene has nothing to stop
-                if (domain === 'scene') { throw invalid(name + ' cannot be turned off'); }
+                // A scene or a button has nothing to stop
+                if (domain !== 'script') { throw invalid(name + ' cannot be turned off'); }
                 return { domain: domain, service: 'turn_off', text: 'Stopped ' + name + '.' };
             }
-            return { domain: domain, service: 'turn_on', text: 'Ran ' + name + '.' };
+            return ENTITY_ACTIONS.activate(entity);
         }
         // A lock's `on` is locked and a panel's armed. Unlocking and disarming
         // need the Unlock permission, which only their own actions ask for.
