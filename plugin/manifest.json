@@ -285,6 +285,7 @@
       "items": ["configured"],
       "properties": {
         "configured": ["boolean"],
+        "status": ["shortText"],
         "name": ["shortText"]
       },
       "suggestedRefreshIntervalSec": 300,

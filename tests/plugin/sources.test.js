@@ -130,6 +130,23 @@ test('agent/configured answers before set up, and follows Share with Apps', asyn
     assert.equal(h.ha.requests.length, 0);
 });
 
+test('agent/configured says why the assistant is not available', async () => {
+    const h = harness.create();
+    const status = async () => (await h.source('agent', 'configured')).data.instances[0].properties.status;
+    assert.deepEqual(await status(), { shortText: { text: 'not_set_up' } });
+    // Not set up comes first: Share with Apps alone does not make it work
+    h.settings({ ha_url: '', plugin_share_assistant: true });
+    assert.deepEqual(await status(), { shortText: { text: 'not_set_up' } });
+    h.settings({ plugin_share_assistant: false });
+    assert.deepEqual(await status(), { shortText: { text: 'not_shared' } });
+    h.settings({ plugin_share_assistant: true });
+    assert.deepEqual(await status(), { shortText: { text: 'ready' } });
+    // Read from the settings alone, so it fits in the three seconds Index allows
+    h.ha.reachable = false;
+    assert.deepEqual(await status(), { shortText: { text: 'ready' } });
+    assert.equal(h.ha.requests.length, 0);
+});
+
 test('an unknown item is an INVALID_REQUEST', async () => {
     const h = setUp();
     assert.equal((await h.source('home', 'toaster')).error.code, 'INVALID_REQUEST');

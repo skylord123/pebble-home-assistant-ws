@@ -566,7 +566,10 @@ which an older watch app may not have.
 One instance each, with a `configured` boolean and a `name`, for Index (see
 [Index and the phone](#index-and-the-phone)). `agent/configured`
 (instance `assistant`) is `true` when `ask_assistant` would work: Home
-Assistant is set up and the wearer turned on sharing the assistant.
+Assistant is set up and the wearer turned on sharing the assistant. Its
+`status` (shortText) says why not, so you can tell the wearer what to do:
+`ready`, `not_set_up` (Home Assistant is not set up in Home Assistant WS
+yet) or `not_shared` (sharing the assistant is off).
 `reminders/configured` (instance `todo`) is `true` when Home Assistant is
 set up and a to-do list is shared. Both answer without asking Home
 Assistant, so they are a cheap way to see whether to show a feature.

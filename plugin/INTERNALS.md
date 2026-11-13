@@ -142,7 +142,7 @@ minutes.
 | `home/alarm` | alarm_control_panel | `armed`, `state` |
 | `calendar/event` | calendar | `location`, `starts_at`, `ends_at`, `all_day`, `calendar`: the upcoming events of the shared calendars, as the phone's own calendar gives them (see below). |
 | `home/value` | none: the wearer's custom values | `state`, `unit`, `error` (see below) |
-| `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below). One instance, `assistant`. |
+| `agent/configured` | none | `configured`: whether `send_to_agent` would work (see below), and `status`, why not: `ready`, `not_set_up` or `not_shared`. One instance, `assistant`. |
 | `agent/pipeline` | none: the pipelines the watch app saved (`available_pipelines`) | `name`, `listens` and `speaks` (whether it has speech-to-text and text-to-speech; left out when the saved entry does not say), `preferred`, `selected` (the watch app's choice, or the preferred one). One instance per pipeline, its id the pipeline's. |
 | `reminders/configured` | none | `configured`: whether `create_reminder` would work (see below). One instance, `todo`. |
 | `reminders/list` | todo | `name`, `count` (open items) and `items` (the first five open ones, one a line). The shared to-do lists, for `create_reminder`. |
@@ -448,7 +448,9 @@ with that action and an `agent/configured` source is offered in Index as a
 destination for a ring gesture (Hold & Talk, Click & Hold) and for messages
 typed into the Index feed. `agent/configured` says `true` once Home Assistant
 is set up and **Share with Apps** is on, and Index only offers the assistant
-while it does. Index is not asked for the `Assistant` permission, as with
+while it does. Its `status` says which is missing (`not_set_up` before
+`not_shared`), for watch apps; Index ignores it. Both come from the settings
+alone, so the answer fits in the three seconds Index allows. Index is not asked for the `Assistant` permission, as with
 any of the Pebble app's own callers, so **Share with Apps** is what keeps it
 out. Nothing on the watch goes through these destinations; watch apps call
 `ask_assistant` or `send_to_agent` directly.

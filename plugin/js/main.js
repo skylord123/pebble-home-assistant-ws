@@ -117,16 +117,20 @@ function withRooms(conn, instances, request) {
 
 /**
  * Whether send_to_agent would work: Index only offers the assistant as a
- * destination while this says so. It needs nothing from Home Assistant, so
- * it answers even before the plugin is set up.
+ * destination while this says so. `status` says why not, for a watch app to
+ * tell the wearer what to do. It needs nothing from Home Assistant, so it
+ * answers even before the plugin is set up, well within the three seconds
+ * Index gives it.
  */
 function agentConfigured(conn, opts) {
+    var status = !conn ? 'not_set_up' : (opts.plugin_share_assistant === true ? 'ready' : 'not_shared');
     return {
         validUntilMs: Date.now() + 300000,
         instances: [{
             instanceId: 'assistant',
             properties: {
-                configured: { boolean: { value: !!conn && opts.plugin_share_assistant === true } },
+                configured: { boolean: { value: status === 'ready' } },
+                status: { shortText: { text: status } },
                 name: { shortText: { text: 'Assist' } }
             }
         }]
