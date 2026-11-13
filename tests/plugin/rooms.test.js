@@ -93,3 +93,31 @@ test('a template that fails to render leaves the rooms out', async () => {
     h.ha.on('POST', '/api/template', () => ({ status: 400, body: { message: 'Error rendering template' } }));
     assert.deepEqual(rooms(await h.source('home', 'light')), { 'light.kitchen': null, 'light.porch': null });
 });
+
+test('sources reading different entities share the areas they fetched', async () => {
+    const h = setUp();
+    for (let i = 0; i < 3; i++) {
+        assert.equal(rooms(await h.source('home', 'light'))['light.kitchen'], 'Kitchen');
+        assert.equal(rooms(await h.source('home', 'switch'))['switch.coffee'], 'Kitchen');
+        h.advance(31000);
+    }
+    const calls = h.ha.calls('POST /api/template');
+    assert.equal(calls.length, 2);
+    // Only what was not known yet is asked for
+    assert.deepEqual(calls[1].body.variables.ids, ['switch.coffee']);
+
+    // Kept an hour from the first, then fetched again
+    h.advance(60 * 60000);
+    await h.source('home', 'light');
+    assert.equal(h.ha.calls('POST /api/template').length, 3);
+});
+
+test('saving the settings tries the rooms again after a refused template', async () => {
+    const h = setUp();
+    h.ha.admin = false;
+    await h.source('home', 'light');
+    h.ha.admin = true;
+    await h.config({ type: 'refresh' });
+    assert.equal(rooms(await h.source('home', 'light'))['light.kitchen'], 'Kitchen');
+    assert.equal(h.ha.calls('POST /api/template').length, 2);
+});

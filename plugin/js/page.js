@@ -16,6 +16,7 @@ var ha = require('ha');
 var ws = require('ws');
 var entities = require('entities');
 var values = require('values');
+var areas = require('areas');
 
 var SEARCH_LIMIT_DEFAULT = 30;
 var SEARCH_LIMIT_MAX = 100;
@@ -163,6 +164,8 @@ function byName(a, b) {
 function refreshSources() {
     ha.forgetStates();
     values.forget();
+    // A new token may be an administrator's, which can read the rooms
+    areas.forgetFailure();
     Pebble.refreshSources(['home/entity', 'home/value', 'weather/location', 'agent/configured']
         .concat(entities.ITEMS.map(function(item) { return 'home/' + item; })));
 }
