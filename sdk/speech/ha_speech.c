@@ -420,7 +420,133 @@ void ha_speech_set_reporter(HaSpeechReporter reporter) {
   s_reporter = reporter;
 }
 
+// Over AppMessage every message is a byte array under the app's one key: an
+// op, then the fields of the call it stands for, integers little-endian.
+//
+//   PLAY    clip, rate, volume, flags, prebuffer u32, total u32
+//   DATA    clip, flags, offset u32, the audio
+//   STOP    clip
+//   STATUS  clip, state, played u32, capacity u32  (to the phone)
+enum {
+  OpPlay = 1,
+  OpData = 2,
+  OpStop = 3,
+  OpStatus = 4,
+};
+
+#define STATUS_LENGTH 11
+
+// The outbox is the app's too, and may be busy with its own message. A report
+// says where the clip is now, so only the newest is kept, and it is tried
+// again this soon.
+#define STATUS_RETRY_MS 100
+
+static uint32_t s_key;
+static uint8_t s_status[STATUS_LENGTH];
+static bool s_status_waiting;
+static AppTimer *s_status_timer;
+
+static uint32_t prv_read_u32(const uint8_t *bytes) {
+  return bytes[0] | (bytes[1] << 8) | (bytes[2] << 16) | ((uint32_t)bytes[3] << 24);
+}
+
+static void prv_write_u32(uint8_t *bytes, uint32_t value) {
+  bytes[0] = value;
+  bytes[1] = value >> 8;
+  bytes[2] = value >> 16;
+  bytes[3] = value >> 24;
+}
+
+static void prv_flush_status(void *data) {
+  s_status_timer = NULL;
+  if (!s_status_waiting) { return; }
+  DictionaryIterator *iter;
+  if (app_message_outbox_begin(&iter) == APP_MSG_OK) {
+    dict_write_data(iter, s_key, s_status, STATUS_LENGTH);
+    app_message_outbox_send();
+    s_status_waiting = false;
+    return;
+  }
+  // With the phone gone there is nobody to tell
+  if (!connection_service_peek_pebble_app_connection()) {
+    s_status_waiting = false;
+    return;
+  }
+  s_status_timer = app_timer_register(STATUS_RETRY_MS, prv_flush_status, NULL);
+}
+
+static void prv_report(uint8_t clip, uint8_t state, uint32_t played, uint32_t capacity) {
+  s_status[0] = OpStatus;
+  s_status[1] = clip;
+  s_status[2] = state;
+  prv_write_u32(&s_status[3], played);
+  prv_write_u32(&s_status[7], capacity);
+  s_status_waiting = true;
+  // A retry already waiting sends this one instead
+  if (!s_status_timer) {
+    prv_flush_status(NULL);
+  }
+}
+
+void ha_speech_init(uint32_t message_key) {
+  s_key = message_key;
+  if (message_key) {
+    s_reporter = prv_report;
+  } else if (s_reporter == prv_report) {
+    s_reporter = NULL;
+  }
+}
+
+void ha_speech_deinit(void) {
+  if (s_speaker.active) {
+    prv_release();
+  }
+  if (s_status_timer) {
+    app_timer_cancel(s_status_timer);
+    s_status_timer = NULL;
+  }
+  s_status_waiting = false;
+  s_reporter = NULL;
+  s_key = 0;
+}
+
+bool ha_speech_handle_message(DictionaryIterator *iter) {
+  Tuple *tuple = s_key ? dict_find(iter, s_key) : NULL;
+  if (!tuple) { return false; }
+  const uint8_t *value = tuple->value->data;
+  const uint16_t length = tuple->length;
+  // Anything else under this key is not for anyone else either
+  if (tuple->type != TUPLE_BYTE_ARRAY || length < 2) { return true; }
+  switch (value[0]) {
+    case OpPlay:
+      if (length >= 13) {
+        ha_speech_play(value[1], value[2], value[3], value[4],
+                       prv_read_u32(&value[5]), prv_read_u32(&value[9]));
+      }
+      break;
+    case OpData:
+      if (length >= 7) {
+        ha_speech_data(value[1], value[2], prv_read_u32(&value[3]), &value[7], length - 7);
+      }
+      break;
+    case OpStop:
+      ha_speech_stop_clip(value[1]);
+      break;
+  }
+  return true;
+}
+
 #else
+
+// Without a speaker the messages are still claimed, so that the app does not
+// take them for its own
+static uint32_t s_key;
+
+void ha_speech_init(uint32_t message_key) { s_key = message_key; }
+void ha_speech_deinit(void) { s_key = 0; }
+bool ha_speech_handle_message(DictionaryIterator *iter) {
+  return s_key && dict_find(iter, s_key);
+}
 
 void ha_speech_play(uint8_t clip, uint8_t rate, uint8_t volume, uint8_t flags,
                     uint32_t prebuffer, uint32_t total) {}

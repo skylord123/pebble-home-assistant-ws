@@ -14,6 +14,17 @@
 
 #include <pebble.h>
 
+//! The most audio one DATA message carries. The phone sends no more.
+#define HA_SPEECH_DATA_MAX 1800
+
+//! What app_message_open needs for its inbox at the least: one tuple holding
+//! a DATA message (op, clip, flags, offset, then the audio), as
+//! dict_calc_buffer_size works it out
+#define HA_SPEECH_INBOX_SIZE (1 + 7 + 7 + HA_SPEECH_DATA_MAX)
+
+//! And for its outbox: one tuple holding a STATUS message
+#define HA_SPEECH_OUTBOX_SIZE (1 + 7 + 11)
+
 //! Must match the phone: ha_speech.js, and Home Assistant WS's src/js/ui/speaker.js
 enum {
   HaSpeechRate8k = 0,
@@ -44,14 +55,25 @@ typedef enum HaSpeechState {
   HaSpeechStatePreempted = 7,
 } HaSpeechState;
 
+//! Start taking messages under `message_key`, the app's MESSAGE_KEY_HA_SPEECH.
+//! 0 for none, when something else (see ha_speech_set_reporter) carries them.
+void ha_speech_init(uint32_t message_key);
+
+//! Stop anything playing, without telling the phone, and let go of everything
+void ha_speech_deinit(void);
+
+//! Call first thing from the app's inbox handler. True when the message was
+//! for this, and the app has nothing more to do with it.
+bool ha_speech_handle_message(DictionaryIterator *iter);
+
 //! Stop at once and tell the phone the wearer stopped it. Safe when silent.
 void ha_speech_stop(void);
 
 //! Whether something is being said, or is about to be
 bool ha_speech_is_playing(void);
 
-// Each call is one message from the phone, its fields as the wire format has
-// them.
+// The core, for an app that carries the messages its own way. Each call is
+// one message from the phone, its fields as the wire format has them.
 
 //! Get ready for a clip, taking over from any other. `rate` is HaSpeechRate,
 //! `volume` 0 to 100 on top of the watch's own speaker volume. `prebuffer` is
@@ -74,5 +96,5 @@ void ha_speech_stop_clip(uint8_t clip);
 typedef void (*HaSpeechReporter)(uint8_t clip, uint8_t state, uint32_t played,
                                  uint32_t capacity);
 
-//! Where reports go
+//! Send reports this way instead of as AppMessage
 void ha_speech_set_reporter(HaSpeechReporter reporter);
