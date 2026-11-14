@@ -78,7 +78,8 @@ function setUp(opts) {
         const bytes = queue.shift();
         sent.push(bytes);
         watch.receive(bytes);
-        setImmediate(cycle);
+        // A real link takes time; with none, there is no speed to measure
+        if (opts.linkMs) { setTimeout(cycle, opts.linkMs); } else { setImmediate(cycle); }
     }
 
     function queueMessage(bytes) {
@@ -178,7 +179,7 @@ test('the app\'s spoken answer goes to the watch within its ring, sentence by se
 });
 
 test('the app keeps the link speed it measures under its own setting', async () => {
-    const { Speech, watch, settings } = setUp({ capacity: 4000 });
+    const { Speech, watch, settings } = setUp({ capacity: 4000, linkMs: 2 });
     Speech.speak('The front door is locked and the garage is closed, and the kitchen light has been on since this morning.');
     await playOut(watch);
     assert.deepEqual(watch.violations, []);
