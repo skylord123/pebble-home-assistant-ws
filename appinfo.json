@@ -226,7 +226,10 @@
   "usesPermissions": [
     "Internet",
     "LocalNetwork",
-    "Location",
+    {
+      "name": "Location",
+      "reason": "So Home Assistant can give the watch its weather, for the places saved in the Pebble app"
+    },
     "Timeline",
     "WatchMicrophone"
   ],

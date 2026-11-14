@@ -54,3 +54,38 @@ jobs:
         with:
           name: Debug ELFs
           path: elfs.zip
+
+  speech-example:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build the speech kit's example app
+        run: make docker-build-example
+
+      - name: Upload PBW
+        uses: actions/upload-artifact@v4
+        with:
+          name: HA Speech Example PBW
+          path: sdk/speech/example/build/pebble.pbw
+          if-no-files-found: error
+
+  plugin-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Test the plugin
+        run: node --test tests/plugin
+
+      - name: Test the speech kit
+        run: node --test tests/sdk
