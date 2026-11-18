@@ -182,8 +182,13 @@ function createReminder(conn, opts, args) {
         }
         var data = { entity_id: id, item: title };
         var text = 'Added ' + title + ' to ' + name + '.';
+        // What Index shows for the item it asked for (Pebble app 2.0); it
+        // takes a JSON string, and a moment rather than a day for remindAt
+        var semantic = { type: 'ListItemCreation', content: title, listUsed: name,
+            resolvedListId: id, destination: 'Home Assistant' };
         if (due && hasFeature(entity, FEATURE.due_datetime)) {
             data.due_datetime = due.iso;
+            semantic.remindAt = new Date(Date.parse(due.iso)).toISOString();
             text = 'Added ' + title + ' to ' + name + ', due ' + due.date + ' ' + due.time + '.';
         } else if (due && hasFeature(entity, FEATURE.due_date)) {
             data.due_date = due.date;
@@ -192,7 +197,8 @@ function createReminder(conn, opts, args) {
             text = 'Added ' + title + ' to ' + name + ', without a due date: the list cannot keep one.';
         }
         return ha.callService(conn, 'todo', 'add_item', data).then(function() {
-            return { text: text, refreshed: ['reminders/list', 'home/entity'] };
+            return { text: text, semanticResult: JSON.stringify(semantic),
+                refreshed: ['reminders/list', 'home/entity'] };
         });
     });
 }

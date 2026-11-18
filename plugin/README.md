@@ -726,9 +726,14 @@ that keeps dates, and is left off on one that keeps neither; the reply says
 which. `notify_before_ms` is ignored, since Home Assistant's lists have no
 reminders of their own.
 
+The answer also carries `semanticResult`, a JSON string Index reads to show
+what was added and to which list (Pebble app 2.0 and newer). Its `remindAt`
+is there only when the list kept a due time.
+
 ```js
 Pebble.invokeAction({ plugin: HA, action: 'create_reminder', args: { title: 'Milk', instanceId: 'todo.shopping_list' } });
-// { ok: true, text: 'Added Milk to Shopping List.', refreshed: ['reminders/list', 'home/entity'] }
+// { ok: true, text: 'Added Milk to Shopping List.', refreshed: ['reminders/list', 'home/entity'],
+//   semanticResult: '{"type":"ListItemCreation","content":"Milk","listUsed":"Shopping List",...}' }
 ```
 
 ### The assistant

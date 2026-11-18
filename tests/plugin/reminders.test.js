@@ -68,7 +68,13 @@ test('reminders/list is AUTH_REQUIRED until Home Assistant is set up', async () 
 test('create_reminder adds the item to the list named, and says so', async () => {
     const h = setUp();
     const answer = await h.action('create_reminder', { title: ' Milk ', instanceId: 'todo.shopping_list' });
-    assert.deepEqual(answer.ok, { text: 'Added Milk to Shopping List.', refreshed: ['reminders/list', 'home/entity'] });
+    assert.equal(answer.ok.text, 'Added Milk to Shopping List.');
+    assert.deepEqual(answer.ok.refreshed, ['reminders/list', 'home/entity']);
+    // Index shows what was added, and where, from the semantic result
+    assert.deepEqual(JSON.parse(answer.ok.semanticResult), {
+        type: 'ListItemCreation', content: 'Milk', listUsed: 'Shopping List',
+        resolvedListId: 'todo.shopping_list', destination: 'Home Assistant'
+    });
     assert.deepEqual(onlyCall(h), {
         service: 'todo.add_item', data: { entity_id: 'todo.shopping_list', item: 'Milk' }, query: {}
     });
@@ -88,11 +94,14 @@ test('a due time is kept with its time, as a date, or left off, as each list all
     let answer = await h.action('create_reminder', Object.assign({ instanceId: 'todo.chores' }, args));
     assert.equal(answer.ok.text, 'Added Call the plumber to Chores, due 2026-06-16 09:00.');
     assert.deepEqual(onlyCall(h).data, { entity_id: 'todo.chores', item: 'Call the plumber', due_datetime: DUE });
+    assert.equal(JSON.parse(answer.ok.semanticResult).remindAt, new Date(Date.parse(DUE)).toISOString());
 
     h = setUp();
     answer = await h.action('create_reminder', Object.assign({ instanceId: 'todo.errands' }, args));
     assert.equal(answer.ok.text, 'Added Call the plumber to Errands, due 2026-06-16.');
     assert.deepEqual(onlyCall(h).data, { entity_id: 'todo.errands', item: 'Call the plumber', due_date: '2026-06-16' });
+    // A day alone is no moment to remind at
+    assert.equal(JSON.parse(answer.ok.semanticResult).remindAt, undefined);
 
     h = setUp();
     answer = await h.action('create_reminder', Object.assign({ instanceId: 'todo.shopping_list' }, args));

@@ -772,16 +772,19 @@ function create(opts) {
         },
 
         /**
-         * Call an action: resolves { ok: { text, refreshed } } or { error: { code, message } }.
-         * Only `text` and `refreshed` reach the caller, as the Pebble app's
-         * host passes them on (PluginHostJs respond.ok); anything else the
-         * plugin puts in its result is dropped here too.
+         * Call an action: resolves { ok: { text, refreshed } } or { error: { code, message } },
+         * with `semanticResult` in `ok` when the plugin gave one. Only these
+         * reach the caller, as the Pebble app's host passes them on
+         * (PluginHostJs respond.ok); anything else the plugin puts in its
+         * result is dropped here too.
          */
         action(name, args) {
             return run('action', { action: name, args: clone(args || {}) }, (settle) => ({
                 ok: (result) => {
                     result = result || {};
-                    settle({ ok: clone({ text: result.text || null, refreshed: result.refreshed || [] }) });
+                    const ok = { text: result.text || null, refreshed: result.refreshed || [] };
+                    if (result.semanticResult) { ok.semanticResult = result.semanticResult; }
+                    settle({ ok: clone(ok) });
                 },
                 error: (code, message) => settle({ error: { code: code, message: message } })
             }));
