@@ -163,7 +163,7 @@ function source(request, respond) {
     } else if (request.category === 'reminders' && request.item === 'list') {
         work = todo.lists(conn, opts, request);
     } else if (request.category === 'calendar' && request.item === 'event') {
-        work = calendar.upcoming(conn, options.exposedIds(opts));
+        work = calendar.upcoming(conn, options.exposedIds(opts), request);
     } else if (request.category === 'agent' && request.item === 'pipeline') {
         // From what the watch app saved, so it needs nothing from Home Assistant
         work = Promise.resolve(pipelines.instances(opts));

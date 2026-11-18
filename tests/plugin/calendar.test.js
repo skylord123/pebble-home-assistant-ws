@@ -114,3 +114,35 @@ test('calendar entities are still served as plain entities too', async () => {
     const answer = await h.source('home', 'entity');
     assert.deepEqual(answer.data.instances.map((i) => i.instanceId), ['calendar.family', 'calendar.work', 'light.kitchen']);
 });
+
+test('an event\'s description comes as plain text, and only to callers that read it', async () => {
+    const h = setUp();
+    const dentist = (answer) => events(answer).find((i) => i.properties.name.shortText.text === 'Dentist');
+    assert.deepEqual(dentist(await h.source('calendar', 'event')).properties.description,
+        { longText: { text: 'Bring the insurance card' } });
+    const named = await h.source('calendar', 'event', { properties: ['name', 'starts_at'] });
+    assert.equal(dentist(named).properties.description, undefined);
+    const asked = await h.source('calendar', 'event', { properties: ['name', 'description'] });
+    assert.ok(dentist(asked).properties.description);
+    // An event without one has none, as the phone's own source does
+    assert.equal(events(asked)[0].properties.description, undefined);
+});
+
+test('a long description is cut at 300 characters', async () => {
+    const h = setUp();
+    h.ha.calendars['calendar.family'][3].description = 'x'.repeat(400);
+    const list = events(await h.source('calendar', 'event'));
+    const text = list.find((i) => i.properties.name.shortText.text === 'Dentist').properties.description.longText.text;
+    assert.equal(text.length, 300);
+    assert.ok(text.endsWith('…'));
+});
+
+test('a caller can ask for more or fewer events than ten', async () => {
+    const h = setUp();
+    assert.equal(events(await h.source('calendar', 'event', { limit: 3 })).length, 3);
+    // Every upcoming event in the next seven days: four from Family,
+    // Standup and seven days of Focus time from Work
+    assert.equal(events(await h.source('calendar', 'event', { limit: 50 })).length, 12);
+    assert.equal(events(await h.source('calendar', 'event', { limit: 0 })).length, 1);
+    assert.equal(events(await h.source('calendar', 'event', { limit: 'lots' })).length, 10);
+});

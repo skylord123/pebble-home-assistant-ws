@@ -448,7 +448,8 @@ other token this source answers `PERMISSION_DENIED`.
 The next events across the calendars the wearer shared, under the same
 names and shapes as the phone's own calendar source, so a face made for
 that one works with Home Assistant's calendars too. Needs `Calendar` as
-well as `Location`. At most 10 events from the next 7 days, soonest first.
+well as `Location`. Events from the next 7 days, soonest first: 10 of them,
+or as many as you ask for with `limit` in `subscribeToSource` (up to 200).
 An event under way counts until it ends. The `instanceId` is the event's
 place in the list: `"0"` is always the next one.
 
@@ -456,6 +457,7 @@ place in the list: `"0"` is always the next one.
 | --- | --- | --- |
 | `name` | shortText, longText | The event's summary. |
 | `location` | shortText, longText | When it has one. |
+| `description` | longText | When it has one, as plain text, cut at 300 characters. Left out unless you ask for it in `properties` or ask for every property. |
 | `starts_at` | shortText, longText, timestamp | The text is the time on the phone's clock (`09:30`), or `All day`. |
 | `ends_at` | shortText, timestamp | |
 | `all_day` | boolean | An all-day event runs from the phone's midnight to the next. |

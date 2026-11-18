@@ -185,7 +185,7 @@ function calendars(now) {
             timed('School run', 0, 8.5, 9.5, { location: 'Elm Street' }),
             { summary: 'Bin day', start: { date: ymd(local(now, 0, 0)) }, end: { date: ymd(local(now, 1, 0)) },
                 description: '', location: '', uid: 'bins', recurrence_id: null, rrule: null },
-            timed('Dentist', 0, 10, 10.5),
+            timed('Dentist', 0, 10, 10.5, { description: 'Bring the <b>insurance</b> card' }),
             timed('Dinner with Sam', 1, 18, 19.75, { location: 'Luigi\'s' })
         ],
         'calendar.work': [timed('Standup', 0, 10, 10.25)].concat(focus)

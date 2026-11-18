@@ -4,9 +4,10 @@
  * shows the shared Home Assistant calendars when it asks for this plugin.
  *
  * As there, every instance is one upcoming event across the shared
- * calendars, soonest first, at most ten of them from the next seven days,
- * and its id is its place in that list: "0" is always the next event. An
- * event that has started but not ended still counts as upcoming.
+ * calendars, soonest first, from the next seven days: ten of them unless the
+ * caller asks for another number (up to 200). Its id is its place in that
+ * list: "0" is always the next event. An event that has started but not
+ * ended still counts as upcoming.
  *
  * The phone's own calendar is asked first, so this one is only read by a
  * caller that names this plugin or a wearer who picked it under Preferred
@@ -18,8 +19,12 @@ var entities = require('entities');
 
 var S = entities.shapes;
 
-//! The same as the phone's own source
+//! The same as the phone's own source: how many events unless the caller
+//! asks for another number, and the most it may ask for
 var MAX_EVENTS = 10;
+var LIMIT_CAP = 200;
+//! A description is cut to this many characters, as the phone's own source does
+var DESCRIPTION_LENGTH = 300;
 var WINDOW_MS = 7 * 24 * 3600 * 1000;
 var ALL_DAY = 'All day';
 //! Events are kept a few minutes per calendar; the source is polled every five
@@ -50,6 +55,26 @@ function isAllDay(when) {
     return typeof text === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(text);
 }
 
+/**
+ * An event's description as plain text: Home Assistant's calendars can hold
+ * HTML, which the phone's own source strips the same way, and a long one is
+ * cut with an ellipsis.
+ */
+function descriptionOf(event) {
+    var text = event.description ? String(event.description).replace(/<[^>]*>/g, '') : '';
+    if (text.length > DESCRIPTION_LENGTH) {
+        text = text.substring(0, DESCRIPTION_LENGTH - 1) + '\u2026';
+    }
+    return text;
+}
+
+/** How many events the caller asked for, within what the source allows */
+function limitOf(request) {
+    var limit = request && request.limit;
+    if (typeof limit !== 'number' || !isFinite(limit)) { return MAX_EVENTS; }
+    return Math.max(1, Math.min(LIMIT_CAP, Math.floor(limit)));
+}
+
 /** Only what an instance is built from, to keep the cache small */
 function compact(event) {
     var start = momentOf(event.start);
@@ -58,6 +83,7 @@ function compact(event) {
     return {
         name: event.summary ? String(event.summary) : '',
         location: event.location ? String(event.location) : '',
+        description: descriptionOf(event),
         start: start,
         end: end === null ? start : end,
         allDay: isAllDay(event.start)
@@ -109,10 +135,13 @@ function textShapes(text) {
     return { shortText: S.shortText(text), longText: S.longText(text) };
 }
 
-function toInstance(index, event) {
+function toInstance(index, event, withDescription) {
     var props = { name: textShapes(event.name) };
     if (event.location.replace(/\s/g, '')) {
         props.location = textShapes(event.location);
+    }
+    if (withDescription && event.description && event.description.replace(/\s/g, '')) {
+        props.description = { longText: S.longText(event.description) };
     }
     var starts = textShapes(event.allDay ? ALL_DAY : clockText(event.start));
     starts.timestamp = { value: Math.floor(event.start / 1000) };
@@ -129,8 +158,13 @@ function toInstance(index, event) {
 /**
  * `calendar/event`: the next events across the shared calendars.
  * @param {string[]} shared the shared entity ids, in the wearer's order
+ * @param {Object} [request] the source request: `limit` is how many events
+ *     the caller wants, and `properties` whether it reads the description
  */
-function upcoming(conn, shared) {
+function upcoming(conn, shared, request) {
+    var limit = limitOf(request);
+    var properties = request && request.properties;
+    var withDescription = !Array.isArray(properties) || properties.indexOf('description') !== -1;
     var ids = calendarIds(shared);
     if (ids.length === 0) { return Promise.resolve([]); }
     return ha.getStates(conn, ids).then(function(states) {
@@ -144,6 +178,8 @@ function upcoming(conn, shared) {
                     all.push({
                         name: event.name,
                         location: event.location,
+                        // Events cached before descriptions were kept have none
+                        description: event.description || '',
                         start: event.start,
                         end: event.end,
                         allDay: event.allDay,
@@ -155,7 +191,9 @@ function upcoming(conn, shared) {
             // Soonest first; events starting together keep the wearer's
             // order of calendars, so the list does not shuffle between polls
             all.sort(function(a, b) { return a.start - b.start || a.order - b.order; });
-            return all.slice(0, MAX_EVENTS).map(function(event, index) { return toInstance(index, event); });
+            return all.slice(0, limit).map(function(event, index) {
+                return toInstance(index, event, withDescription);
+            });
         });
     });
 }
