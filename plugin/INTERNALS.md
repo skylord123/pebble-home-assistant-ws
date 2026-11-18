@@ -644,11 +644,12 @@ calling it to answer anyone.
 
 1. Build and sideload the pbw.
 2. Use Pebble app 2.0 or newer (on older versions, turn on **Plugins /
-   permissions preview** under Settings → Plugins). When the app is installed, the Pebble app asks to let it connect
-   to the internet and the local network, use the location, add timeline
-   pins, use the watch microphone and, with the Android companion app,
-   exchange messages with it. The plugin needs the internet and the local
-   network.
+   permissions preview** under Settings → Plugins). When the app is
+   installed, the Pebble app asks to let it connect to the internet and the
+   local network, the two marked `required` in `appinfo.json`. It asks about
+   the location, timeline pins, the watch microphone and, with the Android
+   companion app, messages with it the first time each is used. The plugin
+   needs the internet and the local network.
 3. Open the settings page from the Pebble app and share a few entities. When
    the settings page can reach the plugin, the status line under
    **Shared with Other Apps** says so.

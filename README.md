@@ -62,7 +62,7 @@ and a **Find Entities** search for adding favorites and pinned entities. Other
 phone apps open the same page from GitHub Pages and save the classic way; see
 [config/README.md](config/README.md).
 
-The Core Devices Pebble app (2.0 or newer) asks you to allow what the app uses when you install it: the internet and your local network (to reach Home Assistant wherever it is), your location (for sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
+The Core Devices Pebble app (2.0 or newer) asks you to allow the internet and your local network when you install the app, so it can reach Home Assistant wherever it is. It asks about the rest the first time the app uses them: your location (for the weather and sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
 
 ### Home Assistant Setup Requirements
 
