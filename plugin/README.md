@@ -26,8 +26,8 @@ Contents:
 
 The wearer needs:
 
-- the Core Devices Pebble app, with **Plugins / permissions preview** turned
-  on (Settings → Plugins);
+- the Core Devices Pebble app 2.0 or newer (before 2.0, with **Plugins /
+  permissions preview** turned on under Settings → Plugins);
 - Home Assistant WS installed and connected to their Home Assistant;
 - some entities shared with other apps. [Use your Home Assistant in other
   watch apps](../README.md#use-your-home-assistant-in-other-watch-apps)

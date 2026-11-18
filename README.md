@@ -56,13 +56,13 @@ After installation, you'll need to configure the app to connect to your Home Ass
    - **Enable Voice**: Turn on/off voice assistant functionality
 
 On phone apps that can open the settings page from inside the watch app (the
-Core Devices Pebble app with plugins enabled), the page also has a **Connect**
+Core Devices Pebble app 2.0 or newer), the page also has a **Connect**
 button that checks the URL and token against Home Assistant before saving them,
 and a **Find Entities** search for adding favorites and pinned entities. Other
 phone apps open the same page from GitHub Pages and save the classic way; see
 [config/README.md](config/README.md).
 
-With the Plugins preview turned on, the Core Devices Pebble app asks you to allow what the app uses when you install it: the internet and your local network (to reach Home Assistant wherever it is), your location (for sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
+The Core Devices Pebble app (2.0 or newer) asks you to allow what the app uses when you install it: the internet and your local network (to reach Home Assistant wherever it is), your location (for sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
 
 ### Home Assistant Setup Requirements
 
@@ -92,7 +92,7 @@ On a Pebble Time 2, Core 2 Duo or Core Time Round running firmware 4.43 or newer
 
 It is on by default and is used whenever it can be. To make it work:
 
-1. Use the Core Devices Pebble app and turn on its Plugins preview in the app's settings.
+1. Use the Core Devices Pebble app 2.0 or newer. On versions before 2.0, also turn on its Plugins preview in the app's settings.
 2. Allow the watch microphone when the Pebble app asks. If you said no, allow it for Home Assistant WS in the Pebble app and reopen the app.
 3. Pick a pipeline that has a speech-to-text engine.
 
@@ -123,8 +123,8 @@ choose to share is shown.
 
 ### Turning it on
 
-1. Use the Core Devices Pebble app and turn on **Plugins / permissions
-   preview** (Settings → Plugins).
+1. Use the Core Devices Pebble app 2.0 or newer. On versions before 2.0,
+   also turn on **Plugins / permissions preview** (Settings → Plugins).
 2. Set up Home Assistant WS as usual. If the Pebble app asked, allow it the
    internet and your local network.
 3. Install a watchface or app that works with Home Assistant WS. The Pebble

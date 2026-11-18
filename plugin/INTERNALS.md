@@ -6,10 +6,10 @@ action. To use the plugin from a watchface or app, start with the
 [developer guide](README.md).
 
 The plugin lets other watchfaces and apps read Home Assistant through this
-app, and control it, using the Core Devices plugin system. That system is a
-preview: the Pebble app only runs plugins with **Plugins / permissions
-preview** turned on (Settings → Plugins), and only from pbws whose
-`appinfo.json` has `"manifestVersion": 2`.
+app, and control it, using the Core Devices plugin system. The Pebble app
+runs plugins for everyone from 2.0 (before that, only with **Plugins /
+permissions preview** turned on under Settings → Plugins), and only from pbws
+whose `appinfo.json` has `"manifestVersion": 2`.
 
 The plugin serves three things:
 
@@ -643,8 +643,8 @@ calling it to answer anyone.
 ## Trying it
 
 1. Build and sideload the pbw.
-2. Turn on **Plugins / permissions preview** in the Pebble app (Settings →
-   Plugins). When the app is installed, the Pebble app asks to let it connect
+2. Use Pebble app 2.0 or newer (on older versions, turn on **Plugins /
+   permissions preview** under Settings → Plugins). When the app is installed, the Pebble app asks to let it connect
    to the internet and the local network, use the location, add timeline
    pins, use the watch microphone and, with the Android companion app,
    exchange messages with it. The plugin needs the internet and the local

@@ -1154,7 +1154,7 @@
 						<label class="form-check-label" for="ha-assist-stream-audio">Send your voice to Home Assistant</label>
 						<input class="form-check-input" type="checkbox" id="ha-assist-stream-audio" checked>
 					</div>
-					<small class="form-text">Your pipeline's own speech-to-text hears you instead of the phone's dictation, and there is no limit on how long you can talk. Needs a Pebble Time 2, Core 2 Duo or Core Time Round on firmware 4.43 or newer, and the Core Devices Pebble app with its Plugins preview turned on and the watch microphone allowed for this app. Anywhere it cannot work, dictation is used as before.</small>
+					<small class="form-text">Your pipeline's own speech-to-text hears you instead of the phone's dictation, and there is no limit on how long you can talk. Needs a Pebble Time 2, Core 2 Duo or Core Time Round on firmware 4.43 or newer, and the Core Devices Pebble app 2.0 or newer (or its Plugins preview turned on in older versions) with the watch microphone allowed for this app. Anywhere it cannot work, dictation is used as before.</small>
 					<div id="assist-stream-status" class="alert alert-warning mt-2 hidden" role="alert"></div>
 				</div>
 				<div class="component">
@@ -1401,7 +1401,7 @@
 				<div class="component">
 					<div class="alert alert-info" role="alert">
 						<svg class="bi" width="20" height="20" role="img" aria-label="Info:"><use href="#info-fill"/></svg>
-						Other watchfaces and apps can show these entities and control them, and show the custom values below. Weather entities are always shared. This needs the Core Devices Pebble app with Plugins / permissions preview turned on.
+						Other watchfaces and apps can show these entities and control them, and show the custom values below. Weather entities are always shared. This needs the Core Devices Pebble app 2.0 or newer, or Plugins / permissions preview turned on in older versions.
 					</div>
 					<ul id="plugin-sortable" class="list-group">
 					</ul>
@@ -2810,7 +2810,7 @@
 		}
 		var last = watch_config['assist_stream_status'];
 		if (last && last.result === 'refused') {
-			return 'The Pebble app refused the microphone the last time the watch asked. Turn on the Plugins preview in the Pebble app\'s settings, open the assistant once, and allow the watch microphone when the Pebble app asks (or on this app\'s page in the Pebble app). It is asked again the next time the app opens.';
+			return 'The Pebble app refused the microphone the last time the watch asked. Open the assistant once and allow the watch microphone when the Pebble app asks, or on this app\'s page in the Pebble app. On Pebble app versions before 2.0, turn on its Plugins preview first. It is asked again the next time the app opens.';
 		}
 		if (last && last.result === 'noanswer') {
 			return 'Your phone app did not answer when the watch asked to send its microphone, so it probably does not support it yet and the phone\'s dictation is used. It is asked again in two weeks, or after you turn this off, save, and turn it back on.';

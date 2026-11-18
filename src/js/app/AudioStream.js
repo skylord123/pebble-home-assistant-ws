@@ -44,10 +44,10 @@ var NO_ANSWER_RETRY_MS = 14 * 24 * 60 * 60 * 1000;
 // { result: 'works' | 'refused' | 'noanswer', at: ms }
 var STATUS_KEY = 'assist_stream_status';
 
-// A refusal from the Core app means its Plugins preview is off or the
-// microphone has not been allowed yet. Either can change at any time, but
-// asking again before the next launch would only put the same refusal, and
-// the moment it costs, in front of every turn.
+// A refusal from the Core app means the microphone has not been allowed
+// yet (or, before 2.0, that its Plugins preview is off). Either can change
+// at any time, but asking again before the next launch would only put the
+// same refusal, and the moment it costs, in front of every turn.
 var refusedThisLaunch = false;
 
 // Whoever is listening to the audio just now: one turn at a time
