@@ -56,13 +56,13 @@ After installation, you'll need to configure the app to connect to your Home Ass
    - **Enable Voice**: Turn on/off voice assistant functionality
 
 On phone apps that can open the settings page from inside the watch app (the
-Core Devices Pebble app with plugins enabled), the page also has a **Connect**
+Core Devices Pebble app 2.0 or newer), the page also has a **Connect**
 button that checks the URL and token against Home Assistant before saving them,
 and a **Find Entities** search for adding favorites and pinned entities. Other
 phone apps open the same page from GitHub Pages and save the classic way; see
 [config/README.md](config/README.md).
 
-With the Plugins preview turned on, the Core Devices Pebble app asks you to allow what the app uses when you install it: the internet and your local network (to reach Home Assistant wherever it is), your location (for sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
+The Core Devices Pebble app (2.0 or newer) asks you to allow the internet and your local network when you install the app, so it can reach Home Assistant wherever it is. It asks about the rest the first time the app uses them: your location (for the weather and sunrise and sunset), the timeline, the watch microphone (for sending your voice to Home Assistant), and messages with the Android companion app if you use it. If Home Assistant cannot be reached after installing, check that the internet and local network are allowed for Home Assistant WS in the Pebble app.
 
 ### Home Assistant Setup Requirements
 
@@ -92,7 +92,7 @@ On a Pebble Time 2, Core 2 Duo or Core Time Round running firmware 4.43 or newer
 
 It is on by default and is used whenever it can be. To make it work:
 
-1. Use the Core Devices Pebble app and turn on its Plugins preview in the app's settings.
+1. Use the Core Devices Pebble app 2.0 or newer. On versions before 2.0, also turn on its Plugins preview in the app's settings.
 2. Allow the watch microphone when the Pebble app asks. If you said no, allow it for Home Assistant WS in the Pebble app and reopen the app.
 3. Pick a pipeline that has a speech-to-text engine.
 
@@ -111,6 +111,101 @@ The reply still shows on screen as it always has. The watch starts speaking as s
 - To swap the two, so a press does the quick action and a long press opens the details, set **Entity Press** to **Does quick action** under Entity Settings on the watch, or **Pressing an Entity** on the settings page
 - For media players, use the dedicated control screen with volume and playback controls
 - Add frequently used entities to favorites for quicker access
+
+## Use your Home Assistant in other watch apps
+
+Home Assistant WS comes with a plugin that lets other watchfaces and apps
+show your Home Assistant and control it, using the connection you already
+set up here. A watchface can show the living room temperature or whether
+the garage door is closed, and an app can turn on a light, without either
+of them ever seeing your Home Assistant address or token. Only what you
+choose to share is shown.
+
+### Turning it on
+
+1. Use the Core Devices Pebble app 2.0 or newer. On versions before 2.0,
+   also turn on **Plugins / permissions preview** (Settings → Plugins).
+2. Set up Home Assistant WS as usual. If the Pebble app asked, allow it the
+   internet and your local network.
+3. Install a watchface or app that works with Home Assistant WS. The Pebble
+   app asks you to allow it your location (the plugin asks this of every
+   app, because it can also provide the watch's own weather), and asks
+   again before it first controls anything.
+
+### Sharing entities
+
+Nothing is shared until you share it, except weather, which every app can
+show.
+
+- **On the watch:** open an entity and choose **Expose to Plugins**. Choose
+  **Hide from Plugins** to stop.
+- **On the settings page:** open **Shared with Other Apps**. Tap the share
+  button next to an entity in **Find Entities**, or pick a room under
+  **Share a whole area** and tap **Share all**. Each shared entity says
+  what other apps can do with it. Drag them into the order you like:
+  complications show entities by their place in this list.
+
+Calendars and to-do lists are shared the same way. Other apps can then show
+your upcoming events and add items to your lists.
+
+### Custom values
+
+Under **Custom values** on the same page you can share anything a Home
+Assistant template can work out. Tap **Add a value**, give it a name, a
+template and an optional unit, and the page shows what other apps will see.
+For example, **Doors open**:
+
+```jinja
+{{ states.binary_sensor | selectattr('attributes.device_class', 'eq', 'door') | selectattr('state', 'eq', 'on') | list | count }}
+```
+
+**Start from an example** has a few more, such as who is home and how many
+batteries are low. Home Assistant only renders templates for an
+administrator, so custom values need a token from an administrator's
+account.
+
+### The assistant, reminders and weather on your phone
+
+- **The assistant:** turn on **Share with Apps** (watch: Settings →
+  Assistant; settings page: **Share with other apps** under Voice Assistant
+  Settings). Other apps can then ask your assistant things, and in Index's
+  settings you can pick Home Assistant WS as where a ring gesture or a
+  typed message goes.
+- **Reminders:** share a to-do list, such as your Shopping List, and pick
+  Home Assistant WS as the place for reminders in Index's settings. "Add
+  milk to the shopping list" then lands on that list. Anything that names
+  no list goes on the first list you shared.
+- **Weather:** pick Home Assistant WS under **Weather provider** in the
+  Pebble app (Settings → Weather), and the watch's Weather app and timeline
+  show Home Assistant's weather when you are near home.
+
+### What other apps can and cannot do
+
+Other apps can read what you shared and control it: turn lights and
+switches on and off, set thermostats, open and close blinds, play music,
+run scenes and lock locks. The Pebble app asks you before an app first
+controls anything.
+
+They cannot unlock a lock, disarm an alarm, or open a garage door, gate or
+door, unless you turn on **Apps Can Unlock** (watch: Settings → Entity
+Settings; settings page: **Let other apps unlock and open doors**). Even
+then the Pebble app asks you once for each app that wants to. Index and its
+assistant are not asked, so leave the switch off unless they may do it too.
+
+Sharing the assistant reaches whatever you exposed to Assist in Home
+Assistant, not only what you shared here, and it acts without asking on the
+watch first.
+
+### Privacy
+
+- Other apps never see your Home Assistant address or token.
+- Anything you have not shared stays hidden from them.
+- People are shown by zone (Home, Away, Work), never by their location.
+- Codes you saved for locks and alarms are never used for other apps.
+
+If you build watch apps, the [developer guide](plugin/README.md) shows how
+to use all this from yours, and the [speech kit](sdk/speech/README.md) lets
+your app talk through the watch speaker in the wearer's assistant voice.
 
 ## Troubleshooting
 

@@ -69,7 +69,15 @@ docker-build:
 docker-clean:
 	$(DOCKER_RUN) pebble clean
 
+# The speech kit's example app, sdk/speech/example, with the same SDK
+docker-build-example:
+	docker run --rm -v $(shell pwd)/sdk/speech/example:/pebble \
+		--user $(shell id -u):$(shell id -g) \
+		-e HOME=/tmp \
+		-e PEBBLE_HOME=/opt/pebble-sdk \
+		$(DOCKER_IMAGE)
+
 docker:
 	docker run --rm -it -v $(shell pwd):/pebble -e PEBBLE_PHONE $(DOCKER_IMAGE) /bin/bash
 
-.PHONY: all build config log install clean size logs screenshot deploy timeline-on timeline-off wipe phone-logs docker-build docker-clean docker
+.PHONY: all build config log install clean size logs screenshot deploy timeline-on timeline-off wipe phone-logs docker-build docker-clean docker-build-example docker

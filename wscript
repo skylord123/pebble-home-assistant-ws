@@ -37,7 +37,20 @@ def build(ctx):
     ctx.load('bundle_config_page', tooldir='waftools')
 
     binaries = []
-    js_target = ctx.concat_javascript(js_path='src/js')
+    # The speech kit's phone side is the one other apps copy, and the app's
+    # own spoken answers play through it too
+    js_target = ctx.concat_javascript(js_path='src/js',
+                                      extra={'ha_speech': 'sdk/speech/ha_speech.js'})
+    # The plugin other apps read Home Assistant through: its own bundle, built
+    # with the same module loader, added to the pbw after it is zipped. It
+    # also takes the modules plugin/bundle.json names from the app, so there
+    # is one copy of each (tests/plugin/harness.js reads the same file).
+    with open('plugin/bundle.json', 'r') as f:
+        plugin_modules = json.load(f)['modules']
+    plugin_target = ctx.concat_javascript(js_path='plugin/js',
+                                          loader_path='src/js/loader.js',
+                                          target='build/plugin/plugin.js',
+                                          extra=plugin_modules)
 
     if ctx.env.TARGET_PLATFORMS:
         for platform in ctx.env.TARGET_PLATFORMS:
@@ -54,8 +67,9 @@ def build(ctx):
                        worker_elf=elfs['worker_elf'] if 'worker_elf' in elfs else None,
                        js=js_target)
 
-    # The settings page goes into the pbw once it has been zipped
+    # The settings page and the plugin go into the pbw once it has been zipped
     ctx.add_post_fun(lambda bld: bld.bundle_config_page())
+    ctx.add_post_fun(lambda bld: bld.bundle_plugin(plugin_target.abspath()))
 
 
 @conf
@@ -88,7 +102,9 @@ def build_platform(ctx, platform=None, binaries=None):
     build_worker = os.path.exists('worker_src')
 
     app_elf = '{}/pebble-app.elf'.format(ctx.env.BUILD_DIR)
-    ctx.pbl_program(source=ctx.path.ant_glob('src/**/*.c'),
+    # The speech kit other apps copy is the app's own speaker too
+    ctx.pbl_program(source=ctx.path.ant_glob('src/**/*.c') +
+                    [ctx.path.make_node('sdk/speech/ha_speech.c')],
                     target=app_elf)
 
     if build_worker:
@@ -101,13 +117,27 @@ def build_platform(ctx, platform=None, binaries=None):
 
 
 @conf
-def concat_javascript(ctx, js_path=None):
+def concat_javascript(ctx, js_path=None, loader_path=None,
+                      target='build/src/js/pebble-js-app.js', extra=None):
     js_nodes = (ctx.path.ant_glob(js_path + '/**/*.js') +
                 ctx.path.ant_glob(js_path + '/**/*.json') +
                 ctx.path.ant_glob(js_path + '/**/*.coffee'))
 
     if not js_nodes:
         return []
+
+    # A bundle whose sources live elsewhere borrows the app's module loader
+    loader_node = ctx.path.make_node(loader_path) if loader_path else None
+    if loader_node is not None:
+        js_nodes = [loader_node] + js_nodes
+
+    # Files from outside js_path, each defined as the module it is mapped to
+    # ({'speech-codec': 'src/js/app/speech-codec.js'})
+    extra_relpaths = {}
+    for name, path in sorted((extra or {}).items()):
+        node = ctx.path.make_node(path)
+        js_nodes.append(node)
+        extra_relpaths[node.abspath()] = name + '.js'
 
     def concat_javascript_task(task):
         LOADER_PATH = "loader.js"
@@ -137,7 +167,12 @@ def concat_javascript(ctx, js_path=None):
 
         sources = []
         for node in task.inputs:
-            relpath = os.path.relpath(node.abspath(), js_path)
+            if loader_node is not None and node.abspath() == loader_node.abspath():
+                relpath = LOADER_PATH
+            elif node.abspath() in extra_relpaths:
+                relpath = extra_relpaths[node.abspath()]
+            else:
+                relpath = os.path.relpath(node.abspath(), js_path)
             with open(node.abspath(), 'r') as f:
                 body = f.read()
                 if relpath.endswith('.json'):
@@ -173,7 +208,7 @@ def concat_javascript(ctx, js_path=None):
                 f.write(body + '\n')
                 lineno += body.count('\n') + 1
 
-    js_target = ctx.path.make_node('build/src/js/pebble-js-app.js')
+    js_target = ctx.path.make_node(target)
 
     # appinfo.json is baked into the bundle (resource ids come from its media
     # order), so it must be a declared dependency or icon ids go stale when

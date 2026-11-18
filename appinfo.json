@@ -224,11 +224,31 @@
     "gabbro"
   ],
   "usesPermissions": [
-    "Internet",
-    "LocalNetwork",
-    "Location",
-    "Timeline",
-    "WatchMicrophone"
+    {
+      "name": "Internet",
+      "reason": "To reach your Home Assistant when it is outside your home network",
+      "required": true
+    },
+    {
+      "name": "LocalNetwork",
+      "reason": "To reach your Home Assistant on your home network",
+      "required": true
+    },
+    {
+      "name": "Location",
+      "reason": "So Home Assistant can give the watch its weather, for the places saved in the Pebble app",
+      "required": false
+    },
+    {
+      "name": "Timeline",
+      "reason": "So Home Assistant can put pins on your watch's timeline",
+      "required": false
+    },
+    {
+      "name": "WatchMicrophone",
+      "reason": "To send your voice straight to Home Assistant's speech-to-text",
+      "required": false
+    }
   ],
   "uuid": "61ae3254-ce00-49db-aad8-23143f649b90",
   "versionCode": 1,

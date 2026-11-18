@@ -543,6 +543,26 @@ function showEntityMenu(entity_id) {
     }
     _renderPinnedBtn();
 
+    function _renderPluginBtn() {
+        if (EntityService.isAlwaysPluginExposed(entity.entity_id)) {
+            showEntityMenu.item(2, 2, {
+                title: 'Plugin Exposed',
+                subtitle: 'Weather is always'
+            });
+            return;
+        }
+        var exposed = EntityService.isPluginExposed(entity.entity_id);
+        showEntityMenu.item(2, 2, {
+            title: exposed ? 'Hide from Plugins' : 'Expose to Plugins',
+            subtitle: exposed ? 'Shared with other apps' : '',
+            on_click: function(e) {
+                EntityService.togglePluginExposed(entity);
+                _renderPluginBtn();
+            }
+        });
+    }
+    _renderPluginBtn();
+
     // Releases the subscription and the timer. Every trip into a child page
     // comes back through 'show', so this runs first there too: without it the
     // old subscription is only overwritten, and the server keeps sending on it

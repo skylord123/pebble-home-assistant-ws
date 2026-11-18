@@ -39,8 +39,9 @@ var ConnectionService = {
     // How long a connection test waits for Home Assistant before giving up
     TEST_TIMEOUT_MS: 15000,
 
-    // With its Plugins preview on, the Pebble app only lets the app reach the
-    // internet and the local network once the wearer allows them
+    // From 2.0 (or with its Plugins preview on before that), the Pebble app
+    // only lets the app reach the internet and the local network once the
+    // wearer allows them
     BLOCKED_MESSAGE: 'The Pebble app has not allowed Home Assistant WS to reach Home Assistant yet. ' +
         'Allow it the internet and local network in the Pebble app.',
 

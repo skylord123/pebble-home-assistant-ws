@@ -1,0 +1,5 @@
+{
+  "modules": {
+    "speech-codec": "src/js/app/speech-codec.js"
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "name": "ha-speech-example",
+  "author": "Skylar Sadlier",
+  "version": "1.0.0",
+  "description": "Asks Home Assistant the time and reads the answer aloud on the watch speaker",
+  "keywords": [
+    "pebble-app"
+  ],
+  "private": true,
+  "dependencies": {},
+  "pebble": {
+    "displayName": "HA Speech Example",
+    "uuid": "f5f028d9-2d31-4647-b081-96a74e374aa6",
+    "sdkVersion": "3",
+    "manifestVersion": 2,
+    "enableMultiJS": true,
+    "targetPlatforms": [
+      "basalt",
+      "emery",
+      "flint"
+    ],
+    "watchapp": {
+      "watchface": false
+    },
+    "messageKeys": [
+      "HA_SPEECH",
+      "ASK",
+      "REPLY"
+    ],
+    "resources": {
+      "media": []
+    },
+    "usesPermissions": [
+      {
+        "name": "Location",
+        "reason": "Home Assistant WS asks this of every app that uses it"
+      },
+      {
+        "name": "InvokeAction",
+        "plugin": "61ae3254-ce00-49db-aad8-23143f649b90"
+      },
+      {
+        "name": "Assistant",
+        "plugin": "61ae3254-ce00-49db-aad8-23143f649b90"
+      }
+    ]
+  }
+}

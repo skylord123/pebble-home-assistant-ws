@@ -150,12 +150,25 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
   const bool big = (w >= 200);
   const int16_t logo_size = (w < h ? w : h) * (is_round ? 34 : 40) / 100;
 
+  const int16_t title_h = big ? 32 : 28;
+  // Two lines of detail: big screens have room for the larger font
+  const int16_t body_h = big ? 44 : 34;
+
   graphics_context_set_fill_color(ctx, SPLASH_BG);
   graphics_fill_rect(ctx, bounds, 0, GCornerNone);
 
 #if defined(SPLASH_FANCY)
   const int16_t cx = w / 2;
-  const int16_t cy = h * (is_round ? 33 : 32) / 100;
+  int16_t cy = h * (is_round ? 33 : 32) / 100;
+  if (self->mode != SplashModeConnecting && self->body[0]) {
+    // A detail line makes the stack taller than the logo and title alone,
+    // and pushed it against the bottom edge. Lift the icon and the text with
+    // it, so the stack sits in the middle of the screen.
+    const int16_t top = cy - logo_size / 2;
+    const int16_t bottom = cy + logo_size / 2 + h * 45 / 1000 + title_h + 22 + body_h;
+    const int16_t lift = (top - (h - bottom)) / 2;
+    if (lift > 0) { cy -= lift; }
+  }
   const int16_t stroke = prv_px(4, logo_size) < 2 ? 2 : prv_px(4, logo_size);
 
   graphics_context_set_stroke_color(ctx, GColorWhite);
@@ -231,7 +244,6 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
 #endif
 
   // Text stack: title, status line, then a smaller detail line
-  const int16_t title_h = big ? 32 : 28;
 #if defined(SPLASH_FANCY)
   const int16_t title_y = cy + logo_size / 2 + h * 45 / 1000;
 #else
@@ -253,8 +265,9 @@ static void prv_layer_update(Layer *layer, GContext *ctx) {
       GRect(0, status_y, w, 24), GTextOverflowModeTrailingEllipsis,
       GTextAlignmentCenter, NULL);
 
-  graphics_draw_text(ctx, self->body, fonts_get_system_font(FONT_KEY_GOTHIC_14),
-      GRect((w - body_w) / 2, body_y, body_w, 36), GTextOverflowModeWordWrap,
+  graphics_draw_text(ctx, self->body,
+      fonts_get_system_font(big ? FONT_KEY_GOTHIC_18 : FONT_KEY_GOTHIC_14),
+      GRect((w - body_w) / 2, body_y, body_w, body_h + 2), GTextOverflowModeWordWrap,
       GTextAlignmentCenter, NULL);
 }
 

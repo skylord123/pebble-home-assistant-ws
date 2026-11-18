@@ -6,7 +6,9 @@ var simply = require('ui/simply');
  * The watch keeps a ring of compressed audio and plays it as it decodes it
  * (simply_speaker.c). This side only carries messages: what to get ready for,
  * the audio a piece at a time, and the watch's answers about how far it has
- * got. Deciding what to say and when is app/Speech.js's job.
+ * got. Deciding what to say is app/Speech.js's job, and when to send each
+ * piece the speech kit's player's (sdk/speech/ha_speech.js), which takes this
+ * as its transport.
  *
  * Speaker.onStatus(fn)  - fn(clip, state, played, capacity) for every report
  * Speaker.onIdle(fn)    - fn() whenever nothing is waiting to go to the watch
